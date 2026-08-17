@@ -3,34 +3,50 @@ import { formatCOP, formatDate, showToast } from '../store.js';
 import { openOrderModal } from './ordersView.js';
 
 let searchQuery = '';
+let currentDebtFilter = 'ALL'; // 'ALL', 'DELIVERED_DEBT', 'IN_PROCESS', 'PAID'
 let cachedCustomers = [];
 
 export async function renderCustomers(container) {
   container.innerHTML = `
-    <!-- Barra de Búsqueda y Acción -->
-    <div class="toolbar-container">
-      <div class="toolbar-left">
-        <div class="search-box input-with-icon">
-          <span class="input-icon">🔍</span>
-          <input 
-            type="text" 
-            id="customerSearchInput" 
-            class="form-input" 
-            placeholder="Buscar cliente por nombre, teléfono o dirección..." 
-            value="${searchQuery}"
-          />
+    <!-- Barra de Búsqueda, Filtros y Acción -->
+    <div class="orders-toolbar-card" style="padding: 14px 18px; margin-bottom: 20px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 280px; max-width: 450px;">
+          <div class="search-box input-with-icon" style="width: 100%;">
+            <span class="input-icon">🔍</span>
+            <input 
+              type="text" 
+              id="customerSearchInput" 
+              class="form-input" 
+              style="height: 40px;"
+              placeholder="Buscar por cliente, @usuario o dirección..." 
+              value="${searchQuery}"
+            />
+          </div>
         </div>
-      </div>
-      <div class="toolbar-right">
-        <button class="btn btn-accent" id="btnOpenNewCustModal">
-          <span>+</span> Registrar Cliente
-        </button>
+
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <div class="filter-chip-group" id="custDebtFilterGroup">
+            <button class="filter-chip ${currentDebtFilter === 'ALL' ? 'active' : ''}" data-debt="ALL">Todos</button>
+            <button class="filter-chip ${currentDebtFilter === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt="DELIVERED_DEBT" style="${currentDebtFilter === 'DELIVERED_DEBT' ? 'background: #DC2626; border-color: #DC2626; color: white;' : 'color: #DC2626;'}">
+              🚨 Con Deuda (Entregados)
+            </button>
+            <button class="filter-chip ${currentDebtFilter === 'IN_PROCESS' ? 'active' : ''}" data-debt="IN_PROCESS" style="${currentDebtFilter === 'IN_PROCESS' ? 'background: var(--primary); border-color: var(--primary); color: white;' : 'color: var(--primary);'}">
+              🥣 Encargos (En Proceso)
+            </button>
+            <button class="filter-chip ${currentDebtFilter === 'PAID' ? 'active' : ''}" data-debt="PAID">🟢 Al Día</button>
+          </div>
+
+          <button class="btn btn-accent" id="btnOpenNewCustModal" style="height: 40px;">
+            <span>+</span> Registrar Cliente
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- Directorio de Clientes -->
     <div id="customersGridContainer">
-      <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+      <div style="text-align: center; padding: 30px; color: var(--text-muted);">
         Cargando directorio de clientes... 👥
       </div>
     </div>
@@ -46,6 +62,16 @@ export async function renderCustomers(container) {
     }, 250);
   });
 
+  // Listeners de filtro de deuda
+  container.querySelectorAll('#custDebtFilterGroup button').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      container.querySelectorAll('#custDebtFilterGroup button').forEach((b) => b.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      currentDebtFilter = e.currentTarget.dataset.debt;
+      loadCustomersList(container);
+    });
+  });
+
   container.querySelector('#btnOpenNewCustModal')?.addEventListener('click', () => {
     openCustomerEditModal();
   });
@@ -53,66 +79,193 @@ export async function renderCustomers(container) {
   await loadCustomersList(container);
 }
 
+// Función generadora del link de WhatsApp con recordatorio contextual
+function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0, inProcessPendingAmount = 0) {
+  if (!phone) return '#';
+  const rawPhone = phone.trim();
+  const isUsername = rawPhone.startsWith('@') || /[a-zA-Z]/.test(rawPhone);
+
+  let msg = '';
+  if (deliveredPendingDebt > 0) {
+    // Pedido ya entregado y no pagado (deuda real)
+    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos cordialmente de *YogurArte*.\n\nEsperamos que estés disfrutando de nuestros deliciosos yogures artesanales 100% naturales.\n\nTe recordamos con mucho aprecio que presentas un saldo pendiente de *${formatCOP(deliveredPendingDebt)}* de tu pedido entregado.\n\nSi ya realizaste la transferencia, por favor compártenos el comprobante por este medio. ¡Muchísimas gracias por tu preferencia y apoyo continuo! 🙌🐄`;
+  } else if (inProcessPendingAmount > 0) {
+    // Pedido en proceso / encargado (aún no se entrega)
+    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de *YogurArte*.\n\nTu pedido de yogur artesanal 100% natural está siendo preparado con todo el cuidado. Te avisaremos apenas esté en camino para entrega. ¡Gracias por tu encargo! 🥣🍓`;
+  } else {
+    // Cliente al día
+    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de *YogurArte*.\n\n¿Te gustaría ordenar más de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos para prepararte los mejores sabores. 🍓🍑🍇`;
+  }
+
+  const encoded = encodeURIComponent(msg);
+  if (isUsername) {
+    const cleanUser = rawPhone.replace(/^@/, '').trim();
+    return `https://wa.me/${cleanUser}?text=${encoded}`;
+  } else {
+    let cleanPhone = rawPhone.replace(/\D/g, '');
+    if (!cleanPhone.startsWith('57') && cleanPhone.length === 10) {
+      cleanPhone = `57${cleanPhone}`;
+    }
+    return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`;
+  }
+}
+
 async function loadCustomersList(container) {
   const gridContainer = container.querySelector('#customersGridContainer');
   if (!gridContainer) return;
 
   try {
-    const customers = await api.getCustomers(searchQuery);
-    cachedCustomers = customers || [];
+    const allCustomers = await api.getCustomers(searchQuery);
+    cachedCustomers = allCustomers || [];
 
-    if (!customers || customers.length === 0) {
+    // Aplicar filtro de deuda localmente
+    let filteredCustomers = [...cachedCustomers];
+    if (currentDebtFilter === 'DELIVERED_DEBT') {
+      filteredCustomers = filteredCustomers.filter((c) => (c.deliveredPendingDebt || 0) > 0);
+    } else if (currentDebtFilter === 'IN_PROCESS') {
+      filteredCustomers = filteredCustomers.filter((c) => (c.deliveredPendingDebt || 0) <= 0 && (c.inProcessPendingAmount || 0) > 0);
+    } else if (currentDebtFilter === 'PAID') {
+      filteredCustomers = filteredCustomers.filter((c) => (c.totalPendingAmount || 0) <= 0);
+    }
+
+    if (filteredCustomers.length === 0) {
       gridContainer.innerHTML = `
         <div class="empty-state">
           <div class="empty-state-icon">👥</div>
           <div class="empty-state-title">No se encontraron clientes</div>
-          <div class="empty-state-text">Registra tus clientes habituales para agilizar la toma de pedidos.</div>
-          <button class="btn btn-primary" id="btnRegisterCustEmpty">+ Registrar Primer Cliente</button>
+          <div class="empty-state-text">
+            ${
+              currentDebtFilter === 'DELIVERED_DEBT'
+                ? '¡Excelente noticia! No hay clientes con deudas de pedidos entregados.'
+                : currentDebtFilter === 'IN_PROCESS'
+                ? 'No hay clientes con pedidos encargados en proceso.'
+                : 'Registra tus clientes habituales para agilizar la toma de pedidos.'
+            }
+          </div>
+          ${
+            currentDebtFilter === 'ALL'
+              ? '<button class="btn btn-primary" id="btnRegisterCustEmpty">+ Registrar Primer Cliente</button>'
+              : ''
+          }
         </div>
       `;
       gridContainer.querySelector('#btnRegisterCustEmpty')?.addEventListener('click', () => openCustomerEditModal());
       return;
     }
 
+    const totalDeliveredDebtInList = filteredCustomers.reduce((sum, c) => sum + (c.deliveredPendingDebt || 0), 0);
+    const deliveredDebtorsCount = filteredCustomers.filter((c) => (c.deliveredPendingDebt || 0) > 0).length;
+    const inProcessCount = filteredCustomers.filter((c) => (c.deliveredPendingDebt || 0) <= 0 && (c.inProcessPendingAmount || 0) > 0).length;
+
+    let summaryBanner = '';
+    if (deliveredDebtorsCount > 0 && currentDebtFilter !== 'PAID' && currentDebtFilter !== 'IN_PROCESS') {
+      summaryBanner = `
+        <div style="background: #FFF5F5; border: 1.5px solid #FECACA; border-radius: var(--radius-lg); padding: 12px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.2rem;">🚨</span>
+            <span style="font-weight: 700; color: #DC2626; font-size: 0.92rem;">
+              Mostrando ${deliveredDebtorsCount} cliente(s) con pedidos ENTREGADOS y saldo pendiente (organizados de primero por mayor monto)
+            </span>
+          </div>
+          <div style="background: #DC2626; color: white; padding: 4px 12px; border-radius: var(--radius-md); font-weight: 800; font-size: 0.95rem;">
+            Total Deuda Entregada: ${formatCOP(totalDeliveredDebtInList)}
+          </div>
+        </div>
+      `;
+    } else if (currentDebtFilter === 'IN_PROCESS' && inProcessCount > 0) {
+      const totalInProcess = filteredCustomers.reduce((sum, c) => sum + (c.inProcessPendingAmount || 0), 0);
+      summaryBanner = `
+        <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; border-radius: var(--radius-lg); padding: 12px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.2rem;">🥣</span>
+            <span style="font-weight: 700; color: var(--primary); font-size: 0.92rem;">
+              Mostrando ${inProcessCount} cliente(s) con pedidos encargados en preparación / ruta (se cobrarán al entregar)
+            </span>
+          </div>
+          <div style="background: var(--primary); color: white; padding: 4px 12px; border-radius: var(--radius-md); font-weight: 800; font-size: 0.95rem;">
+            Por Recaudar al Entregar: ${formatCOP(totalInProcess)}
+          </div>
+        </div>
+      `;
+    }
+
     gridContainer.innerHTML = `
+      ${summaryBanner}
       <div class="orders-grid">
-        ${customers
+        ${filteredCustomers
           .map((c) => {
             const rawPhone = (c.phone || '').trim();
             const isUsername = rawPhone.startsWith('@') || /[a-zA-Z]/.test(rawPhone);
-            let waLink = '';
-            let displayContact = rawPhone;
+            const displayContact = isUsername && !rawPhone.startsWith('@') ? `@${rawPhone}` : rawPhone;
+            
+            const deliveredDebt = c.deliveredPendingDebt || 0;
+            const inProcessAmount = c.inProcessPendingAmount || 0;
+            const hasDeliveredDebt = deliveredDebt > 0;
+            const hasInProcessOrder = !hasDeliveredDebt && inProcessAmount > 0;
 
-            if (isUsername) {
-              const cleanUser = rawPhone.replace(/^@/, '').trim();
-              waLink = `https://wa.me/${cleanUser}`;
-              displayContact = rawPhone.startsWith('@') ? rawPhone : `@${rawPhone}`;
+            const waLink = generateCustomerWhatsAppLink(rawPhone, c.fullName, deliveredDebt, inProcessAmount);
+
+            let cardBorder = '';
+            let badgeHtml = '';
+            let waBtnClass = 'btn-outline';
+            let waBtnText = '📲 WhatsApp';
+
+            if (hasDeliveredDebt) {
+              cardBorder = 'border: 1.5px solid #F87171; background: #FFFDFD; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.08);';
+              badgeHtml = `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-weight: 800; font-size: 0.76rem;">🚨 Deuda: ${formatCOP(deliveredDebt)}</span>`;
+              waBtnClass = 'btn-whatsapp';
+              waBtnText = '📲 Recordar Pago';
+            } else if (hasInProcessOrder) {
+              cardBorder = 'border: 1.5px solid #DDD6FE; background: #FAF7FC; box-shadow: 0 4px 14px rgba(109, 40, 217, 0.05);';
+              badgeHtml = `<span class="badge" style="background: #EDE9FE; color: var(--primary); font-weight: 800; font-size: 0.76rem;">🥣 Encargo: ${formatCOP(inProcessAmount)}</span>`;
+              waBtnClass = 'btn-primary';
+              waBtnText = '💬 Info Pedido';
             } else {
-              let cleanPhone = rawPhone.replace(/\D/g, '');
-              if (!cleanPhone.startsWith('57') && cleanPhone.length === 10) {
-                cleanPhone = `57${cleanPhone}`;
-              }
-              waLink = `https://wa.me/${cleanPhone}`;
+              badgeHtml = `<span class="badge badge-paid" style="font-size: 0.76rem;">🟢 Al Día</span>`;
             }
 
             return `
-            <div class="order-card" data-id="${c.id}">
+            <div class="order-card" data-id="${c.id}" style="${cardBorder}">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-                <div>
-                  <h4 style="font-size: 1.1rem; font-weight: 800; color: var(--primary);">${c.fullName}</h4>
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px;">
+                    <h4 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin: 0;">${c.fullName}</h4>
+                    ${badgeHtml}
+                  </div>
                   <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
-                    <span>${isUsername ? '💬' : '📞'}</span> <strong>${displayContact}</strong>
+                    <span>${isUsername ? '💬' : '📞'}</span> <strong>${displayContact || 'Sin contacto'}</strong>
                   </div>
                   <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 2px;">
                     <span>📍</span> ${c.address || 'Fonseca'} ${c.neighborhood ? `(${c.neighborhood})` : ''}
                   </div>
                 </div>
-                <a href="${waLink}" target="_blank" class="btn btn-whatsapp btn-sm" title="Abrir chat en WhatsApp">
-                  <span>📲</span>
-                </a>
+
+                <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-end;">
+                  <a 
+                    href="${waLink}" 
+                    target="_blank" 
+                    class="btn ${waBtnClass} btn-sm" 
+                    style="padding: 5px 10px; font-weight: 700; font-size: 0.8rem; white-space: nowrap;"
+                    title="${hasDeliveredDebt ? `Enviar recordatorio de cobro de ${formatCOP(deliveredDebt)} por WhatsApp` : 'Contactar por WhatsApp'}"
+                  >
+                    ${waBtnText}
+                  </a>
+
+                  ${(hasDeliveredDebt || hasInProcessOrder) ? `
+                    <button 
+                      type="button" 
+                      class="btn ${hasDeliveredDebt ? 'btn-accent' : 'btn-outline'} btn-sm btn-cust-payment" 
+                      data-id="${c.id}" 
+                      style="padding: 4px 8px; font-weight: 800; font-size: 0.78rem; width: 100%;"
+                      title="Registrar cobro o abono directo a este cliente"
+                    >
+                      💵 ${hasDeliveredDebt ? 'Cobrar' : 'Abonar'}
+                    </button>
+                  ` : ''}
+                </div>
               </div>
 
-              <div style="background: var(--bg-app); padding: 12px; border-radius: var(--radius-md); display: flex; justify-content: space-around; text-align: center; margin: 10px 0;">
+              <div style="background: var(--bg-app); padding: 12px; border-radius: var(--radius-md); display: flex; justify-content: space-around; text-align: center; margin: 12px 0;">
                 <div>
                   <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Pedidos</span>
                   <div style="font-size: 1.15rem; font-weight: 800; color: var(--text-main);">${c.totalOrders}</div>
@@ -124,9 +277,9 @@ async function loadCustomersList(container) {
                 </div>
                 <div style="width: 1px; background: var(--border-subtle);"></div>
                 <div>
-                  <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Saldo Deuda</span>
-                  <div style="font-size: 1.15rem; font-weight: 800; color: ${c.pendingDebt > 0 ? 'var(--danger)' : 'var(--success)'};">
-                    ${formatCOP(c.pendingDebt)}
+                  <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Deuda Entregada</span>
+                  <div style="font-size: 1.15rem; font-weight: 800; color: ${hasDeliveredDebt ? '#DC2626' : 'var(--success)'};">
+                    ${formatCOP(deliveredDebt)}
                   </div>
                 </div>
               </div>
@@ -134,6 +287,9 @@ async function loadCustomersList(container) {
               <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; border-top: 1px solid var(--border-subtle); padding-top: 10px;">
                 <button class="btn btn-accent btn-sm btn-create-order-for-cust" data-id="${c.id}" style="flex: 1.2; font-weight: 800;" title="Crear un pedido para este cliente">
                   <span>+</span> Crear Pedido
+                </button>
+                <button class="btn btn-outline btn-sm btn-cust-payment" data-id="${c.id}" title="Registrar abono o cobrar">
+                  💵 ${hasDeliveredDebt ? 'Cobrar' : 'Abonar'}
                 </button>
                 <button class="btn btn-outline btn-sm btn-view-history" data-id="${c.id}" title="Ver historial de pedidos">
                   📋
@@ -168,6 +324,16 @@ async function loadCustomersList(container) {
             deliveryAddress: customer.address,
             isNewForCustomer: true,
           });
+        }
+      });
+    });
+
+    gridContainer.querySelectorAll('.btn-cust-payment').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = Number(e.currentTarget.dataset.id);
+        const customer = cachedCustomers.find((c) => c.id === id);
+        if (customer) {
+          openCustomerPaymentModal(customer);
         }
       });
     });
@@ -382,3 +548,197 @@ async function openCustomerHistoryModal(customerId) {
     showToast('Error al cargar historial del cliente', 'danger');
   }
 }
+
+// Modal para Cobrar / Abonar a Cliente
+async function openCustomerPaymentModal(customer) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  try {
+    const custData = await api.getCustomerById(customer.id);
+    const pendingOrders = (custData.orders || []).filter((o) => (o.pendingAmount || 0) > 0);
+
+    const deliveredDebt = pendingOrders
+      .filter((o) => o.deliveryStatus === 'DELIVERED')
+      .reduce((sum, o) => sum + (o.pendingAmount || 0), 0);
+
+    const inProcessAmount = pendingOrders
+      .filter((o) => o.deliveryStatus !== 'DELIVERED')
+      .reduce((sum, o) => sum + (o.pendingAmount || 0), 0);
+
+    const totalPending = deliveredDebt + inProcessAmount;
+
+    if (totalPending <= 0) {
+      showToast(`¡${custData.fullName} está completamente al día! No tiene saldo pendiente. 🟢`);
+      return;
+    }
+
+    const defaultAmount = deliveredDebt > 0 ? deliveredDebt : totalPending;
+
+    modalOverlay.innerHTML = `
+      <div class="modal-overlay active">
+        <div class="modal-card" style="max-width: 500px;">
+          <div class="modal-header">
+            <h3 class="modal-title">💵 Registrar Pago / Abono</h3>
+            <button class="modal-close-btn" id="btnClosePayModal">✕</button>
+          </div>
+          <form id="customerPaymentForm">
+            <div class="modal-body">
+              
+              <!-- Info del Cliente y Saldo -->
+              <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 16px;">
+                <div style="font-size: 1.05rem; font-weight: 800; color: var(--primary); margin-bottom: 6px;">
+                  👤 ${custData.fullName}
+                </div>
+                <div style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 8px;">
+                  <span>📞 ${custData.phone || 'Sin teléfono'}</span> • <span>📍 ${custData.address || 'Fonseca'}</span>
+                </div>
+
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+                  ${
+                    deliveredDebt > 0
+                      ? `<div style="background: #FEE2E2; border: 1px solid #FECACA; color: #DC2626; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 800;">
+                          🚨 Deuda Entregada: ${formatCOP(deliveredDebt)}
+                        </div>`
+                      : ''
+                  }
+                  ${
+                    inProcessAmount > 0
+                      ? `<div style="background: #EDE9FE; border: 1px solid #DDD6FE; color: var(--primary); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 800;">
+                          🥣 Encargos en Proceso: ${formatCOP(inProcessAmount)}
+                        </div>`
+                      : ''
+                  }
+                  <div style="background: #FFFFFF; border: 1px solid var(--border-color); color: var(--text-main); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 800;">
+                    💰 Saldo Total: ${formatCOP(totalPending)}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Seleccionar Pedido Destino -->
+              <div class="form-group">
+                <label class="form-label">Aplicar Abono a: *</label>
+                <select id="custPayOrderId" class="form-select" style="font-size: 0.88rem; font-weight: 600;">
+                  <option value="AUTO" selected>⚡ Automático: Aplicar a la deuda más antigua / entregada</option>
+                  ${pendingOrders
+                    .map(
+                      (o) =>
+                        `<option value="${o.id}">
+                          #${o.orderNumber || o.id} (${o.flavor || 'Yogur'}, ${o.totalLiters}L) • ${
+                          o.deliveryStatus === 'DELIVERED' ? '🛵 Entregado' : '🥣 En proceso'
+                        } • Pendiente: ${formatCOP(o.pendingAmount)}
+                        </option>`
+                    )
+                    .join('')}
+                </select>
+              </div>
+
+              <!-- Monto a Abonar / Cobrar -->
+              <div class="form-group">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label class="form-label" style="margin: 0;">Monto a Abonar / Cobrar ($ COP) *</label>
+                  <span style="font-size: 0.76rem; color: var(--text-muted);">Total sugerido: ${formatCOP(defaultAmount)}</span>
+                </div>
+                <input 
+                  type="number" 
+                  id="custPayAmount" 
+                  class="form-input" 
+                  min="100" 
+                  step="500" 
+                  value="${defaultAmount}" 
+                  style="font-size: 1.15rem; font-weight: 800; color: var(--primary);" 
+                  required 
+                />
+                
+                <!-- Botones rápidos de monto -->
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
+                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="${deliveredDebt > 0 ? deliveredDebt : totalPending}" style="font-size: 0.74rem; padding: 3px 8px;">
+                    Pago Total (${formatCOP(deliveredDebt > 0 ? deliveredDebt : totalPending)})
+                  </button>
+                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="10000" style="font-size: 0.74rem; padding: 3px 8px;">
+                    $10.000
+                  </button>
+                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="20000" style="font-size: 0.74rem; padding: 3px 8px;">
+                    $20.000
+                  </button>
+                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="5000" style="font-size: 0.74rem; padding: 3px 8px;">
+                    $5.000
+                  </button>
+                </div>
+              </div>
+
+              <!-- Método de Pago -->
+              <div class="form-group">
+                <label class="form-label">Método de Pago Recibido *</label>
+                <select id="custPayMethod" class="form-select">
+                  <option value="Efectivo" selected>💵 Efectivo</option>
+                  <option value="Transferencia Nequi">📱 Transferencia Nequi</option>
+                  <option value="Transferencia Daviplata">📱 Transferencia Daviplata</option>
+                  <option value="Transferencia Bancolombia">🏦 Transferencia Bancolombia</option>
+                  <option value="Otro">💳 Otro medio de pago</option>
+                </select>
+              </div>
+
+              <!-- Notas / Referencia -->
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">Notas / Comprobante (Opcional)</label>
+                <input type="text" id="custPayNotes" class="form-input" placeholder="Ej: Pago contraentrega, comprobante #5821..." />
+              </div>
+
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline" id="btnCancelPayModal">Cancelar</button>
+              <button type="submit" class="btn btn-accent" id="btnSubmitPay" style="padding: 10px 22px; font-weight: 800;">
+                ✅ Confirmar Abono / Pago
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnClosePayModal')?.addEventListener('click', closeModal);
+    document.getElementById('btnCancelPayModal')?.addEventListener('click', closeModal);
+
+    const amountInput = document.getElementById('custPayAmount');
+    modalOverlay.querySelectorAll('.quick-pay-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const val = e.currentTarget.dataset.val;
+        if (amountInput) amountInput.value = val;
+      });
+    });
+
+    document.getElementById('customerPaymentForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const amount = Number(amountInput.value);
+      if (!amount || amount <= 0) {
+        showToast('Ingresa un monto válido mayor a 0', 'danger');
+        return;
+      }
+
+      const orderId = document.getElementById('custPayOrderId').value;
+      const paymentMethod = document.getElementById('custPayMethod').value;
+      const notes = document.getElementById('custPayNotes').value;
+
+      try {
+        const res = await api.registerCustomerPayment(custData.id, {
+          amount,
+          orderId,
+          paymentMethod,
+          notes,
+          registeredBy: store.currentUser,
+        });
+
+        showToast(`¡Abono de ${formatCOP(amount)} registrado exitosamente para ${custData.fullName}! 💵`);
+        closeModal();
+        renderCustomers(document.getElementById('contentContainer'));
+      } catch (err) {
+        showToast(err.message || 'Error al registrar pago', 'danger');
+      }
+    });
+  } catch (err) {
+    showToast('Error al cargar datos de pago del cliente', 'danger');
+  }
+}
+

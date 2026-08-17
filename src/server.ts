@@ -11,6 +11,7 @@ import expensesRoutes from './routes/expenses.routes.js';
 import customersRoutes from './routes/customers.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 import usersRoutes from './routes/users.routes.js';
+import preparationsRoutes from './routes/preparations.routes.js';
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ app.use(express.static(publicPath));
 app.use('/api/orders', ordersRoutes);
 app.use('/api/batches', batchesRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/preparations', preparationsRoutes);
 app.use('/api/expenses', expensesRoutes);
 app.use('/api/customers', customersRoutes);
 app.use('/api/dashboard', dashboardRoutes);

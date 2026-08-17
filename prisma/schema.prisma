@@ -33,19 +33,53 @@ model Customer {
 }
 
 model RawMaterial {
+  id                         Int                     @id @default(autoincrement())
+  code                       String                  @unique
+  name                       String
+  category                   String                  // MATERIA_PRIMA, EMPAQUE, INSUMO
+  unit                       String                  // Litros, Unidades, Gramos, Kg, Kilogramos
+  currentStock               Float                   @default(0)
+  minStockAlert              Float                   @default(10)
+  avgCost                    Float                   @default(0)
+  isActive                   Boolean                 @default(true)
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+  purchases                  Purchase[]
+  batchUsages                BatchItemUsage[]
+  supplyPreparationsOutput   SupplyPreparation[]     @relation("OutputMaterial")
+  supplyPreparationsUsed     SupplyPreparationItem[] @relation("IngredientMaterial")
+}
+
+model SupplyPreparation {
+  id               Int                     @id @default(autoincrement())
+  code             String                  @unique // PREP-20260817-01
+  name             String                  // ej: Mermelada de Fresa Artesanal
+  outputMaterialId Int
+  outputMaterial   RawMaterial             @relation("OutputMaterial", fields: [outputMaterialId], references: [id])
+  quantityProduced Float                   // ej: 3.2 kg
+  unit             String                  @default("Kilogramos")
+  totalCost        Float                   @default(0) // Suma de costos de ingredientes usados
+  costPerUnit      Float                   @default(0) // totalCost / quantityProduced ($/kg o $/L)
+  preparationDate  DateTime                @default(now())
+  notes            String?
+  registeredBy     String?
+  isActive         Boolean                 @default(true)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @default(now()) @updatedAt
+  ingredients      SupplyPreparationItem[]
+}
+
+model SupplyPreparationItem {
   id            Int               @id @default(autoincrement())
-  code          String            @unique
-  name          String
-  category      String            // MATERIA_PRIMA, EMPAQUE, INSUMO
-  unit          String            // Litros, Unidades, Gramos, Kg
-  currentStock  Float             @default(0)
-  minStockAlert Float             @default(10)
-  avgCost       Float             @default(0)
-  isActive      Boolean           @default(true)
+  preparationId Int
+  preparation   SupplyPreparation @relation(fields: [preparationId], references: [id], onDelete: Cascade)
+  rawMaterialId Int
+  rawMaterial   RawMaterial       @relation("IngredientMaterial", fields: [rawMaterialId], references: [id])
+  quantityUsed  Float             // Cantidad consumida
+  unitUsed      String            // g, kg, L, und
+  unitCost      Float             // Costo unitario al momento de preparar
+  totalCost     Float             // Costo total del insumo en la receta
   createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  purchases     Purchase[]
-  batchUsages   BatchItemUsage[]
 }
 
 model Purchase {

@@ -3,6 +3,7 @@ import { formatCOP, formatDate, getTodayLocalDateStr, showToast, store } from '.
 
 let currentFilters = {
   search: '',
+  debtCategory: 'ALL', // 'ALL' | 'DELIVERED_DEBT' | 'IN_PROCESS' | 'PAID'
   paymentStatus: 'ALL',
   deliveryStatus: 'ALL',
   month: '', // YYYY-MM
@@ -93,10 +94,26 @@ export async function renderOrders(container) {
         </div>
       </div>
 
+      <!-- Fila de Filtros Jerárquicos de Cobro / Deuda (Como en Clientes) -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+        <button class="filter-chip ${currentFilters.debtCategory === 'ALL' ? 'active' : ''}" data-debt-cat="ALL">
+          📋 Todos los Pedidos
+        </button>
+        <button class="filter-chip ${currentFilters.debtCategory === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt-cat="DELIVERED_DEBT" style="${currentFilters.debtCategory === 'DELIVERED_DEBT' ? 'background: #DC2626; color: white;' : 'border-color: #FECACA; color: #DC2626;'}">
+          🚨 Entregados por Cobrar
+        </button>
+        <button class="filter-chip ${currentFilters.debtCategory === 'IN_PROCESS' ? 'active' : ''}" data-debt-cat="IN_PROCESS" style="${currentFilters.debtCategory === 'IN_PROCESS' ? 'background: var(--primary); color: white;' : 'border-color: #DDD6FE; color: var(--primary);'}">
+          🥣 Encargos por Entregar
+        </button>
+        <button class="filter-chip ${currentFilters.debtCategory === 'PAID' ? 'active' : ''}" data-debt-cat="PAID" style="${currentFilters.debtCategory === 'PAID' ? 'background: var(--success); color: white;' : 'border-color: #BBF7D0; color: #15803D;'}">
+          🟢 Totalmente Pagados
+        </button>
+      </div>
+
       <!-- Fila Secundaria: Filtros Rápidos de Fecha, Estados de Entrega y Pago -->
-      <div class="orders-filters-sub-row">
+      <div class="orders-filters-sub-row" style="margin-top: 10px;">
         <div class="orders-filter-chips">
-          <button class="filter-chip ${currentFilters.dateRange === 'ALL' && !currentFilters.specificDate && !currentFilters.month ? 'active' : ''}" data-date="ALL">Todos</button>
+          <button class="filter-chip ${currentFilters.dateRange === 'ALL' && !currentFilters.specificDate && !currentFilters.month ? 'active' : ''}" data-date="ALL">Todos los Días</button>
           <button class="filter-chip ${currentFilters.dateRange === 'TODAY' ? 'active' : ''}" data-date="TODAY">Hoy</button>
           <button class="filter-chip ${currentFilters.dateRange === 'TOMORROW' ? 'active' : ''}" data-date="TOMORROW">Mañana</button>
           <button class="filter-chip ${currentFilters.dateRange === 'WEEK' ? 'active' : ''}" data-date="WEEK">Esta Semana</button>
@@ -154,6 +171,16 @@ export async function renderOrders(container) {
       currentFilters.search = e.target.value;
       loadOrdersList(container);
     }, 250);
+  });
+
+  // Listeners de filtro de categoría de deuda
+  container.querySelectorAll('[data-debt-cat]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      container.querySelectorAll('[data-debt-cat]').forEach((b) => b.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      currentFilters.debtCategory = e.currentTarget.dataset.debtCat;
+      loadOrdersList(container);
+    });
   });
 
   const specificDateInput = container.querySelector('#selectSpecificDateFilter');
@@ -235,6 +262,7 @@ async function loadOrdersList(container) {
   try {
     const params = {
       search: currentFilters.search,
+      debtCategory: currentFilters.debtCategory,
       paymentStatus: currentFilters.paymentStatus,
       deliveryStatus: currentFilters.deliveryStatus,
       month: currentFilters.month,
@@ -313,7 +341,7 @@ async function loadOrdersList(container) {
         <div class="empty-state">
           <div class="empty-state-icon">📋</div>
           <div class="empty-state-title">No se encontraron pedidos</div>
-          <div class="empty-state-text">No hay pedidos registrados con los filtros de fecha o búsqueda aplicados.</div>
+          <div class="empty-state-text">No hay pedidos registrados con los filtros de búsqueda o categoría aplicados.</div>
           <button class="btn btn-accent" id="btnNewOrderEmpty">+ Crear Nuevo Pedido</button>
         </div>
       `;
@@ -484,11 +512,30 @@ async function renderDeliveryCalendarWidget(calendarContainer, mainContainer) {
 }
 
 function createOrderCardHtml(o) {
-  let payBadge = '<span class="badge badge-pending">🔴 Pendiente de Pago</span>';
-  if (o.paymentStatus === 'PAID') {
+  const isDeliveredDebt = o.deliveryStatus === 'DELIVERED' && (o.pendingAmount || 0) > 0;
+  const isInProcessPending = o.deliveryStatus !== 'DELIVERED' && (o.pendingAmount || 0) > 0;
+  const isFullyPaid = (o.pendingAmount || 0) <= 0;
+
+  let cardBorder = '';
+  let payBadge = '';
+  let waBtnText = '📲 WhatsApp';
+  let waBtnClass = 'btn-whatsapp';
+
+  if (isDeliveredDebt) {
+    cardBorder = 'border: 1.5px solid #F87171; background: #FFFDFD; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.08);';
+    payBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-weight: 800; font-size: 0.78rem;">🚨 Entregado • Deuda: ${formatCOP(o.pendingAmount)}</span>`;
+    waBtnText = '📲 Recordar Pago';
+  } else if (isInProcessPending) {
+    cardBorder = 'border: 1.5px solid #DDD6FE; background: #FAF7FC; box-shadow: 0 4px 14px rgba(109, 40, 217, 0.05);';
+    if (o.paidAmount > 0) {
+      payBadge = `<span class="badge badge-partial">🟡 Encargo (Abonó ${formatCOP(o.paidAmount)})</span>`;
+    } else {
+      payBadge = `<span class="badge" style="background: #EDE9FE; color: var(--primary); font-weight: 800; font-size: 0.78rem;">🥣 Encargo • Por Entregar</span>`;
+    }
+    waBtnText = '💬 Info Pedido';
+    waBtnClass = 'btn-primary';
+  } else {
     payBadge = '<span class="badge badge-paid">🟢 Totalmente Pagado</span>';
-  } else if (o.paymentStatus === 'PARTIAL') {
-    payBadge = `<span class="badge badge-partial">🟡 Abonó ${formatCOP(o.paidAmount)}</span>`;
   }
 
   // Renderizar detalle de ítems múltiples si existen
@@ -515,7 +562,7 @@ function createOrderCardHtml(o) {
   }
 
   return `
-    <div class="order-card" data-id="${o.id}">
+    <div class="order-card" data-id="${o.id}" style="${cardBorder}">
       <div class="order-card-header">
         <div>
           <span class="order-number">${o.orderNumber}</span>
@@ -555,8 +602,8 @@ function createOrderCardHtml(o) {
         <div class="order-debt-info">
           ${
             o.pendingAmount > 0
-              ? `<span style="font-size: 0.75rem; color: var(--danger); font-weight: 700;">Saldo Pendiente:</span>
-                 <div class="order-debt-amount">${formatCOP(o.pendingAmount)}</div>`
+              ? `<span style="font-size: 0.75rem; color: ${isDeliveredDebt ? '#DC2626' : 'var(--primary)'}; font-weight: 700;">${isDeliveredDebt ? '🚨 Saldo Deuda:' : '🥣 Saldo Pendiente:'}</span>
+                 <div class="order-debt-amount" style="color: ${isDeliveredDebt ? '#DC2626' : 'var(--primary)'};">${formatCOP(o.pendingAmount)}</div>`
               : `<span style="font-size: 0.8rem; color: var(--success); font-weight: 700;">¡Paz y Salvo! ✨</span>`
           }
         </div>
@@ -564,7 +611,7 @@ function createOrderCardHtml(o) {
 
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
         <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted);">Estado Entrega:</span>
-        <select class="form-select select-delivery-status" data-id="${o.id}" style="width: auto; padding: 4px 10px; font-size: 0.82rem;">
+        <select class="form-select select-delivery-status" data-id="${o.id}" style="width: auto; padding: 4px 10px; font-size: 0.82rem; font-weight: 700;">
           <option value="PENDING" ${o.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Pendiente</option>
           <option value="PREPARING" ${o.deliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
           <option value="IN_ROUTE" ${o.deliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Ruta</option>
@@ -583,14 +630,14 @@ function createOrderCardHtml(o) {
       }
 
       <div class="order-actions">
-        <button class="btn btn-whatsapp btn-sm btn-whatsapp-action" data-id="${o.id}" title="Enviar mensaje por WhatsApp">
-          <span>📲 WhatsApp</span>
+        <button class="btn ${waBtnClass} btn-sm btn-whatsapp-action" data-id="${o.id}" title="Enviar mensaje por WhatsApp">
+          <span>${waBtnText}</span>
         </button>
 
         ${
           o.pendingAmount > 0
-            ? `<button class="btn btn-primary btn-sm btn-payment-action" data-id="${o.id}" data-total="${o.totalAmount}" data-paid="${o.paidAmount}" data-pending="${o.pendingAmount}" title="Registrar abono o pago">
-                <span>💵 Abonar</span>
+            ? `<button class="btn ${isDeliveredDebt ? 'btn-accent' : 'btn-outline'} btn-sm btn-payment-action" data-id="${o.id}" data-total="${o.totalAmount}" data-paid="${o.paidAmount}" data-pending="${o.pendingAmount}" title="${isDeliveredDebt ? 'Cobrar saldo de pedido entregado' : 'Registrar abono a encargo'}">
+                <span>💵 ${isDeliveredDebt ? 'Cobrar' : 'Abonar'}</span>
                </button>`
             : ''
         }

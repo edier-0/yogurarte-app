@@ -65,6 +65,18 @@ export const getBatchById = async (req: Request, res: Response) => {
   }
 };
 
+function isKgUnit(unit: string): boolean {
+  if (!unit) return false;
+  const u = unit.toLowerCase().trim();
+  return u === 'kg' || u === 'kilo' || u === 'kilos' || u === 'kilogramo' || u === 'kilogramos';
+}
+
+function isGramUnit(unit: string): boolean {
+  if (!unit) return false;
+  const u = unit.toLowerCase().trim();
+  return u === 'g' || u === 'gr' || u === 'gramo' || u === 'gramos';
+}
+
 export const createBatch = async (req: Request, res: Response) => {
   try {
     const {
@@ -76,7 +88,12 @@ export const createBatch = async (req: Request, res: Response) => {
       expirationDate,
       notes,
       registeredBy,
-      extraItems, // Array opcional de { rawMaterialId: number, quantityUsed: number }
+      useSugar, // boolean (por defecto true)
+      sugarGramsPerLiter, // default 80
+      usePowderedMilk, // boolean (por defecto true)
+      powderedMilkGramsPerLiter, // default 30
+      useLabels, // boolean
+      extraItems, // Array opcional de { rawMaterialId: number, quantityUsed: number, unit?: string }
     } = req.body;
 
     const milkUsed = Number(milkUsedLiters);
@@ -94,7 +111,7 @@ export const createBatch = async (req: Request, res: Response) => {
     const totalLitersProduced = b1L * 1.0 + b2L * 2.0;
     const yieldPercentage = Math.round((totalLitersProduced / milkUsed) * 10000) / 100;
 
-    // 1. Validar Stock Obligatorio de Leche
+    // 1. Validar Stock Obligatorio de Leche Líquida
     const milkMaterial = await prisma.rawMaterial.findFirst({
       where: {
         OR: [
@@ -102,6 +119,7 @@ export const createBatch = async (req: Request, res: Response) => {
           { category: 'MATERIA_PRIMA' },
           { name: { contains: 'leche', mode: 'insensitive' } },
         ],
+        NOT: { name: { contains: 'polvo', mode: 'insensitive' } },
         isActive: true,
       },
     });
@@ -109,7 +127,7 @@ export const createBatch = async (req: Request, res: Response) => {
     const currentMilkStock = milkMaterial ? milkMaterial.currentStock : 0;
     if (!milkMaterial || currentMilkStock < milkUsed) {
       return res.status(400).json({
-        error: `Stock insuficiente de leche. Tienes ${currentMilkStock} L en inventario y estás intentando usar ${milkUsed} L. Registra compras de leche primero.`,
+        error: `Stock insuficiente de leche líquida. Tienes ${currentMilkStock} L en inventario y requieres ${milkUsed} L. Registra compras de leche primero.`,
       });
     }
 
@@ -157,6 +175,63 @@ export const createBatch = async (req: Request, res: Response) => {
       }
     }
 
+    // 4. Validar Stock de Azúcar (80g por litro de leche por defecto)
+    const shouldUseSugar = useSugar !== false && useSugar !== 'false';
+    const sugarGramsPerL = sugarGramsPerLiter !== undefined ? Number(sugarGramsPerLiter) : 80;
+    const totalSugarGrams = shouldUseSugar ? sugarGramsPerL * milkUsed : 0;
+
+    let sugarMaterial = null;
+    if (shouldUseSugar && totalSugarGrams > 0) {
+      sugarMaterial = await prisma.rawMaterial.findFirst({
+        where: {
+          OR: [
+            { code: 'AZUCAR' },
+            { name: { contains: 'azucar', mode: 'insensitive' } },
+            { name: { contains: 'azúcar', mode: 'insensitive' } },
+          ],
+          isActive: true,
+        },
+      });
+
+      if (sugarMaterial) {
+        const sugarQtyNeeded = isKgUnit(sugarMaterial.unit) ? totalSugarGrams / 1000 : totalSugarGrams;
+        if (sugarMaterial.currentStock < sugarQtyNeeded) {
+          const unitLabel = isKgUnit(sugarMaterial.unit) ? 'kg' : 'g';
+          return res.status(400).json({
+            error: `Stock insuficiente de azúcar. Tienes ${sugarMaterial.currentStock} ${unitLabel} en inventario y requieres ${totalSugarGrams} g (${sugarQtyNeeded.toFixed(2)} ${unitLabel}). Registra la compra de azúcar primero.`,
+          });
+        }
+      }
+    }
+
+    // 5. Validar Stock de Leche en Polvo (30g por litro de leche por defecto)
+    const shouldUsePowderedMilk = usePowderedMilk !== false && usePowderedMilk !== 'false';
+    const powderedMilkGramsPerL = powderedMilkGramsPerLiter !== undefined ? Number(powderedMilkGramsPerLiter) : 30;
+    const totalPowderedMilkGrams = shouldUsePowderedMilk ? powderedMilkGramsPerL * milkUsed : 0;
+
+    let powderedMilkMaterial = null;
+    if (shouldUsePowderedMilk && totalPowderedMilkGrams > 0) {
+      powderedMilkMaterial = await prisma.rawMaterial.findFirst({
+        where: {
+          OR: [
+            { code: 'LECHE_POLVO' },
+            { name: { contains: 'polvo', mode: 'insensitive' } },
+          ],
+          isActive: true,
+        },
+      });
+
+      if (powderedMilkMaterial) {
+        const powderQtyNeeded = isKgUnit(powderedMilkMaterial.unit) ? totalPowderedMilkGrams / 1000 : totalPowderedMilkGrams;
+        if (powderedMilkMaterial.currentStock < powderQtyNeeded) {
+          const unitLabel = isKgUnit(powderedMilkMaterial.unit) ? 'kg' : 'g';
+          return res.status(400).json({
+            error: `Stock insuficiente de leche en polvo. Tienes ${powderedMilkMaterial.currentStock} ${unitLabel} en inventario y requieres ${totalPowderedMilkGrams} g (${powderQtyNeeded.toFixed(2)} ${unitLabel}). Registra la compra de leche en polvo primero.`,
+          });
+        }
+      }
+    }
+
     // Generar código de lote secuencial único para el día
     const dateObj = preparationDate ? new Date(`${String(preparationDate).split('T')[0]}T12:00:00.000Z`) : new Date();
     const dateStr = dateObj.toISOString().slice(0, 10).replace(/-/g, '');
@@ -195,7 +270,7 @@ export const createBatch = async (req: Request, res: Response) => {
         totalCost: number;
       }> = [];
 
-      // 1. Descontar Leche automáticamente
+      // 1. Descontar Leche Líquida
       const milkMat = await tx.rawMaterial.findUnique({ where: { id: milkMaterial.id } });
       if (milkMat) {
         const unitCost = milkMat.avgCost || 0;
@@ -215,7 +290,67 @@ export const createBatch = async (req: Request, res: Response) => {
         });
       }
 
-      // 2. Descontar Botellas 1L automáticamente
+      // 2. Descontar Azúcar (80g / L de leche con conversión exacta a Kg o Gramos)
+      if (shouldUseSugar && totalSugarGrams > 0 && sugarMaterial) {
+        const sugarMat = await tx.rawMaterial.findUnique({ where: { id: sugarMaterial.id } });
+        if (sugarMat) {
+          let qtyToDeduct = totalSugarGrams;
+          let itemCost = 0;
+
+          if (isKgUnit(sugarMat.unit)) {
+            qtyToDeduct = Number((totalSugarGrams / 1000).toFixed(4));
+            itemCost = qtyToDeduct * (sugarMat.avgCost || 0);
+          } else {
+            itemCost = totalSugarGrams * (sugarMat.avgCost || 0);
+          }
+
+          totalBatchCost += itemCost;
+
+          usageRecords.push({
+            rawMaterialId: sugarMat.id,
+            quantityUsed: qtyToDeduct,
+            unitCost: sugarMat.avgCost || 0,
+            totalCost: itemCost,
+          });
+
+          await tx.rawMaterial.update({
+            where: { id: sugarMat.id },
+            data: { currentStock: Math.max(0, sugarMat.currentStock - qtyToDeduct) },
+          });
+        }
+      }
+
+      // 3. Descontar Leche en Polvo (30g / L de leche con conversión exacta a Kg o Gramos)
+      if (shouldUsePowderedMilk && totalPowderedMilkGrams > 0 && powderedMilkMaterial) {
+        const powderMat = await tx.rawMaterial.findUnique({ where: { id: powderedMilkMaterial.id } });
+        if (powderMat) {
+          let qtyToDeduct = totalPowderedMilkGrams;
+          let itemCost = 0;
+
+          if (isKgUnit(powderMat.unit)) {
+            qtyToDeduct = Number((totalPowderedMilkGrams / 1000).toFixed(4));
+            itemCost = qtyToDeduct * (powderMat.avgCost || 0);
+          } else {
+            itemCost = totalPowderedMilkGrams * (powderMat.avgCost || 0);
+          }
+
+          totalBatchCost += itemCost;
+
+          usageRecords.push({
+            rawMaterialId: powderMat.id,
+            quantityUsed: qtyToDeduct,
+            unitCost: powderMat.avgCost || 0,
+            totalCost: itemCost,
+          });
+
+          await tx.rawMaterial.update({
+            where: { id: powderMat.id },
+            data: { currentStock: Math.max(0, powderMat.currentStock - qtyToDeduct) },
+          });
+        }
+      }
+
+      // 4. Descontar Botellas 1L
       if (b1L > 0) {
         const bottle1L = await tx.rawMaterial.findFirst({
           where: {
@@ -247,7 +382,7 @@ export const createBatch = async (req: Request, res: Response) => {
         }
       }
 
-      // 3. Descontar Botellas 2L automáticamente
+      // 5. Descontar Botellas 2L
       if (b2L > 0) {
         const bottle2L = await tx.rawMaterial.findFirst({
           where: {
@@ -279,9 +414,9 @@ export const createBatch = async (req: Request, res: Response) => {
         }
       }
 
-      // 4. Descontar Etiquetas solo si el usuario las utilizó y existen en stock
+      // 6. Descontar Etiquetas solo si el usuario las utilizó y existen en stock
       const totalBottles = b1L + b2L;
-      const shouldUseLabels = req.body.useLabels !== false && req.body.useLabels !== 'false';
+      const shouldUseLabels = useLabels !== false && useLabels !== 'false';
 
       if (shouldUseLabels && totalBottles > 0) {
         const labelMaterial = await tx.rawMaterial.findFirst({
@@ -314,29 +449,43 @@ export const createBatch = async (req: Request, res: Response) => {
         }
       }
 
-      // 5. Descontar insumos extras (frutas, azúcar, cultivo, etc.) si se especificaron
+      // 7. Descontar insumos extras (frutas, dulce de mora/fresa, cultivos, etc.) con conversión de gramos a kg si aplica
       if (Array.isArray(extraItems) && extraItems.length > 0) {
         for (const item of extraItems) {
           const matId = Number(item.rawMaterialId);
           const qty = Number(item.quantityUsed);
+          const unitInput = String(item.unit || '').toLowerCase().trim();
 
           if (matId && qty > 0) {
             const material = await tx.rawMaterial.findUnique({ where: { id: matId } });
             if (material) {
-              const unitCost = material.avgCost || 0;
-              const cost = qty * unitCost;
-              totalBatchCost += cost;
+              let qtyToDeduct = qty;
+              let itemCost = 0;
+
+              // Si el insumo está registrado en Kilogramos y el usuario ingresó gramos
+              if (isKgUnit(material.unit) && (unitInput === 'g' || unitInput === 'gramos' || unitInput === 'gr')) {
+                qtyToDeduct = Number((qty / 1000).toFixed(4));
+                itemCost = qtyToDeduct * (material.avgCost || 0);
+              } else if (isGramUnit(material.unit) && (unitInput === 'kg' || unitInput === 'kilos' || unitInput === 'kilogramos')) {
+                qtyToDeduct = qty * 1000;
+                itemCost = qtyToDeduct * (material.avgCost || 0);
+              } else {
+                qtyToDeduct = qty;
+                itemCost = qtyToDeduct * (material.avgCost || 0);
+              }
+
+              totalBatchCost += itemCost;
 
               usageRecords.push({
                 rawMaterialId: matId,
-                quantityUsed: qty,
-                unitCost,
-                totalCost: cost,
+                quantityUsed: qtyToDeduct,
+                unitCost: material.avgCost || 0,
+                totalCost: itemCost,
               });
 
               await tx.rawMaterial.update({
                 where: { id: matId },
-                data: { currentStock: Math.max(0, material.currentStock - qty) },
+                data: { currentStock: Math.max(0, material.currentStock - qtyToDeduct) },
               });
             }
           }

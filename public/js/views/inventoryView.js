@@ -23,12 +23,15 @@ export async function renderInventory(container) {
           <h3 class="inventory-toolbar-title">
             📦 Materia Prima e Insumos
           </h3>
-          <span class="inventory-toolbar-subtitle">Control de existencias, insumos y compras</span>
+          <span class="inventory-toolbar-subtitle">Control de existencias, insumos, elaboraciones y compras</span>
         </div>
 
-        <div class="inventory-toolbar-actions">
+        <div class="inventory-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button class="btn btn-outline" id="btnOpenNewMaterialModal">
             <span>+</span> Crear Insumo
+          </button>
+          <button class="btn btn-accent" id="btnOpenPreparationModal" style="background: linear-gradient(135deg, #1b4332, #2d6a4f); color: #fff; font-weight: 700;">
+            <span>🥣</span> Elaborar Insumo / Mermelada
           </button>
           <button class="btn btn-accent" id="btnOpenPurchaseModal">
             <span>+</span> Registrar Compra
@@ -50,6 +53,29 @@ export async function renderInventory(container) {
     <div id="materialsGridContainer" class="inventory-grid">
       <div style="text-align: center; padding: 20px; color: var(--text-muted);">
         Cargando stock de insumos... 📦
+      </div>
+    </div>
+
+    <!-- Historial de Elaboraciones de Insumos / Mermeladas -->
+    <div class="table-container" style="padding: 20px; margin-top: 24px;">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-bottom: 2px;">
+            🥣 Historial de Elaboraciones (Mermeladas, Jarabes, Dulces)
+          </h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">
+            Insumos preparados a partir de otros insumos. El costo se transfiere automáticamente sin generar gastos duplicados.
+          </span>
+        </div>
+        <button class="btn btn-accent btn-sm" id="btnOpenPreparationModalSec" style="background: linear-gradient(135deg, #1b4332, #2d6a4f); color: #fff; font-weight: 700;">
+          + Elaborar Mermelada / Insumo
+        </button>
+      </div>
+
+      <div id="preparationsTableContainer">
+        <div style="text-align: center; padding: 20px; color: var(--text-muted);">
+          Cargando historial de elaboraciones... 🥣
+        </div>
       </div>
     </div>
 
@@ -100,15 +126,25 @@ export async function renderInventory(container) {
     openNewMaterialModal();
   });
 
+  const handleOpenPrep = async () => {
+    const materials = await api.getMaterials();
+    openNewPreparationModal(materials);
+  };
+
+  container.querySelector('#btnOpenPreparationModal')?.addEventListener('click', handleOpenPrep);
+  container.querySelector('#btnOpenPreparationModalSec')?.addEventListener('click', handleOpenPrep);
+
   await loadInventoryData(container);
 }
 
 async function loadInventoryData(container) {
   const gridContainer = container.querySelector('#materialsGridContainer');
+  const preparationsContainer = container.querySelector('#preparationsTableContainer');
   const purchasesContainer = container.querySelector('#purchasesTableContainer');
 
   try {
     let materials = await api.getMaterials();
+    const preparations = await api.getPreparations();
     
     // Filtrar por categoría si no es ALL
     if (selectedCategory !== 'ALL') {
@@ -125,7 +161,7 @@ async function loadInventoryData(container) {
     }
     const purchases = await api.getPurchasesHistory(purchaseParams);
 
-    // Renderizar tarjetas de insumos
+    // 1. Renderizar tarjetas de insumos
     if (gridContainer) {
       if (!materials || materials.length === 0) {
         gridContainer.innerHTML = `
@@ -139,6 +175,19 @@ async function loadInventoryData(container) {
         gridContainer.innerHTML = materials
           .map((m) => {
             const isLow = m.currentStock <= m.minStockAlert;
+            const unitLower = (m.unit || '').toLowerCase();
+            const isKg = unitLower.includes('k');
+            
+            let stockDisplay = `${m.currentStock} <span style="font-size: 1rem; font-weight: 600; color: var(--text-muted);">${m.unit}</span>`;
+            if (isKg) {
+              stockDisplay = `${m.currentStock} <span style="font-size: 1rem; font-weight: 600; color: var(--text-muted);">kg</span> <small style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">(${Math.round(m.currentStock * 1000)} g)</small>`;
+            }
+
+            let costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}</strong>`;
+            if (isKg) {
+              costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}/kg</strong> <small style="color: var(--text-muted);">(${formatCOP(Math.round(m.avgCost / 1000))}/g)</small>`;
+            }
+
             return `
             <div class="inventory-card ${isLow ? 'low-stock' : ''}">
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -150,7 +199,7 @@ async function loadInventoryData(container) {
 
               <div>
                 <div class="inventory-card-stock ${isLow ? 'warning' : ''}">
-                  ${m.currentStock} <span style="font-size: 1rem; font-weight: 600; color: var(--text-muted);">${m.unit}</span>
+                  ${stockDisplay}
                 </div>
                 <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
                   Mínimo sugerido: ${m.minStockAlert} ${m.unit}
@@ -158,7 +207,7 @@ async function loadInventoryData(container) {
               </div>
 
               <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 10px; margin-top: auto; gap: 6px;">
-                <span style="font-size: 0.78rem; color: var(--text-muted);">Costo: <strong>${formatCOP(m.avgCost)}</strong></span>
+                <span style="font-size: 0.78rem; color: var(--text-muted);">${costDisplay}</span>
                 <div style="display: flex; gap: 4px;">
                   <button class="btn btn-outline btn-sm btn-edit-material" data-id="${m.id}" title="Editar campos del insumo">
                     ✏️
@@ -178,18 +227,18 @@ async function loadInventoryData(container) {
 
         // Eventos de edición de insumo
         gridContainer.querySelectorAll('.btn-edit-material').forEach((btn) => {
-          btn.addEventListener('click', async (e) => {
-            const id = e.currentTarget.dataset.id;
-            const mat = materials.find((m) => m.id === Number(id));
-            if (mat) openEditMaterialModal(mat);
+          btn.addEventListener('click', (e) => {
+            const id = Number(e.currentTarget.dataset.id);
+            const material = materials.find((m) => m.id === id);
+            if (material) openEditMaterialModal(material);
           });
         });
 
-        // Eventos de ajuste manual
+        // Eventos de ajuste manual de stock
         gridContainer.querySelectorAll('.btn-adjust-stock').forEach((btn) => {
           btn.addEventListener('click', (e) => {
             const { id, name, stock, unit } = e.currentTarget.dataset;
-            openAdjustStockModal(id, name, Number(stock), unit);
+            openAdjustStockModal(Number(id), name, Number(stock), unit);
           });
         });
 
@@ -211,7 +260,116 @@ async function loadInventoryData(container) {
       }
     }
 
-    // Renderizar historial de compras
+    // 2. Renderizar historial de elaboraciones / mermeladas
+    if (preparationsContainer) {
+      if (!preparations || preparations.length === 0) {
+        preparationsContainer.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">🥣</div>
+            <div class="empty-state-title">No hay elaboraciones de insumos registradas</div>
+            <div class="empty-state-text">Prepara mermeladas, jarabes o dulces combinando azúcar, frutas u otros insumos de tu inventario.</div>
+          </div>
+        `;
+      } else {
+        preparationsContainer.innerHTML = `
+          <table class="app-table">
+            <thead>
+              <tr>
+                <th>Código / Fecha</th>
+                <th>Insumo Elaborado</th>
+                <th>Ingredientes Consumidos</th>
+                <th>Costo Total Transferido</th>
+                <th>Costo por Kilo</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${preparations
+                .map((p) => {
+                  const unitLower = (p.unit || '').toLowerCase();
+                  const isKg = unitLower.includes('k');
+                  const costPerG = p.costPerUnit > 0 ? (p.costPerUnit / 1000).toFixed(1) : '0';
+
+                  return `
+                <tr>
+                  <td>
+                    <strong>${p.code}</strong>
+                    <div><small style="color: var(--text-muted);">${formatDate(p.preparationDate)}</small></div>
+                  </td>
+                  <td>
+                    <strong style="color: var(--primary); font-size: 0.95rem;">🍓 ${p.name}</strong>
+                    <div><span class="badge badge-paid" style="font-size: 0.72rem; font-weight: 700;">+ ${p.quantityProduced} ${p.unit} producidos</span></div>
+                  </td>
+                  <td>
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap; max-width: 280px;">
+                      ${
+                        p.ingredients && p.ingredients.length > 0
+                          ? p.ingredients
+                              .map((i) => {
+                                const uLow = (i.rawMaterial?.unit || '').toLowerCase();
+                                let displayQty = `${i.quantityUsed} ${i.rawMaterial?.unit || ''}`;
+                                if (uLow.includes('k')) {
+                                  displayQty = `${i.quantityUsed} kg (${Math.round(i.quantityUsed * 1000)} g)`;
+                                }
+                                const icon = (i.rawMaterial?.name || '').toLowerCase().includes('azucar') ? '🍬' : '🍓';
+                                return `<span style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 6px; font-size: 0.72rem; font-weight: 700; color: var(--text-main); white-space: nowrap;">${icon} ${i.rawMaterial?.name ? i.rawMaterial.name.split(' ')[0] : 'Insumo'}: ${displayQty}</span>`;
+                              })
+                              .join('')
+                          : '<small style="color: var(--text-muted);">Sin ingredientes</small>'
+                      }
+                    </div>
+                  </td>
+                  <td>
+                    <strong style="color: var(--text-main); font-size: 0.95rem;">${formatCOP(p.totalCost)}</strong>
+                    <div><small style="color: var(--text-muted); font-size: 0.72rem;">Transferido de stock</small></div>
+                  </td>
+                  <td>
+                    <strong style="color: #b78103; font-size: 0.95rem;">${formatCOP(p.costPerUnit)} / kg</strong>
+                    <div><small style="color: var(--text-muted); font-size: 0.72rem;">(${formatCOP(costPerG)} / gramo)</small></div>
+                  </td>
+                  <td>
+                    <div style="display: flex; gap: 6px;">
+                      <button class="btn btn-outline btn-sm btn-view-prep" data-id="${p.id}" title="Ver resumen completo y receta">
+                        👁️ Resumen
+                      </button>
+                      <button class="btn btn-outline btn-sm btn-delete-prep" data-id="${p.id}" data-name="${p.name}" style="color: var(--danger);" title="Eliminar elaboración y devolver ingredientes al stock">
+                        🗑️
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+                })
+                .join('')}
+            </tbody>
+          </table>
+        `;
+
+        preparationsContainer.querySelectorAll('.btn-view-prep').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            const id = e.currentTarget.dataset.id;
+            openPreparationDetailModal(id);
+          });
+        });
+
+        preparationsContainer.querySelectorAll('.btn-delete-prep').forEach((btn) => {
+          btn.addEventListener('click', async (e) => {
+            const { id, name } = e.currentTarget.dataset;
+            if (confirm(`¿Estás seguro de eliminar la elaboración de "${name}"? Se devolverán los ingredientes al inventario y se descontará la cantidad producida.`)) {
+              try {
+                await api.deletePreparation(id);
+                showToast('Elaboración eliminada e inventario restaurado 🥣');
+                renderInventory(container);
+              } catch (err) {
+                showToast(err.message || 'Error al eliminar elaboración', 'danger');
+              }
+            }
+          });
+        });
+      }
+    }
+
+    // 3. Renderizar historial de compras
     if (purchasesContainer) {
       if (!purchases || purchases.length === 0) {
         purchasesContainer.innerHTML = `
@@ -315,7 +473,7 @@ async function openPurchaseModal() {
                   .map(
                     (m) => `
                   <option value="${m.id}" data-cost="${m.avgCost}" data-unit="${m.unit}">
-                    ${m.name} (${m.unit}) - Stock Actual: ${m.currentStock}
+                    ${m.name} (${m.unit}) - Stock: ${m.currentStock} ${m.unit}
                   </option>
                 `
                   )
@@ -326,24 +484,30 @@ async function openPurchaseModal() {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Cantidad Comprada *</label>
-                <input type="number" id="purchaseQuantity" class="form-input" min="0.5" step="0.5" placeholder="Ej: 50" required />
+                <input type="number" id="purchaseQuantity" class="form-input" min="0.01" step="0.01" placeholder="Ej: 1 o 2.5" required />
+                <small id="purchaseQtyHint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: block;">
+                  Unidad: Kilogramos / Litros / Unidades
+                </small>
               </div>
 
               <div class="form-group">
                 <label class="form-label">Costo Unitario ($ COP) *</label>
-                <input type="number" id="purchaseUnitCost" class="form-input" min="1" placeholder="Ej: 2500" required />
+                <input type="number" id="purchaseUnitCost" class="form-input" min="1" placeholder="Ej: 3100 o 20100" required />
+                <small id="purchaseCostHint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: block;">
+                  Precio por unidad / kilo / litro
+                </small>
               </div>
             </div>
 
             <div class="form-group">
               <label class="form-label">Total Inversión</label>
-              <input type="text" id="purchaseTotalDisplay" class="form-input" value="$0" disabled style="background: var(--bg-subtle); font-weight: 800; color: var(--primary);" />
+              <input type="text" id="purchaseTotalDisplay" class="form-input" value="$0 COP" disabled style="background: var(--bg-subtle); font-weight: 800; color: var(--primary);" />
             </div>
 
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Proveedor / Lugar de Compra</label>
-                <input type="text" id="purchaseSupplier" class="form-input" placeholder="Ej: Finca El Roble / Distribuidora" />
+                <input type="text" id="purchaseSupplier" class="form-input" placeholder="Ej: El Bodegón / Distribuidora / Ara" />
               </div>
 
               <div class="form-group">
@@ -367,9 +531,30 @@ async function openPurchaseModal() {
     </div>
   `;
 
+  const matSelect = document.getElementById('purchaseMaterialSelect');
   const qtyInput = document.getElementById('purchaseQuantity');
   const costInput = document.getElementById('purchaseUnitCost');
   const totalDisplay = document.getElementById('purchaseTotalDisplay');
+  const qtyHint = document.getElementById('purchaseQtyHint');
+  const costHint = document.getElementById('purchaseCostHint');
+
+  const onMaterialChange = () => {
+    const opt = matSelect.selectedOptions[0];
+    const unit = opt?.dataset?.unit || 'Unidades';
+    const lastCost = Number(opt?.dataset?.cost || 0);
+
+    qtyHint.textContent = `Cantidad en ${unit}`;
+    if (unit.toLowerCase().includes('k')) {
+      costHint.textContent = `Precio por Kilo ($/kg) • Ej: $3.100/kg azúcar, $20.100/kg leche polvo`;
+    } else {
+      costHint.textContent = `Precio por ${unit}`;
+    }
+
+    if (lastCost > 0 && !costInput.value) {
+      costInput.value = lastCost;
+    }
+    updateTotal();
+  };
 
   const updateTotal = () => {
     const qty = Number(qtyInput.value) || 0;
@@ -377,8 +562,11 @@ async function openPurchaseModal() {
     totalDisplay.value = formatCOP(qty * cost);
   };
 
+  matSelect?.addEventListener('change', onMaterialChange);
   qtyInput?.addEventListener('input', updateTotal);
   costInput?.addEventListener('input', updateTotal);
+
+  onMaterialChange();
 
   const closeModal = () => (modalOverlay.innerHTML = '');
   document.getElementById('btnClosePurchaseModal')?.addEventListener('click', closeModal);
@@ -387,7 +575,7 @@ async function openPurchaseModal() {
   document.getElementById('purchaseForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = {
-      rawMaterialId: Number(document.getElementById('purchaseMaterialSelect').value),
+      rawMaterialId: Number(matSelect.value),
       quantity: Number(qtyInput.value),
       unitCost: Number(costInput.value),
       supplier: document.getElementById('purchaseSupplier').value,
@@ -412,6 +600,8 @@ function openEditMaterialModal(material) {
   const modalOverlay = document.getElementById('modalContainer');
   if (!modalOverlay) return;
 
+  const currentUnit = material.unit || 'Kilogramos';
+
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
       <div class="modal-card" style="max-width: 480px;">
@@ -431,33 +621,42 @@ function openEditMaterialModal(material) {
               <div class="form-group">
                 <label class="form-label">Categoría</label>
                 <select id="editMatCategory" class="form-select">
-                  <option value="MATERIA_PRIMA" ${material.category === 'MATERIA_PRIMA' ? 'selected' : ''}>Materia Prima</option>
+                  <option value="MATERIA_PRIMA" ${material.category === 'MATERIA_PRIMA' ? 'selected' : ''}>Materia Prima (Leche)</option>
                   <option value="EMPAQUE" ${material.category === 'EMPAQUE' ? 'selected' : ''}>Empaque / Botellas / Etiquetas</option>
-                  <option value="INSUMO" ${material.category === 'INSUMO' ? 'selected' : ''}>Insumo General</option>
+                  <option value="INSUMO" ${material.category === 'INSUMO' ? 'selected' : ''}>Insumo General (Azúcar, Leche en Polvo, Frutas)</option>
                 </select>
               </div>
 
               <div class="form-group">
                 <label class="form-label">Unidad de Medida</label>
-                <input type="text" id="editMatUnit" class="form-input" value="${material.unit}" required />
+                <select id="editMatUnit" class="form-select">
+                  <option value="Kilogramos" ${currentUnit.toLowerCase().includes('k') ? 'selected' : ''}>Kilogramos (kg)</option>
+                  <option value="Gramos" ${currentUnit.toLowerCase() === 'gramos' || currentUnit.toLowerCase() === 'g' ? 'selected' : ''}>Gramos (g)</option>
+                  <option value="Litros" ${currentUnit.toLowerCase().includes('l') && !currentUnit.toLowerCase().includes('k') ? 'selected' : ''}>Litros (L)</option>
+                  <option value="Unidades" ${currentUnit.toLowerCase().includes('und') || currentUnit.toLowerCase().includes('unidad') ? 'selected' : ''}>Unidades (und)</option>
+                  <option value="Mililitros" ${currentUnit.toLowerCase().includes('ml') ? 'selected' : ''}>Mililitros (ml)</option>
+                </select>
               </div>
             </div>
 
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Stock Actual</label>
-                <input type="number" id="editMatStock" class="form-input" min="0" step="0.5" value="${material.currentStock}" required />
+                <input type="number" id="editMatStock" class="form-input" min="0" step="0.001" value="${material.currentStock}" required />
               </div>
 
               <div class="form-group">
                 <label class="form-label">Stock Mínimo (Alerta)</label>
-                <input type="number" id="editMatMinAlert" class="form-input" min="0" value="${material.minStockAlert}" required />
+                <input type="number" id="editMatMinAlert" class="form-input" min="0" step="0.1" value="${material.minStockAlert}" required />
               </div>
             </div>
 
             <div class="form-group">
               <label class="form-label">Costo Promedio Unitario ($ COP)</label>
               <input type="number" id="editMatAvgCost" class="form-input" min="0" value="${material.avgCost}" />
+              <small style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: block;">
+                Si la unidad es Kilogramos, ingresa el precio por Kilo (ej: 3100 para azúcar, 20100 para leche en polvo).
+              </small>
             </div>
 
           </div>
@@ -515,11 +714,11 @@ function openAdjustStockModal(materialId, materialName, currentStock, unit) {
             </p>
             <div class="form-group">
               <label class="form-label">Nuevo Stock Real (${unit}) *</label>
-              <input type="number" id="newStockInput" class="form-input" min="0" step="0.5" value="${currentStock}" required />
+              <input type="number" id="newStockInput" class="form-input" min="0" step="0.001" value="${currentStock}" required />
             </div>
             <div class="form-group">
               <label class="form-label">Motivo del Ajuste</label>
-              <input type="text" id="adjustReason" class="form-input" placeholder="Ej: Conteo físico semanal, merma..." />
+              <input type="text" id="adjustReason" class="form-input" placeholder="Ej: Conteo físico, pesado en báscula, merma..." />
             </div>
           </div>
           <div class="modal-footer">
@@ -558,7 +757,7 @@ function openNewMaterialModal() {
 
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 450px;">
+      <div class="modal-card" style="max-width: 460px;">
         <div class="modal-header">
           <h3 class="modal-title">✨ Crear Nuevo Insumo</h3>
           <button class="modal-close-btn" id="btnCloseNewMatModal">✕</button>
@@ -568,40 +767,49 @@ function openNewMaterialModal() {
             
             <div class="form-group">
               <label class="form-label">Nombre del Insumo *</label>
-              <input type="text" id="newMatName" class="form-input" placeholder="Ej: Azúcar Refinada / Fruta Fresa" required />
+              <input type="text" id="newMatName" class="form-input" placeholder="Ej: Azúcar Refinada / Fruta Mora / Fresa" required />
             </div>
 
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Categoría</label>
                 <select id="newMatCategory" class="form-select">
+                  <option value="INSUMO" selected>Insumo General (Azúcar, Polvo, Frutas)</option>
                   <option value="MATERIA_PRIMA">Materia Prima (Leche)</option>
                   <option value="EMPAQUE">Empaque / Botellas / Etiquetas</option>
-                  <option value="INSUMO" selected>Insumo General (Frutas, etc.)</option>
                 </select>
               </div>
 
               <div class="form-group">
                 <label class="form-label">Unidad de Medida</label>
-                <input type="text" id="newMatUnit" class="form-input" placeholder="Litros, Unidades, Kg" value="Unidades" required />
+                <select id="newMatUnit" class="form-select">
+                  <option value="Kilogramos" selected>Kilogramos (kg)</option>
+                  <option value="Gramos">Gramos (g)</option>
+                  <option value="Litros">Litros (L)</option>
+                  <option value="Unidades">Unidades (und)</option>
+                  <option value="Mililitros">Mililitros (ml)</option>
+                </select>
               </div>
             </div>
 
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Stock Inicial</label>
-                <input type="number" id="newMatInitialStock" class="form-input" min="0" step="0.5" value="0" />
+                <input type="number" id="newMatInitialStock" class="form-input" min="0" step="0.01" value="0" />
               </div>
 
               <div class="form-group">
                 <label class="form-label">Alerta Stock Mínimo</label>
-                <input type="number" id="newMatMinAlert" class="form-input" min="1" value="10" />
+                <input type="number" id="newMatMinAlert" class="form-input" min="0.1" step="0.1" value="1" />
               </div>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Costo Estimado Unitario ($ COP)</label>
-              <input type="number" id="newMatAvgCost" class="form-input" min="0" value="0" />
+              <label class="form-label">Costo por Unidad / Kilo ($ COP)</label>
+              <input type="number" id="newMatAvgCost" class="form-input" min="0" value="0" placeholder="Ej: 3100 para 1 kg de azúcar" />
+              <small style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: block;">
+                Para insumos por Kilo, ingresa el valor de 1 Kg (se dividirá automáticamente para calcular el costo por gramo).
+              </small>
             </div>
 
           </div>
@@ -754,4 +962,461 @@ function openEditPurchaseModal(purchase) {
       showToast(err.message || 'Error al actualizar compra', 'danger');
     }
   });
+}
+
+// Helper para iconos de insumos en preparaciones
+function getPrepIcon(name = '') {
+  const n = (name || '').toLowerCase();
+  if (n.includes('leche') && !n.includes('polvo')) return '🥛';
+  if (n.includes('azucar') || n.includes('azúcar')) return '🍬';
+  if (n.includes('polvo')) return '🥛';
+  if (n.includes('fresa') || n.includes('mora') || n.includes('fruta') || n.includes('melocoton') || n.includes('durazno') || n.includes('maracuya')) return '🍓';
+  if (n.includes('botella') || n.includes('envase')) return '🍾';
+  if (n.includes('etiqueta')) return '🏷️';
+  return '🥣';
+}
+
+// Modal interactivo para elaborar un nuevo insumo (Mermeladas, Jarabes, Almíbares)
+function openNewPreparationModal(materials) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const todayStr = getTodayLocalDateStr();
+
+  // Filtrar insumos disponibles para usar como ingredientes (excluir empaques/botellas)
+  const availableIngredients = materials.filter(
+    (m) => m.category !== 'EMPAQUE' && m.currentStock > 0 && m.isActive
+  );
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 600px;">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title">🥣 Elaborar Insumo / Mermelada</h3>
+            <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+              Transforma insumos existentes (azúcar, frutas) en un nuevo insumo con costeo real transferido.
+            </div>
+          </div>
+          <button class="modal-close-btn" id="btnCloseNewPrepModal">✕</button>
+        </div>
+        <form id="newPreparationForm">
+          <div class="modal-body">
+            
+            <!-- Aviso informativo de costeo -->
+            <div style="background: rgba(27, 67, 50, 0.08); border-left: 3px solid #2d6a4f; padding: 8px 12px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: 0.8rem; color: var(--text-main); margin-bottom: 14px;">
+              💡 <strong>Sin gasto de dinero duplicado:</strong> El costo de los ingredientes consumidos se transfiere directamente al nuevo insumo para calcular su costo exacto por kilo y por gramo.
+            </div>
+
+            <!-- Datos del Insumo Resultante -->
+            <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px;">
+              <label class="form-label" style="color: var(--primary); font-weight: 800; margin-bottom: 8px;">
+                1. Insumo Resultante a Producir
+              </label>
+
+              <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+                  <input type="radio" name="prepMode" value="NEW" checked style="cursor: pointer;" />
+                  <span>+ Crear Nuevo Insumo</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+                  <input type="radio" name="prepMode" value="EXISTING" style="cursor: pointer;" />
+                  <span>Seleccionar Insumo Existente</span>
+                </label>
+              </div>
+
+              <div id="prepNewMatContainer" class="form-group" style="margin-bottom: 8px;">
+                <input type="text" id="prepNewName" class="form-input" placeholder="Ej: Mermelada de Fresa, Jarabe de Mora, Dulce de Maracuyá..." required />
+              </div>
+
+              <div id="prepExistingMatContainer" class="form-group" style="display: none; margin-bottom: 8px;">
+                <select id="prepExistingMatSelect" class="form-select">
+                  <option value="">-- Seleccionar Insumo de la lista --</option>
+                  ${materials
+                    .filter((m) => m.category === 'INSUMO' || m.category === 'MATERIA_PRIMA')
+                    .map((m) => `<option value="${m.id}">${m.name} (Stock: ${m.currentStock} ${m.unit})</option>`)
+                    .join('')}
+                </select>
+              </div>
+
+              <div class="form-row" style="margin-bottom: 0;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">Cantidad Final Obtenida (Kilos) *</label>
+                  <input type="number" id="prepQuantityProduced" class="form-input" min="0.05" step="0.05" placeholder="Ej: 2.5" required style="font-weight: 800; color: var(--primary);" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">Fecha de Elaboración *</label>
+                  <input type="date" id="prepDate" class="form-input" value="${todayStr}" required />
+                </div>
+              </div>
+            </div>
+
+            <!-- Lista de Ingredientes Consumidos -->
+            <div style="margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label class="form-label" style="color: var(--primary); font-weight: 800; margin: 0;">
+                  2. Ingredientes y Cantidades Consumidas
+                </label>
+                <button type="button" class="btn btn-outline btn-sm" id="btnAddPrepIngredientRow" style="padding: 3px 10px; font-size: 0.78rem; font-weight: 700;">
+                  + Agregar Ingrediente
+                </button>
+              </div>
+
+              <div id="prepIngredientsList" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Filas dinámicas -->
+              </div>
+            </div>
+
+            <!-- Tarjeta de Resumen en Vivo del Costo -->
+            <div style="background: #FFFFFF; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 12px;">
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center;">
+                <div style="background: var(--bg-app); padding: 8px; border-radius: var(--radius-sm);">
+                  <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Costo Total Invertido</span>
+                  <div id="prepLiveTotalCost" style="font-size: 1.15rem; font-weight: 800; color: var(--text-main);">$0</div>
+                </div>
+                <div style="background: var(--bg-app); padding: 8px; border-radius: var(--radius-sm);">
+                  <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Costo por Kilo</span>
+                  <div id="prepLiveCostPerKg" style="font-size: 1.15rem; font-weight: 800; color: var(--primary);">$0 / kg</div>
+                </div>
+                <div style="background: var(--bg-app); padding: 8px; border-radius: var(--radius-sm);">
+                  <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Costo por Gramo</span>
+                  <div id="prepLiveCostPerGram" style="font-size: 1.15rem; font-weight: 800; color: #b78103;">$0 / g</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Notas u Observaciones (Opcional)</label>
+              <input type="text" id="prepNotes" class="form-input" placeholder="Ej: Receta estándar 60% fruta 40% azúcar..." />
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btnCancelNewPrepModal">Cancelar</button>
+            <button type="submit" class="btn btn-accent" style="background: linear-gradient(135deg, #1b4332, #2d6a4f); color: #fff; font-weight: 800;">
+              🥣 Guardar Elaboración
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const radioModes = modalOverlay.querySelectorAll('input[name="prepMode"]');
+  const newMatContainer = document.getElementById('prepNewMatContainer');
+  const existingMatContainer = document.getElementById('prepExistingMatContainer');
+  const newNameInput = document.getElementById('prepNewName');
+  const existingSelect = document.getElementById('prepExistingMatSelect');
+
+  radioModes.forEach((radio) => {
+    radio.addEventListener('change', (e) => {
+      if (e.target.value === 'NEW') {
+        newMatContainer.style.display = 'block';
+        existingMatContainer.style.display = 'none';
+        newNameInput.setAttribute('required', 'required');
+        existingSelect.removeAttribute('required');
+      } else {
+        newMatContainer.style.display = 'none';
+        existingMatContainer.style.display = 'block';
+        newNameInput.removeAttribute('required');
+        existingSelect.setAttribute('required', 'required');
+      }
+    });
+  });
+
+  const ingredientsListContainer = document.getElementById('prepIngredientsList');
+  const producedQtyInput = document.getElementById('prepQuantityProduced');
+  const liveTotalCostDisplay = document.getElementById('prepLiveTotalCost');
+  const liveCostPerKgDisplay = document.getElementById('prepLiveCostPerKg');
+  const liveCostPerGramDisplay = document.getElementById('prepLiveCostPerGram');
+
+  // Función para recalcular totales en tiempo real
+  const updateLiveCalculations = () => {
+    let totalCost = 0;
+    const rows = ingredientsListContainer.querySelectorAll('.prep-ingredient-row');
+
+    rows.forEach((row) => {
+      const select = row.querySelector('.prep-row-mat');
+      const qtyInput = row.querySelector('.prep-row-qty');
+      const unitSelect = row.querySelector('.prep-row-unit');
+      const costBadge = row.querySelector('.prep-row-cost');
+
+      const matId = Number(select?.value);
+      const qty = Number(qtyInput?.value) || 0;
+      const unit = unitSelect?.value || 'g';
+
+      const mat = materials.find((m) => m.id === matId);
+      if (mat && qty > 0) {
+        const isKg = (mat.unit || '').toLowerCase().includes('k');
+        let rowCost = 0;
+        if (isKg && (unit === 'g' || unit === 'gramos')) {
+          rowCost = (qty / 1000) * mat.avgCost;
+        } else {
+          rowCost = qty * mat.avgCost;
+        }
+        totalCost += rowCost;
+        if (costBadge) costBadge.textContent = formatCOP(rowCost);
+      } else {
+        if (costBadge) costBadge.textContent = '$0';
+      }
+    });
+
+    const producedQty = Number(producedQtyInput.value) || 0;
+    const costPerKg = producedQty > 0 ? Math.round(totalCost / producedQty) : 0;
+    const costPerGram = producedQty > 0 ? (costPerKg / 1000).toFixed(1) : '0';
+
+    liveTotalCostDisplay.textContent = formatCOP(totalCost);
+    liveCostPerKgDisplay.textContent = `${formatCOP(costPerKg)} / kg`;
+    liveCostPerGramDisplay.textContent = `${formatCOP(costPerGram)} / g`;
+  };
+
+  // Función para añadir una fila de ingrediente
+  const addIngredientRow = (defaultMatId = '') => {
+    const row = document.createElement('div');
+    row.className = 'prep-ingredient-row';
+    row.style.cssText = 'display: flex; align-items: center; gap: 8px; background: var(--bg-app); padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);';
+
+    row.innerHTML = `
+      <select class="form-select prep-row-mat" style="flex: 2; padding: 6px 8px; font-size: 0.82rem;" required>
+        <option value="">-- Seleccionar Insumo --</option>
+        ${materials
+          .filter((m) => m.category !== 'EMPAQUE' && m.isActive)
+          .map((m) => {
+            const isSelected = m.id === defaultMatId ? 'selected' : '';
+            return `<option value="${m.id}" ${isSelected}>${getPrepIcon(m.name)} ${m.name} (Stock: ${m.currentStock} ${m.unit})</option>`;
+          })
+          .join('')}
+      </select>
+
+      <input type="number" class="form-input prep-row-qty" min="1" step="any" placeholder="Cantidad" style="flex: 1; padding: 6px 8px; font-size: 0.82rem; font-weight: 700;" required />
+
+      <select class="form-select prep-row-unit" style="width: 100px; padding: 6px 8px; font-size: 0.82rem;">
+        <option value="g">Gramos (g)</option>
+        <option value="kg">Kilos (kg)</option>
+      </select>
+
+      <div class="prep-row-cost" style="width: 85px; text-align: right; font-size: 0.82rem; font-weight: 800; color: var(--primary);">
+        $0
+      </div>
+
+      <button type="button" class="btn btn-outline btn-sm btn-remove-row" style="color: var(--danger); padding: 4px 8px; font-size: 0.82rem;" title="Quitar ingrediente">
+        ✕
+      </button>
+    `;
+
+    row.querySelector('.prep-row-mat')?.addEventListener('change', updateLiveCalculations);
+    row.querySelector('.prep-row-qty')?.addEventListener('input', updateLiveCalculations);
+    row.querySelector('.prep-row-unit')?.addEventListener('change', updateLiveCalculations);
+
+    row.querySelector('.btn-remove-row')?.addEventListener('click', () => {
+      row.remove();
+      updateLiveCalculations();
+    });
+
+    ingredientsListContainer.appendChild(row);
+  };
+
+  document.getElementById('btnAddPrepIngredientRow')?.addEventListener('click', () => addIngredientRow());
+  producedQtyInput?.addEventListener('input', updateLiveCalculations);
+
+  // Agregar 2 filas por defecto (ej: para fruta y azúcar)
+  const sugarMat = materials.find((m) => m.name.toLowerCase().includes('azucar') || m.name.toLowerCase().includes('azúcar'));
+  const otherMat = materials.find((m) => m.category !== 'EMPAQUE' && m.id !== sugarMat?.id);
+
+  addIngredientRow(otherMat?.id || '');
+  addIngredientRow(sugarMat?.id || '');
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnCloseNewPrepModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnCancelNewPrepModal')?.addEventListener('click', closeModal);
+
+  document.getElementById('newPreparationForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const isNew = modalOverlay.querySelector('input[name="prepMode"]:checked')?.value === 'NEW';
+    const outputMaterialId = isNew ? null : Number(document.getElementById('prepExistingMatSelect')?.value);
+    const newMaterialName = isNew ? document.getElementById('prepNewName')?.value : null;
+    const quantityProduced = Number(producedQtyInput.value);
+    const preparationDate = document.getElementById('prepDate')?.value;
+    const notes = document.getElementById('prepNotes')?.value;
+
+    const rows = ingredientsListContainer.querySelectorAll('.prep-ingredient-row');
+    const ingredients = [];
+
+    rows.forEach((row) => {
+      const matId = Number(row.querySelector('.prep-row-mat')?.value);
+      const qty = Number(row.querySelector('.prep-row-qty')?.value);
+      const unit = row.querySelector('.prep-row-unit')?.value || 'g';
+
+      if (matId && qty > 0) {
+        ingredients.push({
+          rawMaterialId: matId,
+          quantityUsed: qty,
+          unitUsed: unit,
+        });
+      }
+    });
+
+    if (ingredients.length === 0) {
+      showToast('Debes agregar al menos un ingrediente válido a la elaboración', 'warning');
+      return;
+    }
+
+    const payload = {
+      outputMaterialId,
+      newMaterialName,
+      quantityProduced,
+      unit: 'Kilogramos',
+      preparationDate,
+      notes,
+      registeredBy: store.currentUser?.name || 'Edier',
+      ingredients,
+    };
+
+    try {
+      await api.createPreparation(payload);
+      showToast('🥣 Elaboración registrada e insumo guardado con éxito');
+      closeModal();
+      renderInventory(document.getElementById('contentContainer'));
+    } catch (err) {
+      showToast(err.message || 'Error al registrar elaboración', 'danger');
+    }
+  });
+}
+
+// Modal de detalle y resumen completo de una elaboración
+async function openPreparationDetailModal(prepId) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  try {
+    const prep = await api.getPreparationById(prepId);
+    const costPerG = prep.costPerUnit > 0 ? (prep.costPerUnit / 1000).toFixed(1) : '0';
+
+    modalOverlay.innerHTML = `
+      <div class="modal-overlay active">
+        <div class="modal-card" style="max-width: 580px;">
+          <div class="modal-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h3 class="modal-title">🥣 Resumen: ${prep.code}</h3>
+              <span class="badge badge-paid">✅ Elaborado</span>
+            </div>
+            <button class="modal-close-btn" id="btnClosePrepDetailModal">✕</button>
+          </div>
+          <div class="modal-body">
+            
+            <!-- Tarjetas de estadísticas de la elaboración -->
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px;">
+              <div class="order-card" style="padding: 12px 14px; background: var(--bg-app); border: 1px solid var(--border-color);">
+                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Insumo Elaborado</span>
+                <div style="font-size: 1.25rem; font-weight: 800; color: var(--primary);">🍓 ${prep.name}</div>
+                <small style="color: var(--text-muted); font-weight: 700;">+ ${prep.quantityProduced} ${prep.unit} producidos</small>
+              </div>
+
+              <div class="order-card" style="padding: 12px 14px; background: var(--bg-app); border: 1px solid var(--border-color);">
+                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Costo Total Transferido</span>
+                <div style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${formatCOP(prep.totalCost)}</div>
+                <small style="color: var(--text-muted); font-weight: 600;">Fecha: ${formatDate(prep.preparationDate)}</small>
+              </div>
+
+              <div class="order-card" style="padding: 12px 14px; background: var(--bg-app); border: 1px solid var(--border-color);">
+                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Costo por Kilo</span>
+                <div style="font-size: 1.25rem; font-weight: 800; color: #b78103;">${formatCOP(prep.costPerUnit)} / kg</div>
+                <small style="color: var(--text-muted); font-weight: 600;">Costo exacto del producto</small>
+              </div>
+
+              <div class="order-card" style="padding: 12px 14px; background: var(--bg-app); border: 1px solid var(--border-color);">
+                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Costo por Gramo</span>
+                <div style="font-size: 1.25rem; font-weight: 800; color: var(--primary);">${formatCOP(costPerG)} / g</div>
+                <small style="color: var(--text-muted); font-weight: 600;">Para descuento en lotes</small>
+              </div>
+            </div>
+
+            <!-- Desglose de Ingredientes Utilizados -->
+            <div style="margin-bottom: 12px;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px;">
+                📜 Ingredientes Utilizados y Costeo en ese Momento
+              </h4>
+
+              <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden;">
+                <table class="app-table" style="margin: 0; font-size: 0.85rem;">
+                  <thead>
+                    <tr style="background: var(--bg-app);">
+                      <th>Ingrediente</th>
+                      <th>Cantidad Consumida</th>
+                      <th>Costo Unitario</th>
+                      <th style="text-align: right;">Total Invertido</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${
+                      prep.ingredients && prep.ingredients.length > 0
+                        ? prep.ingredients
+                            .map((item) => {
+                              const uLow = (item.rawMaterial?.unit || '').toLowerCase();
+                              let qtyDisplay = `${item.quantityUsed} ${item.rawMaterial?.unit || ''}`;
+                              if (uLow.includes('k')) {
+                                qtyDisplay = `<strong>${item.quantityUsed} kg</strong> (${Math.round(item.quantityUsed * 1000)} g)`;
+                              }
+                              const pct = prep.totalCost > 0 ? Math.round((item.totalCost / prep.totalCost) * 100) : 0;
+                              return `
+                            <tr>
+                              <td>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                  <span style="font-size: 1.1rem;">${getPrepIcon(item.rawMaterial?.name)}</span>
+                                  <strong>${item.rawMaterial?.name || 'Insumo'}</strong>
+                                </div>
+                              </td>
+                              <td>${qtyDisplay}</td>
+                              <td>${formatCOP(item.unitCost)} / ${item.rawMaterial?.unit || 'kg'}</td>
+                              <td style="text-align: right;">
+                                <strong style="color: var(--primary);">${formatCOP(item.totalCost)}</strong>
+                                <div style="font-size: 0.72rem; color: var(--text-muted);">${pct}% de la receta</div>
+                              </td>
+                            </tr>
+                          `;
+                            })
+                            .join('')
+                        : '<tr><td colspan="4" style="text-align: center;">Sin desglose de ingredientes.</td></tr>'
+                    }
+                  </tbody>
+                  <tfoot>
+                    <tr style="background: var(--bg-app); font-weight: 800;">
+                      <td colspan="3" style="text-align: right; color: var(--text-main);">Total Invertido en Receta:</td>
+                      <td style="text-align: right; color: var(--primary); font-size: 1.05rem;">${formatCOP(prep.totalCost)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            ${
+              prep.notes
+                ? `
+              <div style="background: #FFFFFF; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-top: 10px;">
+                <strong style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">📝 Notas:</strong>
+                <p style="font-size: 0.88rem; margin-top: 3px; color: var(--text-main);">${prep.notes}</p>
+              </div>
+            `
+                : ''
+            }
+
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 10px; text-align: right;">
+              Registrado por: <strong>${prep.registeredBy || 'Edier'}</strong>
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="btnClosePrepDetailBtn" style="padding: 8px 24px;">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnClosePrepDetailModal')?.addEventListener('click', closeModal);
+    document.getElementById('btnClosePrepDetailBtn')?.addEventListener('click', closeModal);
+  } catch (err) {
+    showToast('Error al cargar detalle de la elaboración', 'danger');
+  }
 }

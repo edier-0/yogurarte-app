@@ -183,6 +183,33 @@ export const api = {
     return res.json();
   },
 
+  // Preparaciones / Elaboración de Insumos (Mermeladas, Jarabes)
+  async getPreparations() {
+    const res = await fetch(`${API_BASE}/preparations`);
+    return res.json();
+  },
+
+  async getPreparationById(id) {
+    const res = await fetch(`${API_BASE}/preparations/${id}`);
+    return res.json();
+  },
+
+  async createPreparation(data) {
+    const res = await fetch(`${API_BASE}/preparations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  async deletePreparation(id) {
+    const res = await fetch(`${API_BASE}/preparations/${id}`, {
+      method: 'DELETE',
+    });
+    return res.json();
+  },
+
   // Gastos
   async getExpenses(params = {}) {
     const query = new URLSearchParams();
@@ -220,6 +247,11 @@ export const api = {
     return res.json();
   },
 
+  async getCustomerWhatsAppLink(id) {
+    const res = await fetch(`${API_BASE}/customers/${id}/whatsapp`);
+    return res.json();
+  },
+
   async createOrUpdateCustomer(data) {
     const res = await fetch(`${API_BASE}/customers`, {
       method: 'POST',
@@ -235,6 +267,19 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
+    return res.json();
+  },
+
+  async registerCustomerPayment(id, data) {
+    const res = await fetch(`${API_BASE}/customers/${id}/payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al registrar pago');
+    }
     return res.json();
   },
 

@@ -7,6 +7,7 @@ export const getOrders = async (req: Request, res: Response) => {
       search,
       paymentStatus,
       deliveryStatus,
+      debtCategory, // 'DELIVERED_DEBT' | 'IN_PROCESS' | 'PAID' | 'ALL'
       startDate,
       endDate,
       month, // formato YYYY-MM
@@ -27,6 +28,20 @@ export const getOrders = async (req: Request, res: Response) => {
           { flavor: { contains: q, mode: 'insensitive' } },
         ],
       });
+    }
+
+    if (debtCategory === 'DELIVERED_DEBT') {
+      conditions.push({
+        deliveryStatus: 'DELIVERED',
+        paymentStatus: { in: ['PENDING', 'PARTIAL'] },
+      });
+    } else if (debtCategory === 'IN_PROCESS') {
+      conditions.push({
+        deliveryStatus: { not: 'DELIVERED' },
+        paymentStatus: { in: ['PENDING', 'PARTIAL'] },
+      });
+    } else if (debtCategory === 'PAID') {
+      conditions.push({ paymentStatus: 'PAID' });
     }
 
     if (paymentStatus && typeof paymentStatus === 'string' && paymentStatus !== 'ALL') {
@@ -91,6 +106,25 @@ export const getOrders = async (req: Request, res: Response) => {
       },
       orderBy: { orderDate: 'desc' },
       take: limit ? Number(limit) : undefined,
+    });
+
+    // Ordenar jerárquicamente igual que en clientes:
+    // 1. Pedidos ENTREGADOS y NO PAGADOS (Deuda real de cobro inmediato)
+    // 2. Pedidos ENCARGADOS / EN PROCESO (Pendientes de entrega)
+    // 3. Pedidos PAGADOS (Al día)
+    // Dentro de cada grupo, ordenar por fecha más reciente
+    orders.sort((a, b) => {
+      const aDeliveredDebt = a.deliveryStatus === 'DELIVERED' && a.paymentStatus !== 'PAID';
+      const bDeliveredDebt = b.deliveryStatus === 'DELIVERED' && b.paymentStatus !== 'PAID';
+      if (aDeliveredDebt && !bDeliveredDebt) return -1;
+      if (!aDeliveredDebt && bDeliveredDebt) return 1;
+
+      const aInProcess = a.deliveryStatus !== 'DELIVERED' && a.paymentStatus !== 'PAID';
+      const bInProcess = b.deliveryStatus !== 'DELIVERED' && b.paymentStatus !== 'PAID';
+      if (aInProcess && !bInProcess) return -1;
+      if (!aInProcess && bInProcess) return 1;
+
+      return new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
     });
 
     res.json(orders);
