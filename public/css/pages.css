@@ -1,0 +1,608 @@
+/* ==================== TOOLBAR & FILTERS ==================== */
+.toolbar-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  background: #FFFFFF;
+  padding: 14px 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.toolbar-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filter-chip-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  background: var(--bg-subtle);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  gap: 4px;
+  align-items: center;
+  max-width: 100%;
+}
+
+.filter-chip {
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.filter-chip:hover {
+  color: var(--text-main);
+}
+
+.filter-chip.active {
+  background: #FFFFFF;
+  color: var(--primary);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+}
+
+.search-box {
+  min-width: 240px;
+  flex: 1;
+  max-width: 380px;
+}
+
+/* ==================== INVENTORY TOOLBAR (PC RESPONSIVE) ==================== */
+.inventory-toolbar-card {
+  background: #FFFFFF;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.inventory-toolbar-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.inventory-toolbar-title-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inventory-toolbar-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--primary);
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+
+.inventory-toolbar-subtitle {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.inventory-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inventory-toolbar-actions .btn {
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.inventory-toolbar-filters-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 12px;
+  padding-bottom: 2px;
+  border-top: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.inventory-toolbar-filters-row::-webkit-scrollbar {
+  display: none;
+}
+
+.inventory-filter-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  background: var(--bg-subtle);
+  padding: 5px 6px;
+  border-radius: var(--radius-md);
+  min-width: max-content;
+  width: max-content;
+  flex-shrink: 0;
+}
+
+.inventory-filter-chips .filter-chip {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (min-width: 769px) {
+  .inventory-filter-chips {
+    flex-wrap: wrap;
+    min-width: auto;
+    width: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .inventory-toolbar-main-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .inventory-toolbar-actions {
+    width: 100%;
+  }
+  .inventory-toolbar-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .inventory-filter-chips {
+    flex-wrap: nowrap;
+    min-width: max-content;
+    width: max-content;
+  }
+}
+
+/* ==================== ORDERS TOOLBAR (PC RESPONSIVE) ==================== */
+.orders-toolbar-card {
+  background: #FFFFFF;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.orders-toolbar-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.orders-search-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 280px;
+  flex-wrap: wrap;
+}
+
+.orders-search-group .search-box {
+  flex: 1 1 260px;
+  max-width: 420px;
+  min-width: 220px;
+}
+
+.orders-search-group .search-box .form-input {
+  height: 40px;
+  font-size: 0.88rem;
+}
+
+.orders-calendar-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-app);
+  border: 1.5px solid var(--border-color);
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  height: 40px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.orders-calendar-picker:focus-within, .orders-calendar-picker.has-date {
+  border-color: var(--primary);
+  background: #FFFFFF;
+}
+
+.orders-calendar-picker input[type="date"] {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.orders-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.orders-toolbar-actions .btn {
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.orders-view-toggle {
+  display: inline-flex;
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #FFFFFF;
+  height: 40px;
+}
+
+.orders-view-toggle .btn {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  padding: 0 14px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.orders-filters-sub-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.orders-selects-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.orders-select-item {
+  height: 36px;
+  padding: 0 12px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border-color);
+  background: #FFFFFF;
+  color: var(--text-main);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.orders-select-item:hover, .orders-select-item:focus {
+  border-color: var(--primary);
+}
+
+@media (max-width: 900px) {
+  .orders-toolbar-main-row, .orders-filters-sub-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .orders-search-group {
+    width: 100%;
+  }
+  .orders-search-group .search-box {
+    max-width: 100%;
+  }
+  .orders-toolbar-actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+  .orders-selects-group {
+    width: 100%;
+  }
+  .orders-select-item {
+    flex: 1 1 140px;
+  }
+}
+
+/* ==================== ORDERS LIST & CARDS ==================== */
+.orders-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.order-card {
+  background: #FFFFFF;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.order-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary-light);
+}
+
+.order-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 12px;
+}
+
+.order-number {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.order-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.order-customer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.order-customer-name {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.order-customer-phone, .order-customer-address {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.order-product-badge-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--bg-app);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  align-items: center;
+}
+
+.order-product-liters {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.order-product-flavor {
+  font-size: 0.82rem;
+  background: #FFFFFF;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  color: var(--accent);
+  border: 1px solid var(--border-subtle);
+}
+
+.order-finance-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #FDFDFD;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-color);
+}
+
+.order-total-price {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.order-debt-info {
+  text-align: right;
+}
+
+.order-debt-amount {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--danger);
+}
+
+.order-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ==================== STOCK ALERTS BANNER ==================== */
+.stock-alert-banner {
+  background: #FFFBEB;
+  border: 1.5px solid #FDE68A;
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.stock-alert-icon {
+  font-size: 1.8rem;
+  color: var(--warning);
+}
+
+.stock-alert-content {
+  flex: 1;
+}
+
+.stock-alert-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #92400E;
+}
+
+.stock-alert-list {
+  font-size: 0.85rem;
+  color: #B45309;
+  margin-top: 2px;
+}
+
+/* ==================== BATCH PRODUCTION VIEW ==================== */
+.batch-calculator-card {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: #FFFFFF;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.batch-calculator-content h3 {
+  font-size: 1.3rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.batch-calculator-content p {
+  font-size: 0.88rem;
+  opacity: 0.85;
+  max-width: 500px;
+}
+
+/* ==================== INVENTORY CARDS ==================== */
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.inventory-card {
+  background: #FFFFFF;
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+}
+
+.inventory-card.low-stock {
+  border-color: var(--warning-border);
+  background: #FFFEFA;
+}
+
+.inventory-card-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.inventory-card-stock {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.inventory-card-stock.warning {
+  color: var(--warning);
+}
+
+/* ==================== EXPENSES SUMMARY ==================== */
+.expenses-category-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.expense-pill {
+  background: #FFFFFF;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.expense-pill.active, .expense-pill:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary);
+}

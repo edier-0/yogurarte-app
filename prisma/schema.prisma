@@ -1,0 +1,148 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  username  String   @unique
+  password  String   @default("")
+  pin       String   @default("1234")
+  role      String   @default("ADMIN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Customer {
+  id           Int      @id @default(autoincrement())
+  fullName     String
+  phone        String
+  address      String
+  neighborhood String?
+  notes        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+  orders       Order[]
+}
+
+model RawMaterial {
+  id            Int               @id @default(autoincrement())
+  code          String            @unique
+  name          String
+  category      String            // MATERIA_PRIMA, EMPAQUE, INSUMO
+  unit          String            // Litros, Unidades, Gramos, Kg
+  currentStock  Float             @default(0)
+  minStockAlert Float             @default(10)
+  avgCost       Float             @default(0)
+  isActive      Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  purchases     Purchase[]
+  batchUsages   BatchItemUsage[]
+}
+
+model Purchase {
+  id            Int          @id @default(autoincrement())
+  rawMaterialId Int
+  rawMaterial   RawMaterial  @relation(fields: [rawMaterialId], references: [id])
+  quantity      Float
+  unitCost      Float
+  totalCost     Float
+  supplier      String?
+  purchaseDate  DateTime     @default(now())
+  notes         String?
+  registeredBy  String?
+  createdAt     DateTime     @default(now())
+}
+
+model ProductionBatch {
+  id                  Int               @id @default(autoincrement())
+  batchCode           String            @unique
+  milkUsedLiters      Float
+  bottles1LProduced   Int               @default(0)
+  bottles2LProduced   Int               @default(0)
+  totalLitersProduced Float
+  yieldPercentage     Float
+  flavor              String            @default("Natural")
+  status              String            @default("COMPLETADO") // EN_FERMENTACION, COMPLETADO
+  preparationDate     DateTime          @default(now())
+  expirationDate      DateTime?
+  totalCost           Float             @default(0)
+  costPerLiter        Float             @default(0)
+  notes               String?
+  registeredBy        String?
+  isActive            Boolean           @default(true)
+  deactivationReason  String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @default(now()) @updatedAt
+  itemsUsed           BatchItemUsage[]
+}
+
+model BatchItemUsage {
+  id            Int             @id @default(autoincrement())
+  batchId       Int
+  batch         ProductionBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rawMaterialId Int
+  rawMaterial   RawMaterial     @relation(fields: [rawMaterialId], references: [id])
+  quantityUsed  Float
+  unitCost      Float           @default(0)
+  totalCost     Float           @default(0)
+  createdAt     DateTime        @default(now())
+}
+
+model Order {
+  id              Int         @id @default(autoincrement())
+  orderNumber     String      @unique
+  customerId      Int
+  customer        Customer    @relation(fields: [customerId], references: [id])
+  bottleSize      String      @default("1L") // 1L, 2L, MIXTO
+  quantityBottles Int         @default(1)
+  totalLiters     Float       @default(1)
+  flavor          String      @default("Natural")
+  unitPrice       Float       @default(10000)
+  totalAmount     Float
+  paidAmount      Float       @default(0)
+  pendingAmount   Float       @default(0)
+  paymentStatus   String      @default("PENDING") // PENDING, PARTIAL, PAID
+  deliveryStatus  String      @default("PENDING") // PENDING, PREPARING, IN_ROUTE, DELIVERED, CANCELLED
+  orderDate       DateTime    @default(now())
+  deliveryDate    DateTime?
+  deliveryAddress String?
+  notes           String?
+  registeredBy    String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @default(now()) @updatedAt
+  items           OrderItem[]
+}
+
+model OrderItem {
+  id            Int      @id @default(autoincrement())
+  orderId       Int
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  bottleSize    String   @default("1L") // 1L, 2L
+  flavor        String   @default("Natural")
+  quantity      Int      @default(1)
+  litersPerUnit Float    @default(1.0)
+  totalLiters   Float    @default(1.0)
+  unitPrice     Float    @default(10000)
+  totalPrice    Float    @default(10000)
+  createdAt     DateTime @default(now())
+}
+
+model Expense {
+  id           Int      @id @default(autoincrement())
+  category     String   // INFRAESTRUCTURA, SERVICIOS, TRANSPORTE, PUBLICIDAD, INSUMOS_EXTRA, OTRO
+  description  String
+  amount       Float
+  expenseDate  DateTime @default(now())
+  notes        String?
+  registeredBy String?
+  createdAt    DateTime @default(now())
+}
