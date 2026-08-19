@@ -655,7 +655,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
 
       const encodedMessage = encodeURIComponent(deliveredMsg);
       const whatsappUrl = isUsername
-        ? `https://wa.me/${whatsappPhoneParam}?text=${encodedMessage}`
+        ? `https://api.whatsapp.com/send/?username=${whatsappPhoneParam}&text=${encodedMessage}&type=username`
         : `https://api.whatsapp.com/send?phone=${whatsappPhoneParam}&text=${encodedMessage}`;
 
       return res.json({
@@ -680,7 +680,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
 
       const encodedMessage = encodeURIComponent(paidMsg);
       const whatsappUrl = isUsername
-        ? `https://wa.me/${whatsappPhoneParam}?text=${encodedMessage}`
+        ? `https://api.whatsapp.com/send/?username=${whatsappPhoneParam}&text=${encodedMessage}&type=username`
         : `https://api.whatsapp.com/send?phone=${whatsappPhoneParam}&text=${encodedMessage}`;
 
       return res.json({
@@ -693,7 +693,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
     // 3. Estados previos a la entrega con pago pendiente o parcial
     let paymentInfo = '';
     if (order.pendingAmount > 0) {
-      paymentInfo = `💵 *Abonado:* ${formatCurrency(order.paidAmount)} | ⚠️ *Saldo Pendiente:* ${formatCurrency(order.pendingAmount)}`;
+      paymentInfo = `💵 *Abonado:* ${formatCurrency(order.paidAmount)} | 🚨 *Saldo Pendiente:* ${formatCurrency(order.pendingAmount)}`;
     } else {
       paymentInfo = `✅ *Pago:* Totalmente Pagado`;
     }
@@ -718,7 +718,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
 
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = isUsername
-      ? `https://wa.me/${whatsappPhoneParam}?text=${encodedMessage}`
+      ? `https://api.whatsapp.com/send/?username=${whatsappPhoneParam}&text=${encodedMessage}&type=username`
       : `https://api.whatsapp.com/send?phone=${whatsappPhoneParam}&text=${encodedMessage}`;
 
     res.json({

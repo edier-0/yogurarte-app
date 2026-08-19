@@ -100,11 +100,26 @@ export const api = {
     return res.json();
   },
 
-  async deactivateBatch(id, reason, restoreStock = false) {
+  async deactivateBatch(id, reason, restoreStock = false, unlinkOrders = true) {
     const res = await fetch(`${API_BASE}/batches/${id}/deactivate`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason, restoreStock }),
+      body: JSON.stringify({ reason, restoreStock, unlinkOrders }),
+    });
+    return res.json();
+  },
+
+  async getPendingBatchOrders(flavor = '') {
+    const query = flavor ? `?flavor=${encodeURIComponent(flavor)}` : '';
+    const res = await fetch(`${API_BASE}/batches/pending-orders${query}`);
+    return res.json();
+  },
+
+  async linkOrdersToBatch(batchId, payload = {}) {
+    const res = await fetch(`${API_BASE}/batches/${batchId}/link-orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
     return res.json();
   },

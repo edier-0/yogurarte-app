@@ -187,7 +187,7 @@ export const getCustomerWhatsAppLink = async (req: Request, res: Response) => {
     let whatsappUrl = '';
     if (isUsername) {
       const cleanUser = rawPhone.replace(/^@/, '').trim();
-      whatsappUrl = `https://wa.me/${cleanUser}?text=${encoded}`;
+      whatsappUrl = `https://api.whatsapp.com/send/?username=${cleanUser}&text=${encoded}&type=username`;
     } else {
       let cleanPhone = rawPhone.replace(/\D/g, '');
       if (!cleanPhone.startsWith('57') && cleanPhone.length === 10) {

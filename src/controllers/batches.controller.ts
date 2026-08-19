@@ -61,7 +61,27 @@ export const getBatches = async (req: Request, res: Response) => {
       orderBy: { preparationDate: 'desc' },
     });
 
-    // Enriquecer con cálculo de ventas asociadas al lote
+    // Consultar todos los pedidos activos sin lote asignado (preventa)
+    const unassignedOrders = await prisma.order.findMany({
+      where: {
+        batchId: null,
+        deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
+      },
+      select: {
+        id: true,
+        flavor: true,
+        totalLiters: true,
+        items: {
+          select: {
+            flavor: true,
+            totalLiters: true,
+            batchId: true,
+          },
+        },
+      },
+    });
+
+    // Enriquecer con cálculo de ventas y preventa asociadas al lote
     const enrichedBatches = batches.map((b) => {
       const soldLitersFromOrders = b.orders.reduce((sum, o) => sum + o.totalLiters, 0);
       const soldLitersFromItems = b.orderItems.reduce((sum, i) => sum + i.totalLiters, 0);
@@ -69,11 +89,26 @@ export const getBatches = async (req: Request, res: Response) => {
       const totalSoldBottles = b.orders.reduce((sum, o) => sum + o.quantityBottles, 0);
       const totalRevenue = b.orders.reduce((sum, o) => sum + o.totalAmount, 0);
 
+      // Calcular encargos pendientes sin lote para el sabor de este lote
+      const bFlavorNorm = (b.flavor || '').toLowerCase().trim();
+      const matchingUnassigned = unassignedOrders.filter((uo) => {
+        const oFlavorNorm = (uo.flavor || '').toLowerCase().trim();
+        const hasMatchingItem = uo.items.some((it) => (it.flavor || '').toLowerCase().trim().includes(bFlavorNorm) && it.batchId == null);
+        return oFlavorNorm.includes(bFlavorNorm) || bFlavorNorm.includes(oFlavorNorm) || hasMatchingItem;
+      });
+
+      const unassignedOrdersCount = matchingUnassigned.length;
+      const unassignedLiters = matchingUnassigned.reduce((sum, uo) => sum + uo.totalLiters, 0);
+      const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters);
+
       return {
         ...b,
         totalSoldLiters,
         totalSoldBottles,
         totalRevenue,
+        unassignedOrdersCount,
+        unassignedLiters,
+        remainingAvailableLiters,
       };
     });
 
@@ -591,10 +626,180 @@ export const createBatch = async (req: Request, res: Response) => {
       return [batch];
     });
 
+    // Auto-vincular pedidos preventa pendientes del mismo sabor si se solicita
+    const { autoLinkPendingOrders, linkOrderIds } = req.body;
+    if (autoLinkPendingOrders === true || autoLinkPendingOrders === 'true' || (Array.isArray(linkOrderIds) && linkOrderIds.length > 0)) {
+      try {
+        let targetOrderIds: number[] = [];
+        if (Array.isArray(linkOrderIds) && linkOrderIds.length > 0) {
+          targetOrderIds = linkOrderIds.map(Number);
+        } else {
+          const pending = await prisma.order.findMany({
+            where: {
+              batchId: null,
+              deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
+              OR: [
+                { flavor: { contains: createdBatch.flavor, mode: 'insensitive' } },
+                { items: { some: { flavor: { contains: createdBatch.flavor, mode: 'insensitive' } } } },
+              ],
+            },
+            select: { id: true },
+          });
+          targetOrderIds = pending.map((p) => p.id);
+        }
+
+        if (targetOrderIds.length > 0) {
+          await prisma.order.updateMany({
+            where: { id: { in: targetOrderIds } },
+            data: { batchId: createdBatch.id },
+          });
+          await prisma.orderItem.updateMany({
+            where: {
+              orderId: { in: targetOrderIds },
+              OR: [
+                { flavor: { contains: createdBatch.flavor, mode: 'insensitive' } },
+                { batchId: null },
+              ],
+            },
+            data: { batchId: createdBatch.id },
+          });
+        }
+      } catch (linkErr) {
+        console.error('Error auto-linking orders on batch create:', linkErr);
+      }
+    }
+
     res.status(201).json(createdBatch);
   } catch (error) {
     console.error('Error creating production batch:', error);
     res.status(500).json({ error: 'Error al registrar lote de producción' });
+  }
+};
+
+// Consultar pedidos preventa pendientes sin lote por sabor
+export const getPendingOrdersByFlavor = async (req: Request, res: Response) => {
+  try {
+    const { flavor } = req.query;
+
+    const where: any = {
+      batchId: null,
+      deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
+    };
+
+    if (flavor && typeof flavor === 'string' && flavor.trim() !== '' && flavor.toUpperCase() !== 'ALL') {
+      where.OR = [
+        { flavor: { contains: flavor.trim(), mode: 'insensitive' } },
+        { items: { some: { flavor: { contains: flavor.trim(), mode: 'insensitive' } } } },
+      ];
+    }
+
+    const pendingOrders = await prisma.order.findMany({
+      where,
+      include: {
+        customer: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            address: true,
+          },
+        },
+        items: true,
+      },
+      orderBy: { orderDate: 'asc' },
+    });
+
+    const totalLiters = pendingOrders.reduce((sum, o) => sum + o.totalLiters, 0);
+    const totalAmount = pendingOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+    res.json({
+      count: pendingOrders.length,
+      totalLiters,
+      totalAmount,
+      orders: pendingOrders,
+    });
+  } catch (error) {
+    console.error('Error fetching pending orders by flavor:', error);
+    res.status(500).json({ error: 'Error al consultar encargos pendientes' });
+  }
+};
+
+// Vincular pedidos masivamente a un lote existente
+export const linkOrdersToBatch = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { orderIds, autoAll } = req.body;
+
+    const batch = await prisma.productionBatch.findUnique({
+      where: { id: Number(id) },
+    });
+
+    if (!batch) {
+      return res.status(404).json({ error: 'Lote no encontrado' });
+    }
+
+    let targetOrderIds: number[] = [];
+
+    if (Array.isArray(orderIds) && orderIds.length > 0) {
+      targetOrderIds = orderIds.map(Number);
+    } else if (autoAll === true || (!orderIds && autoAll !== false)) {
+      const pending = await prisma.order.findMany({
+        where: {
+          batchId: null,
+          deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
+          OR: [
+            { flavor: { contains: batch.flavor, mode: 'insensitive' } },
+            { items: { some: { flavor: { contains: batch.flavor, mode: 'insensitive' } } } },
+          ],
+        },
+        select: { id: true },
+      });
+      targetOrderIds = pending.map((p) => p.id);
+    }
+
+    if (targetOrderIds.length === 0) {
+      return res.json({
+        message: 'No se encontraron encargos pendientes para vincular.',
+        linkedCount: 0,
+        linkedLiters: 0,
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Actualizar los pedidos
+      await tx.order.updateMany({
+        where: { id: { in: targetOrderIds } },
+        data: { batchId: batch.id },
+      });
+
+      // Actualizar los ítems correspondientes
+      await tx.orderItem.updateMany({
+        where: {
+          orderId: { in: targetOrderIds },
+          OR: [
+            { flavor: { contains: batch.flavor, mode: 'insensitive' } },
+            { batchId: null },
+          ],
+        },
+        data: { batchId: batch.id },
+      });
+    });
+
+    // Calcular litros vinculados
+    const linkedOrders = await prisma.order.findMany({
+      where: { id: { in: targetOrderIds } },
+      select: { totalLiters: true },
+    });
+    const linkedLiters = linkedOrders.reduce((sum, o) => sum + o.totalLiters, 0);
+
+    res.json({
+      message: `¡${targetOrderIds.length} pedido(s) (${linkedLiters} L) vinculados exitosamente al lote ${batch.batchCode}!`,
+      linkedCount: targetOrderIds.length,
+      linkedLiters,
+    });
+  } catch (error) {
+    console.error('Error linking orders to batch:', error);
+    res.status(500).json({ error: 'Error al vincular encargos al lote' });
   }
 };
 
@@ -666,7 +871,7 @@ export const updateBatch = async (req: Request, res: Response) => {
 export const deactivateBatch = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { reason, restoreStock } = req.body;
+    const { reason, restoreStock, unlinkOrders } = req.body;
 
     const batch = await prisma.productionBatch.findUnique({
       where: { id: Number(id) },
@@ -677,8 +882,10 @@ export const deactivateBatch = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Lote no encontrado' });
     }
 
+    let unlinkedCount = 0;
+
     await prisma.$transaction(async (tx) => {
-      // Restaurar inventario si se solicita
+      // 1. Restaurar inventario si se solicita
       if (restoreStock === true && batch.itemsUsed.length > 0) {
         for (const item of batch.itemsUsed) {
           const mat = await tx.rawMaterial.findUnique({ where: { id: item.rawMaterialId } });
@@ -691,6 +898,21 @@ export const deactivateBatch = async (req: Request, res: Response) => {
         }
       }
 
+      // 2. Desvincular pedidos asociados para que vuelvan a ser Encargos Preventa (sin lote)
+      const shouldUnlink = unlinkOrders !== false && unlinkOrders !== 'false';
+      if (shouldUnlink) {
+        const orderUpdate = await tx.order.updateMany({
+          where: { batchId: Number(id) },
+          data: { batchId: null },
+        });
+        await tx.orderItem.updateMany({
+          where: { batchId: Number(id) },
+          data: { batchId: null },
+        });
+        unlinkedCount = orderUpdate.count;
+      }
+
+      // 3. Desactivar el lote
       await tx.productionBatch.update({
         where: { id: Number(id) },
         data: {
@@ -701,7 +923,11 @@ export const deactivateBatch = async (req: Request, res: Response) => {
       });
     });
 
-    res.json({ message: 'Lote desactivado correctamente', id: Number(id) });
+    const msg = unlinkedCount > 0
+      ? `Lote desactivado correctamente. Se liberaron ${unlinkedCount} pedido(s) como encargos preventa sin lote.`
+      : 'Lote desactivado correctamente';
+
+    res.json({ message: msg, id: Number(id), unlinkedCount });
   } catch (error) {
     console.error('Error deactivating batch:', error);
     res.status(500).json({ error: 'Error al desactivar lote' });

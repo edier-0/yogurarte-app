@@ -54,11 +54,16 @@
 .btn-whatsapp {
   background: #25D366;
   color: #FFFFFF;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   box-shadow: 0 3px 8px rgba(37, 211, 102, 0.3);
 }
 
 .btn-whatsapp:hover {
   background: #20BA59;
+  color: #FFFFFF;
 }
 
 .btn-outline {

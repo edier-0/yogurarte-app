@@ -19,25 +19,25 @@ export async function renderCustomers(container) {
 
   container.innerHTML = `
     <!-- Barra de Búsqueda, Filtros y Acción -->
-    <div class="orders-toolbar-card" style="padding: 14px 18px; margin-bottom: 20px;">
-      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 280px; max-width: 420px;">
-          <div class="search-box input-with-icon" style="width: 100%;">
+    <div class="orders-toolbar-card" style="margin-bottom: 20px;">
+      <div class="orders-toolbar-main-row" style="margin-bottom: 10px;">
+        <div class="orders-search-group" style="flex: 1 1 auto; min-width: 0; width: 100%;">
+          <div class="search-box input-with-icon" style="width: 100%; max-width: 100%;">
             <span class="input-icon">🔍</span>
             <input 
               type="text" 
               id="customerSearchInput" 
               class="form-input" 
-              style="height: 40px;"
+              style="height: 40px; width: 100%;"
               placeholder="Buscar por cliente, @usuario o dirección..." 
               value="${searchQuery}"
             />
           </div>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <div class="orders-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; width: auto;">
           <!-- Selector de Lote para Clientes -->
-          <select id="custBatchFilterSelect" class="orders-select-item" style="height: 40px; font-weight: 700; color: var(--primary);">
+          <select id="custBatchFilterSelect" class="orders-select-item" style="height: 40px; font-weight: 700; color: var(--primary); flex: 1 1 auto; min-width: 150px; max-width: 100%;">
             <option value="ALL" ${currentBatchFilter === 'ALL' ? 'selected' : ''}>🍶 Todos los Lotes</option>
             ${availableBatches
               .map(
@@ -50,23 +50,25 @@ export async function renderCustomers(container) {
               .join('')}
           </select>
 
-          <div class="filter-chip-group" id="custDebtFilterGroup">
-            <button class="filter-chip ${currentDebtFilter === 'ALL' ? 'active' : ''}" data-debt="ALL">Todos</button>
-            <button class="filter-chip ${currentDebtFilter === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt="DELIVERED_DEBT" style="${currentDebtFilter === 'DELIVERED_DEBT' ? 'background: #DC2626; border-color: #DC2626; color: white;' : 'color: #DC2626; font-weight: 700;'}">
-              🚨 Con Deuda (Entregados)
-            </button>
-            <button class="filter-chip ${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'active' : ''}" data-debt="PAID_NOT_DELIVERED" style="${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'background: #059669; border-color: #059669; color: white;' : 'color: #059669; font-weight: 700;'}">
-              🟢🥣 Pagados por Entregar
-            </button>
-            <button class="filter-chip ${currentDebtFilter === 'IN_PROCESS' ? 'active' : ''}" data-debt="IN_PROCESS" style="${currentDebtFilter === 'IN_PROCESS' ? 'background: var(--primary); border-color: var(--primary); color: white;' : 'color: var(--primary); font-weight: 700;'}">
-              🥣 Encargos (En Proceso)
-            </button>
-            <button class="filter-chip ${currentDebtFilter === 'PAID' ? 'active' : ''}" data-debt="PAID">🟢 Al Día</button>
-          </div>
-
-          <button class="btn btn-accent" id="btnOpenNewCustModal" style="height: 40px;">
+          <button class="btn btn-accent" id="btnOpenNewCustModal" style="height: 40px; white-space: nowrap; flex: 0 0 auto;">
             <span>+</span> Registrar Cliente
           </button>
+        </div>
+      </div>
+
+      <div style="padding-top: 10px; border-top: 1px solid var(--border-subtle); width: 100%; box-sizing: border-box;">
+        <div class="filter-chip-group" id="custDebtFilterGroup" style="width: 100%;">
+          <button class="filter-chip ${currentDebtFilter === 'ALL' ? 'active' : ''}" data-debt="ALL">Todos</button>
+          <button class="filter-chip ${currentDebtFilter === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt="DELIVERED_DEBT" style="${currentDebtFilter === 'DELIVERED_DEBT' ? 'background: #DC2626; border-color: #DC2626; color: white;' : 'color: #DC2626; font-weight: 700; border-color: #FECACA;'}">
+            🚨 Con Deuda (Entregados)
+          </button>
+          <button class="filter-chip ${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'active' : ''}" data-debt="PAID_NOT_DELIVERED" style="${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'background: #059669; border-color: #059669; color: white;' : 'color: #059669; font-weight: 700; border-color: #A7F3D0;'}">
+            🟢🥣 Pagados por Entregar
+          </button>
+          <button class="filter-chip ${currentDebtFilter === 'IN_PROCESS' ? 'active' : ''}" data-debt="IN_PROCESS" style="${currentDebtFilter === 'IN_PROCESS' ? 'background: var(--primary); border-color: var(--primary); color: white;' : 'color: var(--primary); font-weight: 700; border-color: #DDD6FE;'}">
+            🥣 Encargos (En Proceso)
+          </button>
+          <button class="filter-chip ${currentDebtFilter === 'PAID' ? 'active' : ''}" data-debt="PAID">🟢 Al Día</button>
         </div>
       </div>
     </div>
@@ -113,6 +115,8 @@ export async function renderCustomers(container) {
   await loadCustomersList(container);
 }
 
+const WA_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: inline-block; vertical-align: -2px; margin-right: 4px;"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>`;
+
 // Función generadora del link de WhatsApp con recordatorio contextual
 function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0, inProcessPendingAmount = 0, isPaidInProcess = false, mode = 'DEFAULT') {
   if (!phone) return '#';
@@ -140,7 +144,7 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
   const encoded = encodeURIComponent(msg);
   if (isUsername) {
     const cleanUser = rawPhone.replace(/^@/, '').trim();
-    return `https://wa.me/${cleanUser}?text=${encoded}`;
+    return `https://api.whatsapp.com/send/?username=${cleanUser}&text=${encoded}&type=username`;
   } else {
     let cleanPhone = rawPhone.replace(/\D/g, '');
     if (!cleanPhone.startsWith('57') && cleanPhone.length === 10) {
@@ -260,23 +264,23 @@ async function loadCustomersList(container) {
             let cardBorder = '';
             let badgeHtml = '';
             let waBtnClass = 'btn-outline';
-            let waBtnText = '📲 WhatsApp';
+            let waBtnText = `${WA_ICON_SVG} WhatsApp`;
 
             if (hasDeliveredDebt) {
               cardBorder = 'border: 1.5px solid #F87171; background: #FFFDFD; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.08);';
               badgeHtml = `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-weight: 800; font-size: 0.76rem;">🚨 Deuda: ${formatCOP(deliveredDebt)}</span>`;
               waBtnClass = 'btn-whatsapp';
-              waBtnText = '📲 Recordar Pago';
+              waBtnText = `${WA_ICON_SVG} Recordar Pago`;
             } else if (isPaidInProcess) {
               cardBorder = 'border: 1.5px solid #34D399; background: #F0FDF4; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.08);';
               badgeHtml = `<span class="badge" style="background: #DCFCE7; color: #059669; font-weight: 800; font-size: 0.76rem;">🟢🥣 Pagado • Por Entregar 🛵</span>`;
               waBtnClass = 'btn-whatsapp';
-              waBtnText = '📲 Agradecer Pago';
+              waBtnText = `${WA_ICON_SVG} Agradecer Pago`;
             } else if (hasInProcessOrder) {
               cardBorder = 'border: 1.5px solid #DDD6FE; background: #FAF7FC; box-shadow: 0 4px 14px rgba(109, 40, 217, 0.05);';
               badgeHtml = `<span class="badge" style="background: #EDE9FE; color: var(--primary); font-weight: 800; font-size: 0.76rem;">🥣 Encargo: ${formatCOP(inProcessAmount)}</span>`;
               waBtnClass = 'btn-primary';
-              waBtnText = '💬 Info Pedido';
+              waBtnText = `${WA_ICON_SVG} Info Pedido`;
             } else {
               badgeHtml = `<span class="badge badge-paid" style="font-size: 0.76rem;">🟢 Al Día</span>`;
             }
@@ -325,7 +329,7 @@ async function loadCustomersList(container) {
                         style="padding: 4px 8px; font-weight: 700; font-size: 0.78rem; white-space: nowrap;"
                         title="Notificar recepción del pago y agradecer al estilo YogurArte"
                       >
-                        📲 Agradecer Pago
+                        ${WA_ICON_SVG} Agradecer Pago
                       </a>
                       <a 
                         href="${generateCustomerWhatsAppLink(rawPhone, c.fullName, deliveredDebt, inProcessAmount, isPaidInProcess, 'INFO')}" 
@@ -334,7 +338,7 @@ async function loadCustomersList(container) {
                         style="padding: 3px 6px; font-weight: 700; font-size: 0.74rem; white-space: nowrap; color: var(--primary); border-color: var(--primary);"
                         title="Enviar información y estado actual del pedido"
                       >
-                        💬 Info Pedido
+                        ${WA_ICON_SVG} Info Pedido
                       </a>
                     `
                       : `
@@ -586,32 +590,34 @@ async function openCustomerHistoryModal(customerId) {
             ${
               customer.orders && customer.orders.length > 0
                 ? `
-              <table class="app-table">
-                <thead>
-                  <tr>
-                    <th>Pedido</th>
-                    <th>Litros</th>
-                    <th>Total</th>
-                    <th>Estado</th>
-                    <th>Fecha</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${customer.orders
-                    .map(
-                      (o) => `
+              <div class="table-responsive">
+                <table class="app-table">
+                  <thead>
                     <tr>
-                      <td><strong>${o.orderNumber}</strong></td>
-                      <td>${o.totalLiters} L</td>
-                      <td><strong>${formatCOP(o.totalAmount)}</strong></td>
-                      <td><span class="badge ${o.paymentStatus === 'PAID' ? 'badge-paid' : 'badge-pending'}">${o.paymentStatus}</span></td>
-                      <td>${formatDate(o.orderDate)}</td>
+                      <th>Pedido</th>
+                      <th>Litros</th>
+                      <th>Total</th>
+                      <th>Estado</th>
+                      <th>Fecha</th>
                     </tr>
-                  `
-                    )
-                    .join('')}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    ${customer.orders
+                      .map(
+                        (o) => `
+                      <tr>
+                        <td><strong>${o.orderNumber}</strong></td>
+                        <td>${o.totalLiters} L</td>
+                        <td><strong>${formatCOP(o.totalAmount)}</strong></td>
+                        <td><span class="badge ${o.paymentStatus === 'PAID' ? 'badge-paid' : 'badge-pending'}">${o.paymentStatus}</span></td>
+                        <td>${formatDate(o.orderDate)}</td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
             `
                 : `<p style="color: var(--text-muted); font-size: 0.88rem;">Sin pedidos registrados aún.</p>`
             }

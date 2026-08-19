@@ -179,12 +179,20 @@ async function loadBatchesList(container) {
                     ${b.bottles2LProduced > 0 ? `<strong>${b.bottles2LProduced}</strong> de 2L` : ''}
                     ${b.bottles1LProduced === 0 && b.bottles2LProduced === 0 ? '<span style="color: var(--text-muted);">A granel</span>' : ''}
                   </span>
+                  <div style="font-size: 0.74rem; margin-top: 3px;">
+                    ${
+                      soldLiters > 0
+                        ? `<span style="color: var(--primary); font-weight: 700;">🛒 ${soldLiters}L vendidos (${soldPct}%)</span>`
+                        : '<span style="color: var(--text-muted);">Sin ventas aún</span>'
+                    }
+                    <span style="color: #059669; font-weight: 800; margin-left: 4px;">• 🟢 ${b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters)}L libres</span>
+                  </div>
                   ${
-                    soldLiters > 0
-                      ? `<div style="font-size: 0.72rem; color: var(--primary); font-weight: 700; margin-top: 2px;">
-                          🛒 ${soldLiters}L vendidos (${soldPct}%)
-                         </div>`
-                      : '<div style="font-size: 0.72rem; color: var(--text-muted);">Sin ventas aún</div>'
+                    b.isActive && b.unassignedOrdersCount > 0
+                      ? `<button class="btn btn-sm btn-link-pending-batch" data-id="${b.id}" data-code="${b.batchCode}" data-flavor="${b.flavor}" style="background: #FEF3C7; color: #92400E; border: 1.5px solid #FCD34D; font-size: 0.72rem; padding: 2px 7px; font-weight: 800; border-radius: 4px; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="Vincular ${b.unassignedOrdersCount} encargos pendientes de este sabor">
+                          ⚡ ${b.unassignedOrdersCount} encargo(s) (${b.unassignedLiters}L) sin lote 🔗
+                        </button>`
+                      : ''
                   }
                 </td>
                 <td>
@@ -227,6 +235,13 @@ async function loadBatchesList(container) {
         </tbody>
       </table>
     `;
+
+    tableContainer.querySelectorAll('.btn-link-pending-batch').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const { id, code, flavor } = e.currentTarget.dataset;
+        openLinkOrdersModal(id, code, flavor, container);
+      });
+    });
 
     tableContainer.querySelectorAll('.btn-view-batch').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -342,6 +357,9 @@ async function openBatchModal() {
                 <input type="date" id="batchDate" class="form-input" value="${getTodayLocalDateStr()}" required />
               </div>
             </div>
+
+            <!-- Tarjeta de Detección de Encargos Preventa en Espera de este Sabor -->
+            <div id="pendingOrdersHintContainer" style="display: none; margin-bottom: 12px;"></div>
 
             <!-- Cantidad de Leche Usada (Descuento de Stock) -->
             <div class="form-group" style="background: #F0F9FF; border: 1.5px solid #BAE6FD; padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 12px;">
@@ -834,6 +852,142 @@ async function openBatchModal() {
 
   updateCalculations();
 
+  // Detección reactiva de encargos pendientes para el sabor seleccionado
+  const pendingContainer = document.getElementById('pendingOrdersHintContainer');
+  const flavorSelect = document.getElementById('batchFlavor');
+  
+  const checkPendingOrdersForFlavor = async () => {
+    if (!pendingContainer || !flavorSelect) return;
+    const selectedFlavor = flavorSelect.value || 'Natural';
+    try {
+      const pendingData = await api.getPendingBatchOrders(selectedFlavor);
+      const orders = pendingData?.orders || [];
+      if (orders.length > 0) {
+        const todayStr = getTodayLocalDateStr();
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+
+        pendingContainer.style.display = 'block';
+        pendingContainer.innerHTML = `
+          <div style="background: #ECFDF5; border: 1.5px solid #A7F3D0; border-radius: var(--radius-md); padding: 12px 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+              <div style="font-weight: 800; color: #065F46; font-size: 0.88rem; display: flex; align-items: center; gap: 6px;">
+                <span>🛒</span> Encargos de ${selectedFlavor} en espera (${orders.length} pedidos • ${pendingData.totalLiters} L)
+              </div>
+            </div>
+
+            <!-- Botones de selección rápida -->
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+              <button type="button" class="btn btn-outline btn-sm" id="btnSelectTodayBatch" style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; background: #FFFFFF; color: #92400E; border-color: #FCD34D;">
+                🛵 Solo Hoy
+              </button>
+              <button type="button" class="btn btn-outline btn-sm" id="btnSelectTomorrowBatch" style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; background: #FFFFFF; color: #3730A3; border-color: #C7D2FE;">
+                🛵 Solo Mañana
+              </button>
+              <button type="button" class="btn btn-outline btn-sm" id="btnSelectAllBatch" style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; background: #FFFFFF; color: #065F46; border-color: #A7F3D0;">
+                📅 Todos (${orders.length})
+              </button>
+              <button type="button" class="btn btn-outline btn-sm" id="btnDeselectAllBatch" style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; background: #FFFFFF; color: var(--text-muted); border-color: #E2E8F0;">
+                🚫 Ninguno
+              </button>
+            </div>
+
+            <!-- Lista de pedidos con checkbox y fecha -->
+            <div style="max-height: 150px; overflow-y: auto; background: #FFFFFF; border: 1px solid #A7F3D0; border-radius: var(--radius-sm); padding: 4px 6px;">
+              ${orders
+                .map((o) => {
+                  const delivStr = o.deliveryDate ? String(o.deliveryDate).split('T')[0] : '';
+                  const isToday = delivStr === todayStr || (!delivStr && delivStr !== 'null');
+                  const isTomorrow = delivStr === tomorrowStr;
+                  let dateBadge = `<span style="font-size: 0.72rem; color: var(--text-muted);">Sin fecha (${formatDate(o.orderDate)})</span>`;
+                  if (delivStr === todayStr) {
+                    dateBadge = `<span class="badge" style="background: #FEF3C7; color: #92400E; font-size: 0.68rem; font-weight: 800;">🛵 Entrega Hoy</span>`;
+                  } else if (delivStr === tomorrowStr) {
+                    dateBadge = `<span class="badge" style="background: #E0E7FF; color: #3730A3; font-size: 0.68rem; font-weight: 800;">🛵 Entrega Mañana</span>`;
+                  } else if (delivStr < todayStr) {
+                    dateBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-size: 0.68rem; font-weight: 800;">⚠️ Vencido (${formatDate(o.deliveryDate)})</span>`;
+                  } else if (delivStr > tomorrowStr) {
+                    dateBadge = `<span class="badge" style="background: #F1F5F9; color: #475569; font-size: 0.68rem; font-weight: 700;">📅 Futuro (${formatDate(o.deliveryDate)})</span>`;
+                  }
+                  return `
+                    <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 6px; border-bottom: 1px solid #F0FDF4; font-size: 0.8rem; cursor: pointer;">
+                      <div style="display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" class="chk-batch-order" value="${o.id}" data-liters="${o.totalLiters}" data-is-today="${isToday ? '1' : '0'}" data-is-tomorrow="${isTomorrow ? '1' : '0'}" ${isToday ? 'checked' : ''} style="accent-color: #059669; cursor: pointer; width: 15px; height: 15px;" />
+                        <strong>${o.customer?.fullName || 'Cliente'}</strong>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 6px;">
+                        ${dateBadge}
+                        <strong style="color: #065F46; font-size: 0.82rem;">${o.totalLiters}L</strong>
+                      </div>
+                    </label>
+                  `;
+                })
+                .join('')}
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 0.8rem; font-weight: 700; color: #065F46;">
+              <span>⚡ Pedidos a vincular a este lote:</span>
+              <strong id="batchSelectedOrdersSummary">Calculando...</strong>
+            </div>
+          </div>
+        `;
+
+        const updateBatchOrdersSummary = () => {
+          const checked = pendingContainer.querySelectorAll('.chk-batch-order:checked');
+          let sumL = 0;
+          checked.forEach((chk) => (sumL += Number(chk.dataset.liters) || 0));
+          const sumEl = pendingContainer.querySelector('#batchSelectedOrdersSummary');
+          if (sumEl) sumEl.textContent = `${checked.length} pedido(s) (${sumL} Litros)`;
+        };
+
+        pendingContainer.querySelectorAll('.chk-batch-order').forEach((chk) => {
+          chk.addEventListener('change', updateBatchOrdersSummary);
+        });
+
+        pendingContainer.querySelector('#btnSelectTodayBatch')?.addEventListener('click', () => {
+          pendingContainer.querySelectorAll('.chk-batch-order').forEach((chk) => {
+            chk.checked = chk.dataset.isToday === '1';
+          });
+          updateBatchOrdersSummary();
+        });
+
+        pendingContainer.querySelector('#btnSelectTomorrowBatch')?.addEventListener('click', () => {
+          pendingContainer.querySelectorAll('.chk-batch-order').forEach((chk) => {
+            chk.checked = chk.dataset.isTomorrow === '1';
+          });
+          updateBatchOrdersSummary();
+        });
+
+        pendingContainer.querySelector('#btnSelectAllBatch')?.addEventListener('click', () => {
+          pendingContainer.querySelectorAll('.chk-batch-order').forEach((chk) => {
+            chk.checked = true;
+          });
+          updateBatchOrdersSummary();
+        });
+
+        pendingContainer.querySelector('#btnDeselectAllBatch')?.addEventListener('click', () => {
+          pendingContainer.querySelectorAll('.chk-batch-order').forEach((chk) => {
+            chk.checked = false;
+          });
+          updateBatchOrdersSummary();
+        });
+
+        updateBatchOrdersSummary();
+      } else {
+        pendingContainer.style.display = 'none';
+        pendingContainer.innerHTML = '';
+      }
+    } catch (err) {
+      console.error('Error fetching pending orders for flavor:', err);
+    }
+  };
+
+  flavorSelect?.addEventListener('change', () => {
+    checkPendingOrdersForFlavor();
+  });
+  checkPendingOrdersForFlavor();
+
   // Función para agregar filas dinámicas (Base o Compuesto)
   const extraContainer = document.getElementById('extraContainer');
   const extraRowsList = document.getElementById('extraRowsList');
@@ -931,6 +1085,9 @@ async function openBatchModal() {
       }
     });
 
+    const checkedOrderCheckboxes = pendingContainer.querySelectorAll('.chk-batch-order:checked');
+    const linkOrderIds = Array.from(checkedOrderCheckboxes).map((chk) => Number(chk.value));
+
     const payload = {
       milkUsedLiters: milkUsed,
       totalLitersProduced: totalProduced,
@@ -947,6 +1104,8 @@ async function openBatchModal() {
       preparationDate: document.getElementById('batchDate').value,
       notes: document.getElementById('batchNotes').value,
       registeredBy: store.currentUser,
+      linkOrderIds,
+      autoLinkPendingOrders: false,
       extraItems,
     };
 
@@ -980,7 +1139,11 @@ async function openBatchDetailModal(batchId) {
   if (!modalOverlay) return;
 
   try {
-    const batch = await api.getBatchById(batchId);
+    const [batch, pendingData] = await Promise.all([
+      api.getBatchById(batchId),
+      api.getPendingBatchOrders(),
+    ]);
+
     const hasExtraYield = batch.totalLitersProduced > batch.milkUsedLiters;
     const p1 = batch.price1L || 10000;
     const p2 = batch.price2L || 20000;
@@ -998,6 +1161,17 @@ async function openBatchDetailModal(batchId) {
     const totalSoldLiters = linkedOrders.reduce((sum, o) => sum + (o.totalLiters || 0), 0);
     const totalSoldBottles = linkedOrders.reduce((sum, o) => sum + (o.quantityBottles || 0), 0);
     const totalSoldAmount = linkedOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    const remainingAvailableLiters = Math.max(0, batch.totalLitersProduced - totalSoldLiters);
+
+    // Filtrar encargos pendientes de este sabor
+    const bFlavorNorm = (batch.flavor || '').toLowerCase().trim();
+    const matchingPending = (pendingData?.orders || []).filter((po) => {
+      const pFlavorNorm = (po.flavor || '').toLowerCase().trim();
+      const hasItem = (po.items || []).some((it) => (it.flavor || '').toLowerCase().trim().includes(bFlavorNorm) && it.batchId == null);
+      return pFlavorNorm.includes(bFlavorNorm) || bFlavorNorm.includes(pFlavorNorm) || hasItem;
+    });
+    const pendingCount = matchingPending.length;
+    const pendingLiters = matchingPending.reduce((sum, po) => sum + po.totalLiters, 0);
 
     modalOverlay.innerHTML = `
       <div class="modal-overlay active">
@@ -1011,6 +1185,27 @@ async function openBatchDetailModal(batchId) {
           </div>
           <div class="modal-body">
             
+            <!-- Banner de encargos preventa en espera si existen -->
+            ${
+              batch.isActive && pendingCount > 0
+                ? `
+              <div style="background: #ECFDF5; border: 1.5px solid #A7F3D0; border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div>
+                  <div style="font-weight: 800; color: #065F46; font-size: 0.88rem; display: flex; align-items: center; gap: 6px;">
+                    <span>⚡</span> ¡Hay ${pendingCount} encargo(s) de ${batch.flavor} esperando lote! (${pendingLiters} L)
+                  </div>
+                  <div style="font-size: 0.76rem; color: #047857; margin-top: 2px;">
+                    ${matchingPending.map((po) => `${po.customer?.fullName || 'Cliente'} (${po.totalLiters}L)`).join(', ')}
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-accent" id="btnLinkOrdersFromDetail" style="font-size: 0.78rem; padding: 5px 12px; font-weight: 800;">
+                  🔗 Vincular Ahora
+                </button>
+              </div>
+            `
+                : ''
+            }
+
             <!-- Tarjetas de Estadísticas Principales del Lote -->
             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px;">
               <div class="order-card" style="padding: 12px 14px; background: #F0F9FF; border: 1.5px solid #BAE6FD;">
@@ -1062,12 +1257,12 @@ async function openBatchDetailModal(batchId) {
 
             <!-- Resumen de Ventas Vinculadas a este Lote -->
             <div style="background: #FFFFFF; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 14px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
                 <h4 style="font-size: 0.92rem; font-weight: 800; color: var(--primary); margin: 0;">
                   🛒 Despacho y Ventas de este Lote (${linkedOrders.length})
                 </h4>
                 <span style="font-size: 0.8rem; font-weight: 700; color: var(--primary);">
-                  ${totalSoldLiters}L vendidos (${totalSoldBottles} botellas) • Recaudado: ${formatCOP(totalSoldAmount)}
+                  ${totalSoldLiters}L vendidos • <span style="color: #059669;">${remainingAvailableLiters}L libres</span> • Recaudado: ${formatCOP(totalSoldAmount)}
                 </span>
               </div>
 
@@ -1118,25 +1313,22 @@ async function openBatchDetailModal(batchId) {
             <!-- Tabla Detallada de Ingredientes e Insumos Consumidos -->
             <div style="margin-bottom: 12px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin: 0;">
-                  🥣 Ingredientes y Materiales Descontados
+                <h4 style="font-size: 0.92rem; font-weight: 800; color: var(--primary); margin: 0;">
+                  📦 Insumos Consumidos del Inventario (${batch.itemsUsed?.length || 0})
                 </h4>
-                <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">
-                  ${batch.itemsUsed ? batch.itemsUsed.length : 0} insumo(s) registrados
-                </span>
               </div>
 
               ${
                 batch.itemsUsed && batch.itemsUsed.length > 0
                   ? `
-                <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden;">
-                  <table class="app-table" style="margin: 0; font-size: 0.85rem;">
+                <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+                  <table class="app-table" style="margin: 0; font-size: 0.8rem;">
                     <thead>
                       <tr style="background: var(--bg-app);">
-                        <th>Ingrediente / Insumo</th>
-                        <th>Cantidad Descontada</th>
+                        <th>Insumo</th>
+                        <th>Cantidad Usada</th>
                         <th>Costo Unitario</th>
-                        <th style="text-align: right;">Total Invertido</th>
+                        <th style="text-align: right;">Costo Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1145,13 +1337,10 @@ async function openBatchDetailModal(batchId) {
                           const icon = getBatchItemIcon(item.rawMaterial?.name, item.rawMaterial?.code);
                           const unitLower = (item.rawMaterial?.unit || '').toLowerCase();
                           const matNameLower = (item.rawMaterial?.name || '').toLowerCase();
-                          const matCode = item.rawMaterial?.code || '';
-                          
+                          const isSugarOrPowder = matNameLower.includes('azucar') || matNameLower.includes('azúcar') || matNameLower.includes('polvo');
+
                           let qtyDisplay = '';
                           let detailSub = '';
-
-                          const isMilk = matCode === 'LECHE' || matNameLower.includes('leche líquida') || matNameLower.includes('leche entera');
-                          const isSugarOrPowder = matCode.includes('AZUCAR') || matNameLower.includes('azúcar') || matNameLower.includes('polvo');
 
                           if (unitLower.includes('k')) {
                             const grams = Math.round(item.quantityUsed * 1000);
@@ -1224,30 +1413,19 @@ async function openBatchDetailModal(batchId) {
                 </div>
               `
                   : `
-                <div style="background: var(--bg-app); border: 1px dashed var(--border-color); padding: 14px; border-radius: var(--radius-md); text-align: center; color: var(--text-muted); font-size: 0.85rem;">
-                  ℹ️ Este lote no tiene desglose de insumos guardado.
+                <div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 0.82rem;">
+                  No hay desglose de insumos registrado para este lote.
                 </div>
               `
               }
             </div>
 
+            <!-- Notas Adicionales -->
             ${
               batch.notes
                 ? `
-              <div style="margin-top: 12px; background: #FFFFFF; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-                <strong style="font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase;">📝 Notas del Lote:</strong>
-                <p style="font-size: 0.88rem; margin-top: 3px; color: var(--text-main);">${batch.notes}</p>
-              </div>
-            `
-                : ''
-            }
-
-            ${
-              !batch.isActive && batch.deactivationReason
-                ? `
-              <div style="margin-top: 12px; background: var(--danger-light); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--danger-border);">
-                <strong style="font-size: 0.82rem; color: var(--danger); text-transform: uppercase;">🚫 Motivo de Desactivación:</strong>
-                <p style="font-size: 0.88rem; margin-top: 3px; color: var(--danger);">${batch.deactivationReason}</p>
+              <div style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 0.84rem;">
+                <strong style="color: var(--primary);">📝 Notas:</strong> ${batch.notes}
               </div>
             `
                 : ''
@@ -1255,30 +1433,43 @@ async function openBatchDetailModal(batchId) {
 
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-primary" id="btnCloseBatchDetailBtn" style="padding: 8px 24px;">Cerrar</button>
+            <button type="button" class="btn btn-outline" id="btnCloseDetailFooter">Cerrar</button>
           </div>
         </div>
       </div>
     `;
 
-    const closeModal = () => (modalOverlay.innerHTML = '');
-    document.getElementById('btnCloseBatchDetailModal')?.addEventListener('click', closeModal);
-    document.getElementById('btnCloseBatchDetailBtn')?.addEventListener('click', closeModal);
-  } catch (err) {
-    showToast('Error al cargar resumen del lote', 'danger');
+    const closeDetail = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnCloseBatchDetailModal')?.addEventListener('click', closeDetail);
+    document.getElementById('btnCloseDetailFooter')?.addEventListener('click', closeDetail);
+
+    document.getElementById('btnLinkOrdersFromDetail')?.addEventListener('click', () => {
+      openLinkOrdersModal(batch.id, batch.batchCode, batch.flavor);
+    });
+  } catch (error) {
+    console.error('Error opening batch detail modal:', error);
+    showToast('Error al cargar detalle del lote', 'danger');
   }
 }
 
-// Modal para editar lote absolutamente todo
+// Modal para editar lote
 async function openEditBatchModal(batchId) {
   const modalOverlay = document.getElementById('modalContainer');
   if (!modalOverlay) return;
 
   const batch = await api.getBatchById(batchId);
+  const p1 = batch.price1L || 10000;
+  const p2 = batch.price2L || 20000;
+  const b1 = batch.bottles1LProduced || 0;
+  const b2 = batch.bottles2LProduced || 0;
+  const milk = batch.milkUsedLiters || 0;
+  const produced = batch.totalLitersProduced || milk;
+  const prepDate = batch.preparationDate ? String(batch.preparationDate).split('T')[0] : getTodayLocalDateStr();
+  const expDate = batch.expirationDate ? String(batch.expirationDate).split('T')[0] : '';
 
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 540px;">
+      <div class="modal-card" style="max-width: 520px;">
         <div class="modal-header">
           <h3 class="modal-title">✏️ Editar Lote: ${batch.batchCode}</h3>
           <button class="modal-close-btn" id="btnCloseEditBatchModal">✕</button>
@@ -1299,91 +1490,73 @@ async function openEditBatchModal(batchId) {
               </div>
 
               <div class="form-group">
-                <label class="form-label">Estado del Lote *</label>
-                <select id="editBatchStatus" class="form-select" style="font-weight: 700;">
-                  <option value="COMPLETADO" ${batch.status === 'COMPLETADO' ? 'selected' : ''}>✅ Activo / Disponible</option>
-                  <option value="AGOTADO" ${batch.status === 'AGOTADO' ? 'selected' : ''}>📦 Agotado (Todo Vendido)</option>
-                  <option value="DESCARTADO" ${batch.status === 'DESCARTADO' ? 'selected' : ''}>🚫 Descartado / Baja</option>
+                <label class="form-label">Estado *</label>
+                <select id="editBatchStatus" class="form-select">
+                  <option value="COMPLETADO" ${batch.status === 'COMPLETADO' ? 'selected' : ''}>✅ Disponible (En Venta)</option>
+                  <option value="AGOTADO" ${batch.status === 'AGOTADO' ? 'selected' : ''}>📦 Agotado (Todo vendido)</option>
+                  <option value="DESCARTADO" ${batch.status === 'DESCARTADO' ? 'selected' : ''}>🚫 Baja / Descartado</option>
                 </select>
               </div>
             </div>
 
-            <!-- Precios de Venta para este Lote -->
-            <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 14px;">
-              <div style="font-size: 0.85rem; font-weight: 800; color: var(--primary); margin-bottom: 8px;">
-                💲 Precios de Venta de este Lote
-              </div>
-              <div class="form-row" style="margin-bottom: 0;">
-                <div class="form-group" style="margin-bottom: 0;">
-                  <label class="form-label">Precio Botella 1L ($ COP) *</label>
-                  <input type="number" id="editBatchPrice1L" class="form-input" min="0" step="500" value="${batch.price1L || 10000}" required style="font-weight: 800; color: var(--primary);" />
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                  <label class="form-label">Precio Botella 2L ($ COP) *</label>
-                  <input type="number" id="editBatchPrice2L" class="form-input" min="0" step="500" value="${batch.price2L || 20000}" required style="font-weight: 800; color: var(--primary);" />
-                </div>
-              </div>
-            </div>
-
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label">Fecha de Preparación *</label>
-                <input type="date" id="editBatchDate" class="form-input" value="${String(batch.preparationDate).split('T')[0]}" required />
+                <label class="form-label">Fecha Elaboración *</label>
+                <input type="date" id="editBatchDate" class="form-input" value="${prepDate}" required />
               </div>
-
               <div class="form-group">
-                <label class="form-label">Fecha de Vencimiento (Opcional)</label>
-                <input type="date" id="editBatchExpDate" class="form-input" value="${batch.expirationDate ? String(batch.expirationDate).split('T')[0] : ''}" />
+                <label class="form-label">Fecha Vencimiento (Opcional)</label>
+                <input type="date" id="editBatchExpDate" class="form-input" value="${expDate}" />
               </div>
             </div>
 
-            <!-- Leche y Yogur Producido -->
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">🥛 Leche Invertida (L) *</label>
-                <input type="number" id="editBatchMilk" class="form-input" min="0.5" step="0.1" value="${batch.milkUsedLiters}" required />
+                <input type="number" id="editBatchMilk" class="form-input" min="0.1" step="0.1" value="${milk}" required />
               </div>
-
               <div class="form-group">
                 <label class="form-label">🍶 Yogur Salido (L) *</label>
-                <input type="number" id="editBatchTotalProduced" class="form-input" min="0.1" step="0.1" value="${batch.totalLitersProduced}" required />
+                <input type="number" id="editBatchTotalProduced" class="form-input" min="0.1" step="0.1" value="${produced}" required />
               </div>
             </div>
 
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label">Botellas 1 Litro Producidas</label>
-                <input type="number" id="editBatchB1" class="form-input" min="0" value="${batch.bottles1LProduced || 0}" />
+                <label class="form-label">🍾 Botellas 1L Envasadas</label>
+                <input type="number" id="editBatchB1" class="form-input" min="0" value="${b1}" />
               </div>
-
               <div class="form-group">
-                <label class="form-label">Botellas 2 Litros Producidas</label>
-                <input type="number" id="editBatchB2" class="form-input" min="0" value="${batch.bottles2LProduced || 0}" />
+                <label class="form-label">🍾 Botellas 2L Envasadas</label>
+                <input type="number" id="editBatchB2" class="form-input" min="0" value="${b2}" />
               </div>
             </div>
 
-            <!-- Resumen Recalculado en Tiempo Real -->
-            <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); padding: 12px; border-radius: var(--radius-md); margin-bottom: 14px; display: flex; justify-content: space-around; text-align: center;">
-              <div>
-                <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Total Yogur</span>
-                <div id="editTotalLitrosDisplay" style="font-size: 1.15rem; font-weight: 800; color: var(--primary);">${batch.totalLitersProduced} L</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">💲 Precio Venta 1L ($ COP) *</label>
+                <input type="number" id="editBatchPrice1L" class="form-input" min="1000" step="500" value="${p1}" required />
               </div>
-              <div style="width: 1px; background: var(--border-subtle);"></div>
-              <div>
-                <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Rendimiento</span>
-                <div id="editYieldDisplay" style="font-size: 1.15rem; font-weight: 800; color: var(--success);">${batch.yieldPercentage}%</div>
+              <div class="form-group">
+                <label class="form-label">💲 Precio Venta 2L ($ COP) *</label>
+                <input type="number" id="editBatchPrice2L" class="form-input" min="2000" step="500" value="${p2}" required />
               </div>
+            </div>
+
+            <div style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 12px; display: flex; justify-content: space-between; font-size: 0.85rem;">
+              <span>Rendimiento recalculado:</span>
+              <strong id="editYieldPreview" style="color: var(--success);">${batch.yieldPercentage}%</strong>
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label">Observaciones o Notas</label>
-              <textarea id="editBatchNotes" class="form-textarea" rows="2">${batch.notes || ''}</textarea>
+              <label class="form-label">Notas Adicionales</label>
+              <input type="text" id="editBatchNotes" class="form-input" value="${batch.notes || ''}" placeholder="Ej: Observaciones de la fermentación..." />
             </div>
 
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline" id="btnCancelEditBatchModal">Cancelar</button>
-            <button type="submit" class="btn btn-primary">Guardar Cambios del Lote</button>
+            <button type="submit" class="btn btn-accent">Guardar Cambios</button>
           </div>
         </form>
       </div>
@@ -1394,25 +1567,15 @@ async function openEditBatchModal(batchId) {
   const editTotalProduced = document.getElementById('editBatchTotalProduced');
   const editB1 = document.getElementById('editBatchB1');
   const editB2 = document.getElementById('editBatchB2');
-  const editTotalDisplay = document.getElementById('editTotalLitrosDisplay');
-  const editYieldDisplay = document.getElementById('editYieldDisplay');
+  const editYieldPreview = document.getElementById('editYieldPreview');
 
   const recalculateEdit = () => {
-    const milk = Number(editMilk.value) || 0;
-    const totalL = Number(editTotalProduced.value) || 0;
-    editTotalDisplay.textContent = `${totalL} L`;
-
-    if (milk > 0) {
-      const pct = Math.round((totalL / milk) * 100);
-      const diff = totalL - milk;
-      if (diff > 0) {
-        editYieldDisplay.innerHTML = `${pct}% <span style="font-size: 0.75rem; color: var(--success);">(+${diff.toFixed(1)}L)</span>`;
-      } else {
-        editYieldDisplay.textContent = `${pct}%`;
-      }
-      editYieldDisplay.style.color = pct >= 85 ? 'var(--success)' : 'var(--warning)';
-    } else {
-      editYieldDisplay.textContent = '0%';
+    const m = Number(editMilk.value) || 0;
+    const p = Number(editTotalProduced.value) || 0;
+    if (m > 0) {
+      const pct = Math.round((p / m) * 100);
+      editYieldPreview.textContent = `${pct}%`;
+      editYieldPreview.style.color = pct >= 85 ? 'var(--success)' : 'var(--warning)';
     }
   };
 
@@ -1421,17 +1584,13 @@ async function openEditBatchModal(batchId) {
   editB1?.addEventListener('input', () => {
     const b1 = Number(editB1.value) || 0;
     const b2 = Number(editB2.value) || 0;
-    if (b1 * 1 + b2 * 2 > 0) {
-      editTotalProduced.value = b1 * 1 + b2 * 2;
-    }
+    if (b1 * 1 + b2 * 2 > 0) editTotalProduced.value = b1 * 1 + b2 * 2;
     recalculateEdit();
   });
   editB2?.addEventListener('input', () => {
     const b1 = Number(editB1.value) || 0;
     const b2 = Number(editB2.value) || 0;
-    if (b1 * 1 + b2 * 2 > 0) {
-      editTotalProduced.value = b1 * 1 + b2 * 2;
-    }
+    if (b1 * 1 + b2 * 2 > 0) editTotalProduced.value = b1 * 1 + b2 * 2;
     recalculateEdit();
   });
 
@@ -1473,14 +1632,14 @@ function openDeactivateBatchModal(batchId, batchCode) {
 
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 450px;">
+      <div class="modal-card" style="max-width: 480px;">
         <div class="modal-header">
           <h3 class="modal-title" style="color: var(--danger);">🚫 Desactivar Lote: ${batchCode}</h3>
           <button class="modal-close-btn" id="btnCloseDeactModal">✕</button>
         </div>
         <form id="deactivateBatchForm">
           <div class="modal-body">
-            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 14px;">
+            <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 14px;">
               El lote no se borrará permanentemente, sino que quedará como <strong>Desactivado</strong> para mantener el historial.
             </p>
 
@@ -1489,12 +1648,24 @@ function openDeactivateBatchModal(batchId, batchCode) {
               <input type="text" id="deactReason" class="form-input" placeholder="Ej: Se dañó la fermentación / Error de digitación" required />
             </div>
 
-            <div style="margin-top: 10px;">
-              <label style="display: flex; align-items: center; gap: 8px; font-size: 0.88rem; font-weight: 700; cursor: pointer;">
+            <!-- Opción para desvincular pedidos y dejarlos como preventa -->
+            <div style="margin-top: 12px; background: #FAF5FF; border: 1.5px solid #DDD6FE; border-radius: var(--radius-sm); padding: 10px 12px;">
+              <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.86rem; font-weight: 800; color: var(--primary); cursor: pointer;">
+                <input type="checkbox" id="chkUnlinkOrders" checked style="width: 17px; height: 17px; margin-top: 2px; cursor: pointer; accent-color: var(--primary);" />
+                <span>🥣 Liberar pedidos asociados y dejarlos como "Encargo Preventa (Sin lote)"</span>
+              </label>
+              <small style="display: block; color: #6B21A8; margin-top: 4px; margin-left: 25px; font-size: 0.76rem; font-weight: 600;">
+                (Recomendado: Los clientes conservan su encargo y podrás asociarlos al próximo lote que prepares)
+              </small>
+            </div>
+
+            <!-- Opción para restaurar stock de insumos -->
+            <div style="margin-top: 10px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 10px 12px;">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 0.86rem; font-weight: 700; cursor: pointer;">
                 <input type="checkbox" id="chkRestoreStock" style="width: 16px; height: 16px; cursor: pointer;" />
                 Restaurar stock de los insumos utilizados
               </label>
-              <small style="display: block; color: var(--text-muted); margin-top: 4px; margin-left: 24px;">
+              <small style="display: block; color: var(--text-muted); margin-top: 4px; margin-left: 24px; font-size: 0.76rem;">
                 (Devuelve la leche, botellas y etiquetas al inventario)
               </small>
             </div>
@@ -1517,14 +1688,246 @@ function openDeactivateBatchModal(batchId, batchCode) {
     e.preventDefault();
     const reason = document.getElementById('deactReason').value;
     const restoreStock = document.getElementById('chkRestoreStock').checked;
+    const unlinkOrders = document.getElementById('chkUnlinkOrders')?.checked ?? true;
 
     try {
-      await api.deactivateBatch(batchId, reason, restoreStock);
-      showToast('Lote desactivado correctamente', 'warning');
+      const res = await api.deactivateBatch(batchId, reason, restoreStock, unlinkOrders);
+      showToast(res.message || 'Lote desactivado correctamente', 'warning');
       closeModal();
       renderBatches(document.getElementById('contentContainer'));
     } catch (err) {
       showToast('Error al desactivar lote', 'danger');
     }
   });
+}
+
+// Modal para vinculación masiva e inteligente de encargos preventa a un lote
+async function openLinkOrdersModal(batchId, batchCode, flavor, container = null) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 600px;">
+        <div class="modal-header">
+          <h3 class="modal-title">⚡ Vincular Encargos Preventa a Lote</h3>
+          <button class="modal-close-btn" id="btnCloseLinkOrdersModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+            Buscando encargos pendientes de <strong>${flavor}</strong>... 🥛
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btnCloseLinkOrdersModal')?.addEventListener('click', () => (modalOverlay.innerHTML = ''));
+
+  try {
+    const data = await api.getPendingBatchOrders(flavor);
+    const orders = data.orders || [];
+
+    if (orders.length === 0) {
+      modalOverlay.querySelector('.modal-body').innerHTML = `
+        <div style="text-align: center; padding: 24px;">
+          <div style="font-size: 2.5rem; margin-bottom: 8px;">✅</div>
+          <h4 style="color: var(--primary); font-weight: 800; margin: 0 0 6px 0;">¡No hay encargos pendientes sin lote!</h4>
+          <p style="color: var(--text-muted); font-size: 0.88rem; margin: 0;">
+            Todos los pedidos registrados de sabor <strong>${flavor}</strong> ya tienen un lote asignado o ya han sido entregados.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btnCloseNoPendingModal">Entendido</button>
+        </div>
+      `;
+      document.getElementById('btnCloseNoPendingModal')?.addEventListener('click', () => (modalOverlay.innerHTML = ''));
+      return;
+    }
+
+    const todayStr = getTodayLocalDateStr();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+
+    modalOverlay.querySelector('.modal-body').innerHTML = `
+      <div style="background: #ECFDF5; border: 1.5px solid #A7F3D0; border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 14px;">
+        <div style="font-weight: 800; color: #065F46; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;">
+          <span>🥛</span> Lote Destino: <strong>${batchCode}</strong> (${flavor})
+        </div>
+        <div style="font-size: 0.82rem; color: #047857; margin-top: 4px;">
+          Selecciona qué encargos corresponden a la entrega de este lote. Los pedidos a futuro se pueden desmarcar para producirlos en su fecha.
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+        <span style="font-size: 0.84rem; font-weight: 800; color: var(--text-main);">
+          📋 Encargos Disponibles (${orders.length}):
+        </span>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button type="button" class="btn btn-outline btn-sm" id="btnFilterToday" style="font-size: 0.75rem; padding: 3px 9px; font-weight: 700; color: #92400E; border-color: #FCD34D; background: #FFFBEB;">
+            🛵 Solo Hoy
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" id="btnFilterTomorrow" style="font-size: 0.75rem; padding: 3px 9px; font-weight: 700; color: #3730A3; border-color: #C7D2FE; background: #EEF2FF;">
+            🛵 Solo Mañana
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" id="btnSelectAllOrders" style="font-size: 0.75rem; padding: 3px 9px; font-weight: 700; color: #065F46; border-color: #A7F3D0; background: #ECFDF5;">
+            📅 Todos
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" id="btnDeselectAllOrders" style="font-size: 0.75rem; padding: 3px 9px; color: var(--text-muted); border-color: #E2E8F0;">
+            🚫 Ninguno
+          </button>
+        </div>
+      </div>
+
+      <div style="max-height: 250px; overflow-y: auto; border: 1.5px solid var(--border-color); border-radius: var(--radius-sm);">
+        <table class="app-table" style="margin: 0; font-size: 0.82rem;">
+          <thead>
+            <tr style="background: var(--bg-app);">
+              <th style="width: 36px; text-align: center;">✓</th>
+              <th>Cliente / Pedido</th>
+              <th>Fecha Entrega</th>
+              <th>Litros</th>
+              <th>Total</th>
+              <th>Pago</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orders
+              .map((o) => {
+                const delivStr = o.deliveryDate ? String(o.deliveryDate).split('T')[0] : '';
+                const isToday = delivStr === todayStr || (!delivStr && delivStr !== 'null');
+                const isTomorrow = delivStr === tomorrowStr;
+                let dateBadge = `<span style="font-size: 0.74rem; color: var(--text-muted);">Sin fecha (${formatDate(o.orderDate)})</span>`;
+                if (delivStr === todayStr) {
+                  dateBadge = `<span class="badge" style="background: #FEF3C7; color: #92400E; font-size: 0.72rem; font-weight: 800;">🛵 Entrega Hoy</span>`;
+                } else if (delivStr === tomorrowStr) {
+                  dateBadge = `<span class="badge" style="background: #E0E7FF; color: #3730A3; font-size: 0.72rem; font-weight: 800;">🛵 Entrega Mañana</span>`;
+                } else if (delivStr < todayStr) {
+                  dateBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-size: 0.72rem; font-weight: 800;">⚠️ Vencido (${formatDate(o.deliveryDate)})</span>`;
+                } else if (delivStr > tomorrowStr) {
+                  dateBadge = `<span class="badge" style="background: #F1F5F9; color: #475569; font-size: 0.72rem; font-weight: 700;">📅 Futuro (${formatDate(o.deliveryDate)})</span>`;
+                }
+
+                return `
+                  <tr style="cursor: pointer;" onclick="const chk = this.querySelector('input[type=checkbox]'); if (event.target !== chk) { chk.checked = !chk.checked; chk.dispatchEvent(new Event('change')); }">
+                    <td style="text-align: center;" onclick="event.stopPropagation();">
+                      <input type="checkbox" class="chk-order-to-link" value="${o.id}" data-liters="${o.totalLiters}" data-is-today="${isToday ? '1' : '0'}" data-is-tomorrow="${isTomorrow ? '1' : '0'}" ${isToday ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer;" />
+                    </td>
+                    <td>
+                      <strong>${o.customer?.fullName || 'Cliente'}</strong>
+                      <div style="font-size: 0.72rem; color: var(--text-muted);">${o.orderNumber}</div>
+                    </td>
+                    <td>${dateBadge}</td>
+                    <td><strong style="color: var(--primary);">${o.totalLiters} L</strong></td>
+                    <td><strong>${formatCOP(o.totalAmount)}</strong></td>
+                    <td>
+                      <span class="badge ${o.paymentStatus === 'PAID' ? 'badge-paid' : 'badge-pending'}" style="font-size: 0.7rem;">
+                        ${o.paymentStatus === 'PAID' ? 'Pagado' : 'Pendiente'}
+                      </span>
+                    </td>
+                  </tr>
+                `;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-app); padding: 8px 12px; border-radius: var(--radius-sm);">
+        <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 700;">Litros seleccionados:</span>
+        <strong id="linkSelectedLitersDisplay" style="color: var(--primary); font-size: 0.95rem;">0 Litros</strong>
+      </div>
+    `;
+
+    // Footer
+    const footerDiv = document.createElement('div');
+    footerDiv.className = 'modal-footer';
+    footerDiv.innerHTML = `
+      <button type="button" class="btn btn-outline" id="btnCancelLinkModal">Cancelar</button>
+      <button type="button" class="btn btn-accent" id="btnConfirmLinkOrders" style="padding: 9px 20px; font-weight: 800;">
+        🔗 Vincular Pedidos al Lote
+      </button>
+    `;
+    modalOverlay.querySelector('.modal-card').appendChild(footerDiv);
+
+    const updateSelectedLiters = () => {
+      const checked = modalOverlay.querySelectorAll('.chk-order-to-link:checked');
+      let sumLiters = 0;
+      checked.forEach((chk) => {
+        sumLiters += Number(chk.dataset.liters) || 0;
+      });
+      const display = modalOverlay.querySelector('#linkSelectedLitersDisplay');
+      if (display) display.textContent = `${sumLiters} Litros (${checked.length} pedidos)`;
+      const confirmBtn = modalOverlay.querySelector('#btnConfirmLinkOrders');
+      if (confirmBtn) {
+        confirmBtn.disabled = checked.length === 0;
+        confirmBtn.textContent = `🔗 Vincular ${checked.length} Pedido(s) (${sumLiters}L)`;
+      }
+    };
+
+    modalOverlay.querySelectorAll('.chk-order-to-link').forEach((chk) => {
+      chk.addEventListener('change', updateSelectedLiters);
+    });
+
+    modalOverlay.querySelector('#btnFilterToday')?.addEventListener('click', () => {
+      modalOverlay.querySelectorAll('.chk-order-to-link').forEach((chk) => {
+        chk.checked = chk.dataset.isToday === '1';
+      });
+      updateSelectedLiters();
+    });
+
+    modalOverlay.querySelector('#btnFilterTomorrow')?.addEventListener('click', () => {
+      modalOverlay.querySelectorAll('.chk-order-to-link').forEach((chk) => {
+        chk.checked = chk.dataset.isTomorrow === '1';
+      });
+      updateSelectedLiters();
+    });
+
+    modalOverlay.querySelector('#btnSelectAllOrders')?.addEventListener('click', () => {
+      modalOverlay.querySelectorAll('.chk-order-to-link').forEach((chk) => {
+        chk.checked = true;
+      });
+      updateSelectedLiters();
+    });
+
+    modalOverlay.querySelector('#btnDeselectAllOrders')?.addEventListener('click', () => {
+      modalOverlay.querySelectorAll('.chk-order-to-link').forEach((chk) => {
+        chk.checked = false;
+      });
+      updateSelectedLiters();
+    });
+
+    modalOverlay.querySelector('#btnCancelLinkModal')?.addEventListener('click', () => (modalOverlay.innerHTML = ''));
+
+    modalOverlay.querySelector('#btnConfirmLinkOrders')?.addEventListener('click', async () => {
+      const checked = modalOverlay.querySelectorAll('.chk-order-to-link:checked');
+      const orderIds = Array.from(checked).map((chk) => Number(chk.value));
+      if (orderIds.length === 0) {
+        showToast('Selecciona al menos un pedido para vincular', 'warning');
+        return;
+      }
+      try {
+        const res = await api.linkOrdersToBatch(batchId, { orderIds });
+        showToast(res.message || 'Pedidos vinculados con éxito 🍶');
+        modalOverlay.innerHTML = '';
+        if (container) {
+          loadBatchesList(container);
+        } else {
+          renderBatches(document.getElementById('contentContainer'));
+        }
+      } catch (err) {
+        showToast(err.message || 'Error al vincular pedidos', 'danger');
+      }
+    });
+
+    updateSelectedLiters();
+  } catch (err) {
+    console.error('Error opening link orders modal:', err);
+    modalOverlay.querySelector('.modal-body').innerHTML = `
+      <div style="color: var(--danger); text-align: center; padding: 20px;">
+        Error al cargar encargos pendientes: ${err.message}
+      </div>
+    `;
+  }
 }
