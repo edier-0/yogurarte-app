@@ -3,7 +3,7 @@ import prisma from '../prisma.js';
 
 export const getCustomers = async (req: Request, res: Response) => {
   try {
-    const { search, includeInactive } = req.query;
+    const { search, includeInactive, batchId } = req.query;
 
     const whereClause: any = {};
     if (includeInactive !== 'true') {
@@ -18,12 +18,27 @@ export const getCustomers = async (req: Request, res: Response) => {
       ];
     }
 
+    if (batchId && typeof batchId === 'string' && batchId !== 'ALL' && batchId.trim() !== '') {
+      const bId = Number(batchId);
+      if (!isNaN(bId)) {
+        whereClause.orders = {
+          some: {
+            OR: [
+              { batchId: bId },
+              { items: { some: { batchId: bId } } },
+            ],
+          },
+        };
+      }
+    }
+
     const customers = await prisma.customer.findMany({
       where: whereClause,
       include: {
         orders: {
           select: {
             id: true,
+            batchId: true,
             totalLiters: true,
             totalAmount: true,
             paidAmount: true,
@@ -31,6 +46,13 @@ export const getCustomers = async (req: Request, res: Response) => {
             paymentStatus: true,
             deliveryStatus: true,
             orderDate: true,
+            batch: {
+              select: {
+                id: true,
+                batchCode: true,
+                flavor: true,
+              },
+            },
           },
         },
       },
@@ -41,6 +63,19 @@ export const getCustomers = async (req: Request, res: Response) => {
       const totalOrders = c.orders.length;
       const totalLiters = c.orders.reduce((acc, o) => acc + o.totalLiters, 0);
       const totalSpent = c.orders.reduce((acc, o) => acc + o.totalAmount, 0);
+
+      // Extraer lotes únicos en los que el cliente ha comprado
+      const uniqueBatchesMap = new Map();
+      c.orders.forEach((o) => {
+        if (o.batch) {
+          uniqueBatchesMap.set(o.batch.id, {
+            id: o.batch.id,
+            batchCode: o.batch.batchCode,
+            flavor: o.batch.flavor,
+          });
+        }
+      });
+      const customerBatches = Array.from(uniqueBatchesMap.values());
 
       // Deuda real: solo pedidos ENTREGADOS y no pagados
       const deliveredOrders = c.orders.filter((o) => o.deliveryStatus === 'DELIVERED');
@@ -70,6 +105,7 @@ export const getCustomers = async (req: Request, res: Response) => {
         inProcessPaidCount,
         pendingDebt: deliveredPendingDebt, // Deuda real
         totalPendingAmount,
+        batches: customerBatches,
         createdAt: c.createdAt,
       };
     });

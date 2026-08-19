@@ -13,10 +13,23 @@ export const getOrders = async (req: Request, res: Response) => {
       endDate,
       month, // formato YYYY-MM
       date, // formato YYYY-MM-DD
+      batchId, // ID del lote
       limit,
     } = req.query;
 
     const conditions: any[] = [];
+
+    if (batchId && typeof batchId === 'string' && batchId !== 'ALL' && batchId.trim() !== '') {
+      const bId = Number(batchId);
+      if (!isNaN(bId)) {
+        conditions.push({
+          OR: [
+            { batchId: bId },
+            { items: { some: { batchId: bId } } },
+          ],
+        });
+      }
+    }
 
     if (search && typeof search === 'string' && search.trim()) {
       const q = search.trim();

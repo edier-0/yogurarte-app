@@ -4,14 +4,24 @@ import { openOrderModal } from './ordersView.js';
 
 let searchQuery = '';
 let currentDebtFilter = 'ALL'; // 'ALL', 'DELIVERED_DEBT', 'IN_PROCESS', 'PAID'
+let currentBatchFilter = 'ALL';
 let cachedCustomers = [];
+let availableBatches = [];
 
 export async function renderCustomers(container) {
+  try {
+    const batchesRes = await api.getBatches();
+    availableBatches = batchesRes || [];
+  } catch (err) {
+    console.error('Error loading batches in customersView:', err);
+    availableBatches = [];
+  }
+
   container.innerHTML = `
     <!-- Barra de Búsqueda, Filtros y Acción -->
     <div class="orders-toolbar-card" style="padding: 14px 18px; margin-bottom: 20px;">
       <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 280px; max-width: 450px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 280px; max-width: 420px;">
           <div class="search-box input-with-icon" style="width: 100%;">
             <span class="input-icon">🔍</span>
             <input 
@@ -26,6 +36,20 @@ export async function renderCustomers(container) {
         </div>
 
         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <!-- Selector de Lote para Clientes -->
+          <select id="custBatchFilterSelect" class="orders-select-item" style="height: 40px; font-weight: 700; color: var(--primary);">
+            <option value="ALL" ${currentBatchFilter === 'ALL' ? 'selected' : ''}>🍶 Todos los Lotes</option>
+            ${availableBatches
+              .map(
+                (b) => `
+              <option value="${b.id}" ${String(currentBatchFilter) === String(b.id) ? 'selected' : ''}>
+                🍶 ${b.batchCode} - ${b.flavor}
+              </option>
+            `
+              )
+              .join('')}
+          </select>
+
           <div class="filter-chip-group" id="custDebtFilterGroup">
             <button class="filter-chip ${currentDebtFilter === 'ALL' ? 'active' : ''}" data-debt="ALL">Todos</button>
             <button class="filter-chip ${currentDebtFilter === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt="DELIVERED_DEBT" style="${currentDebtFilter === 'DELIVERED_DEBT' ? 'background: #DC2626; border-color: #DC2626; color: white;' : 'color: #DC2626; font-weight: 700;'}">
@@ -63,6 +87,13 @@ export async function renderCustomers(container) {
       searchQuery = e.target.value;
       loadCustomersList(container);
     }, 250);
+  });
+
+  // Listener para filtro de lote
+  const batchFilterSelect = container.querySelector('#custBatchFilterSelect');
+  batchFilterSelect?.addEventListener('change', (e) => {
+    currentBatchFilter = e.target.value;
+    loadCustomersList(container);
   });
 
   // Listeners de filtro de deuda
@@ -124,7 +155,10 @@ async function loadCustomersList(container) {
   if (!gridContainer) return;
 
   try {
-    const allCustomers = await api.getCustomers(searchQuery);
+    const allCustomers = await api.getCustomers({
+      search: searchQuery,
+      batchId: currentBatchFilter,
+    });
     cachedCustomers = allCustomers || [];
 
     // Aplicar filtro de deuda localmente
@@ -152,11 +186,13 @@ async function loadCustomersList(container) {
                 ? 'No hay clientes con pedidos pagados pendientes de entrega.'
                 : currentDebtFilter === 'IN_PROCESS'
                 ? 'No hay clientes con pedidos encargados en proceso.'
+                : currentBatchFilter !== 'ALL'
+                ? 'No hay clientes que hayan comprado o encargado yogur de este lote.'
                 : 'Registra tus clientes habituales para agilizar la toma de pedidos.'
             }
           </div>
           ${
-            currentDebtFilter === 'ALL'
+            currentDebtFilter === 'ALL' && currentBatchFilter === 'ALL'
               ? '<button class="btn btn-primary" id="btnRegisterCustEmpty">+ Registrar Primer Cliente</button>'
               : ''
           }
@@ -259,6 +295,23 @@ async function loadCustomersList(container) {
                   <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 2px;">
                     <span>📍</span> ${c.address || 'Fonseca'} ${c.neighborhood ? `(${c.neighborhood})` : ''}
                   </div>
+                  ${
+                    c.batches && c.batches.length > 0
+                      ? `
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px;">
+                      ${c.batches
+                        .map(
+                          (b) => `
+                        <span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-weight: 800; font-size: 0.72rem;">
+                          🍶 ${b.batchCode} (${b.flavor})
+                        </span>
+                      `
+                        )
+                        .join('')}
+                    </div>
+                  `
+                      : ''
+                  }
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-end;">

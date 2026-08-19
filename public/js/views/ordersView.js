@@ -6,6 +6,7 @@ let currentFilters = {
   debtCategory: 'ALL', // 'ALL' | 'DELIVERED_DEBT' | 'PAID_NOT_DELIVERED' | 'IN_PROCESS' | 'PAID'
   paymentStatus: 'ALL',
   deliveryStatus: 'ALL',
+  batchId: 'ALL',
   sortBy: 'PRIORITY_DEBT', // 'PRIORITY_DEBT' | 'UPDATED_DESC' | 'DATE_DESC' | 'DATE_ASC'
   month: '', // YYYY-MM
   specificDate: '', // YYYY-MM-DD
@@ -20,8 +21,18 @@ let calendarState = {
 };
 
 let cachedOrders = [];
+let availableBatches = [];
 
 export async function renderOrders(container) {
+  // Cargar lotes disponibles para el filtro
+  try {
+    const batchesRes = await api.getBatches();
+    availableBatches = batchesRes || [];
+  } catch (err) {
+    console.error('Error fetching batches for filter:', err);
+    availableBatches = [];
+  }
+
   // Generar opciones de meses anteriores dinámicamente
   const monthOptions = [];
   const currDate = new Date();
@@ -127,6 +138,20 @@ export async function renderOrders(container) {
         </div>
 
         <div class="orders-selects-group">
+          <!-- Selector de Lote de Producción -->
+          <select id="selectBatchFilter" class="orders-select-item" style="font-weight: 700; color: var(--primary);">
+            <option value="ALL" ${currentFilters.batchId === 'ALL' ? 'selected' : ''}>🍶 Todos los Lotes</option>
+            ${availableBatches
+              .map(
+                (b) => `
+              <option value="${b.id}" ${String(currentFilters.batchId) === String(b.id) ? 'selected' : ''}>
+                🍶 ${b.batchCode} - ${b.flavor} ${b.status === 'EN_PROCESO' ? '(En proceso)' : ''}
+              </option>
+            `
+              )
+              .join('')}
+          </select>
+
           <!-- Selector de Ordenamiento -->
           <select id="selectOrderSort" class="orders-select-item" style="font-weight: 700; color: var(--primary);">
             <option value="PRIORITY_DEBT" ${currentFilters.sortBy === 'PRIORITY_DEBT' ? 'selected' : ''}>🎯 Prioridad: Deudas de primero</option>
@@ -238,6 +263,12 @@ export async function renderOrders(container) {
     });
   });
 
+  const batchSelect = container.querySelector('#selectBatchFilter');
+  batchSelect?.addEventListener('change', (e) => {
+    currentFilters.batchId = e.target.value;
+    loadOrdersList(container);
+  });
+
   const paymentSelect = container.querySelector('#selectPaymentFilter');
   paymentSelect?.addEventListener('change', (e) => {
     currentFilters.paymentStatus = e.target.value;
@@ -310,6 +341,7 @@ async function loadOrdersList(container) {
       deliveryStatus: currentFilters.deliveryStatus,
       sortBy: currentFilters.sortBy,
       month: currentFilters.month,
+      batchId: currentFilters.batchId,
     };
 
     if (currentFilters.specificDate) {
@@ -887,7 +919,7 @@ export async function openOrderModal(orderData = null) {
                 />
                 <div id="customerSuggestions" class="autocomplete-dropdown"></div>
               </div>
-              <div class="form-group">
+              <div class="form-group autocomplete-wrapper">
                 <label class="form-label">Teléfono o @Usuario de WhatsApp *</label>
                 <input 
                   type="text" 
@@ -895,8 +927,10 @@ export async function openOrderModal(orderData = null) {
                   class="form-input" 
                   placeholder="Ej: 3014964250 o @usuario_wa" 
                   value="${defaultPhone}" 
+                  autocomplete="off"
                   required 
                 />
+                <div id="phoneSuggestions" class="autocomplete-dropdown"></div>
               </div>
             </div>
 
@@ -1160,13 +1194,31 @@ export async function openOrderModal(orderData = null) {
     pendingDisplay.value = formatCOP(pending);
   });
 
-  // Autocomplete interactivo en tiempo real al escribir en Nombre y Apellido
+  // Autocomplete interactivo seguro para Nombre y Teléfono/@Usuario
   const nameInput = document.getElementById('custFullName');
   const suggestionsBox = document.getElementById('customerSuggestions');
   const phoneInput = document.getElementById('custPhone');
+  const phoneSuggestionsBox = document.getElementById('phoneSuggestions');
   const addressInput = document.getElementById('custAddress');
 
-  const renderSuggestions = (query) => {
+  const selectCustomer = (c) => {
+    nameInput.value = c.fullName;
+    phoneInput.value = c.phone;
+    addressInput.value = c.address || '';
+    selectedCustomerId = Number(c.id);
+    if (suggestionsBox) {
+      suggestionsBox.innerHTML = '';
+      suggestionsBox.classList.remove('active');
+    }
+    if (phoneSuggestionsBox) {
+      phoneSuggestionsBox.innerHTML = '';
+      phoneSuggestionsBox.classList.remove('active');
+    }
+    showToast(`Cliente seleccionado: ${c.fullName} 👤`, 'info');
+  };
+
+  const renderNameSuggestions = (query) => {
+    if (!suggestionsBox) return;
     if (!query || query.trim().length < 1 || !existingCustomers || existingCustomers.length === 0) {
       suggestionsBox.innerHTML = '';
       suggestionsBox.classList.remove('active');
@@ -1174,9 +1226,11 @@ export async function openOrderModal(orderData = null) {
     }
 
     const q = query.toLowerCase().trim();
-    const matches = existingCustomers.filter(
-      (c) => c.fullName.toLowerCase().includes(q) || (c.phone && c.phone.includes(q))
-    );
+    const matches = existingCustomers.filter((c) => {
+      const nameMatch = c.fullName && c.fullName.toLowerCase().includes(q);
+      const phoneMatch = c.phone && c.phone.toLowerCase().includes(q);
+      return nameMatch || phoneMatch;
+    });
 
     if (matches.length === 0) {
       suggestionsBox.innerHTML = '';
@@ -1185,10 +1239,10 @@ export async function openOrderModal(orderData = null) {
     }
 
     suggestionsBox.innerHTML = matches
-      .slice(0, 6)
+      .slice(0, 5)
       .map(
         (c) => `
-        <div class="autocomplete-item" data-id="${c.id}" data-name="${c.fullName}" data-phone="${c.phone}" data-address="${c.address || ''}">
+        <div class="autocomplete-item" data-id="${c.id}">
           <span class="autocomplete-item-name">👤 ${c.fullName}</span>
           <span class="autocomplete-item-details">📞 ${c.phone} • 📍 ${c.address || 'Fonseca'}</span>
         </div>
@@ -1200,25 +1254,85 @@ export async function openOrderModal(orderData = null) {
 
     suggestionsBox.querySelectorAll('.autocomplete-item').forEach((item) => {
       item.addEventListener('click', () => {
-        nameInput.value = item.dataset.name;
-        phoneInput.value = item.dataset.phone;
-        addressInput.value = item.dataset.address;
-        selectedCustomerId = Number(item.dataset.id);
-        suggestionsBox.innerHTML = '';
-        suggestionsBox.classList.remove('active');
-        showToast(`Cliente seleccionado: ${item.dataset.name} 👤`, 'info');
+        const id = Number(item.dataset.id);
+        const c = existingCustomers.find((cust) => cust.id === id);
+        if (c) selectCustomer(c);
+      });
+    });
+  };
+
+  const renderPhoneSuggestions = (query) => {
+    if (!phoneSuggestionsBox) return;
+    if (!query || query.trim().length < 2 || !existingCustomers || existingCustomers.length === 0) {
+      phoneSuggestionsBox.innerHTML = '';
+      phoneSuggestionsBox.classList.remove('active');
+      return;
+    }
+
+    const rawQ = query.trim().toLowerCase();
+    const isUsername = rawQ.startsWith('@') || /[a-zA-Z]/.test(rawQ);
+    const cleanQ = rawQ.replace(/^@/, '');
+    const cleanDigits = rawQ.replace(/\D/g, '');
+
+    const matches = existingCustomers.filter((c) => {
+      if (!c.phone) return false;
+      const cPhoneLower = c.phone.toLowerCase();
+      if (isUsername) {
+        return cPhoneLower.includes(cleanQ) || (c.fullName && c.fullName.toLowerCase().includes(cleanQ));
+      } else {
+        const cDigits = c.phone.replace(/\D/g, '');
+        return (cleanDigits && cDigits.includes(cleanDigits)) || (c.fullName && c.fullName.toLowerCase().includes(rawQ));
+      }
+    });
+
+    if (matches.length === 0) {
+      phoneSuggestionsBox.innerHTML = '';
+      phoneSuggestionsBox.classList.remove('active');
+      return;
+    }
+
+    phoneSuggestionsBox.innerHTML = matches
+      .slice(0, 5)
+      .map(
+        (c) => `
+        <div class="autocomplete-item" data-id="${c.id}">
+          <span class="autocomplete-item-name">📞 ${c.phone}</span>
+          <span class="autocomplete-item-details">👤 ${c.fullName} • 📍 ${c.address || 'Fonseca'}</span>
+        </div>
+      `
+      )
+      .join('');
+
+    phoneSuggestionsBox.classList.add('active');
+
+    phoneSuggestionsBox.querySelectorAll('.autocomplete-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        const id = Number(item.dataset.id);
+        const c = existingCustomers.find((cust) => cust.id === id);
+        if (c) selectCustomer(c);
       });
     });
   };
 
   nameInput?.addEventListener('input', (e) => {
     selectedCustomerId = null;
-    renderSuggestions(e.target.value);
+    renderNameSuggestions(e.target.value);
   });
 
   nameInput?.addEventListener('focus', (e) => {
     if (e.target.value.trim().length > 0) {
-      renderSuggestions(e.target.value);
+      renderNameSuggestions(e.target.value);
+    }
+  });
+
+  phoneInput?.addEventListener('input', (e) => {
+    selectedCustomerId = null;
+    renderPhoneSuggestions(e.target.value);
+  });
+
+  phoneInput?.addEventListener('focus', (e) => {
+    if (e.target.value.trim().length > 1) {
+      renderPhoneSuggestions(e.target.value);
     }
   });
 
@@ -1226,21 +1340,45 @@ export async function openOrderModal(orderData = null) {
     if (!nameInput?.contains(e.target) && !suggestionsBox?.contains(e.target)) {
       suggestionsBox?.classList.remove('active');
     }
+    if (!phoneInput?.contains(e.target) && !phoneSuggestionsBox?.contains(e.target)) {
+      phoneSuggestionsBox?.classList.remove('active');
+    }
   };
   document.addEventListener('click', handleOutsideClick);
 
   if (!isEditing) {
     phoneInput?.addEventListener('blur', async () => {
-      const phone = phoneInput.value.trim();
-      if (phone.length >= 7) {
-        const foundCust = existingCustomers.find((c) => c.phone.replace(/\D/g, '') === phone.replace(/\D/g, ''));
-        if (foundCust) {
-          nameInput.value = foundCust.fullName;
-          addressInput.value = foundCust.address;
-          selectedCustomerId = foundCust.id;
-          showToast(`Cliente encontrado: ${foundCust.fullName}`, 'info');
+      // Retardo pequeño para permitir que el clic en una sugerencia se procese primero
+      setTimeout(() => {
+        const phone = (phoneInput.value || '').trim();
+        // Solo autocompletar si el campo de nombre aún está vacío Y es una coincidencia exacta inequívoca
+        if (!nameInput.value.trim() && phone.length >= 4) {
+          const isUsername = phone.startsWith('@') || /[a-zA-Z]/.test(phone);
+          let foundCust = null;
+
+          if (isUsername) {
+            const cleanU = phone.toLowerCase().replace(/^@/, '').trim();
+            if (cleanU.length >= 3) {
+              foundCust = existingCustomers.find((c) => {
+                const cU = (c.phone || '').toLowerCase().replace(/^@/, '').trim();
+                return cU === cleanU;
+              });
+            }
+          } else {
+            const digits = phone.replace(/\D/g, '');
+            if (digits.length >= 10) {
+              foundCust = existingCustomers.find((c) => {
+                const cDigits = (c.phone || '').replace(/\D/g, '');
+                return cDigits === digits;
+              });
+            }
+          }
+
+          if (foundCust) {
+            selectCustomer(foundCust);
+          }
         }
-      }
+      }, 200);
     });
   }
 

@@ -20,6 +20,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const orderWhere: any = {};
     const expenseWhere: any = {};
     const purchaseWhere: any = {};
+    const staffPaymentWhere: any = {};
 
     let activeFilterDate = '';
     let customDateRange: { gte: Date; lte: Date } | null = null;
@@ -56,6 +57,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       ];
       expenseWhere.expenseDate = dayRange;
       purchaseWhere.purchaseDate = dayRange;
+      staffPaymentWhere.paymentDate = dayRange;
     } else if (customDateRange) {
       orderWhere.OR = [
         { orderDate: customDateRange },
@@ -63,6 +65,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       ];
       expenseWhere.expenseDate = customDateRange;
       purchaseWhere.purchaseDate = customDateRange;
+      staffPaymentWhere.paymentDate = customDateRange;
     } else if (month && typeof month === 'string') {
       const [year, m] = month.split('-').map(Number);
       if (year && m) {
@@ -75,6 +78,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         ];
         expenseWhere.expenseDate = monthRange;
         purchaseWhere.purchaseDate = monthRange;
+        staffPaymentWhere.paymentDate = monthRange;
       }
     } else if (period === 'month') {
       const [year, m] = todayStr.split('-').map(Number);
@@ -87,6 +91,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       ];
       expenseWhere.expenseDate = monthRange;
       purchaseWhere.purchaseDate = monthRange;
+      staffPaymentWhere.paymentDate = monthRange;
     } else if (period === 'week') {
       const now = new Date();
       const dayOfWeek = now.getDay();
@@ -101,6 +106,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       ];
       expenseWhere.expenseDate = { gte: startOfWeek };
       purchaseWhere.purchaseDate = { gte: startOfWeek };
+      staffPaymentWhere.paymentDate = { gte: startOfWeek };
     }
 
     // 1. Consultar pedidos
@@ -114,6 +120,8 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
             id: true,
             batchCode: true,
             flavor: true,
+            price1L: true,
+            price2L: true,
           },
         },
       },
@@ -123,20 +131,40 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     // 2. Consultar compras de materia prima
     const purchases = await prisma.purchase.findMany({
       where: purchaseWhere,
+      include: {
+        rawMaterial: {
+          select: {
+            name: true,
+            category: true,
+            unit: true,
+          },
+        },
+      },
+      orderBy: { purchaseDate: 'desc' },
     });
 
     // 3. Consultar gastos generales
     const expenses = await prisma.expense.findMany({
       where: expenseWhere,
+      orderBy: { expenseDate: 'desc' },
     });
 
-    // 4. Consultar insumos con bajo stock
+    // 4. Consultar pagos de nómina y retiros de socios
+    const staffPayments = await prisma.staffPayment.findMany({
+      where: staffPaymentWhere,
+      include: {
+        staff: true,
+      },
+      orderBy: { paymentDate: 'desc' },
+    });
+
+    // 5. Consultar insumos con bajo stock
     const rawMaterials = await prisma.rawMaterial.findMany({
       where: { isActive: true },
     });
     const lowStockMaterials = rawMaterials.filter((m) => m.currentStock <= m.minStockAlert);
 
-    // 5. Consultar lotes de producción activos
+    // 6. Consultar lotes de producción activos
     const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const [batchesThisMonth, allActiveBatches] = await Promise.all([
       prisma.productionBatch.findMany({
@@ -150,6 +178,12 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       }),
     ]);
 
+    // Cálculos de Nómina y Retiros
+    const payrollPayments = staffPayments.filter((p) => p.paymentType !== 'RETIRO_SOCIO');
+    const ownerDrawPayments = staffPayments.filter((p) => p.paymentType === 'RETIRO_SOCIO');
+    const totalPayrollExpenses = payrollPayments.reduce((sum, p) => sum + p.netAmount, 0);
+    const totalOwnerDraws = ownerDrawPayments.reduce((sum, p) => sum + p.netAmount, 0);
+
     // Cálculos Generales
     const totalOrdersCount = orders.length;
     const totalLitersSold = orders.reduce((sum, o) => sum + o.totalLiters, 0);
@@ -157,14 +191,14 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const totalCashCollected = orders.reduce((sum, o) => sum + o.paidAmount, 0);
     const totalPendingToCollect = orders.reduce((sum, o) => sum + o.pendingAmount, 0);
 
-    // Cálculos de Pedidos ENTREGADOS (Cobros Reales en la Calle)
+    // Cálculos de Pedidos ENTREGADOS
     const deliveredOrders = orders.filter((o) => o.deliveryStatus === 'DELIVERED');
     const deliveredUnpaidOrders = deliveredOrders.filter((o) => o.pendingAmount > 0);
     const deliveredPendingToCollect = deliveredUnpaidOrders.reduce((sum, o) => sum + o.pendingAmount, 0);
     const deliveredPaidAmount = deliveredOrders.reduce((sum, o) => sum + o.paidAmount, 0);
     const deliveredTotalSales = deliveredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
 
-    // Cálculos de Pedidos EN PROCESO (En preparación o pendientes de entrega)
+    // Cálculos de Pedidos EN PROCESO
     const inProcessOrders = orders.filter((o) => o.deliveryStatus !== 'DELIVERED');
     const inProcessPendingToCollect = inProcessOrders.reduce((sum, o) => sum + o.pendingAmount, 0);
     const inProcessPaidAmount = inProcessOrders.reduce((sum, o) => sum + o.paidAmount, 0);
@@ -177,13 +211,105 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
 
     const totalRawMaterialPurchases = purchases.reduce((sum, p) => sum + p.totalCost, 0);
     const totalGeneralExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-    const totalExpenses = totalRawMaterialPurchases + totalGeneralExpenses;
+    const totalExpenses = totalRawMaterialPurchases + totalGeneralExpenses + totalPayrollExpenses;
 
     const netProfit = totalCashCollected - totalExpenses;
 
     const totalLitersProducedThisMonth = batchesThisMonth.reduce((sum, b) => sum + b.totalLitersProduced, 0);
     const totalLitersProducedAllTime = allActiveBatches.reduce((sum, b) => sum + b.totalLitersProduced, 0);
     const totalBatchesCountThisMonth = batchesThisMonth.length;
+
+    // Agrupación de Ventas por Lote y Sabor para Modales Interactivos
+    const groupByBatchAndFlavor = (orderList: typeof orders) => {
+      const groups: Record<string, {
+        batchCode: string;
+        flavor: string;
+        totalLiters: number;
+        totalBottles1L: number;
+        totalBottles2L: number;
+        totalAmount: number;
+        paidAmount: number;
+        pendingAmount: number;
+        ordersCount: number;
+        customers: Array<{
+          orderNumber: string;
+          customerName: string;
+          customerPhone: string;
+          address: string;
+          liters: number;
+          bottlesSummary: string;
+          totalAmount: number;
+          paidAmount: number;
+          pendingAmount: number;
+          deliveryStatus: string;
+          orderDate: Date;
+          deliveryDate: Date | null;
+        }>;
+      }> = {};
+
+      orderList.forEach((o) => {
+        const batchCode = o.batch?.batchCode || 'Sin Lote Asignado';
+        const flavor = o.batch?.flavor || o.flavor || 'Natural';
+        const key = `${batchCode}___${flavor}`;
+
+        if (!groups[key]) {
+          groups[key] = {
+            batchCode,
+            flavor,
+            totalLiters: 0,
+            totalBottles1L: 0,
+            totalBottles2L: 0,
+            totalAmount: 0,
+            paidAmount: 0,
+            pendingAmount: 0,
+            ordersCount: 0,
+            customers: [],
+          };
+        }
+
+        const g = groups[key];
+        g.totalLiters += o.totalLiters;
+        g.totalAmount += o.totalAmount;
+        g.paidAmount += o.paidAmount;
+        g.pendingAmount += o.pendingAmount;
+        g.ordersCount += 1;
+
+        if (o.items && o.items.length > 0) {
+          o.items.forEach((item) => {
+            if (item.bottleSize === '1L') g.totalBottles1L += item.quantity;
+            if (item.bottleSize === '2L') g.totalBottles2L += item.quantity;
+          });
+        } else {
+          if (o.bottleSize === '1L') g.totalBottles1L += o.quantityBottles;
+          if (o.bottleSize === '2L') g.totalBottles2L += o.quantityBottles;
+        }
+
+        const bottlesSummary = o.items && o.items.length > 0
+          ? o.items.map((it) => `${it.quantity}x ${it.bottleSize} (${it.flavor})`).join(', ')
+          : `${o.quantityBottles}x ${o.bottleSize} (${o.flavor})`;
+
+        g.customers.push({
+          orderNumber: o.orderNumber,
+          customerName: o.customer?.fullName || 'Cliente',
+          customerPhone: o.customer?.phone || '',
+          address: o.deliveryAddress || o.customer?.address || 'Fonseca',
+          liters: o.totalLiters,
+          bottlesSummary,
+          totalAmount: o.totalAmount,
+          paidAmount: o.paidAmount,
+          pendingAmount: o.pendingAmount,
+          deliveryStatus: o.deliveryStatus,
+          orderDate: o.orderDate,
+          deliveryDate: o.deliveryDate,
+        });
+      });
+
+      return Object.values(groups);
+    };
+
+    const deliveredGroups = groupByBatchAndFlavor(deliveredOrders);
+    const inProcessGroups = groupByBatchAndFlavor(inProcessOrders);
+    const allGroups = groupByBatchAndFlavor(orders);
 
     // Conteo por estado de pago
     const ordersPaidCount = orders.filter((o) => o.paymentStatus === 'PAID').length;
@@ -213,6 +339,8 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         inProcessTotalSales,
         totalRawMaterialPurchases,
         totalGeneralExpenses,
+        totalPayrollExpenses,
+        totalOwnerDraws,
         totalExpenses,
         netProfit,
         totalLitersProducedThisMonth,
@@ -255,6 +383,53 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         delivered: ordersDeliveredCount,
         inRoute: ordersInRouteCount,
         pendingDelivery: ordersPendingDeliveryCount,
+      },
+      detailedBreakdowns: {
+        expenses: {
+          rawMaterials: purchases.map((p) => ({
+            id: p.id,
+            date: p.purchaseDate,
+            name: p.rawMaterial?.name || 'Insumo',
+            category: p.rawMaterial?.category || 'INSUMO',
+            quantity: p.quantity,
+            unit: p.rawMaterial?.unit || 'Und',
+            unitCost: p.unitCost,
+            totalCost: p.totalCost,
+            supplier: p.supplier || 'Proveedor local',
+          })),
+          generalExpenses: expenses.map((e) => ({
+            id: e.id,
+            date: e.expenseDate,
+            category: e.category,
+            description: e.description,
+            amount: e.amount,
+            notes: e.notes,
+          })),
+          payroll: payrollPayments.map((p) => ({
+            id: p.id,
+            date: p.paymentDate,
+            staffName: p.staff?.fullName || 'Colaborador',
+            role: p.staff?.role || 'Personal',
+            paymentType: p.paymentType,
+            calculationDetails: p.calculationDetails || 'Pago nómina',
+            netAmount: p.netAmount,
+            paymentMethod: p.paymentMethod,
+            period: p.periodStart && p.periodEnd ? `${p.periodStart.toISOString().split('T')[0]} al ${p.periodEnd.toISOString().split('T')[0]}` : null,
+          })),
+          ownerDraws: ownerDrawPayments.map((p) => ({
+            id: p.id,
+            date: p.paymentDate,
+            staffName: p.staff?.fullName || 'Socio',
+            calculationDetails: p.calculationDetails || 'Retiro de utilidades',
+            netAmount: p.netAmount,
+            paymentMethod: p.paymentMethod,
+          })),
+        },
+        salesByBatchAndFlavor: {
+          delivered: deliveredGroups,
+          inProcess: inProcessGroups,
+          all: allGroups,
+        },
       },
       lowStockAlerts: lowStockMaterials.map((m) => ({
         id: m.id,

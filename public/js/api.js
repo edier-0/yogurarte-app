@@ -237,8 +237,20 @@ export const api = {
   },
 
   // Clientes
-  async getCustomers(search = '') {
-    const res = await fetch(`${API_BASE}/customers?search=${encodeURIComponent(search)}`);
+  async getCustomers(params = {}) {
+    let query = '';
+    if (typeof params === 'string') {
+      query = `search=${encodeURIComponent(params)}`;
+    } else {
+      const sp = new URLSearchParams();
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== '') {
+          sp.append(key, val);
+        }
+      });
+      query = sp.toString();
+    }
+    const res = await fetch(`${API_BASE}/customers${query ? '?' + query : ''}`);
     return res.json();
   },
 
@@ -306,6 +318,88 @@ export const api = {
       const err = await res.json();
       throw new Error(err.error || 'Error al iniciar sesión');
     }
+    return res.json();
+  },
+
+  // Personal, Nómina y Retiros de Socios
+  async getStaff(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') query.append(key, val);
+    });
+    const res = await fetch(`${API_BASE}/staff?${query.toString()}`);
+    return res.json();
+  },
+
+  async getStaffById(id) {
+    const res = await fetch(`${API_BASE}/staff/${id}`);
+    return res.json();
+  },
+
+  async createStaff(data) {
+    const res = await fetch(`${API_BASE}/staff`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al crear integrante');
+    }
+    return res.json();
+  },
+
+  async updateStaff(id, data) {
+    const res = await fetch(`${API_BASE}/staff/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al actualizar integrante');
+    }
+    return res.json();
+  },
+
+  async deleteStaff(id) {
+    const res = await fetch(`${API_BASE}/staff/${id}`, {
+      method: 'DELETE',
+    });
+    return res.json();
+  },
+
+  async getStaffPayments(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') query.append(key, val);
+    });
+    const res = await fetch(`${API_BASE}/staff/payments/list?${query.toString()}`);
+    return res.json();
+  },
+
+  async createStaffPayment(data) {
+    const res = await fetch(`${API_BASE}/staff/payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al registrar pago');
+    }
+    return res.json();
+  },
+
+  async deleteStaffPayment(id) {
+    const res = await fetch(`${API_BASE}/staff/payments/${id}`, {
+      method: 'DELETE',
+    });
+    return res.json();
+  },
+
+  async getStaffPaymentWhatsAppLink(id) {
+    const res = await fetch(`${API_BASE}/staff/payments/${id}/whatsapp`);
     return res.json();
   },
 };

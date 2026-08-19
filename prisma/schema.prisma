@@ -188,3 +188,38 @@ model Expense {
   registeredBy String?
   createdAt    DateTime @default(now())
 }
+
+model StaffMember {
+  id            Int            @id @default(autoincrement())
+  fullName      String
+  phone         String?
+  role          String         @default("PRODUCCION") // SOCIO, PRODUCCION, DOMICILIARIO, VENTAS, AUXILIAR
+  type          String         @default("EMPLEADO")   // SOCIO, EMPLEADO
+  paymentScheme String         @default("LIBRE")      // FIJO, POR_DIA, POR_LITRO, POR_PEDIDO, LIBRE
+  defaultRate   Float?         @default(0)
+  bankInfo      String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @default(now()) @updatedAt
+  payments      StaffPayment[]
+}
+
+model StaffPayment {
+  id                 Int         @id @default(autoincrement())
+  staffId            Int
+  staff              StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  paymentType        String      @default("NOMINA") // NOMINA, RETIRO_SOCIO, ANTICIPO, BONIFICACION
+  amount             Float       // Monto bruto
+  deductions         Float       @default(0) // Descuentos / anticipos
+  netAmount          Float       // Monto efectivamente pagado
+  periodStart        DateTime?
+  periodEnd          DateTime?
+  paymentDate        DateTime    @default(now())
+  calculationDetails String?     // Ej: "3 días x $40.000" o "Retiro utilidades"
+  paymentMethod      String      @default("EFECTIVO") // EFECTIVO, NEQUI, BANCOLOMBIA, TRANSFERENCIA
+  notes              String?
+  registeredBy       String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @default(now()) @updatedAt
+}
+

@@ -170,12 +170,12 @@ export async function renderDashboard(container) {
 
     container.innerHTML = `
       <!-- Selector de Periodo y Calendario del Dashboard -->
-      <div class="orders-toolbar-card" style="padding: 14px 18px; margin-bottom: 20px;">
-        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+      <div class="orders-toolbar-card dash-toolbar-card">
+        <div class="dash-toolbar-content">
           
-          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <div class="dash-filters-wrap">
             <!-- Pastillas Rápidas -->
-            <div class="filter-chip-group">
+            <div class="filter-chip-group dash-filter-chips">
               <button class="filter-chip ${dashboardFilters.period === 'all' && !dashboardFilters.specificDate && !dashboardFilters.startDate && !dashboardFilters.month ? 'active' : ''}" data-period="all">Histórico Total</button>
               <button class="filter-chip ${dashboardFilters.period === 'yesterday' && !dashboardFilters.specificDate && !dashboardFilters.startDate && !dashboardFilters.month ? 'active' : ''}" data-period="yesterday">Ayer</button>
               <button class="filter-chip ${dashboardFilters.period === 'today' && !dashboardFilters.specificDate && !dashboardFilters.startDate && !dashboardFilters.month ? 'active' : ''}" data-period="today">Hoy</button>
@@ -184,43 +184,49 @@ export async function renderDashboard(container) {
               <button class="filter-chip ${dashboardFilters.period === 'month' && !dashboardFilters.specificDate && !dashboardFilters.startDate && !dashboardFilters.month ? 'active' : ''}" data-period="month">Este Mes</button>
             </div>
 
-            <!-- Selector de Calendario por Día Específico -->
-            <div class="orders-calendar-picker ${dashboardFilters.specificDate ? 'has-date' : ''}">
-              <label for="dashSpecificDate" style="font-size: 0.84rem; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 4px; margin: 0; cursor: pointer;">
-                <span>📅 Ver Día:</span>
-              </label>
-              <input 
-                type="date" 
-                id="dashSpecificDate" 
-                value="${dashboardFilters.specificDate || ''}" 
-                title="Selecciona una fecha en el calendario para ver las métricas de ese día específico"
-              />
-              ${
-                dashboardFilters.specificDate
-                  ? `<button type="button" id="btnClearDashDate" style="border: none; background: transparent; cursor: pointer; color: var(--danger); font-weight: 800; font-size: 0.9rem; padding: 0 4px;" title="Quitar filtro de fecha">✕</button>`
-                  : ''
-              }
-            </div>
+            <div class="dash-sub-filters">
+              <!-- Selector de Calendario por Día Específico -->
+              <div class="orders-calendar-picker ${dashboardFilters.specificDate ? 'has-date' : ''} dash-picker">
+                <label for="dashSpecificDate" style="font-size: 0.84rem; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 4px; margin: 0; cursor: pointer;">
+                  <span>📅 Ver Día:</span>
+                </label>
+                <input 
+                  type="date" 
+                  id="dashSpecificDate" 
+                  value="${dashboardFilters.specificDate || ''}" 
+                  title="Selecciona una fecha en el calendario para ver las métricas de ese día específico"
+                />
+                ${
+                  dashboardFilters.specificDate
+                    ? `<button type="button" id="btnClearDashDate" style="border: none; background: transparent; cursor: pointer; color: var(--danger); font-weight: 800; font-size: 0.9rem; padding: 0 4px;" title="Quitar filtro de fecha">✕</button>`
+                    : ''
+                }
+              </div>
 
-            <!-- Rango Personalizado Desde - Hasta -->
-            <div style="display: flex; align-items: center; gap: 6px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 4px 8px;">
-              <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted);">Desde:</span>
-              <input type="date" id="dashStartDate" value="${dashboardFilters.startDate || ''}" style="border: none; background: transparent; font-size: 0.8rem; font-weight: 600; color: var(--text-main); width: 120px;" />
-              <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted);">Hasta:</span>
-              <input type="date" id="dashEndDate" value="${dashboardFilters.endDate || ''}" style="border: none; background: transparent; font-size: 0.8rem; font-weight: 600; color: var(--text-main); width: 120px;" />
-              <button class="btn btn-primary btn-sm" id="btnApplyDateRange" style="padding: 3px 8px; font-size: 0.76rem; font-weight: 700;">Filtrar</button>
-            </div>
+              <!-- Rango Personalizado Desde - Hasta -->
+              <div class="dash-date-range-box">
+                <div class="dash-date-field">
+                  <span class="dash-date-label">Desde:</span>
+                  <input type="date" id="dashStartDate" class="dash-date-input" value="${dashboardFilters.startDate || ''}" />
+                </div>
+                <div class="dash-date-field">
+                  <span class="dash-date-label">Hasta:</span>
+                  <input type="date" id="dashEndDate" class="dash-date-input" value="${dashboardFilters.endDate || ''}" />
+                </div>
+                <button class="btn btn-primary btn-sm" id="btnApplyDateRange" style="padding: 4px 10px; font-size: 0.78rem; font-weight: 700; height: 32px; white-space: nowrap;">Filtrar</button>
+              </div>
 
-            <!-- Selector de Meses -->
-            <select id="dashMonthSelect" class="orders-select-item" style="height: 38px;">
-              <option value="">📅 Por Mes</option>
-              ${monthOptions
-                .map((m) => `<option value="${m.val}" ${dashboardFilters.month === m.val ? 'selected' : ''}>${m.label}</option>`)
-                .join('')}
-            </select>
+              <!-- Selector de Meses -->
+              <select id="dashMonthSelect" class="orders-select-item dash-month-select">
+                <option value="">📅 Por Mes</option>
+                ${monthOptions
+                  .map((m) => `<option value="${m.val}" ${dashboardFilters.month === m.val ? 'selected' : ''}>${m.label}</option>`)
+                  .join('')}
+              </select>
+            </div>
           </div>
 
-          <div style="background: var(--primary-light); color: var(--primary); padding: 6px 12px; border-radius: var(--radius-md); font-size: 0.85rem; font-weight: 800; border: 1px solid var(--border-color);">
+          <div class="dash-active-filter-badge">
             📌 ${activeFilterLabel} (${kpis.totalOrdersCount} ventas • ${kpis.totalLitersAll || 0} L)
           </div>
         </div>
@@ -228,7 +234,7 @@ export async function renderDashboard(container) {
 
       ${lowStockHtml}
 
-      <!-- KPI Grid Principal con Desglose de Recaudos -->
+      <!-- KPI Grid Principal con Desglose de Recaudos y Clic Interactivo -->
       <div class="kpi-grid" style="margin-bottom: 24px;">
         
         <!-- KPI 1: Por Cobrar de Entregados (Cobro Inmediato) -->
@@ -245,54 +251,69 @@ export async function renderDashboard(container) {
           </div>
         </div>
 
-        <!-- KPI 2: Total Recaudado / Cobrado -->
-        <div class="kpi-card kpi-success">
+        <!-- KPI 2: Total Recaudado / Cobrado (Clicable para Desglose por Lote/Sabor) -->
+        <div class="kpi-card kpi-success kpi-clickable" id="kpiTotalCollectedCard" style="cursor: pointer; position: relative; transition: all 0.2s ease;" title="🔍 Haz clic para ver el desglose por lote, sabor y ventas por cobrar">
           <div class="kpi-header">
-            <span class="kpi-title">Total Recaudado (Cobrado)</span>
+            <span class="kpi-title">Total Recaudado (Cobrado) 🔍</span>
             <div class="kpi-icon" style="background: var(--success-light); color: var(--success);">💰</div>
           </div>
           <div class="kpi-value">${formatCOP(kpis.totalCashCollected)}</div>
-          <div class="kpi-subtitle">Ventas totales: ${formatCOP(kpis.totalSalesAmount)}</div>
+          <div class="kpi-subtitle" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Ventas totales: ${formatCOP(kpis.totalSalesAmount)}</span>
+            <span style="font-size: 0.72rem; color: var(--success); font-weight: 800;">Ver desglose ↗</span>
+          </div>
         </div>
 
-        <!-- KPI 3: Por Cobrar de Pedidos en Proceso -->
-        <div class="kpi-card kpi-warning">
+        <!-- KPI 3: Por Cobrar de Pedidos en Proceso (Clicable para ver clientes y lotes) -->
+        <div class="kpi-card kpi-warning kpi-clickable" id="kpiInProcessPendingCard" style="cursor: pointer; position: relative; transition: all 0.2s ease;" title="🔍 Haz clic para ver los clientes y saldos pendientes por lote/sabor">
           <div class="kpi-header">
-            <span class="kpi-title">Por Cobrar (En Proceso)</span>
+            <span class="kpi-title">Por Cobrar (En Proceso) 🔍</span>
             <div class="kpi-icon" style="background: var(--warning-light); color: var(--warning);">🥣</div>
           </div>
           <div class="kpi-value" style="color: var(--accent);">${formatCOP(inProcessStats.inProcessPendingToCollect)}</div>
-          <div class="kpi-subtitle">${inProcessStats.inProcessOrdersCount} pedidos por entregar / en ruta</div>
+          <div class="kpi-subtitle" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>${inProcessStats.inProcessOrdersCount} pedidos por entregar</span>
+            <span style="font-size: 0.72rem; color: var(--accent); font-weight: 800;">Ver clientes ↗</span>
+          </div>
         </div>
 
-        <!-- KPI 4: Litros Vendidos (Ya Entregados) -->
-        <div class="kpi-card kpi-accent">
+        <!-- KPI 4: Litros Vendidos (Ya Entregados) (Clicable para ver clientes y lotes) -->
+        <div class="kpi-card kpi-accent kpi-clickable" id="kpiDeliveredLitersCard" style="cursor: pointer; position: relative; transition: all 0.2s ease;" title="🔍 Haz clic para ver los clientes y litros entregados por lote">
           <div class="kpi-header">
-            <span class="kpi-title" style="color: var(--accent); font-weight: 800;">🥛 Litros Vendidos (Entregados)</span>
+            <span class="kpi-title" style="color: var(--accent); font-weight: 800;">🥛 Litros Vendidos (Entregados) 🔍</span>
             <div class="kpi-icon" style="background: var(--accent-light); color: var(--accent);">✅</div>
           </div>
           <div class="kpi-value">${kpis.deliveredLiters || 0} L</div>
-          <div class="kpi-subtitle">${deliveryBreakdown.delivered} pedido(s) entregados con éxito</div>
+          <div class="kpi-subtitle" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>${deliveryBreakdown.delivered} pedido(s) entregados</span>
+            <span style="font-size: 0.72rem; color: var(--accent); font-weight: 800;">Ver detalle ↗</span>
+          </div>
         </div>
 
-        <!-- KPI 5: Litros Encargados (En Proceso) -->
-        <div class="kpi-card" style="border: 1.5px solid var(--border-color); background: #FAF7FC;">
+        <!-- KPI 5: Litros Encargados (En Proceso) (Clicable para ver cola por lote) -->
+        <div class="kpi-card kpi-clickable" id="kpiInProcessLitersCard" style="border: 1.5px solid var(--border-color); background: #FAF7FC; cursor: pointer; position: relative; transition: all 0.2s ease;" title="🔍 Haz clic para ver la lista de espera y pedidos encargados">
           <div class="kpi-header">
-            <span class="kpi-title" style="color: var(--primary); font-weight: 800;">🥣 Litros Encargados (En Proceso)</span>
+            <span class="kpi-title" style="color: var(--primary); font-weight: 800;">🥣 Litros Encargados (En Proceso) 🔍</span>
             <div class="kpi-icon" style="background: var(--primary-light); color: var(--primary);">⏳</div>
           </div>
           <div class="kpi-value" style="color: var(--primary);">${kpis.inProcessLiters || 0} L</div>
-          <div class="kpi-subtitle">Total demanda: ${kpis.totalLitersAll || 0} L (${kpis.totalOrdersCount} pedidos)</div>
+          <div class="kpi-subtitle" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Demanda en cola (${inProcessStats.inProcessOrdersCount} pedidos)</span>
+            <span style="font-size: 0.72rem; color: var(--primary); font-weight: 800;">Ver lista ↗</span>
+          </div>
         </div>
 
-        <!-- KPI 6: Gastos Totales -->
-        <div class="kpi-card kpi-info">
+        <!-- KPI 6: Gastos Totales (Clicable para ver Desglose por Fechas e Insumos/Nómina/Retiros) -->
+        <div class="kpi-card kpi-info kpi-clickable" id="kpiTotalExpensesCard" style="cursor: pointer; position: relative; transition: all 0.2s ease;" title="🔍 Haz clic para ver el desglose de compras, infraestructura, nómina y retiros">
           <div class="kpi-header">
-            <span class="kpi-title">Gastos Totales</span>
+            <span class="kpi-title">Gastos Totales 🔍</span>
             <div class="kpi-icon" style="background: var(--info-light); color: var(--info);">🧾</div>
           </div>
           <div class="kpi-value">${formatCOP(kpis.totalExpenses)}</div>
-          <div class="kpi-subtitle">Insumos: ${formatCOP(kpis.totalRawMaterialPurchases)} | Otros: ${formatCOP(kpis.totalGeneralExpenses)}</div>
+          <div class="kpi-subtitle" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Insumos, nómina y otros</span>
+            <span style="font-size: 0.72rem; color: var(--info); font-weight: 800;">Ver egresos ↗</span>
+          </div>
         </div>
 
         <!-- KPI 7: Ganancia Neta Real -->
@@ -304,7 +325,7 @@ export async function renderDashboard(container) {
           <div class="kpi-value" style="color: ${kpis.netProfit >= 0 ? 'var(--success)' : 'var(--danger)'};">
             ${formatCOP(kpis.netProfit)}
           </div>
-          <div class="kpi-subtitle">Dinero cobrado menos gastos totales</div>
+          <div class="kpi-subtitle">Cobrado menos gastos totales del periodo</div>
         </div>
 
       </div>
@@ -551,6 +572,34 @@ export async function renderDashboard(container) {
       renderDashboard(container);
     });
 
+    // Clics en KPIs para abrir Modales Interactivos
+    const detailedData = data.detailedBreakdowns || {};
+
+    // 1. Clic en Gastos Totales
+    container.querySelector('#kpiTotalExpensesCard')?.addEventListener('click', () => {
+      openExpensesBreakdownModal(detailedData.expenses || {}, kpis, activeFilterLabel);
+    });
+
+    // 2. Clic en Total Recaudado / Cobrado
+    container.querySelector('#kpiTotalCollectedCard')?.addEventListener('click', () => {
+      openSalesBreakdownModal(detailedData.salesByBatchAndFlavor || {}, kpis, activeFilterLabel);
+    });
+
+    // 3. Clic en Por Cobrar (En Proceso)
+    container.querySelector('#kpiInProcessPendingCard')?.addEventListener('click', () => {
+      openInProcessPendingModal(detailedData.salesByBatchAndFlavor || {}, inProcessStats, activeFilterLabel);
+    });
+
+    // 4. Clic en Litros Vendidos (Entregados)
+    container.querySelector('#kpiDeliveredLitersCard')?.addEventListener('click', () => {
+      openDeliveredLitersModal(detailedData.salesByBatchAndFlavor || {}, kpis, activeFilterLabel);
+    });
+
+    // 5. Clic en Litros Encargados (En Proceso)
+    container.querySelector('#kpiInProcessLitersCard')?.addEventListener('click', () => {
+      openInProcessLitersModal(detailedData.salesByBatchAndFlavor || {}, kpis, activeFilterLabel);
+    });
+
     // Listeners de WhatsApp en pedidos
     container.querySelectorAll('.btn-dash-whatsapp').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
@@ -600,3 +649,725 @@ export async function renderDashboard(container) {
     `;
   }
 }
+
+// ----------------------------------------------------
+// MODALES DE DESGLOSE INTERACTIVO AL HACER CLIC EN KPIS
+// ----------------------------------------------------
+
+// 1. Modal de Desglose de Gastos Totales
+function openExpensesBreakdownModal(expensesData, kpis, periodLabel) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const rawMaterials = expensesData.rawMaterials || [];
+  const generalExpenses = expensesData.generalExpenses || [];
+  const payroll = expensesData.payroll || [];
+  const ownerDraws = expensesData.ownerDraws || [];
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 720px;">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title">🧾 Desglose Detallado de Gastos</h3>
+            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+              Periodo: <strong>${periodLabel}</strong> • Total Egresos: <strong style="color: var(--danger);">${formatCOP(kpis.totalExpenses)}</strong>
+            </span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseExpModal">✕</button>
+        </div>
+        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+
+          <!-- Tarjetas Resumen de Categorías -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 16px;">
+            <div style="background: #FFF7ED; padding: 10px; border-radius: var(--radius-md); border: 1px solid #FFEDD5; text-align: center;">
+              <span style="font-size: 0.72rem; font-weight: 700; color: #C2410C;">🥛 Insumos</span>
+              <div style="font-size: 0.95rem; font-weight: 900; color: #EA580C;">${formatCOP(kpis.totalRawMaterialPurchases)}</div>
+            </div>
+
+            <div style="background: #F0FDF4; padding: 10px; border-radius: var(--radius-md); border: 1px solid #DCFCE7; text-align: center;">
+              <span style="font-size: 0.72rem; font-weight: 700; color: #15803D;">👥 Nómina</span>
+              <div style="font-size: 0.95rem; font-weight: 900; color: #16A34A;">${formatCOP(kpis.totalPayrollExpenses || 0)}</div>
+            </div>
+
+            <div style="background: #F8FAFC; padding: 10px; border-radius: var(--radius-md); border: 1px solid #E2E8F0; text-align: center;">
+              <span style="font-size: 0.72rem; font-weight: 700; color: #475569;">⚙️ Otros Gastos</span>
+              <div style="font-size: 0.95rem; font-weight: 900; color: #334155;">${formatCOP(kpis.totalGeneralExpenses)}</div>
+            </div>
+
+            <div style="background: #FAF5FF; padding: 10px; border-radius: var(--radius-md); border: 1px solid #DDD6FE; text-align: center;">
+              <span style="font-size: 0.72rem; font-weight: 700; color: #6D28D9;">👑 Retiros Socios</span>
+              <div style="font-size: 0.95rem; font-weight: 900; color: #7C3AED;">${formatCOP(kpis.totalOwnerDraws || 0)}</div>
+            </div>
+          </div>
+
+          <!-- 1. Compras de Insumos -->
+          <div style="margin-bottom: 18px;">
+            <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <span>🥛 Compras de Materia Prima e Insumos</span>
+              <span class="badge" style="font-size: 0.72rem;">${rawMaterials.length}</span>
+            </h4>
+            ${
+              rawMaterials.length > 0
+                ? `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Insumo</th>
+                      <th>Cantidad</th>
+                      <th>Proveedor</th>
+                      <th style="text-align: right;">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rawMaterials
+                      .map(
+                        (r) => `
+                      <tr>
+                        <td>${formatDate(r.date)}</td>
+                        <td><strong>${r.name}</strong></td>
+                        <td>${r.quantity} ${r.unit}</td>
+                        <td><small>${r.supplier}</small></td>
+                        <td style="text-align: right; font-weight: 800; color: var(--danger);">${formatCOP(r.totalCost)}</td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+            `
+                : `<p style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-left: 8px;">No hay compras de insumos en este periodo.</p>`
+            }
+          </div>
+
+          <!-- 2. Pagos de Nómina -->
+          <div style="margin-bottom: 18px;">
+            <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <span>👥 Pagos de Nómina y Mano de Obra</span>
+              <span class="badge" style="font-size: 0.72rem;">${payroll.length}</span>
+            </h4>
+            ${
+              payroll.length > 0
+                ? `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Colaborador</th>
+                      <th>Concepto</th>
+                      <th>Método</th>
+                      <th style="text-align: right;">Neto Pagado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${payroll
+                      .map(
+                        (p) => `
+                      <tr>
+                        <td>${formatDate(p.date)}</td>
+                        <td><strong>${p.staffName}</strong> <small style="color: var(--text-muted);">(${p.role})</small></td>
+                        <td><small>${p.calculationDetails}</small></td>
+                        <td><span class="badge" style="font-size: 0.7rem;">${p.paymentMethod}</span></td>
+                        <td style="text-align: right; font-weight: 800; color: #16A34A;">${formatCOP(p.netAmount)}</td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+            `
+                : `<p style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-left: 8px;">No hay pagos de nómina en este periodo.</p>`
+            }
+          </div>
+
+          <!-- 3. Gastos Generales / Infraestructura -->
+          <div style="margin-bottom: 18px;">
+            <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <span>⚙️ Infraestructura y Gastos Generales</span>
+              <span class="badge" style="font-size: 0.72rem;">${generalExpenses.length}</span>
+            </h4>
+            ${
+              generalExpenses.length > 0
+                ? `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Categoría</th>
+                      <th>Descripción</th>
+                      <th style="text-align: right;">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${generalExpenses
+                      .map(
+                        (g) => `
+                      <tr>
+                        <td>${formatDate(g.date)}</td>
+                        <td><span class="badge" style="font-size: 0.7rem;">${g.category}</span></td>
+                        <td>${g.description}</td>
+                        <td style="text-align: right; font-weight: 800; color: var(--danger);">${formatCOP(g.amount)}</td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+            `
+                : `<p style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-left: 8px;">No hay gastos generales en este periodo.</p>`
+            }
+          </div>
+
+          <!-- 4. Retiros de Socios -->
+          ${
+            ownerDraws.length > 0
+              ? `
+            <div style="margin-bottom: 10px;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: #6D28D9; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>👑 Retiros de Socios / Anticipos de Ganancia</span>
+                <span class="badge" style="background: #EDE9FE; color: #6D28D9; font-size: 0.72rem;">${ownerDraws.length}</span>
+              </h4>
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Socio</th>
+                      <th>Concepto / Liquidación</th>
+                      <th>Método</th>
+                      <th style="text-align: right;">Neto Retirado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${ownerDraws
+                      .map(
+                        (od) => `
+                      <tr>
+                        <td>${formatDate(od.date)}</td>
+                        <td><strong>${od.staffName}</strong></td>
+                        <td><small>${od.calculationDetails}</small></td>
+                        <td><span class="badge" style="font-size: 0.7rem;">${od.paymentMethod}</span></td>
+                        <td style="text-align: right; font-weight: 800; color: #7C3AED;">${formatCOP(od.netAmount)}</td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `
+              : ''
+          }
+
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btnOkExpModal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnCloseExpModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnOkExpModal')?.addEventListener('click', closeModal);
+}
+
+// 2. Modal de Desglose de Recaudo por Sabor y Lote
+function openSalesBreakdownModal(salesData, kpis, periodLabel) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const delivered = salesData.delivered || [];
+  const inProcess = salesData.inProcess || [];
+
+  // Extraer todos los clientes con compras entregadas
+  const allDeliveredCustomers = [];
+  delivered.forEach((g) => {
+    (g.customers || []).forEach((c) => {
+      allDeliveredCustomers.push({
+        ...c,
+        batchCode: g.batchCode,
+        flavor: g.flavor,
+      });
+    });
+  });
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 740px;">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title">💰 Desglose de Recaudo por Lote y Sabor</h3>
+            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+              Periodo: <strong>${periodLabel}</strong> • Total Recaudado (Cobrado): <strong style="color: var(--success);">${formatCOP(kpis.totalCashCollected)}</strong>
+            </span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseSalesModal">✕</button>
+        </div>
+        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+          
+          <!-- TABLA 1: Resumen de Recaudo por Lote y Sabor -->
+          <div style="margin-bottom: 20px;">
+            <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+              <span>✅ 1. Resumen de Ventas Entregadas y Cobradas</span>
+              <span style="font-size: 0.85rem; color: var(--success); font-weight: 800;">${formatCOP(kpis.deliveredPaidAmount)} (${kpis.deliveredLiters} L)</span>
+            </h4>
+
+            ${
+              delivered.length > 0
+                ? `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Lote</th>
+                      <th>Sabor</th>
+                      <th>Litros</th>
+                      <th>Envases</th>
+                      <th>Pedidos</th>
+                      <th style="text-align: right;">Total Cobrado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${delivered
+                      .map(
+                        (g) => `
+                      <tr>
+                        <td><span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.74rem;">🍶 ${g.batchCode}</span></td>
+                        <td><strong>${g.flavor}</strong></td>
+                        <td><strong>${g.totalLiters} L</strong></td>
+                        <td><small>${g.totalBottles1L} de 1L • ${g.totalBottles2L} de 2L</small></td>
+                        <td>${g.ordersCount}</td>
+                        <td style="text-align: right; font-weight: 800; color: var(--success);">${formatCOP(g.paidAmount)}</td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                  <tfoot>
+                    <tr style="background: var(--bg-subtle); font-weight: 800;">
+                      <td colspan="2">TOTAL RECAUDADO</td>
+                      <td>${kpis.deliveredLiters || 0} L</td>
+                      <td>-</td>
+                      <td>${delivered.reduce((s, g) => s + g.ordersCount, 0)}</td>
+                      <td style="text-align: right; color: var(--success); font-size: 0.95rem;">${formatCOP(kpis.deliveredPaidAmount)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            `
+                : `<p style="font-size: 0.82rem; color: var(--text-muted); font-style: italic;">No hay ventas entregadas en este periodo.</p>`
+            }
+          </div>
+
+          <!-- TABLA 2: Detalle de Clientes que Compraron -->
+          ${
+            allDeliveredCustomers.length > 0
+              ? `
+            <div style="margin-bottom: 20px;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <span>👥 2. Clientes y Pagos Recibidos</span>
+                <span class="badge" style="font-size: 0.72rem;">${allDeliveredCustomers.length} cliente(s)</span>
+              </h4>
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Lote / Sabor</th>
+                      <th>Litros / Envases</th>
+                      <th style="text-align: right;">Monto Pagado</th>
+                      <th>Fecha Entrega</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${allDeliveredCustomers
+                      .map(
+                        (c) => `
+                      <tr>
+                        <td>
+                          <strong>${c.customerName}</strong>
+                          <div style="font-size: 0.72rem; color: var(--text-muted);">📞 ${c.customerPhone || 'Sin teléfono'}</div>
+                        </td>
+                        <td><small>🍶 ${c.batchCode} • ${c.flavor}</small></td>
+                        <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
+                        <td style="text-align: right; font-weight: 800; color: var(--success);">${formatCOP(c.paidAmount)}</td>
+                        <td><small>${formatDate(c.deliveryDate || c.orderDate)}</small></td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `
+              : ''
+          }
+
+          <!-- TABLA 3: Proyección de Recaudo Pendiente de Pedidos en Proceso -->
+          <div style="background: #FFFBEB; border: 1.5px solid #FDE68A; border-radius: var(--radius-md); padding: 14px;">
+            <h4 style="font-size: 0.95rem; font-weight: 800; color: #B45309; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+              <span>🥣 3. Saldo por Recaudar (Pedidos Encargados en Proceso)</span>
+              <strong style="font-size: 1rem; color: #D97706;">${formatCOP(kpis.inProcessPendingToCollect)}</strong>
+            </h4>
+            <p style="font-size: 0.78rem; color: #92400E; margin-bottom: 10px;">
+              Dinero que se cobrará directamente al cliente al momento de entregar su pedido:
+            </p>
+
+            ${
+              inProcess.length > 0
+                ? `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem; background: #FFFFFF;">
+                  <thead>
+                    <tr>
+                      <th>Lote</th>
+                      <th>Sabor</th>
+                      <th>Litros</th>
+                      <th>Pedidos</th>
+                      <th style="text-align: right;">Por Cobrar al Entregar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${inProcess
+                      .map(
+                        (g) => `
+                      <tr>
+                        <td><span class="badge" style="font-size: 0.74rem;">🍶 ${g.batchCode}</span></td>
+                        <td><strong>${g.flavor}</strong></td>
+                        <td><strong>${g.totalLiters} L</strong></td>
+                        <td>${g.ordersCount} pedidos</td>
+                        <td style="text-align: right; font-weight: 800; color: #D97706;">${formatCOP(g.pendingAmount)}</td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                  <tfoot>
+                    <tr style="background: #FEF3C7; font-weight: 800;">
+                      <td colspan="2">TOTAL POR RECAUDAR</td>
+                      <td>${kpis.inProcessLiters || 0} L</td>
+                      <td>${inProcess.reduce((s, g) => s + g.ordersCount, 0)}</td>
+                      <td style="text-align: right; color: #D97706; font-size: 0.95rem;">${formatCOP(kpis.inProcessPendingToCollect)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            `
+                : `<span style="font-size: 0.8rem; color: #92400E; font-style: italic;">No hay pedidos en proceso pendientes de cobro.</span>`
+            }
+          </div>
+
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btnOkSalesModal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnCloseSalesModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnOkSalesModal')?.addEventListener('click', closeModal);
+}
+
+// 3. Modal de Saldos Por Cobrar (En Proceso) con Lista de Personas
+function openInProcessPendingModal(salesData, inProcessStats, periodLabel) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const inProcess = salesData.inProcess || [];
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 720px;">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title">🥣 Saldos por Cobrar (Pedidos en Proceso)</h3>
+            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+              Periodo: <strong>${periodLabel}</strong> • Total a Recaudar: <strong style="color: var(--accent);">${formatCOP(inProcessStats.inProcessPendingToCollect)}</strong>
+            </span>
+          </div>
+          <button class="modal-close-btn" id="btnClosePendingModal">✕</button>
+        </div>
+        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+          
+          ${
+            inProcess.length > 0
+              ? `
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+              ${inProcess
+                .map(
+                  (g) => `
+                <div style="background: #FFFDF9; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+                    <div>
+                      <span class="badge" style="background: var(--primary-light); color: var(--primary); font-weight: 800; font-size: 0.78rem;">🍶 ${g.batchCode}</span>
+                      <strong style="color: var(--text-main); font-size: 1rem; margin-left: 6px;">${g.flavor}</strong>
+                      <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 8px;">(${g.totalLiters} Litros • ${g.ordersCount} pedidos)</span>
+                    </div>
+                    <div style="background: #FEF3C7; color: #B45309; padding: 4px 10px; border-radius: var(--radius-sm); font-weight: 800; font-size: 0.95rem;">
+                      Falta cobrar: ${formatCOP(g.pendingAmount)}
+                    </div>
+                  </div>
+
+                  <div class="table-responsive">
+                    <table class="app-table" style="font-size: 0.82rem;">
+                      <thead>
+                        <tr>
+                          <th>Cliente</th>
+                          <th>Contacto</th>
+                          <th>Envases</th>
+                          <th style="text-align: right;">Saldo a Cobrar</th>
+                          <th>Fecha Entrega</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${g.customers
+                          .map(
+                            (c) => `
+                          <tr>
+                            <td>
+                              <strong>${c.customerName}</strong>
+                              <div style="font-size: 0.72rem; color: var(--text-muted);">📍 ${c.address}</div>
+                            </td>
+                            <td><small>📞 ${c.customerPhone || 'Sin teléfono'}</small></td>
+                            <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
+                            <td style="text-align: right;"><strong style="color: var(--danger); font-size: 0.9rem;">${formatCOP(c.pendingAmount)}</strong></td>
+                            <td><small style="color: var(--primary); font-weight: 700;">🛵 ${c.deliveryDate ? formatDate(c.deliveryDate) : 'Programada'}</small></td>
+                          </tr>
+                        `
+                          )
+                          .join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              `
+                )
+                .join('')}
+            </div>
+          `
+              : `
+            <div class="empty-state" style="padding: 30px;">
+              <div class="empty-state-icon">✨</div>
+              <div class="empty-state-title">No hay saldos pendientes en proceso</div>
+              <div class="empty-state-text">Todos los pedidos en preparación o ruta ya están pagos o no hay pedidos en curso.</div>
+            </div>
+          `
+          }
+
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btnOkPendingModal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnClosePendingModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnOkPendingModal')?.addEventListener('click', closeModal);
+}
+
+// 4. Modal de Litros Vendidos y Entregados
+function openDeliveredLitersModal(salesData, kpis, periodLabel) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const delivered = salesData.delivered || [];
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 720px;">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title">🥛 Detalle de Litros Vendidos y Entregados</h3>
+            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+              Periodo: <strong>${periodLabel}</strong> • Total Entregado: <strong style="color: var(--accent);">${kpis.deliveredLiters} Litros</strong>
+            </span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseDelModal">✕</button>
+        </div>
+        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+          
+          ${
+            delivered.length > 0
+              ? `
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              ${delivered
+                .map(
+                  (g) => `
+                <div style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                    <div>
+                      <span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.78rem;">🍶 ${g.batchCode}</span>
+                      <strong style="color: var(--text-main); font-size: 1rem; margin-left: 6px;">${g.flavor}</strong>
+                    </div>
+                    <strong style="color: #15803D; font-size: 1.05rem;">${g.totalLiters} L Entregados</strong>
+                  </div>
+
+                  <div class="table-responsive">
+                    <table class="app-table" style="font-size: 0.82rem;">
+                      <thead>
+                        <tr>
+                          <th>Cliente</th>
+                          <th>Envases</th>
+                          <th style="text-align: right;">Monto Pagado</th>
+                          <th>Fecha Entrega</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${g.customers
+                          .map(
+                            (c) => `
+                          <tr>
+                            <td>
+                              <strong>${c.customerName}</strong>
+                              <div style="font-size: 0.72rem; color: var(--text-muted);">📞 ${c.customerPhone || ''}</div>
+                            </td>
+                            <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
+                            <td style="text-align: right; color: var(--success); font-weight: 700;">${formatCOP(c.paidAmount)}</td>
+                            <td><small>${formatDate(c.deliveryDate || c.orderDate)}</small></td>
+                          </tr>
+                        `
+                          )
+                          .join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              `
+                )
+                .join('')}
+            </div>
+          `
+              : `
+            <div class="empty-state" style="padding: 30px;">
+              <div class="empty-state-icon">🥛</div>
+              <div class="empty-state-title">No hay litros entregados en este periodo</div>
+              <div class="empty-state-text">Selecciona otro rango o fecha en el panel superior.</div>
+            </div>
+          `
+          }
+
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btnOkDelModal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnCloseDelModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnOkDelModal')?.addEventListener('click', closeModal);
+}
+
+// 5. Modal de Litros Encargados en Proceso (Demanda en Cola)
+function openInProcessLitersModal(salesData, kpis, periodLabel) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const inProcess = salesData.inProcess || [];
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 720px;">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title">⏳ Detalle de Litros Encargados (En Proceso)</h3>
+            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+              Periodo: <strong>${periodLabel}</strong> • Demanda en Preparación/Ruta: <strong style="color: var(--primary);">${kpis.inProcessLiters} Litros</strong>
+            </span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseQueueModal">✕</button>
+        </div>
+        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+          
+          ${
+            inProcess.length > 0
+              ? `
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              ${inProcess
+                .map(
+                  (g) => `
+                <div style="background: #FAF7FC; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                    <div>
+                      <span class="badge" style="background: var(--primary-light); color: var(--primary); font-weight: 800; font-size: 0.78rem;">🍶 ${g.batchCode}</span>
+                      <strong style="color: var(--text-main); font-size: 1rem; margin-left: 6px;">${g.flavor}</strong>
+                    </div>
+                    <strong style="color: var(--primary); font-size: 1.05rem;">${g.totalLiters} L Encargados</strong>
+                  </div>
+
+                  <div class="table-responsive">
+                    <table class="app-table" style="font-size: 0.82rem;">
+                      <thead>
+                        <tr>
+                          <th>Cliente</th>
+                          <th>Envases</th>
+                          <th>Fecha Entrega</th>
+                          <th>Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${g.customers
+                          .map(
+                            (c) => `
+                          <tr>
+                            <td>
+                              <strong>${c.customerName}</strong>
+                              <div style="font-size: 0.72rem; color: var(--text-muted);">📞 ${c.customerPhone || ''} • 📍 ${c.address}</div>
+                            </td>
+                            <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
+                            <td><strong style="color: var(--primary);">${c.deliveryDate ? formatDate(c.deliveryDate) : 'Programada'}</strong></td>
+                            <td>
+                              <span class="badge ${c.deliveryStatus === 'IN_ROUTE' ? 'badge-partial' : 'badge-pending'}">
+                                ${c.deliveryStatus === 'IN_ROUTE' ? '🛵 En Ruta' : '🥣 En Preparación'}
+                              </span>
+                            </td>
+                          </tr>
+                        `
+                          )
+                          .join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              `
+                )
+                .join('')}
+            </div>
+          `
+              : `
+            <div class="empty-state" style="padding: 30px;">
+              <div class="empty-state-icon">✨</div>
+              <div class="empty-state-title">No hay pedidos encargados en cola</div>
+              <div class="empty-state-text">Todos los pedidos han sido entregados o no hay pedidos pendientes.</div>
+            </div>
+          `
+          }
+
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btnOkQueueModal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnCloseQueueModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnOkQueueModal')?.addEventListener('click', closeModal);
+}
+

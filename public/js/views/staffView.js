@@ -1,0 +1,846 @@
+import { api } from '../api.js';
+import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store } from '../store.js';
+
+let staffFilters = {
+  tab: 'all', // 'all', 'socios', 'empleados', 'historial'
+  searchTerm: '',
+  month: '',
+};
+
+export async function renderStaff(container) {
+  container.innerHTML = `
+    <div style="display: flex; justify-content: center; padding: 40px;">
+      <span style="color: var(--primary); font-weight: 700;">Cargando nómina y personal de YogurArte... 🥛</span>
+    </div>
+  `;
+
+  try {
+    const [staffList, paymentsData] = await Promise.all([
+      api.getStaff({ includeInactive: 'false' }),
+      api.getStaffPayments(),
+    ]);
+
+    const allPayments = paymentsData?.payments || [];
+    const totalPayroll = allPayments
+      .filter((p) => p.paymentType !== 'RETIRO_SOCIO')
+      .reduce((sum, p) => sum + (p.netAmount || 0), 0);
+    const totalOwnerDraws = allPayments
+      .filter((p) => p.paymentType === 'RETIRO_SOCIO')
+      .reduce((sum, p) => sum + (p.netAmount || 0), 0);
+
+    let filteredStaff = staffList || [];
+    if (staffFilters.tab === 'socios') {
+      filteredStaff = filteredStaff.filter((s) => s.type === 'SOCIO');
+    } else if (staffFilters.tab === 'empleados') {
+      filteredStaff = filteredStaff.filter((s) => s.type === 'EMPLEADO');
+    }
+
+    if (staffFilters.searchTerm.trim()) {
+      const q = staffFilters.searchTerm.toLowerCase();
+      filteredStaff = filteredStaff.filter(
+        (s) => s.fullName.toLowerCase().includes(q) || (s.role && s.role.toLowerCase().includes(q))
+      );
+    }
+
+    container.innerHTML = `
+      <!-- Toolbar y Acciones Principales -->
+      <div class="orders-toolbar-card" style="padding: 16px 20px; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+          <div>
+            <h2 style="font-size: 1.3rem; font-weight: 800; color: var(--primary); margin: 0;">
+              👥 Nómina, Personal y Retiros
+            </h2>
+            <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">
+              Administra tu equipo, liquida nóminas flexibles y registra retiros de utilidades de socios.
+            </span>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-outline" id="btnNewStaffMember">
+              👤 + Registrar Integrante
+            </button>
+            <button class="btn btn-accent" id="btnNewPaymentGlobal" style="font-weight: 800; padding: 8px 18px;">
+              💵 + Registrar Pago / Retiro
+            </button>
+          </div>
+        </div>
+
+        <div style="height: 1px; background: var(--border-subtle); margin: 14px 0;"></div>
+
+        <!-- Filtros y Pastillas Rápidas -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div class="filter-chip-group">
+            <button class="filter-chip ${staffFilters.tab === 'all' ? 'active' : ''}" data-tab-filter="all">
+              Todos (${staffList.length})
+            </button>
+            <button class="filter-chip ${staffFilters.tab === 'socios' ? 'active' : ''}" data-tab-filter="socios">
+              👑 Socios / Dueños (${staffList.filter((s) => s.type === 'SOCIO').length})
+            </button>
+            <button class="filter-chip ${staffFilters.tab === 'empleados' ? 'active' : ''}" data-tab-filter="empleados">
+              👷 Colaboradores (${staffList.filter((s) => s.type === 'EMPLEADO').length})
+            </button>
+            <button class="filter-chip ${staffFilters.tab === 'historial' ? 'active' : ''}" data-tab-filter="historial">
+              📜 Historial de Pagos (${allPayments.length})
+            </button>
+          </div>
+
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input 
+              type="text" 
+              id="staffSearchInput" 
+              class="form-input" 
+              placeholder="🔍 Buscar por nombre o cargo..." 
+              value="${staffFilters.searchTerm}"
+              style="max-width: 250px; font-size: 0.85rem; padding: 6px 10px;"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Tarjetas de Resumen Financiero de Personal -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 22px;">
+        <div class="kpi-card" style="border: 1.5px solid var(--border-color); background: #FFFFFF;">
+          <div class="kpi-header">
+            <span class="kpi-title" style="color: var(--primary); font-weight: 800;">👥 Equipo Activo</span>
+            <div class="kpi-icon" style="background: var(--primary-light); color: var(--primary);">👤</div>
+          </div>
+          <div class="kpi-value" style="color: var(--primary); font-size: 1.8rem;">
+            ${staffList.length} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">integrantes</span>
+          </div>
+          <div class="kpi-subtitle">
+            ${staffList.filter((s) => s.type === 'SOCIO').length} socio(s) • ${staffList.filter((s) => s.type === 'EMPLEADO').length} colaborador(es)
+          </div>
+        </div>
+
+        <div class="kpi-card" style="border: 1.5px solid #BBF7D0; background: #F0FDF4;">
+          <div class="kpi-header">
+            <span class="kpi-title" style="color: #15803D; font-weight: 800;">💵 Nómina Total Pagada</span>
+            <div class="kpi-icon" style="background: #DCFCE7; color: #15803D;">💰</div>
+          </div>
+          <div class="kpi-value" style="color: #16A34A; font-size: 1.8rem;">
+            ${formatCOP(totalPayroll)}
+          </div>
+          <div class="kpi-subtitle" style="color: #15803D;">
+            Costo operativo de mano de obra
+          </div>
+        </div>
+
+        <div class="kpi-card" style="border: 1.5px solid #DDD6FE; background: #FAF5FF;">
+          <div class="kpi-header">
+            <span class="kpi-title" style="color: #6D28D9; font-weight: 800;">🤝 Retiros de Socios</span>
+            <div class="kpi-icon" style="background: #EDE9FE; color: #6D28D9;">👑</div>
+          </div>
+          <div class="kpi-value" style="color: #7C3AED; font-size: 1.8rem;">
+            ${formatCOP(totalOwnerDraws)}
+          </div>
+          <div class="kpi-subtitle" style="color: #6D28D9;">
+            Utilidades y retiros personales de dueños
+          </div>
+        </div>
+      </div>
+
+      <!-- Contenido Principal: Directorio o Historial -->
+      ${
+        staffFilters.tab === 'historial'
+          ? renderPaymentsHistoryTableHtml(allPayments)
+          : renderStaffGridHtml(filteredStaff)
+      }
+    `;
+
+    // Conectar eventos
+    attachStaffEvents(container, staffList, allPayments);
+  } catch (error) {
+    console.error('Error rendering staff view:', error);
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">⚠️</div>
+        <div class="empty-state-title">Error al cargar la sección de nómina</div>
+        <div class="empty-state-text">${error.message || 'Verifica la conexión con el servidor.'}</div>
+      </div>
+    `;
+  }
+}
+
+// Renderizar cuadrícula de tarjetas de integrantes
+function renderStaffGridHtml(staffList) {
+  if (!staffList || staffList.length === 0) {
+    return `
+      <div class="empty-state" style="padding: 40px 20px; background: #FFFFFF; border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+        <div class="empty-state-icon">👥</div>
+        <div class="empty-state-title">Aún no has registrado integrantes</div>
+        <div class="empty-state-text">Comienza registrando a los socios (Edier, Yeilin) o a tus colaboradores y ayudantes.</div>
+        <button class="btn btn-accent" id="btnEmptyNewStaff" style="margin-top: 12px;">+ Registrar Primer Integrante</button>
+      </div>
+    `;
+  }
+
+  return `
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px;">
+      ${staffList
+        .map((s) => {
+          const isSocio = s.type === 'SOCIO';
+          const typeBadge = isSocio
+            ? `<span class="badge" style="background: #EDE9FE; color: #6D28D9; border: 1px solid #DDD6FE; font-weight: 800;">👑 Socio / Dueño</span>`
+            : `<span class="badge" style="background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: 800;">👷 Empleado</span>`;
+
+          const schemeText = {
+            FIJO: 'Sueldo Fijo Pactado',
+            POR_DIA: `Por Día / Jornal (${formatCOP(s.defaultRate || 0)}/día)`,
+            POR_LITRO: `Por Litro (${formatCOP(s.defaultRate || 0)}/L)`,
+            POR_PEDIDO: `Por Domicilio (${formatCOP(s.defaultRate || 0)}/ent)`,
+            LIBRE: 'Monto Libre / Flexible',
+          }[s.paymentScheme] || 'Flexible';
+
+          const avatarChar = (s.fullName || 'U').charAt(0).toUpperCase();
+
+          return `
+          <div class="order-card" style="padding: 18px; display: flex; flex-direction: column; justify-content: space-between; border: 1.5px solid var(--border-color);">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 44px; height: 44px; border-radius: 50%; background: ${isSocio ? 'var(--primary)' : '#0284C7'}; color: #FFFFFF; font-weight: 800; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);">
+                    ${avatarChar}
+                  </div>
+                  <div>
+                    <h3 style="font-size: 1.05rem; font-weight: 800; color: var(--text-main); margin: 0;">
+                      ${s.fullName}
+                    </h3>
+                    <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+                      ${s.role || (isSocio ? 'Socio' : 'Producción')}
+                    </span>
+                  </div>
+                </div>
+                ${typeBadge}
+              </div>
+
+              <div style="background: var(--bg-app); padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin: 10px 0; font-size: 0.82rem; display: flex; flex-direction: column; gap: 4px;">
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: var(--text-muted); font-weight: 600;">Esquema de pago:</span>
+                  <strong style="color: var(--text-main);">${schemeText}</strong>
+                </div>
+                ${
+                  s.phone
+                    ? `<div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted); font-weight: 600;">Teléfono / WA:</span>
+                        <strong style="color: var(--primary);">📞 ${s.phone}</strong>
+                       </div>`
+                    : ''
+                }
+                ${
+                  s.bankInfo
+                    ? `<div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted); font-weight: 600;">Cuenta / Pago:</span>
+                        <strong style="color: var(--accent);">${s.bankInfo}</strong>
+                       </div>`
+                    : ''
+                }
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <button class="btn btn-accent btn-sm btn-pay-staff" data-id="${s.id}" data-name="${s.fullName}" data-type="${s.type}" style="flex: 1; font-weight: 800; font-size: 0.82rem;">
+                ${isSocio ? '🤝 Retiro / Pago' : '💵 Pagar Nómina'}
+              </button>
+              <button class="btn btn-outline btn-sm btn-edit-staff" data-id="${s.id}" style="padding: 4px 10px;" title="Editar integrante">
+                ✏️
+              </button>
+              <button class="btn btn-outline btn-sm btn-delete-staff" data-id="${s.id}" data-name="${s.fullName}" style="padding: 4px 10px; color: var(--danger); border-color: #FECACA;" title="Eliminar integrante">
+                🗑️
+              </button>
+            </div>
+          </div>
+        `;
+        })
+        .join('')}
+    </div>
+  `;
+}
+
+// Renderizar tabla de historial de pagos
+function renderPaymentsHistoryTableHtml(payments) {
+  if (!payments || payments.length === 0) {
+    return `
+      <div class="empty-state" style="padding: 40px 20px; background: #FFFFFF; border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+        <div class="empty-state-icon">📜</div>
+        <div class="empty-state-title">No hay pagos o retiros registrados</div>
+        <div class="empty-state-text">Usa el botón "+ Registrar Pago / Retiro" para liquidar nómina o anotar un retiro de socio.</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="table-container" style="padding: 20px; background: #FFFFFF;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+        <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin: 0;">
+          📜 Historial de Pagos de Nómina y Retiros
+        </h3>
+        <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">
+          Mostrando ${payments.length} movimiento(s)
+        </span>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="app-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Integrante</th>
+              <th>Tipo</th>
+              <th>Detalle / Concepto</th>
+              <th>Periodo</th>
+              <th>Monto Bruto</th>
+              <th>Deducciones</th>
+              <th>Neto Pagado</th>
+              <th>Método</th>
+              <th style="text-align: right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${payments
+              .map((p) => {
+                const isSocio = p.paymentType === 'RETIRO_SOCIO';
+                const typeBadge = isSocio
+                  ? `<span class="badge" style="background: #EDE9FE; color: #6D28D9; border: 1px solid #DDD6FE; font-weight: 800;">🟣 Retiro Socio</span>`
+                  : `<span class="badge" style="background: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; font-weight: 800;">🟢 Nómina</span>`;
+
+                const periodStr =
+                  p.periodStart && p.periodEnd
+                    ? `${formatDate(p.periodStart)} al ${formatDate(p.periodEnd)}`
+                    : 'N/A';
+
+                return `
+                <tr>
+                  <td><strong>${formatDate(p.paymentDate)}</strong></td>
+                  <td>
+                    <div><strong>${p.staff?.fullName || 'Personal'}</strong></div>
+                    <small style="color: var(--text-muted);">${p.staff?.role || ''}</small>
+                  </td>
+                  <td>${typeBadge}</td>
+                  <td>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">${p.calculationDetails || 'Pago acordado'}</div>
+                    ${p.notes ? `<small style="color: var(--text-muted);">📝 ${p.notes}</small>` : ''}
+                  </td>
+                  <td><small>${periodStr}</small></td>
+                  <td>${formatCOP(p.amount)}</td>
+                  <td style="color: ${p.deductions > 0 ? 'var(--danger)' : 'var(--text-muted)'}; font-weight: 600;">
+                    ${p.deductions > 0 ? `-${formatCOP(p.deductions)}` : '$0'}
+                  </td>
+                  <td>
+                    <strong style="color: ${isSocio ? '#7C3AED' : 'var(--success)'}; font-size: 0.95rem;">
+                      ${formatCOP(p.netAmount)}
+                    </strong>
+                  </td>
+                  <td><span class="badge" style="background: var(--bg-subtle); color: var(--text-main);">${p.paymentMethod}</span></td>
+                  <td style="text-align: right;">
+                    <div style="display: inline-flex; gap: 6px;">
+                      <button class="btn btn-whatsapp btn-sm btn-staff-whatsapp" data-id="${p.id}" title="Enviar comprobante por WhatsApp">
+                        📲 Recibo
+                      </button>
+                      <button class="btn btn-outline btn-sm btn-delete-payment" data-id="${p.id}" style="color: var(--danger); padding: 3px 8px;" title="Eliminar registro">
+                        🗑️
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// Conectar eventos del módulo
+function attachStaffEvents(container, staffList, allPayments) {
+  // Filtros de pestaña
+  container.querySelectorAll('[data-tab-filter]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      staffFilters.tab = e.currentTarget.dataset.tabFilter;
+      renderStaff(container);
+    });
+  });
+
+  // Búsqueda en tiempo real
+  const searchInput = container.querySelector('#staffSearchInput');
+  searchInput?.addEventListener('input', (e) => {
+    staffFilters.searchTerm = e.target.value;
+    renderStaff(container);
+  });
+
+  // Botón Nuevo Integrante
+  container.querySelector('#btnNewStaffMember')?.addEventListener('click', () => {
+    openStaffModal();
+  });
+  container.querySelector('#btnEmptyNewStaff')?.addEventListener('click', () => {
+    openStaffModal();
+  });
+
+  // Botón Registrar Pago Global
+  container.querySelector('#btnNewPaymentGlobal')?.addEventListener('click', () => {
+    openStaffPaymentModal(staffList);
+  });
+
+  // Botón Pagar a un integrante específico
+  container.querySelectorAll('.btn-pay-staff').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const id = Number(e.currentTarget.dataset.id);
+      openStaffPaymentModal(staffList, id);
+    });
+  });
+
+  // Botón Editar Integrante
+  container.querySelectorAll('.btn-edit-staff').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const id = Number(e.currentTarget.dataset.id);
+      try {
+        const member = await api.getStaffById(id);
+        openStaffModal(member);
+      } catch (err) {
+        showToast('Error al cargar datos del integrante', 'danger');
+      }
+    });
+  });
+
+  // Botón Eliminar Integrante
+  container.querySelectorAll('.btn-delete-staff').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const id = Number(e.currentTarget.dataset.id);
+      const name = e.currentTarget.dataset.name || 'este integrante';
+      if (confirm(`¿Estás seguro de que deseas eliminar a "${name}" de Nómina y Personal?`)) {
+        try {
+          await api.deleteStaff(id);
+          showToast(`¡Integrante "${name}" eliminado correctamente! 🗑️`);
+          renderStaff(container);
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar integrante', 'danger');
+        }
+      }
+    });
+  });
+
+  // Botón WhatsApp Recibo
+  container.querySelectorAll('.btn-staff-whatsapp').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.dataset.id;
+      try {
+        const res = await api.getStaffPaymentWhatsAppLink(id);
+        if (res.whatsappUrl) {
+          window.open(res.whatsappUrl, '_blank');
+        }
+      } catch (err) {
+        showToast(err.message || 'Error al generar enlace de WhatsApp', 'danger');
+      }
+    });
+  });
+
+  // Botón Eliminar Pago
+  container.querySelectorAll('.btn-delete-payment').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.dataset.id;
+      if (confirm('¿Estás seguro de eliminar este registro de pago de nómina?')) {
+        try {
+          await api.deleteStaffPayment(id);
+          showToast('Registro de pago eliminado correctamente 🗑️');
+          renderStaff(container);
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar pago', 'danger');
+        }
+      }
+    });
+  });
+}
+
+// Modal de Creación / Edición de Integrante
+export function openStaffModal(memberData = null) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const isEditing = !!memberData;
+  const modalTitle = isEditing ? `✏️ Editar Integrante: ${memberData.fullName}` : `👤 Registrar Nuevo Integrante`;
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 480px;">
+        <div class="modal-header">
+          <h3 class="modal-title">${modalTitle}</h3>
+          <button class="modal-close-btn" id="btnCloseStaffModal">✕</button>
+        </div>
+        <form id="staffForm">
+          <div class="modal-body">
+            
+            <div class="form-group">
+              <label class="form-label">Nombre y Apellido *</label>
+              <input type="text" id="staffFullName" class="form-input" placeholder="Ej: Edier o Juan Pérez" value="${memberData?.fullName || ''}" required />
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Tipo de Integrante *</label>
+                <select id="staffType" class="form-select">
+                  <option value="SOCIO" ${memberData?.type === 'SOCIO' ? 'selected' : ''}>👑 Socio / Dueño</option>
+                  <option value="EMPLEADO" ${memberData?.type === 'EMPLEADO' || !memberData ? 'selected' : ''}>👷 Empleado / Colaborador</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Rol Principal</label>
+                <select id="staffRole" class="form-select">
+                  <option value="SOCIO" ${memberData?.role === 'SOCIO' ? 'selected' : ''}>👑 Socio / Administración</option>
+                  <option value="PRODUCCION" ${memberData?.role === 'PRODUCCION' || !memberData ? 'selected' : ''}>🥛 Producción de Yogur</option>
+                  <option value="DOMICILIARIO" ${memberData?.role === 'DOMICILIARIO' ? 'selected' : ''}>🛵 Domicilios y Envíos</option>
+                  <option value="VENTAS" ${memberData?.role === 'VENTAS' ? 'selected' : ''}>💬 Ventas y Pedidos</option>
+                  <option value="AUXILIAR" ${memberData?.role === 'AUXILIAR' ? 'selected' : ''}>🧼 Auxiliar General</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Teléfono o WhatsApp (Opcional)</label>
+              <input type="text" id="staffPhone" class="form-input" placeholder="Ej: 3014964250" value="${memberData?.phone || ''}" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Esquema de Pago Habitual</label>
+              <select id="staffScheme" class="form-select">
+                <option value="LIBRE" ${memberData?.paymentScheme === 'LIBRE' || !memberData ? 'selected' : ''}>⚡ Libre / Flexible (Digitar al pagar)</option>
+                <option value="POR_DIA" ${memberData?.paymentScheme === 'POR_DIA' ? 'selected' : ''}>📅 Por Día / Jornal</option>
+                <option value="POR_LITRO" ${memberData?.paymentScheme === 'POR_LITRO' ? 'selected' : ''}>🥛 Por Litro Producido</option>
+                <option value="POR_PEDIDO" ${memberData?.paymentScheme === 'POR_PEDIDO' ? 'selected' : ''}>🛵 Por Domicilio Entregado</option>
+                <option value="FIJO" ${memberData?.paymentScheme === 'FIJO' ? 'selected' : ''}>💼 Sueldo Fijo Pactado</option>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Tarifa por Defecto ($ COP)</label>
+                <input type="number" id="staffDefaultRate" class="form-input" placeholder="0 si es libre" value="${memberData?.defaultRate || 0}" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Cuenta / Nequi / Datos de Pago</label>
+                <input type="text" id="staffBankInfo" class="form-input" placeholder="Ej: Nequi 3014964250" value="${memberData?.bankInfo || ''}" />
+              </div>
+            </div>
+
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+            ${
+              isEditing
+                ? `<button type="button" class="btn btn-outline btn-sm" id="btnDeleteStaffModal" style="color: var(--danger); border-color: #FECACA;">🗑️ Eliminar Integrante</button>`
+                : '<div></div>'
+            }
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-outline" id="btnCancelStaffModal">Cancelar</button>
+              <button type="submit" class="btn btn-accent">${isEditing ? 'Guardar Cambios' : 'Registrar Integrante'}</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnCloseStaffModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnCancelStaffModal')?.addEventListener('click', closeModal);
+
+  document.getElementById('staffForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      fullName: document.getElementById('staffFullName').value,
+      type: document.getElementById('staffType').value,
+      role: document.getElementById('staffRole').value,
+      phone: document.getElementById('staffPhone').value || null,
+      paymentScheme: document.getElementById('staffScheme').value,
+      defaultRate: Number(document.getElementById('staffDefaultRate').value) || 0,
+      bankInfo: document.getElementById('staffBankInfo').value || null,
+    };
+
+    try {
+      if (isEditing) {
+        await api.updateStaff(memberData.id, payload);
+        showToast(`¡Integrante ${payload.fullName} actualizado! 👤`);
+      } else {
+        await api.createStaff(payload);
+        showToast(`¡Integrante ${payload.fullName} registrado con éxito! 👤`);
+      }
+      closeModal();
+      renderStaff(document.getElementById('contentContainer'));
+    } catch (err) {
+      showToast(err.message || 'Error al guardar integrante', 'danger');
+    }
+  });
+
+  if (isEditing) {
+    document.getElementById('btnDeleteStaffModal')?.addEventListener('click', async () => {
+      if (confirm(`¿Estás seguro de que deseas eliminar a "${memberData.fullName}" de Nómina y Personal?`)) {
+        try {
+          await api.deleteStaff(memberData.id);
+          showToast(`¡Integrante "${memberData.fullName}" eliminado correctamente! 🗑️`);
+          closeModal();
+          renderStaff(document.getElementById('contentContainer'));
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar integrante', 'danger');
+        }
+      }
+    });
+  }
+}
+
+// Modal de Liquidación de Pago / Retiro de Socio
+export function openStaffPaymentModal(staffList = [], preselectedStaffId = null) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  if (!staffList || staffList.length === 0) {
+    showToast('Debes registrar al menos un integrante o socio primero', 'warning');
+    openStaffModal();
+    return;
+  }
+
+  const selectedMember = staffList.find((s) => s.id === preselectedStaffId) || staffList[0];
+  const isSocio = selectedMember?.type === 'SOCIO';
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 520px;">
+        <div class="modal-header">
+          <h3 class="modal-title">💵 Registrar Pago o Retiro de Socio</h3>
+          <button class="modal-close-btn" id="btnClosePayModal">✕</button>
+        </div>
+        <form id="paymentStaffForm">
+          <div class="modal-body">
+            
+            <div class="form-group">
+              <label class="form-label">Selecciona a Quién se le Realiza el Pago *</label>
+              <select id="payStaffSelect" class="form-select" style="font-weight: 700;">
+                ${staffList
+                  .map(
+                    (s) => `
+                  <option value="${s.id}" data-type="${s.type}" data-scheme="${s.paymentScheme}" data-rate="${s.defaultRate || 0}" ${s.id === selectedMember?.id ? 'selected' : ''}>
+                    ${s.type === 'SOCIO' ? '👑' : '👷'} ${s.fullName} (${s.role})
+                  </option>
+                `
+                  )
+                  .join('')}
+              </select>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Tipo de Movimiento *</label>
+                <select id="payMovementType" class="form-select" style="font-weight: 800;">
+                  <option value="NOMINA" ${!isSocio ? 'selected' : ''}>🟢 Pago de Nómina / Honorarios</option>
+                  <option value="RETIRO_SOCIO" ${isSocio ? 'selected' : ''}>🟣 Retiro de Socio (Utilidades personales)</option>
+                  <option value="ANTICIPO">🟡 Anticipo / Adelanto de Sueldo</option>
+                  <option value="BONIFICACION">🔵 Bonificación Especial</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Método de Pago *</label>
+                <select id="payMethod" class="form-select">
+                  <option value="EFECTIVO">💵 Efectivo de Caja</option>
+                  <option value="NEQUI">📱 Nequi</option>
+                  <option value="BANCOLOMBIA">🏦 Bancolombia</option>
+                  <option value="TRANSFERENCIA">💳 Otra Transferencia</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Calculadora Dinámica / Concepto -->
+            <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px;">
+              <label style="font-size: 0.85rem; font-weight: 800; color: var(--primary); display: block; margin-bottom: 8px;">
+                🧮 Modo de Cálculo del Monto
+              </label>
+
+              <div class="form-row" style="margin-bottom: 8px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem;">Modo</label>
+                  <select id="calcModeSelect" class="form-select" style="font-size: 0.82rem;">
+                    <option value="MANUAL">⚡ Monto Libre Manual</option>
+                    <option value="DIAS">📅 Por Días Trabajados (Días × Tarifa)</option>
+                    <option value="LITROS">🥛 Por Litros Producidos (Litros × Tarifa)</option>
+                    <option value="DOMICILIOS">🛵 Por Domicilios Entregados</option>
+                  </select>
+                </div>
+
+                <div class="form-group calc-unit-group" style="margin-bottom: 0; display: none;">
+                  <label class="form-label" id="calcUnitLabel" style="font-size: 0.78rem;">Cantidad</label>
+                  <input type="number" id="calcQuantityInput" class="form-input" value="1" min="1" step="any" style="font-size: 0.82rem;" />
+                </div>
+
+                <div class="form-group calc-unit-group" style="margin-bottom: 0; display: none;">
+                  <label class="form-label" style="font-size: 0.78rem;">Tarifa Unit ($)</label>
+                  <input type="number" id="calcRateInput" class="form-input" value="${selectedMember?.defaultRate || 0}" style="font-size: 0.82rem;" />
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Detalle / Concepto del Pago</label>
+                <input type="text" id="calcConceptInput" class="form-input" placeholder="Ej: Pago quincena 1 de agosto..." value="${isSocio ? 'Retiro de utilidades' : 'Pago de nómina'}" style="font-size: 0.82rem;" />
+              </div>
+            </div>
+
+            <!-- Valores Monetarios y Deducciones -->
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Monto Bruto ($ COP) *</label>
+                <input type="number" id="payGrossAmount" class="form-input" value="0" min="0" required style="font-weight: 800; color: var(--primary);" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Deducciones / Anticipos ($ COP)</label>
+                <input type="number" id="payDeductions" class="form-input" value="0" min="0" placeholder="0 si no hay descuentos" />
+              </div>
+            </div>
+
+            <div class="form-group" style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-weight: 800; color: #15803D; font-size: 0.9rem;">Total Neto a Desembolsar:</span>
+              <strong id="payNetDisplay" style="font-size: 1.25rem; color: #16A34A; font-weight: 900;">$0 COP</strong>
+            </div>
+
+            <!-- Fechas de Periodo y Pago -->
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">📅 Fecha de Pago *</label>
+                <input type="date" id="payPaymentDate" class="form-input" value="${getTodayLocalDateStr()}" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Periodo: Desde</label>
+                <input type="date" id="payPeriodStart" class="form-input" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Periodo: Hasta</label>
+                <input type="date" id="payPeriodEnd" class="form-input" />
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Notas Adicionales (Opcional)</label>
+              <input type="text" id="payNotes" class="form-input" placeholder="Ej: Queda pendiente $20.000 para el viernes..." />
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btnCancelPayModal">Cancelar</button>
+            <button type="submit" class="btn btn-accent" style="padding: 10px 22px;">Registrar Pago 💵</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnClosePayModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnCancelPayModal')?.addEventListener('click', closeModal);
+
+  const staffSelect = document.getElementById('payStaffSelect');
+  const movementType = document.getElementById('payMovementType');
+  const calcMode = document.getElementById('calcModeSelect');
+  const calcQty = document.getElementById('calcQuantityInput');
+  const calcRate = document.getElementById('calcRateInput');
+  const calcConcept = document.getElementById('calcConceptInput');
+  const grossInput = document.getElementById('payGrossAmount');
+  const dedInput = document.getElementById('payDeductions');
+  const netDisplay = document.getElementById('payNetDisplay');
+  const unitGroups = modalOverlay.querySelectorAll('.calc-unit-group');
+  const unitLabel = document.getElementById('calcUnitLabel');
+
+  const recalculateNet = () => {
+    const gross = Number(grossInput.value) || 0;
+    const ded = Number(dedInput.value) || 0;
+    const net = Math.max(0, gross - ded);
+    netDisplay.textContent = formatCOP(net);
+  };
+
+  const updateCalcFormula = () => {
+    const mode = calcMode.value;
+    if (mode === 'MANUAL') {
+      unitGroups.forEach((g) => (g.style.display = 'none'));
+    } else {
+      unitGroups.forEach((g) => (g.style.display = 'block'));
+      if (mode === 'DIAS') unitLabel.textContent = 'Días trabajados';
+      if (mode === 'LITROS') unitLabel.textContent = 'Litros producidos';
+      if (mode === 'DOMICILIOS') unitLabel.textContent = 'Pedidos entregados';
+
+      const qty = Number(calcQty.value) || 0;
+      const rate = Number(calcRate.value) || 0;
+      const calcTotal = qty * rate;
+      grossInput.value = calcTotal;
+
+      if (mode === 'DIAS') calcConcept.value = `${qty} días trabajados a ${formatCOP(rate)}/día`;
+      if (mode === 'LITROS') calcConcept.value = `${qty} litros producidos a ${formatCOP(rate)}/L`;
+      if (mode === 'DOMICILIOS') calcConcept.value = `${qty} domicilios entregados a ${formatCOP(rate)}/pedido`;
+    }
+    recalculateNet();
+  };
+
+  staffSelect?.addEventListener('change', (e) => {
+    const selectedOpt = e.target.selectedOptions[0];
+    const isOwner = selectedOpt.dataset.type === 'SOCIO';
+    const rate = Number(selectedOpt.dataset.rate) || 0;
+
+    movementType.value = isOwner ? 'RETIRO_SOCIO' : 'NOMINA';
+    calcRate.value = rate;
+    calcConcept.value = isOwner ? 'Retiro de utilidades' : 'Pago de nómina';
+    updateCalcFormula();
+  });
+
+  calcMode?.addEventListener('change', updateCalcFormula);
+  calcQty?.addEventListener('input', updateCalcFormula);
+  calcRate?.addEventListener('input', updateCalcFormula);
+  grossInput?.addEventListener('input', recalculateNet);
+  dedInput?.addEventListener('input', recalculateNet);
+
+  document.getElementById('paymentStaffForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const gross = Number(grossInput.value) || 0;
+    const ded = Number(dedInput.value) || 0;
+    const net = Math.max(0, gross - ded);
+
+    if (net <= 0 && gross <= 0) {
+      showToast('El monto a pagar debe ser mayor a $0 COP', 'warning');
+      return;
+    }
+
+    const payload = {
+      staffId: Number(staffSelect.value),
+      paymentType: movementType.value,
+      amount: gross,
+      deductions: ded,
+      netAmount: net,
+      periodStart: document.getElementById('payPeriodStart').value || null,
+      periodEnd: document.getElementById('payPeriodEnd').value || null,
+      paymentDate: document.getElementById('payPaymentDate').value || getTodayLocalDateStr(),
+      calculationDetails: calcConcept.value,
+      paymentMethod: document.getElementById('payMethod').value,
+      notes: document.getElementById('payNotes').value || null,
+      registeredBy: store.currentUser || 'Edier',
+    };
+
+    try {
+      const newPay = await api.createStaffPayment(payload);
+      showToast('¡Pago registrado con éxito! 💵');
+      closeModal();
+      renderStaff(document.getElementById('contentContainer'));
+
+      // Preguntar si desea enviar comprobante por WhatsApp si el integrante tiene teléfono
+      const staffObj = staffList.find((s) => s.id === Number(payload.staffId));
+      if (staffObj?.phone) {
+        setTimeout(async () => {
+          if (confirm(`¿Deseas enviar el comprobante de pago por WhatsApp a ${staffObj.fullName}?`)) {
+            const res = await api.getStaffPaymentWhatsAppLink(newPay.id);
+            if (res.whatsappUrl) window.open(res.whatsappUrl, '_blank');
+          }
+        }, 300);
+      }
+    } catch (err) {
+      showToast(err.message || 'Error al registrar pago', 'danger');
+    }
+  });
+}

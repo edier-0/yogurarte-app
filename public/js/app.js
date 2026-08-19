@@ -5,6 +5,7 @@ import { renderOrders, openOrderModal } from './views/ordersView.js';
 import { renderBatches } from './views/batchesView.js';
 import { renderInventory } from './views/inventoryView.js';
 import { renderExpenses } from './views/expensesView.js';
+import { renderStaff } from './views/staffView.js';
 import { renderCustomers } from './views/customersView.js';
 
 // Mapa de Vistas
@@ -14,6 +15,7 @@ const views = {
   batches: { title: 'Producción de Lotes', render: renderBatches },
   inventory: { title: 'Materia Prima e Insumos', render: renderInventory },
   expenses: { title: 'Gastos e Inversión', render: renderExpenses },
+  staff: { title: 'Nómina y Personal', render: renderStaff },
   customers: { title: 'Clientes Frecuentes', render: renderCustomers },
 };
 
