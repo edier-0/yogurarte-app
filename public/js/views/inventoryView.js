@@ -484,24 +484,37 @@ async function openPurchaseModal() {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Cantidad Comprada *</label>
-                <input type="number" id="purchaseQuantity" class="form-input" min="0.01" step="0.01" placeholder="Ej: 1 o 2.5" required />
+                <input type="number" id="purchaseQuantity" class="form-input" min="0.01" step="0.01" placeholder="Ej: 12 o 2.5" required />
                 <small id="purchaseQtyHint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: block;">
                   Unidad: Kilogramos / Litros / Unidades
                 </small>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Costo Unitario ($ COP) *</label>
-                <input type="number" id="purchaseUnitCost" class="form-input" min="1" placeholder="Ej: 3100 o 20100" required />
+                <label class="form-label">
+                  <span>Costo Unitario ($ COP)</span>
+                </label>
+                <input type="number" id="purchaseUnitCost" class="form-input" min="0" step="any" placeholder="Ej: 3100 o 20100" />
                 <small id="purchaseCostHint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: block;">
                   Precio por unidad / kilo / litro
                 </small>
               </div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Total Inversión</label>
-              <input type="text" id="purchaseTotalDisplay" class="form-input" value="$0 COP" disabled style="background: var(--bg-subtle); font-weight: 800; color: var(--primary);" />
+            <!-- Sección de Costo Total con opción de ingreso manual o automático -->
+            <div class="form-group" style="background: var(--bg-card); border: 1.5px dashed var(--border-subtle); padding: 12px 14px; border-radius: var(--radius-md); box-shadow: 0 2px 8px rgba(0,0,0,0.02);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label class="form-label" style="margin: 0; font-weight: 700; color: var(--text-main);">
+                  💵 Total Inversión de la Compra ($ COP) *
+                </label>
+                <span style="font-size: 0.73rem; color: var(--primary); font-weight: 700; background: #EEF2FF; padding: 2px 8px; border-radius: 12px; border: 1px solid #C7D2FE;">
+                  🏷️ Puedes escribir el total manual si fue promoción
+                </span>
+              </div>
+              <input type="number" id="purchaseTotalCost" class="form-input" min="0" step="any" placeholder="Ej: 50000 (o se calcula solo)" style="font-weight: 800; font-size: 1.05rem; color: var(--primary);" required />
+              <div id="purchaseCalcBadge" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--bg-subtle);">
+                💡 Escribe el costo por unidad o el valor total pagado por el paquete/promoción.
+              </div>
             </div>
 
             <div class="form-row">
@@ -518,7 +531,7 @@ async function openPurchaseModal() {
 
             <div class="form-group">
               <label class="form-label">Notas Adicionales</label>
-              <input type="text" id="purchaseNotes" class="form-input" placeholder="Ej: Pago de contado en efectivo..." />
+              <input type="text" id="purchaseNotes" class="form-input" placeholder="Ej: Promoción de 10 paquetes..." />
             </div>
 
           </div>
@@ -533,10 +546,18 @@ async function openPurchaseModal() {
 
   const matSelect = document.getElementById('purchaseMaterialSelect');
   const qtyInput = document.getElementById('purchaseQuantity');
-  const costInput = document.getElementById('purchaseUnitCost');
-  const totalDisplay = document.getElementById('purchaseTotalDisplay');
+  const unitCostInput = document.getElementById('purchaseUnitCost');
+  const totalCostInput = document.getElementById('purchaseTotalCost');
   const qtyHint = document.getElementById('purchaseQtyHint');
   const costHint = document.getElementById('purchaseCostHint');
+  const calcBadge = document.getElementById('purchaseCalcBadge');
+
+  let lastEditedField = 'unitCost'; // 'unitCost' | 'totalCost'
+
+  const getSelectedUnit = () => {
+    const opt = matSelect.selectedOptions[0];
+    return opt?.dataset?.unit || 'unidad';
+  };
 
   const onMaterialChange = () => {
     const opt = matSelect.selectedOptions[0];
@@ -550,21 +571,62 @@ async function openPurchaseModal() {
       costHint.textContent = `Precio por ${unit}`;
     }
 
-    if (lastCost > 0 && !costInput.value) {
-      costInput.value = lastCost;
+    if (lastCost > 0 && !unitCostInput.value && !totalCostInput.value) {
+      unitCostInput.value = lastCost;
+      recalculateFromUnitCost();
     }
-    updateTotal();
   };
 
-  const updateTotal = () => {
+  const recalculateFromUnitCost = () => {
+    lastEditedField = 'unitCost';
     const qty = Number(qtyInput.value) || 0;
-    const cost = Number(costInput.value) || 0;
-    totalDisplay.value = formatCOP(qty * cost);
+    const unitCost = Number(unitCostInput.value) || 0;
+    const unit = getSelectedUnit();
+
+    if (qty > 0 && unitCost > 0) {
+      const total = Math.round(qty * unitCost);
+      totalCostInput.value = total;
+      calcBadge.innerHTML = `💰 <strong>${qty} ${unit}</strong> × <strong>${formatCOP(unitCost)}</strong> = Inversión Total: <strong style="color: var(--primary);">${formatCOP(total)}</strong>`;
+      calcBadge.style.color = 'var(--text-main)';
+      calcBadge.style.background = '#EFF6FF';
+    } else {
+      calcBadge.innerHTML = `💡 Ingrese la cantidad y el costo unitario o el total pagado.`;
+      calcBadge.style.color = 'var(--text-muted)';
+      calcBadge.style.background = 'var(--bg-subtle)';
+    }
+  };
+
+  const recalculateFromTotalCost = () => {
+    lastEditedField = 'totalCost';
+    const qty = Number(qtyInput.value) || 0;
+    const total = Number(totalCostInput.value) || 0;
+    const unit = getSelectedUnit();
+
+    if (qty > 0 && total > 0) {
+      const unitCost = total / qty;
+      unitCostInput.value = Math.round(unitCost * 100) / 100;
+      calcBadge.innerHTML = `🏷️ <strong>Promoción / Paquete:</strong> Inversión <strong>${formatCOP(total)}</strong> ÷ <strong>${qty} ${unit}</strong> = Costo unitario exacto: <strong style="color: var(--success);">${formatCOP(unitCost)} / ${unit}</strong>`;
+      calcBadge.style.color = '#065F46';
+      calcBadge.style.background = '#ECFDF5';
+    } else {
+      calcBadge.innerHTML = `💡 Ingrese la cantidad y el costo unitario o el total pagado.`;
+      calcBadge.style.color = 'var(--text-muted)';
+      calcBadge.style.background = 'var(--bg-subtle)';
+    }
+  };
+
+  const onQuantityInput = () => {
+    if (lastEditedField === 'totalCost' && Number(totalCostInput.value) > 0) {
+      recalculateFromTotalCost();
+    } else {
+      recalculateFromUnitCost();
+    }
   };
 
   matSelect?.addEventListener('change', onMaterialChange);
-  qtyInput?.addEventListener('input', updateTotal);
-  costInput?.addEventListener('input', updateTotal);
+  qtyInput?.addEventListener('input', onQuantityInput);
+  unitCostInput?.addEventListener('input', recalculateFromUnitCost);
+  totalCostInput?.addEventListener('input', recalculateFromTotalCost);
 
   onMaterialChange();
 
@@ -574,10 +636,25 @@ async function openPurchaseModal() {
 
   document.getElementById('purchaseForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const qty = Number(qtyInput.value);
+    const unitCost = Number(unitCostInput.value) || 0;
+    const totalCost = Number(totalCostInput.value) || 0;
+
+    if (!qty || qty <= 0) {
+      showToast('Por favor ingresa una cantidad válida', 'danger');
+      return;
+    }
+
+    if (unitCost <= 0 && totalCost <= 0) {
+      showToast('Por favor ingresa el costo unitario o el total pagado', 'danger');
+      return;
+    }
+
     const payload = {
       rawMaterialId: Number(matSelect.value),
-      quantity: Number(qtyInput.value),
-      unitCost: Number(costInput.value),
+      quantity: qty,
+      unitCost: unitCost,
+      totalCost: totalCost,
       supplier: document.getElementById('purchaseSupplier').value,
       purchaseDate: document.getElementById('purchaseDate').value,
       notes: document.getElementById('purchaseNotes').value,
@@ -590,7 +667,7 @@ async function openPurchaseModal() {
       closeModal();
       renderInventory(document.getElementById('contentContainer'));
     } catch (err) {
-      showToast('Error al registrar compra', 'danger');
+      showToast(err.message || 'Error al registrar compra', 'danger');
     }
   });
 }
@@ -889,30 +966,40 @@ function openEditPurchaseModal(purchase) {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Cantidad Adquirida (${unit}) *</label>
-                <input type="number" id="editPurchQty" class="form-input" min="0.1" step="0.1" value="${purchase.quantity}" required />
+                <input type="number" id="editPurchQty" class="form-input" min="0.01" step="0.01" value="${purchase.quantity}" required />
               </div>
 
               <div class="form-group">
-                <label class="form-label">Costo Unitario ($ COP) *</label>
-                <input type="number" id="editPurchUnitCost" class="form-input" min="0" value="${purchase.unitCost}" required />
+                <label class="form-label">Costo Unitario ($ COP)</label>
+                <input type="number" id="editPurchUnitCost" class="form-input" min="0" step="any" value="${purchase.unitCost}" />
+              </div>
+            </div>
+
+            <div class="form-group" style="background: var(--bg-card); border: 1.5px dashed var(--border-subtle); padding: 12px 14px; border-radius: var(--radius-md);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label class="form-label" style="margin: 0; font-weight: 700; color: var(--text-main);">
+                  💵 Total Invertido ($ COP) *
+                </label>
+                <span style="font-size: 0.73rem; color: var(--primary); font-weight: 700; background: #EEF2FF; padding: 2px 8px; border-radius: 12px; border: 1px solid #C7D2FE;">
+                  🏷️ Puedes escribir el total manual
+                </span>
+              </div>
+              <input type="number" id="editPurchTotalCost" class="form-input" min="0" step="any" value="${purchase.totalCost}" style="font-weight: 800; font-size: 1.05rem; color: var(--primary);" required />
+              <div id="editPurchCalcBadge" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--bg-subtle);">
+                💡 Modifica el costo unitario o el total pagado.
               </div>
             </div>
 
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label">Total Invertido Calculado</label>
-                <input type="text" id="editPurchTotalDisplay" class="form-input" value="${formatCOP(purchase.totalCost)}" disabled style="background: var(--bg-subtle); font-weight: 800; color: var(--primary);" />
-              </div>
-
-              <div class="form-group">
                 <label class="form-label">Fecha de Compra *</label>
                 <input type="date" id="editPurchDate" class="form-input" value="${purchaseDateStr}" required />
               </div>
-            </div>
 
-            <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label">Notas Adicionales</label>
-              <input type="text" id="editPurchNotes" class="form-input" placeholder="Observaciones de la compra..." value="${purchase.notes || ''}" />
+              <div class="form-group">
+                <label class="form-label">Notas Adicionales</label>
+                <input type="text" id="editPurchNotes" class="form-input" placeholder="Observaciones de la compra..." value="${purchase.notes || ''}" />
+              </div>
             </div>
 
           </div>
@@ -926,17 +1013,53 @@ function openEditPurchaseModal(purchase) {
   `;
 
   const qtyInput = document.getElementById('editPurchQty');
-  const costInput = document.getElementById('editPurchUnitCost');
-  const totalDisplay = document.getElementById('editPurchTotalDisplay');
+  const unitCostInput = document.getElementById('editPurchUnitCost');
+  const totalCostInput = document.getElementById('editPurchTotalCost');
+  const calcBadge = document.getElementById('editPurchCalcBadge');
 
-  const updateCalculations = () => {
+  let lastEditedField = 'unitCost';
+
+  const recalculateFromUnitCost = () => {
+    lastEditedField = 'unitCost';
     const qty = Number(qtyInput.value) || 0;
-    const cost = Number(costInput.value) || 0;
-    totalDisplay.value = formatCOP(qty * cost);
+    const unitCost = Number(unitCostInput.value) || 0;
+
+    if (qty > 0 && unitCost > 0) {
+      const total = Math.round(qty * unitCost);
+      totalCostInput.value = total;
+      calcBadge.innerHTML = `💰 <strong>${qty} ${unit}</strong> × <strong>${formatCOP(unitCost)}</strong> = Inversión: <strong style="color: var(--primary);">${formatCOP(total)}</strong>`;
+      calcBadge.style.color = 'var(--text-main)';
+      calcBadge.style.background = '#EFF6FF';
+    }
   };
 
-  qtyInput?.addEventListener('input', updateCalculations);
-  costInput?.addEventListener('input', updateCalculations);
+  const recalculateFromTotalCost = () => {
+    lastEditedField = 'totalCost';
+    const qty = Number(qtyInput.value) || 0;
+    const total = Number(totalCostInput.value) || 0;
+
+    if (qty > 0 && total > 0) {
+      const unitCost = total / qty;
+      unitCostInput.value = Math.round(unitCost * 100) / 100;
+      calcBadge.innerHTML = `🏷️ Inversión <strong>${formatCOP(total)}</strong> ÷ <strong>${qty} ${unit}</strong> = Costo unitario: <strong style="color: var(--success);">${formatCOP(unitCost)} / ${unit}</strong>`;
+      calcBadge.style.color = '#065F46';
+      calcBadge.style.background = '#ECFDF5';
+    }
+  };
+
+  const onQuantityInput = () => {
+    if (lastEditedField === 'totalCost' && Number(totalCostInput.value) > 0) {
+      recalculateFromTotalCost();
+    } else {
+      recalculateFromUnitCost();
+    }
+  };
+
+  qtyInput?.addEventListener('input', onQuantityInput);
+  unitCostInput?.addEventListener('input', recalculateFromUnitCost);
+  totalCostInput?.addEventListener('input', recalculateFromTotalCost);
+
+  recalculateFromUnitCost();
 
   const closeModal = () => (modalOverlay.innerHTML = '');
   document.getElementById('btnCloseEditPurchaseModal')?.addEventListener('click', closeModal);
@@ -944,11 +1067,21 @@ function openEditPurchaseModal(purchase) {
 
   document.getElementById('editPurchaseForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const qty = Number(qtyInput.value);
+    const unitCost = Number(unitCostInput.value) || 0;
+    const totalCost = Number(totalCostInput.value) || 0;
+
+    if (!qty || qty <= 0) {
+      showToast('Por favor ingresa una cantidad válida', 'danger');
+      return;
+    }
+
     const payload = {
       supplier: document.getElementById('editPurchSupplier').value,
       invoiceNumber: document.getElementById('editPurchInvoice').value,
-      quantity: Number(qtyInput.value),
-      unitCost: Number(costInput.value),
+      quantity: qty,
+      unitCost: unitCost,
+      totalCost: totalCost,
       purchaseDate: document.getElementById('editPurchDate').value,
       notes: document.getElementById('editPurchNotes').value,
     };

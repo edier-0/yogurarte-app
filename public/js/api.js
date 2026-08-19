@@ -62,8 +62,8 @@ export const api = {
     return res.json();
   },
 
-  async getWhatsAppLink(id) {
-    const res = await fetch(`${API_BASE}/orders/${id}/whatsapp`);
+  async getWhatsAppLink(id, type = '') {
+    const res = await fetch(`${API_BASE}/orders/${id}/whatsapp${type ? `?type=${encodeURIComponent(type)}` : ''}`);
     return res.json();
   },
 

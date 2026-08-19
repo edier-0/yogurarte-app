@@ -49,6 +49,7 @@ export const getCustomers = async (req: Request, res: Response) => {
       // Pedidos en proceso (no entregados aún, esto no es deuda todavía)
       const inProcessOrders = c.orders.filter((o) => o.deliveryStatus !== 'DELIVERED');
       const inProcessPendingAmount = inProcessOrders.reduce((acc, o) => acc + o.pendingAmount, 0);
+      const inProcessPaidCount = inProcessOrders.filter((o) => o.paymentStatus === 'PAID' || o.pendingAmount <= 0).length;
 
       const totalPendingAmount = deliveredPendingDebt + inProcessPendingAmount;
 
@@ -65,23 +66,34 @@ export const getCustomers = async (req: Request, res: Response) => {
         totalSpent,
         deliveredPendingDebt, // Deuda real de pedidos entregados
         inProcessPendingAmount, // Encargos en preparación / por entregar
+        inProcessOrdersCount: inProcessOrders.length,
+        inProcessPaidCount,
         pendingDebt: deliveredPendingDebt, // Deuda real
         totalPendingAmount,
         createdAt: c.createdAt,
       };
     });
 
-    // Ordenar:
+    // Ordenar jerárquicamente:
     // 1. Primero los que tienen deuda de pedidos YA ENTREGADOS (deuda real, de mayor a menor)
-    // 2. Luego los que tienen pedidos encargados en proceso (de mayor a menor)
-    // 3. Finalmente los que están completamente al día (alfabético)
+    // 2. Luego los que tienen pedidos PAGADOS PENDIENTES DE ENTREGA (compromisos pagados)
+    // 3. Luego los que tienen pedidos encargados en proceso (sin entregar ni pagar)
+    // 4. Finalmente los que están completamente al día sin pedidos pendientes (alfabético)
+    const getCustomerRank = (c: any): number => {
+      if (c.deliveredPendingDebt > 0) return 1;
+      if (c.inProcessOrdersCount > 0 && c.inProcessPendingAmount <= 0) return 2;
+      if (c.inProcessPendingAmount > 0) return 3;
+      return 4;
+    };
+
     customersWithStats.sort((a, b) => {
-      if (b.deliveredPendingDebt !== a.deliveredPendingDebt) {
-        return b.deliveredPendingDebt - a.deliveredPendingDebt;
-      }
-      if (b.inProcessPendingAmount !== a.inProcessPendingAmount) {
-        return b.inProcessPendingAmount - a.inProcessPendingAmount;
-      }
+      const rankA = getCustomerRank(a);
+      const rankB = getCustomerRank(b);
+      if (rankA !== rankB) return rankA - rankB;
+
+      if (rankA === 1) return b.deliveredPendingDebt - a.deliveredPendingDebt;
+      if (rankA === 3) return b.inProcessPendingAmount - a.inProcessPendingAmount;
+
       return a.fullName.localeCompare(b.fullName);
     });
 
@@ -99,8 +111,8 @@ export const getCustomerWhatsAppLink = async (req: Request, res: Response) => {
       where: { id: Number(id) },
       include: {
         orders: {
-          where: { pendingAmount: { gt: 0 } },
           orderBy: { orderDate: 'desc' },
+          take: 5,
         },
       },
     });
@@ -114,6 +126,7 @@ export const getCustomerWhatsAppLink = async (req: Request, res: Response) => {
 
     const inProcessOrders = customer.orders.filter((o) => o.deliveryStatus !== 'DELIVERED');
     const inProcessPendingAmount = inProcessOrders.reduce((sum, o) => sum + o.pendingAmount, 0);
+    const inProcessPaidOrders = inProcessOrders.filter((o) => o.paymentStatus === 'PAID' || o.pendingAmount <= 0);
 
     const rawPhone = (customer.phone || '').trim();
     if (!rawPhone) {
@@ -126,6 +139,8 @@ export const getCustomerWhatsAppLink = async (req: Request, res: Response) => {
     let msg = '';
     if (deliveredPendingDebt > 0) {
       msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos cordialmente de *YogurArte*.\n\nEsperamos que estés disfrutando de nuestros deliciosos yogures artesanales 100% naturales.\n\nTe recordamos con mucho aprecio que presentas un saldo pendiente de *${formatCOPStr(deliveredPendingDebt)}* de tu pedido entregado.\n\nSi ya realizaste la transferencia, por favor compártenos el comprobante por este medio. ¡Muchísimas gracias por tu preferencia y apoyo continuo! 🙌🐄`;
+    } else if (inProcessPaidOrders.length > 0) {
+      msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos con mucho cariño de parte del equipo de *YogurArte*.\n\n🎉 ¡Confirmamos que recibimos con éxito el pago de tu pedido! Muchísimas gracias por tu compra y confianza en nuestro producto 100% natural. 🥣🍓\n\nTu pedido está en preparación y te avisaremos en cuanto vaya en camino para la entrega. 🛵💨 ¡Que tengas un día maravilloso! 🙌🐄✨`;
     } else if (inProcessPendingAmount > 0) {
       msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos de *YogurArte*.\n\nTu pedido de yogur artesanal 100% natural está siendo preparado con todo el cuidado. Te avisaremos apenas esté listo para entrega. ¡Gracias por tu encargo! 🥣🍓`;
     } else {

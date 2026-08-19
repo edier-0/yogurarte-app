@@ -1,10 +1,12 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, showToast } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast } from '../store.js';
 import { openPaymentModal } from './ordersView.js';
 
 let dashboardFilters = {
   period: 'all',
   specificDate: '',
+  startDate: '',
+  endDate: '',
   month: '',
 };
 
@@ -29,6 +31,9 @@ export async function renderDashboard(container) {
     const params = {};
     if (dashboardFilters.specificDate) {
       params.date = dashboardFilters.specificDate;
+    } else if (dashboardFilters.startDate || dashboardFilters.endDate) {
+      if (dashboardFilters.startDate) params.startDate = dashboardFilters.startDate;
+      if (dashboardFilters.endDate) params.endDate = dashboardFilters.endDate;
     } else if (dashboardFilters.month) {
       params.month = dashboardFilters.month;
     } else {
@@ -36,7 +41,8 @@ export async function renderDashboard(container) {
     }
 
     const data = await api.getDashboardSummary(params);
-    const { kpis, deliveredStats, inProcessStats, paymentBreakdown, deliveryBreakdown, lowStockAlerts, recentOrders } = data;
+    const { kpis, deliveredStats, inProcessStats, paymentBreakdown, deliveryBreakdown, lowStockAlerts, recentOrders, periodOrders } = data;
+    const ordersList = periodOrders || recentOrders || [];
 
     let lowStockHtml = '';
     if (lowStockAlerts && lowStockAlerts.length > 0) {
@@ -141,6 +147,27 @@ export async function renderDashboard(container) {
       `;
     }
 
+    // Texto de periodo activo
+    let activeFilterLabel = 'Histórico Total';
+    if (dashboardFilters.specificDate) {
+      activeFilterLabel = `Día específico: ${formatDate(dashboardFilters.specificDate)}`;
+    } else if (dashboardFilters.startDate || dashboardFilters.endDate) {
+      activeFilterLabel = `Rango: ${dashboardFilters.startDate ? formatDate(dashboardFilters.startDate) : 'Inicio'} al ${dashboardFilters.endDate ? formatDate(dashboardFilters.endDate) : 'Hoy'}`;
+    } else if (dashboardFilters.month) {
+      const matchMonth = monthOptions.find((m) => m.val === dashboardFilters.month);
+      activeFilterLabel = matchMonth ? matchMonth.label : dashboardFilters.month;
+    } else if (dashboardFilters.period === 'today') {
+      activeFilterLabel = 'Ventas de Hoy';
+    } else if (dashboardFilters.period === 'yesterday') {
+      activeFilterLabel = 'Ventas de Ayer';
+    } else if (dashboardFilters.period === 'tomorrow') {
+      activeFilterLabel = 'Entregas Programadas de Mañana';
+    } else if (dashboardFilters.period === 'week') {
+      activeFilterLabel = 'Ventas de Esta Semana';
+    } else if (dashboardFilters.period === 'month') {
+      activeFilterLabel = 'Ventas de Este Mes';
+    }
+
     container.innerHTML = `
       <!-- Selector de Periodo y Calendario del Dashboard -->
       <div class="orders-toolbar-card" style="padding: 14px 18px; margin-bottom: 20px;">
@@ -149,11 +176,12 @@ export async function renderDashboard(container) {
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <!-- Pastillas Rápidas -->
             <div class="filter-chip-group">
-              <button class="filter-chip ${dashboardFilters.period === 'all' && !dashboardFilters.specificDate && !dashboardFilters.month ? 'active' : ''}" data-period="all">Histórico Total</button>
-              <button class="filter-chip ${dashboardFilters.period === 'today' && !dashboardFilters.specificDate && !dashboardFilters.month ? 'active' : ''}" data-period="today">Hoy</button>
-              <button class="filter-chip ${dashboardFilters.period === 'tomorrow' && !dashboardFilters.specificDate && !dashboardFilters.month ? 'active' : ''}" data-period="tomorrow">Mañana</button>
-              <button class="filter-chip ${dashboardFilters.period === 'week' && !dashboardFilters.specificDate && !dashboardFilters.month ? 'active' : ''}" data-period="week">Esta Semana</button>
-              <button class="filter-chip ${dashboardFilters.period === 'month' && !dashboardFilters.specificDate && !dashboardFilters.month ? 'active' : ''}" data-period="month">Este Mes</button>
+              <button class="filter-chip ${dashboardFilters.period === 'all' && !dashboardFilters.specificDate && !dashboardFilters.startDate && !dashboardFilters.month ? 'active' : ''}" data-period="all">Histórico Total</button>
+              <button class="filter-chip ${dashboardFilters.period === 'yesterday' && !dashboardFilters.specificDate && !dashboardFilters.startDate && !dashboardFilters.month ? 'active' : ''}" data-period="yesterday">Ayer</button>
+              <button class="filter-chip ${dashboardFilters.period === 'today' && !dashboardFilters.specificDate && !dashboardFilters.startDate && !dashboardFilters.month ? 'active' : ''}" data-period="today">Hoy</button>
+              <button class="filter-chip ${dashboardFilters.period === 'tomorrow' && !dashboardFilters.specificDate && !dashboardFilters.startDate && !dashboardFilters.month ? 'active' : ''}" data-period="tomorrow">Mañana</button>
+              <button class="filter-chip ${dashboardFilters.period === 'week' && !dashboardFilters.specificDate && !dashboardFilters.startDate && !dashboardFilters.month ? 'active' : ''}" data-period="week">Esta Semana</button>
+              <button class="filter-chip ${dashboardFilters.period === 'month' && !dashboardFilters.specificDate && !dashboardFilters.startDate && !dashboardFilters.month ? 'active' : ''}" data-period="month">Este Mes</button>
             </div>
 
             <!-- Selector de Calendario por Día Específico -->
@@ -174,17 +202,26 @@ export async function renderDashboard(container) {
               }
             </div>
 
+            <!-- Rango Personalizado Desde - Hasta -->
+            <div style="display: flex; align-items: center; gap: 6px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 4px 8px;">
+              <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted);">Desde:</span>
+              <input type="date" id="dashStartDate" value="${dashboardFilters.startDate || ''}" style="border: none; background: transparent; font-size: 0.8rem; font-weight: 600; color: var(--text-main); width: 120px;" />
+              <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted);">Hasta:</span>
+              <input type="date" id="dashEndDate" value="${dashboardFilters.endDate || ''}" style="border: none; background: transparent; font-size: 0.8rem; font-weight: 600; color: var(--text-main); width: 120px;" />
+              <button class="btn btn-primary btn-sm" id="btnApplyDateRange" style="padding: 3px 8px; font-size: 0.76rem; font-weight: 700;">Filtrar</button>
+            </div>
+
             <!-- Selector de Meses -->
-            <select id="dashMonthSelect" class="orders-select-item" style="height: 40px;">
-              <option value="">📅 Por Cualquier Mes</option>
+            <select id="dashMonthSelect" class="orders-select-item" style="height: 38px;">
+              <option value="">📅 Por Mes</option>
               ${monthOptions
                 .map((m) => `<option value="${m.val}" ${dashboardFilters.month === m.val ? 'selected' : ''}>${m.label}</option>`)
                 .join('')}
             </select>
           </div>
 
-          <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 700;">
-            ${kpis.totalOrdersCount} pedidos en este periodo
+          <div style="background: var(--primary-light); color: var(--primary); padding: 6px 12px; border-radius: var(--radius-md); font-size: 0.85rem; font-weight: 800; border: 1px solid var(--border-color);">
+            📌 ${activeFilterLabel} (${kpis.totalOrdersCount} ventas • ${kpis.totalLitersAll || 0} L)
           </div>
         </div>
       </div>
@@ -342,63 +379,114 @@ export async function renderDashboard(container) {
 
       </div>
 
-      <!-- Pedidos Recientes -->
+      <!-- Listado de Ventas del Periodo Seleccionado -->
       <div class="table-container" style="padding: 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-          <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--primary);">
-            📋 Últimos Pedidos Registrados
-          </h3>
-          <button class="btn btn-outline btn-sm" id="btnGoToOrders">Ver Todos los Pedidos</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--primary); margin: 0;">
+              📋 Ventas del Periodo: ${activeFilterLabel}
+            </h3>
+            <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">
+              Mostrando ${ordersList.length} venta(s) • Total: ${formatCOP(ordersList.reduce((s, o) => s + (o.totalAmount || 0), 0))} (${ordersList.reduce((s, o) => s + (o.totalLiters || 0), 0)} L)
+            </span>
+          </div>
+          <button class="btn btn-outline btn-sm" id="btnGoToOrders">Ir a Gestión de Pedidos ➡️</button>
         </div>
 
         ${
-          recentOrders && recentOrders.length > 0
+          ordersList && ordersList.length > 0
             ? `
-          <table class="app-table">
-            <thead>
-              <tr>
-                <th>Pedido #</th>
-                <th>Cliente</th>
-                <th>Litros</th>
-                <th>Total</th>
-                <th>Estado Pago</th>
-                <th>Entrega</th>
-                <th>Fecha</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${recentOrders
-                .map((o) => {
-                  let payBadge = '<span class="badge badge-pending">🔴 Pendiente</span>';
-                  if (o.paymentStatus === 'PAID') payBadge = '<span class="badge badge-paid">🟢 Pagado</span>';
-                  if (o.paymentStatus === 'PARTIAL')
-                    payBadge = `<span class="badge badge-partial">🟡 Abono: ${formatCOP(o.paidAmount)}</span>`;
+          <div style="overflow-x: auto;">
+            <table class="app-table">
+              <thead>
+                <tr>
+                  <th>Pedido #</th>
+                  <th>Cliente & Teléfono</th>
+                  <th>Lote / Sabor</th>
+                  <th>Litros / Envases</th>
+                  <th>Total Venta</th>
+                  <th>Pago & Cobro</th>
+                  <th>Entrega</th>
+                  <th>Fecha</th>
+                  <th style="text-align: right;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${ordersList
+                  .map((o) => {
+                    let payBadge = '<span class="badge badge-pending">🔴 Pendiente</span>';
+                    if (o.paymentStatus === 'PAID') payBadge = '<span class="badge badge-paid">🟢 Pagado</span>';
+                    if (o.paymentStatus === 'PARTIAL')
+                      payBadge = `<span class="badge badge-partial">🟡 Abono: ${formatCOP(o.paidAmount)}</span>`;
 
-                  return `
-                  <tr>
-                    <td><strong>${o.orderNumber}</strong></td>
-                    <td>
-                      <div><strong>${o.customer?.fullName || 'Cliente'}</strong></div>
-                      <small style="color: var(--text-muted);">${o.customer?.phone || ''}</small>
-                    </td>
-                    <td><strong>${o.totalLiters} L</strong> (${o.flavor})</td>
-                    <td><strong>${formatCOP(o.totalAmount)}</strong></td>
-                    <td>${payBadge}</td>
-                    <td><span class="badge ${o.deliveryStatus === 'DELIVERED' ? 'badge-delivered' : 'badge-preparing'}">${o.deliveryStatus}</span></td>
-                    <td>${formatDate(o.orderDate)}</td>
-                  </tr>
-                `;
-                })
-                .join('')}
-            </tbody>
-          </table>
+                    const isUsername = o.customer?.phone && (o.customer.phone.startsWith('@') || /[a-zA-Z]/.test(o.customer.phone));
+                    const contactDisplay = isUsername && !o.customer.phone.startsWith('@') ? `@${o.customer.phone}` : (o.customer?.phone || '');
+
+                    return `
+                    <tr>
+                      <td>
+                        <strong style="color: var(--primary);">${o.orderNumber}</strong>
+                      </td>
+                      <td>
+                        <div><strong>${o.customer?.fullName || 'Cliente'}</strong></div>
+                        <small style="color: var(--text-muted);">${contactDisplay ? `📞 ${contactDisplay}` : ''}</small>
+                      </td>
+                      <td>
+                        ${
+                          o.batch
+                            ? `<span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-weight: 800; font-size: 0.72rem;">🍶 ${o.batch.batchCode}</span>
+                               <div style="font-size: 0.75rem; color: var(--accent); font-weight: 700;">${o.batch.flavor}</div>`
+                            : `<small style="color: var(--text-muted);">${o.flavor || 'Estándar'}</small>`
+                        }
+                      </td>
+                      <td>
+                        <strong>${o.totalLiters} L</strong>
+                        <div style="font-size: 0.72rem; color: var(--text-muted);">${o.bottleSize || '1L'} • ${o.quantityBottles || 1} bot</div>
+                      </td>
+                      <td>
+                        <strong style="color: var(--primary); font-size: 0.95rem;">${formatCOP(o.totalAmount)}</strong>
+                      </td>
+                      <td>
+                        <div>${payBadge}</div>
+                        ${o.pendingAmount > 0 ? `<div style="font-size: 0.73rem; color: var(--danger); font-weight: 700; margin-top: 2px;">Debe: ${formatCOP(o.pendingAmount)}</div>` : ''}
+                      </td>
+                      <td>
+                        <span class="badge ${o.deliveryStatus === 'DELIVERED' ? 'badge-delivered' : 'badge-preparing'}">
+                          ${o.deliveryStatus === 'DELIVERED' ? '✅ Entregado' : (o.deliveryStatus === 'IN_ROUTE' ? '🛵 En Ruta' : '🕒 Pendiente')}
+                        </span>
+                      </td>
+                      <td>
+                        <div style="font-size: 0.8rem; font-weight: 600;">${formatDate(o.orderDate)}</div>
+                        ${o.deliveryDate ? `<div style="font-size: 0.72rem; color: var(--primary); font-weight: 700;">🛵 ${formatDate(o.deliveryDate)}</div>` : ''}
+                      </td>
+                      <td style="text-align: right;">
+                        <div style="display: inline-flex; gap: 4px;">
+                          <button class="btn btn-whatsapp btn-sm btn-dash-whatsapp" data-id="${o.id}" style="padding: 3px 6px; font-size: 0.75rem;" title="WhatsApp">
+                            📲
+                          </button>
+                          ${
+                            o.pendingAmount > 0
+                              ? `<button class="btn btn-primary btn-sm btn-dash-pay" data-id="${o.id}" data-total="${o.totalAmount}" data-paid="${o.paidAmount}" data-pending="${o.pendingAmount}" style="padding: 3px 8px; font-size: 0.75rem;" title="Registrar Cobro">
+                                  💵 Cobrar
+                                 </button>`
+                              : ''
+                          }
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                  })
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
         `
             : `
-          <div class="empty-state">
-            <div class="empty-state-icon">🥛</div>
-            <div class="empty-state-title">Aún no hay pedidos registrados</div>
-            <div class="empty-state-text">Comienza registrando los primeros pedidos de YogurArte.</div>
-            <button class="btn btn-accent" id="btnNewOrderFromDash">+ Registrar Primer Pedido</button>
+          <div class="empty-state" style="padding: 30px 20px;">
+            <div class="empty-state-icon">📅</div>
+            <div class="empty-state-title">No hay ventas registradas para este periodo</div>
+            <div class="empty-state-text">Selecciona otra fecha o rango en la barra superior o registra un nuevo pedido.</div>
+            <button class="btn btn-accent" id="btnNewOrderFromDash" style="margin-top: 10px;">+ Registrar Pedido</button>
           </div>
         `
         }
@@ -410,6 +498,8 @@ export async function renderDashboard(container) {
       btn.addEventListener('click', (e) => {
         dashboardFilters.period = e.currentTarget.dataset.period;
         dashboardFilters.specificDate = '';
+        dashboardFilters.startDate = '';
+        dashboardFilters.endDate = '';
         dashboardFilters.month = '';
         renderDashboard(container);
       });
@@ -419,6 +509,8 @@ export async function renderDashboard(container) {
     const dateInput = container.querySelector('#dashSpecificDate');
     dateInput?.addEventListener('change', (e) => {
       dashboardFilters.specificDate = e.target.value;
+      dashboardFilters.startDate = '';
+      dashboardFilters.endDate = '';
       dashboardFilters.period = 'custom';
       dashboardFilters.month = '';
       renderDashboard(container);
@@ -426,7 +518,25 @@ export async function renderDashboard(container) {
 
     container.querySelector('#btnClearDashDate')?.addEventListener('click', () => {
       dashboardFilters.specificDate = '';
+      dashboardFilters.startDate = '';
+      dashboardFilters.endDate = '';
       dashboardFilters.period = 'all';
+      renderDashboard(container);
+    });
+
+    // Selector de Rango Desde - Hasta
+    container.querySelector('#btnApplyDateRange')?.addEventListener('click', () => {
+      const s = container.querySelector('#dashStartDate')?.value;
+      const e = container.querySelector('#dashEndDate')?.value;
+      if (!s && !e) {
+        showToast('Selecciona al menos una fecha de inicio o fin', 'warning');
+        return;
+      }
+      dashboardFilters.startDate = s || '';
+      dashboardFilters.endDate = e || '';
+      dashboardFilters.specificDate = '';
+      dashboardFilters.month = '';
+      dashboardFilters.period = 'custom';
       renderDashboard(container);
     });
 
@@ -435,11 +545,13 @@ export async function renderDashboard(container) {
     monthSelect?.addEventListener('change', (e) => {
       dashboardFilters.month = e.target.value;
       dashboardFilters.specificDate = '';
+      dashboardFilters.startDate = '';
+      dashboardFilters.endDate = '';
       dashboardFilters.period = 'custom';
       renderDashboard(container);
     });
 
-    // Listeners de WhatsApp en pedidos entregados
+    // Listeners de WhatsApp en pedidos
     container.querySelectorAll('.btn-dash-whatsapp').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         const id = e.currentTarget.dataset.id;
@@ -454,7 +566,7 @@ export async function renderDashboard(container) {
       });
     });
 
-    // Listeners de cobro rápido en pedidos entregados
+    // Listeners de cobro rápido en pedidos
     container.querySelectorAll('.btn-dash-pay').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const { id, total, paid, pending } = e.currentTarget.dataset;

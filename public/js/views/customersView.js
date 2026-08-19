@@ -28,10 +28,13 @@ export async function renderCustomers(container) {
         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
           <div class="filter-chip-group" id="custDebtFilterGroup">
             <button class="filter-chip ${currentDebtFilter === 'ALL' ? 'active' : ''}" data-debt="ALL">Todos</button>
-            <button class="filter-chip ${currentDebtFilter === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt="DELIVERED_DEBT" style="${currentDebtFilter === 'DELIVERED_DEBT' ? 'background: #DC2626; border-color: #DC2626; color: white;' : 'color: #DC2626;'}">
+            <button class="filter-chip ${currentDebtFilter === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt="DELIVERED_DEBT" style="${currentDebtFilter === 'DELIVERED_DEBT' ? 'background: #DC2626; border-color: #DC2626; color: white;' : 'color: #DC2626; font-weight: 700;'}">
               🚨 Con Deuda (Entregados)
             </button>
-            <button class="filter-chip ${currentDebtFilter === 'IN_PROCESS' ? 'active' : ''}" data-debt="IN_PROCESS" style="${currentDebtFilter === 'IN_PROCESS' ? 'background: var(--primary); border-color: var(--primary); color: white;' : 'color: var(--primary);'}">
+            <button class="filter-chip ${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'active' : ''}" data-debt="PAID_NOT_DELIVERED" style="${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'background: #059669; border-color: #059669; color: white;' : 'color: #059669; font-weight: 700;'}">
+              🟢🥣 Pagados por Entregar
+            </button>
+            <button class="filter-chip ${currentDebtFilter === 'IN_PROCESS' ? 'active' : ''}" data-debt="IN_PROCESS" style="${currentDebtFilter === 'IN_PROCESS' ? 'background: var(--primary); border-color: var(--primary); color: white;' : 'color: var(--primary); font-weight: 700;'}">
               🥣 Encargos (En Proceso)
             </button>
             <button class="filter-chip ${currentDebtFilter === 'PAID' ? 'active' : ''}" data-debt="PAID">🟢 Al Día</button>
@@ -80,7 +83,7 @@ export async function renderCustomers(container) {
 }
 
 // Función generadora del link de WhatsApp con recordatorio contextual
-function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0, inProcessPendingAmount = 0) {
+function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0, inProcessPendingAmount = 0, isPaidInProcess = false, mode = 'DEFAULT') {
   if (!phone) return '#';
   const rawPhone = phone.trim();
   const isUsername = rawPhone.startsWith('@') || /[a-zA-Z]/.test(rawPhone);
@@ -89,6 +92,12 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
   if (deliveredPendingDebt > 0) {
     // Pedido ya entregado y no pagado (deuda real)
     msg = `¡Hola ${fullName}! 🥛✨ Te saludamos cordialmente de *YogurArte*.\n\nEsperamos que estés disfrutando de nuestros deliciosos yogures artesanales 100% naturales.\n\nTe recordamos con mucho aprecio que presentas un saldo pendiente de *${formatCOP(deliveredPendingDebt)}* de tu pedido entregado.\n\nSi ya realizaste la transferencia, por favor compártenos el comprobante por este medio. ¡Muchísimas gracias por tu preferencia y apoyo continuo! 🙌🐄`;
+  } else if (isPaidInProcess && mode === 'INFO') {
+    // Info del pedido pagado en proceso
+    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\nTu pedido de yogur artesanal 100% natural está siendo preparado con todo el cuidado. 🥣🍓 Te avisaremos apenas vaya en camino para la entrega. ¡Muchas gracias por tu compra! 🛵💨`;
+  } else if (isPaidInProcess) {
+    // Pedido pagado en proceso (agradecimiento y confirmación de pago YogurArte)
+    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos con mucho cariño de parte del equipo de *YogurArte*.\n\n🎉 ¡Confirmamos que recibimos con éxito el pago de tu pedido! Muchísimas gracias por tu compra y confianza en nuestro producto 100% natural. 🥣🍓\n\nTu pedido está en preparación y te avisaremos en cuanto vaya en camino para la entrega. 🛵💨 ¡Que tengas un día maravilloso! 🙌🐄✨`;
   } else if (inProcessPendingAmount > 0) {
     // Pedido en proceso / encargado (aún no se entrega)
     msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de *YogurArte*.\n\nTu pedido de yogur artesanal 100% natural está siendo preparado con todo el cuidado. Te avisaremos apenas esté en camino para entrega. ¡Gracias por tu encargo! 🥣🍓`;
@@ -122,8 +131,10 @@ async function loadCustomersList(container) {
     let filteredCustomers = [...cachedCustomers];
     if (currentDebtFilter === 'DELIVERED_DEBT') {
       filteredCustomers = filteredCustomers.filter((c) => (c.deliveredPendingDebt || 0) > 0);
+    } else if (currentDebtFilter === 'PAID_NOT_DELIVERED') {
+      filteredCustomers = filteredCustomers.filter((c) => (c.inProcessOrdersCount || 0) > 0 && (c.inProcessPendingAmount || 0) <= 0 && (c.deliveredPendingDebt || 0) <= 0);
     } else if (currentDebtFilter === 'IN_PROCESS') {
-      filteredCustomers = filteredCustomers.filter((c) => (c.deliveredPendingDebt || 0) <= 0 && (c.inProcessPendingAmount || 0) > 0);
+      filteredCustomers = filteredCustomers.filter((c) => (c.inProcessOrdersCount || 0) > 0 || (c.inProcessPendingAmount || 0) > 0);
     } else if (currentDebtFilter === 'PAID') {
       filteredCustomers = filteredCustomers.filter((c) => (c.totalPendingAmount || 0) <= 0);
     }
@@ -137,6 +148,8 @@ async function loadCustomersList(container) {
             ${
               currentDebtFilter === 'DELIVERED_DEBT'
                 ? '¡Excelente noticia! No hay clientes con deudas de pedidos entregados.'
+                : currentDebtFilter === 'PAID_NOT_DELIVERED'
+                ? 'No hay clientes con pedidos pagados pendientes de entrega.'
                 : currentDebtFilter === 'IN_PROCESS'
                 ? 'No hay clientes con pedidos encargados en proceso.'
                 : 'Registra tus clientes habituales para agilizar la toma de pedidos.'
@@ -155,10 +168,10 @@ async function loadCustomersList(container) {
 
     const totalDeliveredDebtInList = filteredCustomers.reduce((sum, c) => sum + (c.deliveredPendingDebt || 0), 0);
     const deliveredDebtorsCount = filteredCustomers.filter((c) => (c.deliveredPendingDebt || 0) > 0).length;
-    const inProcessCount = filteredCustomers.filter((c) => (c.deliveredPendingDebt || 0) <= 0 && (c.inProcessPendingAmount || 0) > 0).length;
+    const inProcessCount = filteredCustomers.filter((c) => (c.inProcessOrdersCount || 0) > 0 || (c.inProcessPendingAmount || 0) > 0).length;
 
     let summaryBanner = '';
-    if (deliveredDebtorsCount > 0 && currentDebtFilter !== 'PAID' && currentDebtFilter !== 'IN_PROCESS') {
+    if (deliveredDebtorsCount > 0 && currentDebtFilter !== 'PAID' && currentDebtFilter !== 'IN_PROCESS' && currentDebtFilter !== 'PAID_NOT_DELIVERED') {
       summaryBanner = `
         <div style="background: #FFF5F5; border: 1.5px solid #FECACA; border-radius: var(--radius-lg); padding: 12px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -179,7 +192,7 @@ async function loadCustomersList(container) {
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 1.2rem;">🥣</span>
             <span style="font-weight: 700; color: var(--primary); font-size: 0.92rem;">
-              Mostrando ${inProcessCount} cliente(s) con pedidos encargados en preparación / ruta (se cobrarán al entregar)
+              Mostrando ${inProcessCount} cliente(s) con pedidos encargados en preparación / ruta
             </span>
           </div>
           <div style="background: var(--primary); color: white; padding: 4px 12px; border-radius: var(--radius-md); font-weight: 800; font-size: 0.95rem;">
@@ -200,10 +213,13 @@ async function loadCustomersList(container) {
             
             const deliveredDebt = c.deliveredPendingDebt || 0;
             const inProcessAmount = c.inProcessPendingAmount || 0;
+            const inProcessCount = c.inProcessOrdersCount || 0;
+
             const hasDeliveredDebt = deliveredDebt > 0;
+            const isPaidInProcess = !hasDeliveredDebt && inProcessCount > 0 && inProcessAmount <= 0;
             const hasInProcessOrder = !hasDeliveredDebt && inProcessAmount > 0;
 
-            const waLink = generateCustomerWhatsAppLink(rawPhone, c.fullName, deliveredDebt, inProcessAmount);
+            const waLink = generateCustomerWhatsAppLink(rawPhone, c.fullName, deliveredDebt, inProcessAmount, isPaidInProcess);
 
             let cardBorder = '';
             let badgeHtml = '';
@@ -215,6 +231,11 @@ async function loadCustomersList(container) {
               badgeHtml = `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-weight: 800; font-size: 0.76rem;">🚨 Deuda: ${formatCOP(deliveredDebt)}</span>`;
               waBtnClass = 'btn-whatsapp';
               waBtnText = '📲 Recordar Pago';
+            } else if (isPaidInProcess) {
+              cardBorder = 'border: 1.5px solid #34D399; background: #F0FDF4; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.08);';
+              badgeHtml = `<span class="badge" style="background: #DCFCE7; color: #059669; font-weight: 800; font-size: 0.76rem;">🟢🥣 Pagado • Por Entregar 🛵</span>`;
+              waBtnClass = 'btn-whatsapp';
+              waBtnText = '📲 Agradecer Pago';
             } else if (hasInProcessOrder) {
               cardBorder = 'border: 1.5px solid #DDD6FE; background: #FAF7FC; box-shadow: 0 4px 14px rgba(109, 40, 217, 0.05);';
               badgeHtml = `<span class="badge" style="background: #EDE9FE; color: var(--primary); font-weight: 800; font-size: 0.76rem;">🥣 Encargo: ${formatCOP(inProcessAmount)}</span>`;
@@ -241,15 +262,40 @@ async function loadCustomersList(container) {
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-end;">
-                  <a 
-                    href="${waLink}" 
-                    target="_blank" 
-                    class="btn ${waBtnClass} btn-sm" 
-                    style="padding: 5px 10px; font-weight: 700; font-size: 0.8rem; white-space: nowrap;"
-                    title="${hasDeliveredDebt ? `Enviar recordatorio de cobro de ${formatCOP(deliveredDebt)} por WhatsApp` : 'Contactar por WhatsApp'}"
-                  >
-                    ${waBtnText}
-                  </a>
+                  ${
+                    isPaidInProcess
+                      ? `
+                      <a 
+                        href="${waLink}" 
+                        target="_blank" 
+                        class="btn btn-whatsapp btn-sm" 
+                        style="padding: 4px 8px; font-weight: 700; font-size: 0.78rem; white-space: nowrap;"
+                        title="Notificar recepción del pago y agradecer al estilo YogurArte"
+                      >
+                        📲 Agradecer Pago
+                      </a>
+                      <a 
+                        href="${generateCustomerWhatsAppLink(rawPhone, c.fullName, deliveredDebt, inProcessAmount, isPaidInProcess, 'INFO')}" 
+                        target="_blank" 
+                        class="btn btn-outline btn-sm" 
+                        style="padding: 3px 6px; font-weight: 700; font-size: 0.74rem; white-space: nowrap; color: var(--primary); border-color: var(--primary);"
+                        title="Enviar información y estado actual del pedido"
+                      >
+                        💬 Info Pedido
+                      </a>
+                    `
+                      : `
+                      <a 
+                        href="${waLink}" 
+                        target="_blank" 
+                        class="btn ${waBtnClass} btn-sm" 
+                        style="padding: 5px 10px; font-weight: 700; font-size: 0.8rem; white-space: nowrap;"
+                        title="${hasDeliveredDebt ? `Enviar recordatorio de cobro de ${formatCOP(deliveredDebt)} por WhatsApp` : 'Contactar por WhatsApp'}"
+                      >
+                        ${waBtnText}
+                      </a>
+                    `
+                  }
 
                   ${(hasDeliveredDebt || hasInProcessOrder) ? `
                     <button 

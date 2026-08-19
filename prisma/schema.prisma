@@ -105,7 +105,9 @@ model ProductionBatch {
   totalLitersProduced Float
   yieldPercentage     Float
   flavor              String            @default("Natural")
-  status              String            @default("COMPLETADO") // EN_FERMENTACION, COMPLETADO
+  price1L             Float             @default(10000)
+  price2L             Float             @default(20000)
+  status              String            @default("COMPLETADO") // COMPLETADO, AGOTADO, EN_FERMENTACION, DESCARTADO
   preparationDate     DateTime          @default(now())
   expirationDate      DateTime?
   totalCost           Float             @default(0)
@@ -117,6 +119,8 @@ model ProductionBatch {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @default(now()) @updatedAt
   itemsUsed           BatchItemUsage[]
+  orders              Order[]
+  orderItems          OrderItem[]
 }
 
 model BatchItemUsage {
@@ -132,42 +136,46 @@ model BatchItemUsage {
 }
 
 model Order {
-  id              Int         @id @default(autoincrement())
-  orderNumber     String      @unique
+  id              Int              @id @default(autoincrement())
+  orderNumber     String           @unique
   customerId      Int
-  customer        Customer    @relation(fields: [customerId], references: [id])
-  bottleSize      String      @default("1L") // 1L, 2L, MIXTO
-  quantityBottles Int         @default(1)
-  totalLiters     Float       @default(1)
-  flavor          String      @default("Natural")
-  unitPrice       Float       @default(10000)
+  customer        Customer         @relation(fields: [customerId], references: [id])
+  batchId         Int?
+  batch           ProductionBatch? @relation(fields: [batchId], references: [id])
+  bottleSize      String           @default("1L") // 1L, 2L, MIXTO
+  quantityBottles Int              @default(1)
+  totalLiters     Float            @default(1)
+  flavor          String           @default("Natural")
+  unitPrice       Float            @default(10000)
   totalAmount     Float
-  paidAmount      Float       @default(0)
-  pendingAmount   Float       @default(0)
-  paymentStatus   String      @default("PENDING") // PENDING, PARTIAL, PAID
-  deliveryStatus  String      @default("PENDING") // PENDING, PREPARING, IN_ROUTE, DELIVERED, CANCELLED
-  orderDate       DateTime    @default(now())
+  paidAmount      Float            @default(0)
+  pendingAmount   Float            @default(0)
+  paymentStatus   String           @default("PENDING") // PENDING, PARTIAL, PAID
+  deliveryStatus  String           @default("PENDING") // PENDING, PREPARING, IN_ROUTE, DELIVERED, CANCELLED
+  orderDate       DateTime         @default(now())
   deliveryDate    DateTime?
   deliveryAddress String?
   notes           String?
   registeredBy    String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @default(now()) @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @default(now()) @updatedAt
   items           OrderItem[]
 }
 
 model OrderItem {
-  id            Int      @id @default(autoincrement())
+  id            Int              @id @default(autoincrement())
   orderId       Int
-  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  bottleSize    String   @default("1L") // 1L, 2L
-  flavor        String   @default("Natural")
-  quantity      Int      @default(1)
-  litersPerUnit Float    @default(1.0)
-  totalLiters   Float    @default(1.0)
-  unitPrice     Float    @default(10000)
-  totalPrice    Float    @default(10000)
-  createdAt     DateTime @default(now())
+  order         Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  batchId       Int?
+  batch         ProductionBatch? @relation(fields: [batchId], references: [id])
+  bottleSize    String           @default("1L") // 1L, 2L
+  flavor        String           @default("Natural")
+  quantity      Int              @default(1)
+  litersPerUnit Float            @default(1.0)
+  totalLiters   Float            @default(1.0)
+  unitPrice     Float            @default(10000)
+  totalPrice    Float            @default(10000)
+  createdAt     DateTime         @default(now())
 }
 
 model Expense {

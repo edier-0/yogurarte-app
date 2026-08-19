@@ -2,33 +2,43 @@ import { api } from '../api.js';
 import { formatCOP, formatDate, getTodayLocalDateStr, showToast, store } from '../store.js';
 
 let includeInactive = false;
+let batchStatusFilter = 'ALL';
 
 export async function renderBatches(container) {
   container.innerHTML = `
-    <!-- Card de Resumen de Producción -->
-    <div class="batch-calculator-card">
-      <div class="batch-calculator-content">
-        <h3>🍶 Registro de Lotes de Yogur Artesanal</h3>
-        <p>
-          Registra cada producción indicando los litros de leche y las botellas envasadas (1L y 2L). El sistema descuenta automáticamente la leche, los envases y las etiquetas correspondientes.
-        </p>
+    <!-- Encabezado de Sección -->
+    <div class="section-header-card" style="margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <h2 class="view-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+            🍶 Control de Lotes y Producción
+          </h2>
+          <p class="view-subtitle" style="margin: 4px 0 0 0;">
+            Registra tu fermentación, calcula rendimientos, costos y establece precios de venta por lote.
+          </p>
+        </div>
+        <button class="btn btn-primary" id="btnOpenNewBatchModal" style="padding: 10px 20px; font-weight: 800;">
+          + Registrar Nuevo Lote
+        </button>
       </div>
-      <button class="btn btn-accent" id="btnOpenNewBatchModal" style="background: #FFFFFF; color: var(--primary); font-weight: 800;">
-        + Registrar Lote
-      </button>
     </div>
 
     <!-- Toolbar de Filtros -->
-    <div class="toolbar-container" style="margin-bottom: 16px;">
-      <div class="toolbar-left">
-        <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--primary);">
+    <div class="toolbar-container" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div class="toolbar-left" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--primary); margin: 0;">
           📋 Historial de Lotes Producidos
         </h3>
+        <div class="filter-chip-group" id="batchStatusChips">
+          <button class="filter-chip ${batchStatusFilter === 'ALL' ? 'active' : ''}" data-status="ALL">Todos los Lotes</button>
+          <button class="filter-chip ${batchStatusFilter === 'COMPLETADO' ? 'active' : ''}" data-status="COMPLETADO">✅ Disponibles</button>
+          <button class="filter-chip ${batchStatusFilter === 'AGOTADO' ? 'active' : ''}" data-status="AGOTADO">📦 Agotados</button>
+        </div>
       </div>
       <div class="toolbar-right">
         <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 700; color: var(--text-muted); cursor: pointer;">
           <input type="checkbox" id="chkIncludeInactive" ${includeInactive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" />
-          Mostrar lotes desactivados
+          Mostrar desactivados
         </label>
       </div>
     </div>
@@ -47,6 +57,15 @@ export async function renderBatches(container) {
     openBatchModal();
   });
 
+  container.querySelectorAll('#batchStatusChips .filter-chip').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      batchStatusFilter = e.currentTarget.dataset.status;
+      container.querySelectorAll('#batchStatusChips .filter-chip').forEach((b) => b.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      loadBatchesList(container);
+    });
+  });
+
   container.querySelector('#chkIncludeInactive')?.addEventListener('change', (e) => {
     includeInactive = e.target.checked;
     loadBatchesList(container);
@@ -60,7 +79,14 @@ async function loadBatchesList(container) {
   if (!tableContainer) return;
 
   try {
-    const batches = await api.getBatches({ includeInactive: includeInactive ? 'true' : 'false' });
+    const params = {
+      includeInactive: includeInactive ? 'true' : 'false',
+    };
+    if (batchStatusFilter !== 'ALL') {
+      params.status = batchStatusFilter;
+    }
+
+    const batches = await api.getBatches(params);
 
     if (!batches || batches.length === 0) {
       tableContainer.innerHTML = `
@@ -81,11 +107,12 @@ async function loadBatchesList(container) {
           <tr>
             <th>Código Lote</th>
             <th>Fecha</th>
-            <th>Leche Usada</th>
-            <th>Botellas Envasadas</th>
-            <th>Total Litros</th>
-            <th>Rendimiento</th>
-            <th>Costo / L</th>
+            <th>🥛 Leche Invertida</th>
+            <th>🍶 Yogur Salido</th>
+            <th>🍾 Botellas & Ventas</th>
+            <th>💲 Precios Venta</th>
+            <th>📈 Rendimiento</th>
+            <th>💰 Costo / L</th>
             <th>Estado</th>
             <th>Acciones</th>
           </tr>
@@ -98,15 +125,30 @@ async function loadBatchesList(container) {
               if (b.yieldPercentage < 70) yieldColor = 'var(--danger)';
 
               const isInactive = !b.isActive;
+              const hasExtraYield = b.totalLitersProduced > b.milkUsedLiters;
+              const p1 = b.price1L || 10000;
+              const p2 = b.price2L || 20000;
+
+              let statusBadge = '<span class="badge badge-paid">✅ Disponible</span>';
+              if (isInactive) {
+                statusBadge = `<span class="badge badge-pending" title="${b.deactivationReason || ''}">🚫 Desactivado</span>`;
+              } else if (b.status === 'AGOTADO') {
+                statusBadge = '<span class="badge" style="background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; font-weight: 800;">📦 Agotado</span>';
+              } else if (b.status === 'DESCARTADO') {
+                statusBadge = '<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FCA5A5; font-weight: 800;">🚫 Baja</span>';
+              }
+
+              const soldLiters = b.totalSoldLiters || 0;
+              const soldPct = b.totalLitersProduced > 0 ? Math.min(100, Math.round((soldLiters / b.totalLitersProduced) * 100)) : 0;
 
               return `
-              <tr style="${isInactive ? 'opacity: 0.55; background: var(--bg-subtle);' : ''}">
+              <tr style="${isInactive ? 'opacity: 0.55; background: var(--bg-subtle);' : (b.status === 'AGOTADO' ? 'background: #FFFDF7;' : '')}">
                 <td>
                   <strong>${b.batchCode}</strong>
-                  <div><small style="color: var(--accent); font-weight: 700;">${b.flavor}</small></div>
+                  <div><small style="color: var(--accent); font-weight: 800;">${b.flavor}</small></div>
                   ${
                     b.itemsUsed && b.itemsUsed.length > 0
-                      ? `<div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; max-width: 260px;">
+                      ? `<div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; max-width: 250px;">
                           ${b.itemsUsed
                             .map((item) => {
                               const icon = getBatchItemIcon(item.rawMaterial?.name, item.rawMaterial?.code);
@@ -128,37 +170,52 @@ async function loadBatchesList(container) {
                   }
                 </td>
                 <td>${formatDate(b.preparationDate)}</td>
-                <td><strong>${b.milkUsedLiters} L</strong></td>
+                <td><strong style="color: #0369A1;">${b.milkUsedLiters} L</strong></td>
+                <td><strong style="color: var(--primary); font-size: 1.05rem;">${b.totalLitersProduced} L</strong></td>
                 <td>
                   <span style="font-size: 0.85rem;">
                     ${b.bottles1LProduced > 0 ? `<strong>${b.bottles1LProduced}</strong> de 1L` : ''}
                     ${b.bottles1LProduced > 0 && b.bottles2LProduced > 0 ? ' • ' : ''}
                     ${b.bottles2LProduced > 0 ? `<strong>${b.bottles2LProduced}</strong> de 2L` : ''}
+                    ${b.bottles1LProduced === 0 && b.bottles2LProduced === 0 ? '<span style="color: var(--text-muted);">A granel</span>' : ''}
                   </span>
-                </td>
-                <td><strong style="color: var(--primary); font-size: 1.05rem;">${b.totalLitersProduced} L</strong></td>
-                <td><strong style="color: ${yieldColor};">${b.yieldPercentage}%</strong></td>
-                <td><strong>${b.costPerLiter > 0 ? formatCOP(b.costPerLiter) : 'N/D'}</strong></td>
-                <td>
                   ${
-                    b.isActive
-                      ? '<span class="badge badge-paid">✅ Activo</span>'
-                      : `<span class="badge badge-pending" title="${b.deactivationReason || ''}">🚫 Desactivado</span>`
+                    soldLiters > 0
+                      ? `<div style="font-size: 0.72rem; color: var(--primary); font-weight: 700; margin-top: 2px;">
+                          🛒 ${soldLiters}L vendidos (${soldPct}%)
+                         </div>`
+                      : '<div style="font-size: 0.72rem; color: var(--text-muted);">Sin ventas aún</div>'
                   }
                 </td>
                 <td>
-                  <div style="display: flex; gap: 6px;">
+                  <div style="font-size: 0.82rem;">
+                    <div><span style="color: var(--text-muted);">1L:</span> <strong style="color: var(--primary);">${formatCOP(p1)}</strong></div>
+                    <div><span style="color: var(--text-muted);">2L:</span> <strong style="color: var(--primary);">${formatCOP(p2)}</strong></div>
+                  </div>
+                </td>
+                <td>
+                  <strong style="color: ${yieldColor}; font-size: 0.95rem;">${b.yieldPercentage}%</strong>
+                  ${hasExtraYield ? `<div style="font-size: 0.7rem; color: var(--success); font-weight: 700;">+${(b.totalLitersProduced - b.milkUsedLiters).toFixed(1)} L extra</div>` : ''}
+                </td>
+                <td><strong style="color: #b78103;">${b.costPerLiter > 0 ? formatCOP(b.costPerLiter) : 'N/D'}</strong></td>
+                <td>${statusBadge}</td>
+                <td>
+                  <div style="display: flex; gap: 6px; align-items: center;">
                     <button class="btn btn-outline btn-sm btn-view-batch" data-id="${b.id}" title="Ver resumen completo">
                       👁️ Resumen
                     </button>
                     ${
                       b.isActive
-                        ? `<button class="btn btn-outline btn-sm btn-edit-batch" data-id="${b.id}" title="Editar lote">
-                            ✏️
-                           </button>
-                           <button class="btn btn-outline btn-sm btn-deactivate-batch" data-id="${b.id}" data-code="${b.batchCode}" style="color: var(--danger);" title="Desactivar lote">
-                            🚫
-                           </button>`
+                        ? `
+                        <button class="btn btn-outline btn-sm btn-quick-toggle-status" data-id="${b.id}" data-current="${b.status}" title="${b.status === 'AGOTADO' ? 'Reactivar lote (Marcar como disponible)' : 'Marcar lote como agotado'}" style="font-size: 0.76rem; font-weight: 700; padding: 4px 8px; ${b.status === 'AGOTADO' ? 'color: var(--primary); border-color: var(--primary); background: #FAF5FF;' : 'color: #92400E; border-color: #FCD34D; background: #FFFBEB;'}">
+                          ${b.status === 'AGOTADO' ? '🔄 Reactivar' : '📦 Agotar'}
+                        </button>
+                        <button class="btn btn-outline btn-sm btn-edit-batch" data-id="${b.id}" title="Editar lote">
+                          ✏️
+                        </button>
+                        <button class="btn btn-outline btn-sm btn-deactivate-batch" data-id="${b.id}" data-code="${b.batchCode}" style="color: var(--danger);" title="Desactivar lote">
+                          🚫
+                        </button>`
                         : ''
                     }
                   </div>
@@ -171,11 +228,25 @@ async function loadBatchesList(container) {
       </table>
     `;
 
-    // Eventos de botones
     tableContainer.querySelectorAll('.btn-view-batch').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const id = e.currentTarget.dataset.id;
         openBatchDetailModal(id);
+      });
+    });
+
+    tableContainer.querySelectorAll('.btn-quick-toggle-status').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.currentTarget.dataset.id;
+        const current = e.currentTarget.dataset.current;
+        const nextStatus = current === 'AGOTADO' ? 'COMPLETADO' : 'AGOTADO';
+        try {
+          await api.updateBatch(id, { status: nextStatus });
+          showToast(`Lote marcado como ${nextStatus === 'AGOTADO' ? '📦 Agotado' : '✅ Disponible'} 🍶`);
+          loadBatchesList(container);
+        } catch (err) {
+          showToast('Error al cambiar estado del lote', 'danger');
+        }
       });
     });
 
@@ -245,7 +316,7 @@ async function openBatchModal() {
 
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 540px;">
+      <div class="modal-card" style="max-width: 560px;">
         <div class="modal-header">
           <h3 class="modal-title">🍶 Registrar Lote de Producción</h3>
           <button class="modal-close-btn" id="btnCloseBatchModal">✕</button>
@@ -272,19 +343,37 @@ async function openBatchModal() {
               </div>
             </div>
 
-            <!-- Cantidad de Leche Principal -->
-            <div class="form-group">
-              <label class="form-label">Litros de Leche Invertidos (Base de Producción) *</label>
-              <input type="number" id="batchMilkLiters" class="form-input" min="0.5" step="0.5" placeholder="Ej: 11" required />
-              <div id="milkStockHint" style="font-size: 0.78rem; margin-top: 4px; font-weight: 700; color: ${milkStock > 0 ? 'var(--text-muted)' : 'var(--danger)'};">
-                🥛 Stock disponible: <strong>${milkStock} L</strong> • Costo: ${formatCOP(milkCost)}/L
+            <!-- Cantidad de Leche Usada (Descuento de Stock) -->
+            <div class="form-group" style="background: #F0F9FF; border: 1.5px solid #BAE6FD; padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 12px;">
+              <label class="form-label" style="color: #0369A1; font-weight: 800; font-size: 0.92rem;">
+                🥛 Litros de Leche Invertidos (Se descontarán del inventario) *
+              </label>
+              <input type="number" id="batchMilkLiters" class="form-input" min="0.5" step="0.1" placeholder="Ej: 10" required style="font-size: 1.05rem; font-weight: 700;" />
+              <div id="milkStockHint" style="font-size: 0.78rem; margin-top: 5px; font-weight: 700; color: ${milkStock > 0 ? 'var(--text-muted)' : 'var(--danger)'};">
+                🥛 Stock disponible: <strong>${milkStock} L</strong> • Costo promedio: ${formatCOP(milkCost)}/L
               </div>
             </div>
 
-            <!-- Botellas Producidas -->
-            <div class="form-row">
+            <!-- Cantidad Real de Yogur Salido (Rendimiento) -->
+            <div class="form-group" style="background: #FAF5FF; border: 1.5px solid #DDD6FE; padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label class="form-label" style="color: var(--primary); font-weight: 800; font-size: 0.92rem; margin: 0;">
+                  🍶 Litros de Yogur Salidos / Obtenidos (Rendimiento Final) *
+                </label>
+                <button type="button" id="btnSyncWithBottles" class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 0.72rem; font-weight: 700; color: var(--primary); border-color: var(--primary);" title="Calcular automáticamente a partir de las botellas envasadas">
+                  🔄 Igualar a botellas
+                </button>
+              </div>
+              <input type="number" id="batchTotalProducedLiters" class="form-input" min="0.1" step="0.1" placeholder="Ej: 11.5" required style="font-size: 1.05rem; font-weight: 700; color: var(--primary);" />
+              <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px;">
+                💡 <em>Indica cuántos litros reales salieron del lote (suelen salir más litros que los invertidos por la adición de azúcar, leche en polvo, frutas y fermento).</em>
+              </div>
+            </div>
+
+            <!-- Botellas Envasadas (Opcional o Desglose de Envases) -->
+            <div class="form-row" style="margin-bottom: 12px;">
               <div class="form-group">
-                <label class="form-label">Botellas 1 Litro Envasadas</label>
+                <label class="form-label">🍾 Botellas 1 Litro Envasadas</label>
                 <input type="number" id="batchBottles1L" class="form-input" min="0" value="0" />
                 <div id="b1StockHint" style="font-size: 0.75rem; margin-top: 3px; font-weight: 700; color: ${b1Stock > 0 ? 'var(--text-muted)' : 'var(--danger)'};">
                   🍾 Stock 1L: <strong>${b1Stock} und</strong> ${b1Stock <= 0 ? '⚠️' : ''}
@@ -292,7 +381,7 @@ async function openBatchModal() {
               </div>
 
               <div class="form-group">
-                <label class="form-label">Botellas 2 Litros Envasadas</label>
+                <label class="form-label">🍾 Botellas 2 Litros Envasadas</label>
                 <input type="number" id="batchBottles2L" class="form-input" min="0" value="0" />
                 <div id="b2StockHint" style="font-size: 0.75rem; margin-top: 3px; font-weight: 700; color: ${b2Stock > 0 ? 'var(--text-muted)' : 'var(--danger)'};">
                   🍾 Stock 2L: <strong>${b2Stock} und</strong> ${b2Stock <= 0 ? '⚠️' : ''}
@@ -304,9 +393,9 @@ async function openBatchModal() {
             <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 14px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <div style="font-size: 0.88rem; font-weight: 800; color: var(--primary);">
-                  🥣 Receta e Insumos por Litro (g / L)
+                  🥣 Receta e Insumos por Litro de Leche (g / L)
                 </div>
-                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700;">Ajustable por lote</span>
+                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700;">Calculado sobre leche</span>
               </div>
 
               <!-- Azúcar: g / Litro -->
@@ -353,13 +442,18 @@ async function openBatchModal() {
                 </div>
               </div>
 
-              <!-- Frutas o Insumos Adicionales (g/L) -->
+              <!-- Insumos Adicionales: Botón Base y Botón Compuesto -->
               <div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                  <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">🍓 Frutas u otros Insumos:</span>
-                  <button type="button" class="btn btn-outline btn-sm" id="btnToggleExtra" style="padding: 4px 10px; font-size: 0.78rem; font-weight: 700;">
-                    + Añadir Insumo (g/L)
-                  </button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                  <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">🥣 Insumos Adicionales:</span>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn btn-outline btn-sm" id="btnAddBaseExtra" style="padding: 4px 8px; font-size: 0.76rem; font-weight: 700; color: #0369A1; border-color: #BAE6FD; background: #F0F9FF;" title="Insumo calculado por cada litro de leche cruda invertida">
+                      🥛 + Insumo Base (g/L leche)
+                    </button>
+                    <button type="button" class="btn btn-outline btn-sm" id="btnAddCompoundExtra" style="padding: 4px 8px; font-size: 0.76rem; font-weight: 700; color: var(--primary); border-color: #DDD6FE; background: #FAF5FF;" title="Insumo compuesto, fruta o mermelada calculado por cada litro de yogur final producido">
+                      🍓 + Insumo Compuesto (g/L yogur)
+                    </button>
+                  </div>
                 </div>
                 <div id="extraContainer" style="display: flex; flex-direction: column; gap: 8px;">
                   <div id="extraRowsList"></div>
@@ -379,29 +473,53 @@ async function openBatchModal() {
               </div>
             </div>
 
+            <!-- Precios de Venta de este Lote -->
+            <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 0.88rem; font-weight: 800; color: var(--primary);">
+                  💲 Precios de Venta para este Lote
+                </span>
+                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700;">Configurable por lote</span>
+              </div>
+              <div class="form-row" style="margin-bottom: 0;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">Precio Botella 1L ($ COP) *</label>
+                  <input type="number" id="batchPrice1L" class="form-input" min="0" step="500" value="10000" required style="font-weight: 800; color: var(--primary);" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">Precio Botella 2L ($ COP) *</label>
+                  <input type="number" id="batchPrice2L" class="form-input" min="0" step="500" value="20000" required style="font-weight: 800; color: var(--primary);" />
+                </div>
+              </div>
+              <div id="batchMarginPreview" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; font-weight: 600;">
+                Margen proyectado: 1L (~$0) • 2L (~$0)
+              </div>
+            </div>
+
             <!-- Resumen de Costeo y Descuento en Tiempo Real -->
             <div style="background: #FFFFFF; border: 2px solid var(--border-color); padding: 14px; border-radius: var(--radius-md); margin-bottom: 14px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">Litros Producidos:</span>
+                <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">Yogur Obtenido / Salido:</span>
                 <strong id="batchTotalResultLiters" style="font-size: 1.15rem; color: var(--primary);">0 Litros</strong>
               </div>
 
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">Rendimiento:</span>
+                <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">Rendimiento Obtenido:</span>
                 <strong id="batchYieldDisplay" style="font-size: 1.1rem; color: var(--success);">0%</strong>
               </div>
 
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
-                <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">Costo Estimado por Litro:</span>
+                <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">Costo Real por Litro Producido:</span>
                 <strong id="batchCostPerLiterDisplay" style="font-size: 1.15rem; color: #b78103;">$0 COP / L</strong>
               </div>
 
               <div style="font-size: 0.8rem; color: var(--text-muted);">
-                <div style="font-weight: 700; color: var(--primary); margin-bottom: 4px;">📦 Desglose a descontar del inventario:</div>
+                <div style="font-weight: 700; color: var(--primary); margin-bottom: 4px;">📦 Desglose que se descontará del inventario:</div>
                 <div id="autoDeductSummary">
-                  • 🥛 Leche: <span id="summaryMilk">0 L</span><br>
+                  • 🥛 Leche líquida: <span id="summaryMilk">0 L</span><br>
                   • 🍬 Azúcar: <span id="summarySugar">0 g</span><br>
                   • 🥛 Leche en Polvo: <span id="summaryPowder">0 g</span><br>
+                  <span id="summaryExtras"></span>
                   • 🍾 Botellas 1L: <span id="summaryB1">0 und</span><br>
                   • 🍾 Botellas 2L: <span id="summaryB2">0 und</span><br>
                   • 🏷️ Etiquetas: <span id="summaryLabels">Omitido</span>
@@ -428,8 +546,10 @@ async function openBatchModal() {
   `;
 
   const milkInput = document.getElementById('batchMilkLiters');
+  const totalProducedInput = document.getElementById('batchTotalProducedLiters');
   const b1Input = document.getElementById('batchBottles1L');
   const b2Input = document.getElementById('batchBottles2L');
+  const btnSyncWithBottles = document.getElementById('btnSyncWithBottles');
   
   const useSugarCheckbox = document.getElementById('batchUseSugar');
   const sugarGplInput = document.getElementById('batchSugarGramsPerL');
@@ -460,12 +580,34 @@ async function openBatchModal() {
   const b1StockHint = document.getElementById('b1StockHint');
   const b2StockHint = document.getElementById('b2StockHint');
 
+  let hasManuallySetProduced = false;
+
+  btnSyncWithBottles?.addEventListener('click', () => {
+    const b1 = Number(b1Input.value) || 0;
+    const b2 = Number(b2Input.value) || 0;
+    const bottlesTotal = b1 * 1 + b2 * 2;
+    totalProducedInput.value = bottlesTotal > 0 ? bottlesTotal : '';
+    hasManuallySetProduced = true;
+    updateCalculations();
+  });
+
   const updateCalculations = () => {
     const milk = Number(milkInput.value) || 0;
     const b1 = Number(b1Input.value) || 0;
     const b2 = Number(b2Input.value) || 0;
-    const totalLitros = b1 * 1 + b2 * 2;
+    const bottlesLitros = b1 * 1 + b2 * 2;
     const totalBotellas = b1 + b2;
+
+    // Si el usuario no ha puesto un valor manual para los litros que salieron, sugerir a partir de botellas o leche
+    if (!hasManuallySetProduced) {
+      if (bottlesLitros > 0) {
+        totalProducedInput.value = bottlesLitros;
+      } else if (milk > 0 && !totalProducedInput.value) {
+        totalProducedInput.value = milk;
+      }
+    }
+
+    const totalLitrosObtenidos = Number(totalProducedInput.value) || (bottlesLitros > 0 ? bottlesLitros : milk);
 
     const useSugar = useSugarCheckbox.checked;
     const sugarGpl = Number(sugarGplInput.value) || 0;
@@ -473,7 +615,7 @@ async function openBatchModal() {
     const powderGpl = Number(powderGplInput.value) || 0;
     const useLabels = useLabelsCheckbox.checked;
 
-    // Gramos requeridos calculados por los g/L configurados
+    // Gramos requeridos calculados por los g/L configurados sobre la leche usada
     const sugarGrams = useSugar ? milk * sugarGpl : 0;
     const sugarKg = sugarGrams / 1000;
     const powderGrams = usePowder ? milk * powderGpl : 0;
@@ -492,7 +634,7 @@ async function openBatchModal() {
     const totalSugarCost = sugarGrams * sugarUnitCostPerGram;
     if (useSugar) totalBatchCost += totalSugarCost;
 
-    sugarCalcText.textContent = useSugar ? `Consumo: ${sugarGrams} g (${sugarKg.toFixed(2)} kg) • ${sugarGpl} g/L` : 'Desactivado';
+    sugarCalcText.textContent = useSugar ? `Consumo: ${sugarGrams} g (${sugarKg.toFixed(2)} kg) • ${sugarGpl} g/L leche` : 'Desactivado';
     sugarCostBadge.textContent = useSugar ? `+${formatCOP(Math.round(totalSugarCost))}` : '$0 COP';
 
     // 3. Costo Leche en Polvo (calculado por gramo / kg)
@@ -501,7 +643,7 @@ async function openBatchModal() {
     const totalPowderCost = powderGrams * powderUnitCostPerGram;
     if (usePowder) totalBatchCost += totalPowderCost;
 
-    powderCalcText.textContent = usePowder ? `Consumo: ${powderGrams} g (${powderKg.toFixed(2)} kg) • ${powderGpl} g/L` : 'Desactivado';
+    powderCalcText.textContent = usePowder ? `Consumo: ${powderGrams} g (${powderKg.toFixed(2)} kg) • ${powderGpl} g/L leche` : 'Desactivado';
     powderCostBadge.textContent = usePowder ? `+${formatCOP(Math.round(totalPowderCost))}` : '$0 COP';
 
     // 4. Costo Botellas 1L y 2L
@@ -514,8 +656,11 @@ async function openBatchModal() {
       totalBatchCost += totalBotellas * labelCost;
     }
 
-    // 6. Costo Insumos Extras agregados dinámicamente
+    // 6. Costo Insumos Extras (Base y Compuestos)
+    let extraSummaryHtml = '';
     document.querySelectorAll('.extra-mat-row').forEach((row) => {
+      const basis = row.dataset.basis || 'produced'; // 'milk' or 'produced'
+      const isBase = basis === 'milk';
       const select = row.querySelector('.extra-select');
       const gpl = Number(row.querySelector('.extra-gpl')?.value) || 0;
       const calcSpan = row.querySelector('.extra-calc-hint');
@@ -523,36 +668,50 @@ async function openBatchModal() {
 
       const opt = select?.selectedOptions[0];
       const cost = Number(opt?.dataset?.cost || 0);
+      const matName = opt?.textContent || 'Insumo';
       const matUnit = (opt?.dataset?.unit || '').toLowerCase();
 
-      const itemGrams = milk * gpl;
+      const litersBase = isBase ? milk : totalLitrosObtenidos;
+      const basisLabel = isBase ? `leche (${milk}L)` : `yogur prod. (${totalLitrosObtenidos}L)`;
+      const icon = isBase ? '🥛' : '🍓';
+
+      const itemGrams = litersBase * gpl;
       const itemKg = itemGrams / 1000;
 
       let itemCost = 0;
       if (matUnit.includes('k')) {
         itemCost = itemKg * cost;
-        if (calcSpan) calcSpan.textContent = `Consumo: ${itemGrams} g (${itemKg.toFixed(2)} kg) • ${gpl} g/L`;
+        if (calcSpan) calcSpan.textContent = `Consumo: ${itemGrams.toFixed(1)} g (${itemKg.toFixed(2)} kg) • ${gpl} g / L ${basisLabel}`;
       } else {
         itemCost = itemGrams * cost;
-        if (calcSpan) calcSpan.textContent = `Consumo: ${itemGrams} ${matUnit} • ${gpl}/L`;
+        if (calcSpan) calcSpan.textContent = `Consumo: ${itemGrams.toFixed(1)} ${matUnit} • ${gpl} / L ${basisLabel}`;
       }
 
       if (costSpan) costSpan.textContent = `+${formatCOP(Math.round(itemCost))}`;
       totalBatchCost += itemCost;
+
+      if (gpl > 0) {
+        extraSummaryHtml += `• ${icon} ${matName.split('(')[0].trim()}: <strong>${itemGrams.toFixed(1)} g</strong> (${formatCOP(Math.round(itemCost))}) <small style="color: ${isBase ? '#0369A1' : 'var(--primary)'}; font-weight: 700;">• sobre ${litersBase}L ${isBase ? 'leche' : 'prod.'}</small><br>`;
+      }
     });
 
-    // Actualizar resultados en pantalla
-    totalResult.textContent = `${totalLitros} Litros`;
-    const costPerLiter = totalLitros > 0 ? Math.round(totalBatchCost / totalLitros) : (milk > 0 ? Math.round(totalBatchCost / milk) : 0);
-    costPerLiterDisplay.textContent = `${formatCOP(costPerLiter)} / L (Total: ${formatCOP(Math.round(totalBatchCost))})`;
+    const summaryExtras = document.getElementById('summaryExtras');
+    if (summaryExtras) {
+      summaryExtras.innerHTML = extraSummaryHtml;
+    }
+
+    // Actualizar resultados en pantalla basados en los litros que salieron
+    totalResult.textContent = `${totalLitrosObtenidos} Litros de Yogur`;
+    const costPerLiter = totalLitrosObtenidos > 0 ? Math.round(totalBatchCost / totalLitrosObtenidos) : (milk > 0 ? Math.round(totalBatchCost / milk) : 0);
+    costPerLiterDisplay.textContent = `${formatCOP(costPerLiter)} / L (Inversión total: ${formatCOP(Math.round(totalBatchCost))})`;
 
     // Hint dinámico de leche
     if (milkStock <= 0) {
       milkStockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">No tienes leche registrada en inventario</strong> (Stock: 0 L)`;
     } else if (milk > milkStock) {
-      milkStockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Stock insuficiente</strong>: Tienes ${milkStock} L y requieres ${milk} L`;
+      milkStockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Stock insuficiente</strong>: Tienes ${milkStock} L e intentas usar ${milk} L`;
     } else {
-      milkStockHint.innerHTML = `🥛 Stock disponible: <strong>${milkStock} L</strong> • Costo: ${formatCOP(milkCost)}/L`;
+      milkStockHint.innerHTML = `🥛 Stock disponible: <strong>${milkStock} L</strong> • Costo: ${formatCOP(milkCost)}/L (Se descontarán exactamente ${milk} L)`;
     }
 
     // Hint dinámico de azúcar
@@ -593,7 +752,7 @@ async function openBatchModal() {
     }
 
     // Desglose de insumos en caja
-    summaryMilk.innerHTML = `<strong>${milk} L</strong> (${formatCOP(totalMilkCost)})`;
+    summaryMilk.innerHTML = `<strong>${milk} L</strong> (${formatCOP(totalMilkCost)}) <small style="color: #0369A1; font-weight: 700;">• Exacto de stock</small>`;
     summarySugar.innerHTML = useSugar ? `<strong>${sugarGrams} g (${sugarKg.toFixed(2)} kg)</strong> (${formatCOP(Math.round(totalSugarCost))})` : `<em>Omitido</em>`;
     summaryPowder.innerHTML = usePowder ? `<strong>${powderGrams} g (${powderKg.toFixed(2)} kg)</strong> (${formatCOP(Math.round(totalPowderCost))})` : `<em>Omitido</em>`;
     summaryB1.innerHTML = `<strong>${b1} und</strong> (${formatCOP(totalB1Cost)})`;
@@ -606,17 +765,61 @@ async function openBatchModal() {
     }
 
     if (milk > 0) {
-      const pct = Math.round((totalLitros / milk) * 100);
-      yieldDisplay.textContent = `${pct}%`;
+      const pct = Math.round((totalLitrosObtenidos / milk) * 100);
+      const diff = totalLitrosObtenidos - milk;
+      if (diff > 0) {
+        yieldDisplay.innerHTML = `${pct}% <span style="font-size: 0.8rem; color: var(--success); font-weight: 800;">(+${diff.toFixed(1)} L extra 🎉)</span>`;
+      } else {
+        yieldDisplay.textContent = `${pct}%`;
+      }
       yieldDisplay.style.color = pct >= 85 ? 'var(--success)' : 'var(--warning)';
     } else {
       yieldDisplay.textContent = '0%';
     }
+
+    // Margen de ganancia proyectado por botella
+    const price1L = Number(document.getElementById('batchPrice1L')?.value) || 10000;
+    const price2L = Number(document.getElementById('batchPrice2L')?.value) || 20000;
+    const marginPreview = document.getElementById('batchMarginPreview');
+    if (marginPreview) {
+      const margin1 = price1L - costPerLiter;
+      const margin2 = price2L - (costPerLiter * 2);
+      const m1Pct = price1L > 0 ? Math.round((margin1 / price1L) * 100) : 0;
+      const m2Pct = price2L > 0 ? Math.round((margin2 / price2L) * 100) : 0;
+      marginPreview.innerHTML = `Ganancia estimada: 1L: <strong style="color: ${margin1 >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatCOP(Math.round(margin1))} (${m1Pct}%)</strong> • 2L: <strong style="color: ${margin2 >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatCOP(Math.round(margin2))} (${m2Pct}%)</strong>`;
+    }
   };
 
-  milkInput?.addEventListener('input', updateCalculations);
-  b1Input?.addEventListener('input', updateCalculations);
-  b2Input?.addEventListener('input', updateCalculations);
+  milkInput?.addEventListener('input', () => {
+    updateCalculations();
+  });
+
+  totalProducedInput?.addEventListener('input', () => {
+    hasManuallySetProduced = true;
+    updateCalculations();
+  });
+
+  b1Input?.addEventListener('input', () => {
+    if (!hasManuallySetProduced) {
+      const b1 = Number(b1Input.value) || 0;
+      const b2 = Number(b2Input.value) || 0;
+      if (b1 * 1 + b2 * 2 > 0) {
+        totalProducedInput.value = b1 * 1 + b2 * 2;
+      }
+    }
+    updateCalculations();
+  });
+
+  b2Input?.addEventListener('input', () => {
+    if (!hasManuallySetProduced) {
+      const b1 = Number(b1Input.value) || 0;
+      const b2 = Number(b2Input.value) || 0;
+      if (b1 * 1 + b2 * 2 > 0) {
+        totalProducedInput.value = b1 * 1 + b2 * 2;
+      }
+    }
+    updateCalculations();
+  });
   
   useSugarCheckbox?.addEventListener('change', updateCalculations);
   sugarGplInput?.addEventListener('input', updateCalculations);
@@ -626,27 +829,35 @@ async function openBatchModal() {
 
   useLabelsCheckbox?.addEventListener('change', updateCalculations);
 
+  document.getElementById('batchPrice1L')?.addEventListener('input', updateCalculations);
+  document.getElementById('batchPrice2L')?.addEventListener('input', updateCalculations);
+
   updateCalculations();
 
-  // Botón para agregar ingredientes adicionales (frutas, dulce de mora, etc.)
+  // Función para agregar filas dinámicas (Base o Compuesto)
   const extraContainer = document.getElementById('extraContainer');
   const extraRowsList = document.getElementById('extraRowsList');
   const modalBody = modalOverlay.querySelector('.modal-body');
 
-  document.getElementById('btnToggleExtra')?.addEventListener('click', () => {
+  const addExtraRow = (basis = 'produced') => {
     extraContainer.style.display = 'flex';
+    const isBase = basis === 'milk';
     const row = document.createElement('div');
     row.className = 'extra-mat-row';
-    row.style.cssText = 'background: #FFFFFF; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 6px;';
+    row.dataset.basis = basis;
+    row.style.cssText = `background: ${isBase ? '#F0F9FF' : '#FAF5FF'}; border: 1.5px solid ${isBase ? '#BAE6FD' : '#DDD6FE'}; border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 6px;`;
     row.innerHTML = `
       <div style="display: flex; gap: 6px; align-items: center;">
+        <span style="font-size: 0.72rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: ${isBase ? '#0369A1' : 'var(--primary)'}; color: white; white-space: nowrap;">
+          ${isBase ? '🥛 Base (Leche)' : '🍓 Compuesto (Yogur)'}
+        </span>
         <select class="form-select extra-select" style="flex: 2; font-size: 0.84rem; padding: 4px 8px;">
           ${extraOptions.map((m) => `<option value="${m.id}" data-cost="${m.avgCost}" data-unit="${m.unit}">${m.name} (${m.unit})</option>`).join('')}
         </select>
         
         <div style="display: flex; align-items: center; gap: 4px;">
-          <input type="number" class="form-input extra-gpl" min="0" step="5" value="50" placeholder="g/L" style="width: 70px; padding: 4px 6px; font-size: 0.84rem; text-align: center; font-weight: 800; color: var(--primary);" title="Gramos por cada litro de leche" />
-          <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted);">g / L</span>
+          <input type="number" class="form-input extra-gpl" min="0" step="5" value="50" placeholder="g/L" style="width: 65px; padding: 4px 6px; font-size: 0.84rem; text-align: center; font-weight: 800; color: ${isBase ? '#0369A1' : 'var(--primary)'};" title="Gramos por cada litro ${isBase ? 'de leche invertida' : 'de yogur obtenido'}" />
+          <span style="font-size: 0.72rem; font-weight: 700; color: var(--text-muted);">${isBase ? 'g/L leche' : 'g/L prod.'}</span>
         </div>
 
         <button type="button" class="btn btn-outline btn-sm" style="color: var(--danger); padding: 4px 8px;" onclick="this.closest('.extra-mat-row').remove(); document.getElementById('batchMilkLiters').dispatchEvent(new Event('input'));">✕</button>
@@ -654,7 +865,7 @@ async function openBatchModal() {
 
       <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted);">
         <span class="extra-calc-hint">Consumo: 0 g</span>
-        <strong class="extra-cost-hint" style="color: var(--primary);">$0 COP</strong>
+        <strong class="extra-cost-hint" style="color: ${isBase ? '#0369A1' : 'var(--primary)'};">$0 COP</strong>
       </div>
     `;
     
@@ -669,7 +880,10 @@ async function openBatchModal() {
         modalBody.scrollTo({ top: modalBody.scrollHeight, behavior: 'smooth' });
       }, 50);
     }
-  });
+  };
+
+  document.getElementById('btnAddBaseExtra')?.addEventListener('click', () => addExtraRow('milk'));
+  document.getElementById('btnAddCompoundExtra')?.addEventListener('click', () => addExtraRow('produced'));
 
   const closeModal = () => (modalOverlay.innerHTML = '');
   document.getElementById('btnCloseBatchModal')?.addEventListener('click', closeModal);
@@ -679,6 +893,7 @@ async function openBatchModal() {
     e.preventDefault();
 
     const milkUsed = Number(milkInput.value);
+    const totalProduced = Number(totalProducedInput.value) || milkUsed;
     const b1 = Number(b1Input.value) || 0;
     const b2 = Number(b2Input.value) || 0;
 
@@ -698,12 +913,14 @@ async function openBatchModal() {
       return;
     }
 
-    // Recoger insumos extras si se agregaron
+    // Recoger insumos extras calculando cada uno por su base correspondiente (leche o yogur producido)
     const extraItems = [];
     document.querySelectorAll('.extra-mat-row').forEach((row) => {
+      const basis = row.dataset.basis || 'produced';
       const matId = Number(row.querySelector('.extra-select')?.value);
       const gpl = Number(row.querySelector('.extra-gpl')?.value) || 0;
-      const totalGrams = gpl * milkUsed;
+      const litersBase = basis === 'milk' ? milkUsed : totalProduced;
+      const totalGrams = gpl * litersBase;
       if (matId && totalGrams > 0) {
         extraItems.push({
           rawMaterialId: matId,
@@ -716,8 +933,11 @@ async function openBatchModal() {
 
     const payload = {
       milkUsedLiters: milkUsed,
+      totalLitersProduced: totalProduced,
       bottles1LProduced: b1,
       bottles2LProduced: b2,
+      price1L: Number(document.getElementById('batchPrice1L')?.value) || 10000,
+      price2L: Number(document.getElementById('batchPrice2L')?.value) || 20000,
       useSugar: useSugarCheckbox.checked,
       sugarGramsPerLiter: Number(sugarGplInput.value) || 0,
       usePowderedMilk: usePowderCheckbox.checked,
@@ -732,7 +952,7 @@ async function openBatchModal() {
 
     try {
       const res = await api.createBatch(payload);
-      showToast(`¡Lote ${res.batchCode} registrado con éxito! Costo: ${formatCOP(res.costPerLiter)}/L 🍶`);
+      showToast(`¡Lote ${res.batchCode} registrado con éxito! Salieron ${res.totalLitersProduced}L (Rendimiento: ${res.yieldPercentage}%) 🍶`);
       closeModal();
       renderBatches(document.getElementById('contentContainer'));
     } catch (err) {
@@ -761,58 +981,148 @@ async function openBatchDetailModal(batchId) {
 
   try {
     const batch = await api.getBatchById(batchId);
+    const hasExtraYield = batch.totalLitersProduced > batch.milkUsedLiters;
+    const p1 = batch.price1L || 10000;
+    const p2 = batch.price2L || 20000;
+
+    let statusBadge = '<span class="badge badge-paid">✅ Activo / Disponible</span>';
+    if (!batch.isActive) {
+      statusBadge = '<span class="badge badge-pending">🚫 Desactivado</span>';
+    } else if (batch.status === 'AGOTADO') {
+      statusBadge = '<span class="badge" style="background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; font-weight: 800;">📦 Agotado (Todo Vendido)</span>';
+    } else if (batch.status === 'DESCARTADO') {
+      statusBadge = '<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FCA5A5; font-weight: 800;">🚫 Baja</span>';
+    }
+
+    const linkedOrders = batch.orders || [];
+    const totalSoldLiters = linkedOrders.reduce((sum, o) => sum + (o.totalLiters || 0), 0);
+    const totalSoldBottles = linkedOrders.reduce((sum, o) => sum + (o.quantityBottles || 0), 0);
+    const totalSoldAmount = linkedOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
     modalOverlay.innerHTML = `
       <div class="modal-overlay active">
-        <div class="modal-card" style="max-width: 620px;">
+        <div class="modal-card" style="max-width: 680px;">
           <div class="modal-header">
             <div style="display: flex; align-items: center; gap: 8px;">
               <h3 class="modal-title">🍶 Resumen de Lote: ${batch.batchCode}</h3>
-              ${batch.isActive ? '<span class="badge badge-paid">✅ Activo</span>' : '<span class="badge badge-pending">🚫 Desactivado</span>'}
+              ${statusBadge}
             </div>
             <button class="modal-close-btn" id="btnCloseBatchDetailModal">✕</button>
           </div>
           <div class="modal-body">
             
             <!-- Tarjetas de Estadísticas Principales del Lote -->
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px;">
-              <div class="order-card" style="padding: 12px 14px; background: var(--bg-app); border: 1px solid var(--border-color);">
-                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Total Producido</span>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px;">
+              <div class="order-card" style="padding: 12px 14px; background: #F0F9FF; border: 1.5px solid #BAE6FD;">
+                <span style="font-size: 0.74rem; color: #0369A1; font-weight: 700; text-transform: uppercase;">🥛 Leche Invertida</span>
+                <div style="font-size: 1.45rem; font-weight: 800; color: #0369A1;">${batch.milkUsedLiters} Litros</div>
+                <small style="color: var(--text-muted); font-weight: 600;">Descontados de stock de leche</small>
+              </div>
+
+              <div class="order-card" style="padding: 12px 14px; background: #FAF5FF; border: 1.5px solid #DDD6FE;">
+                <span style="font-size: 0.74rem; color: var(--primary); font-weight: 700; text-transform: uppercase;">🍶 Yogur Salido / Obtenido</span>
                 <div style="font-size: 1.45rem; font-weight: 800; color: var(--primary);">${batch.totalLitersProduced} Litros</div>
                 <small style="color: var(--text-muted); font-weight: 600;">
-                  ${batch.bottles1LProduced > 0 ? `${batch.bottles1LProduced} botellas de 1L` : ''}
+                  ${batch.bottles1LProduced > 0 ? `${batch.bottles1LProduced} de 1L` : ''}
                   ${batch.bottles1LProduced > 0 && batch.bottles2LProduced > 0 ? ' • ' : ''}
-                  ${batch.bottles2LProduced > 0 ? `${batch.bottles2LProduced} botellas de 2L` : ''}
+                  ${batch.bottles2LProduced > 0 ? `${batch.bottles2LProduced} de 2L` : ''}
+                  ${batch.bottles1LProduced === 0 && batch.bottles2LProduced === 0 ? 'Envasado a granel' : ''}
                 </small>
               </div>
 
               <div class="order-card" style="padding: 12px 14px; background: var(--bg-app); border: 1px solid var(--border-color);">
-                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Rendimiento</span>
+                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">📈 Rendimiento Real</span>
                 <div style="font-size: 1.45rem; font-weight: 800; color: var(--success);">${batch.yieldPercentage}%</div>
-                <small style="color: var(--text-muted); font-weight: 600;">Base: ${batch.milkUsedLiters} L de leche invertidos</small>
+                <small style="color: var(--text-muted); font-weight: 600;">
+                  ${hasExtraYield ? `+${(batch.totalLitersProduced - batch.milkUsedLiters).toFixed(1)} L extra por insumos 🎉` : 'Rendimiento estándar'}
+                </small>
               </div>
 
               <div class="order-card" style="padding: 12px 14px; background: var(--bg-app); border: 1px solid var(--border-color);">
-                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Costo Total Invertido</span>
-                <div style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">${formatCOP(batch.totalCost)}</div>
-                <small style="color: var(--text-muted); font-weight: 600;">Sabor: <strong>${batch.flavor}</strong></small>
-              </div>
-
-              <div class="order-card" style="padding: 12px 14px; background: var(--bg-app); border: 1px solid var(--border-color);">
-                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Costo Real por Litro</span>
+                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">💰 Costo Real / L Producido</span>
                 <div style="font-size: 1.35rem; font-weight: 800; color: #b78103;">${formatCOP(batch.costPerLiter)} / L</div>
-                <small style="color: var(--text-muted); font-weight: 600;">Fecha: ${formatDate(batch.preparationDate)}</small>
+                <small style="color: var(--text-muted); font-weight: 600;">Inversión total: ${formatCOP(batch.totalCost)}</small>
               </div>
+            </div>
+
+            <!-- Precios de Venta Establecidos para este Lote -->
+            <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 14px; display: flex; justify-content: space-around; align-items: center; text-align: center;">
+              <div>
+                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">💲 Precio Venta Botella 1L</span>
+                <div style="font-size: 1.25rem; font-weight: 800; color: var(--primary);">${formatCOP(p1)}</div>
+                <small style="color: var(--success); font-weight: 700;">Margen: ~${formatCOP(Math.max(0, p1 - batch.costPerLiter))}</small>
+              </div>
+              <div style="width: 1px; height: 35px; background: #DDD6FE;"></div>
+              <div>
+                <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">💲 Precio Venta Botella 2L</span>
+                <div style="font-size: 1.25rem; font-weight: 800; color: var(--primary);">${formatCOP(p2)}</div>
+                <small style="color: var(--success); font-weight: 700;">Margen: ~${formatCOP(Math.max(0, p2 - (batch.costPerLiter * 2)))}</small>
+              </div>
+            </div>
+
+            <!-- Resumen de Ventas Vinculadas a este Lote -->
+            <div style="background: #FFFFFF; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h4 style="font-size: 0.92rem; font-weight: 800; color: var(--primary); margin: 0;">
+                  🛒 Despacho y Ventas de este Lote (${linkedOrders.length})
+                </h4>
+                <span style="font-size: 0.8rem; font-weight: 700; color: var(--primary);">
+                  ${totalSoldLiters}L vendidos (${totalSoldBottles} botellas) • Recaudado: ${formatCOP(totalSoldAmount)}
+                </span>
+              </div>
+
+              ${
+                linkedOrders.length > 0
+                  ? `
+                <div style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+                  <table class="app-table" style="margin: 0; font-size: 0.8rem;">
+                    <thead>
+                      <tr style="background: var(--bg-app);">
+                        <th>Pedido</th>
+                        <th>Cliente</th>
+                        <th>Fecha</th>
+                        <th>Botellas / L</th>
+                        <th style="text-align: right;">Total</th>
+                        <th>Pago</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${linkedOrders
+                        .map(
+                          (o) => `
+                        <tr>
+                          <td><strong>${o.orderNumber}</strong></td>
+                          <td>${o.customer?.fullName || 'Cliente'}</td>
+                          <td>${formatDate(o.orderDate)}</td>
+                          <td>${o.quantityBottles} bot (${o.totalLiters}L)</td>
+                          <td style="text-align: right;"><strong>${formatCOP(o.totalAmount)}</strong></td>
+                          <td>
+                            ${o.paymentStatus === 'PAID' ? '<span class="badge badge-paid" style="font-size: 0.7rem;">Pagado</span>' : '<span class="badge badge-pending" style="font-size: 0.7rem;">Pendiente</span>'}
+                          </td>
+                        </tr>
+                      `
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `
+                  : `
+                <div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 0.82rem;">
+                  Aún no se han registrado pedidos seleccionando este lote.
+                </div>
+              `
+              }
             </div>
 
             <!-- Tabla Detallada de Ingredientes e Insumos Consumidos -->
             <div style="margin-bottom: 12px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin: 0;">
-                  🥣 Ingredientes y Materiales Utilizados
+                  🥣 Ingredientes y Materiales Descontados
                 </h4>
                 <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">
-                  ${batch.itemsUsed ? batch.itemsUsed.length : 0} insumo(s) descontados
+                  ${batch.itemsUsed ? batch.itemsUsed.length : 0} insumo(s) registrados
                 </span>
               </div>
 
@@ -824,7 +1134,7 @@ async function openBatchDetailModal(batchId) {
                     <thead>
                       <tr style="background: var(--bg-app);">
                         <th>Ingrediente / Insumo</th>
-                        <th>Cantidad Utilizada</th>
+                        <th>Cantidad Descontada</th>
                         <th>Costo Unitario</th>
                         <th style="text-align: right;">Total Invertido</th>
                       </tr>
@@ -834,22 +1144,39 @@ async function openBatchDetailModal(batchId) {
                         .map((item) => {
                           const icon = getBatchItemIcon(item.rawMaterial?.name, item.rawMaterial?.code);
                           const unitLower = (item.rawMaterial?.unit || '').toLowerCase();
+                          const matNameLower = (item.rawMaterial?.name || '').toLowerCase();
+                          const matCode = item.rawMaterial?.code || '';
                           
                           let qtyDisplay = '';
                           let detailSub = '';
 
+                          const isMilk = matCode === 'LECHE' || matNameLower.includes('leche líquida') || matNameLower.includes('leche entera');
+                          const isSugarOrPowder = matCode.includes('AZUCAR') || matNameLower.includes('azúcar') || matNameLower.includes('polvo');
+
                           if (unitLower.includes('k')) {
                             const grams = Math.round(item.quantityUsed * 1000);
-                            const gpl = batch.milkUsedLiters > 0 ? (grams / batch.milkUsedLiters).toFixed(0) : null;
-                            qtyDisplay = `<strong>${item.quantityUsed} kg</strong> (${grams.toLocaleString('es-CO')} g)`;
-                            if (gpl) detailSub = `<small style="color: var(--primary); font-weight: 700;">• ${gpl} g / L leche</small>`;
+                            if (isSugarOrPowder) {
+                              const gpl = batch.milkUsedLiters > 0 ? (grams / batch.milkUsedLiters).toFixed(0) : null;
+                              qtyDisplay = `<strong>${item.quantityUsed} kg</strong> (${grams.toLocaleString('es-CO')} g)`;
+                              if (gpl) detailSub = `<small style="color: var(--primary); font-weight: 700;">• ${gpl} g / L leche invertida</small>`;
+                            } else {
+                              const gpl = batch.totalLitersProduced > 0 ? (grams / batch.totalLitersProduced).toFixed(0) : null;
+                              qtyDisplay = `<strong>${item.quantityUsed} kg</strong> (${grams.toLocaleString('es-CO')} g)`;
+                              if (gpl) detailSub = `<small style="color: #0369A1; font-weight: 700;">• ${gpl} g / L yogur producido</small>`;
+                            }
                           } else if (unitLower.includes('g') || unitLower === 'gramos') {
-                            const gpl = batch.milkUsedLiters > 0 ? (item.quantityUsed / batch.milkUsedLiters).toFixed(0) : null;
-                            qtyDisplay = `<strong>${item.quantityUsed.toLocaleString('es-CO')} g</strong>`;
-                            if (gpl) detailSub = `<small style="color: var(--primary); font-weight: 700;">• ${gpl} g / L leche</small>`;
+                            if (isSugarOrPowder) {
+                              const gpl = batch.milkUsedLiters > 0 ? (item.quantityUsed / batch.milkUsedLiters).toFixed(0) : null;
+                              qtyDisplay = `<strong>${item.quantityUsed.toLocaleString('es-CO')} g</strong>`;
+                              if (gpl) detailSub = `<small style="color: var(--primary); font-weight: 700;">• ${gpl} g / L leche invertida</small>`;
+                            } else {
+                              const gpl = batch.totalLitersProduced > 0 ? (item.quantityUsed / batch.totalLitersProduced).toFixed(0) : null;
+                              qtyDisplay = `<strong>${item.quantityUsed.toLocaleString('es-CO')} g</strong>`;
+                              if (gpl) detailSub = `<small style="color: #0369A1; font-weight: 700;">• ${gpl} g / L yogur producido</small>`;
+                            }
                           } else if (unitLower.includes('litro')) {
                             qtyDisplay = `<strong>${item.quantityUsed} Litros</strong>`;
-                            detailSub = `<small style="color: var(--text-muted);">Base líquida</small>`;
+                            detailSub = `<small style="color: #0369A1; font-weight: 700;">• Base de leche pura</small>`;
                           } else {
                             qtyDisplay = `<strong>${item.quantityUsed}</strong> ${item.rawMaterial?.unit || 'und'}`;
                             detailSub = `<small style="color: var(--text-muted);">Empaque</small>`;
@@ -951,9 +1278,9 @@ async function openEditBatchModal(batchId) {
 
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-card" style="max-width: 540px;">
         <div class="modal-header">
-          <h3 class="modal-title">✏️ Editar Lote Completo: ${batch.batchCode}</h3>
+          <h3 class="modal-title">✏️ Editar Lote: ${batch.batchCode}</h3>
           <button class="modal-close-btn" id="btnCloseEditBatchModal">✕</button>
         </div>
         <form id="editBatchForm">
@@ -972,12 +1299,29 @@ async function openEditBatchModal(batchId) {
               </div>
 
               <div class="form-group">
-                <label class="form-label">Estado del Lote</label>
-                <select id="editBatchStatus" class="form-select">
-                  <option value="COMPLETADO" ${batch.status === 'COMPLETADO' ? 'selected' : ''}>✅ Activo / Completado</option>
-                  <option value="AGOTADO" ${batch.status === 'AGOTADO' ? 'selected' : ''}>📦 Agotado (Vendido)</option>
+                <label class="form-label">Estado del Lote *</label>
+                <select id="editBatchStatus" class="form-select" style="font-weight: 700;">
+                  <option value="COMPLETADO" ${batch.status === 'COMPLETADO' ? 'selected' : ''}>✅ Activo / Disponible</option>
+                  <option value="AGOTADO" ${batch.status === 'AGOTADO' ? 'selected' : ''}>📦 Agotado (Todo Vendido)</option>
                   <option value="DESCARTADO" ${batch.status === 'DESCARTADO' ? 'selected' : ''}>🚫 Descartado / Baja</option>
                 </select>
+              </div>
+            </div>
+
+            <!-- Precios de Venta para este Lote -->
+            <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 14px;">
+              <div style="font-size: 0.85rem; font-weight: 800; color: var(--primary); margin-bottom: 8px;">
+                💲 Precios de Venta de este Lote
+              </div>
+              <div class="form-row" style="margin-bottom: 0;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">Precio Botella 1L ($ COP) *</label>
+                  <input type="number" id="editBatchPrice1L" class="form-input" min="0" step="500" value="${batch.price1L || 10000}" required style="font-weight: 800; color: var(--primary);" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">Precio Botella 2L ($ COP) *</label>
+                  <input type="number" id="editBatchPrice2L" class="form-input" min="0" step="500" value="${batch.price2L || 20000}" required style="font-weight: 800; color: var(--primary);" />
+                </div>
               </div>
             </div>
 
@@ -993,9 +1337,17 @@ async function openEditBatchModal(batchId) {
               </div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Litros de Leche Invertidos *</label>
-              <input type="number" id="editBatchMilk" class="form-input" min="0.5" step="0.5" value="${batch.milkUsedLiters}" required />
+            <!-- Leche y Yogur Producido -->
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">🥛 Leche Invertida (L) *</label>
+                <input type="number" id="editBatchMilk" class="form-input" min="0.5" step="0.1" value="${batch.milkUsedLiters}" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">🍶 Yogur Salido (L) *</label>
+                <input type="number" id="editBatchTotalProduced" class="form-input" min="0.1" step="0.1" value="${batch.totalLitersProduced}" required />
+              </div>
             </div>
 
             <div class="form-row">
@@ -1013,7 +1365,7 @@ async function openEditBatchModal(batchId) {
             <!-- Resumen Recalculado en Tiempo Real -->
             <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); padding: 12px; border-radius: var(--radius-md); margin-bottom: 14px; display: flex; justify-content: space-around; text-align: center;">
               <div>
-                <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Total Litros</span>
+                <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Total Yogur</span>
                 <div id="editTotalLitrosDisplay" style="font-size: 1.15rem; font-weight: 800; color: var(--primary);">${batch.totalLitersProduced} L</div>
               </div>
               <div style="width: 1px; background: var(--border-subtle);"></div>
@@ -1039,6 +1391,7 @@ async function openEditBatchModal(batchId) {
   `;
 
   const editMilk = document.getElementById('editBatchMilk');
+  const editTotalProduced = document.getElementById('editBatchTotalProduced');
   const editB1 = document.getElementById('editBatchB1');
   const editB2 = document.getElementById('editBatchB2');
   const editTotalDisplay = document.getElementById('editTotalLitrosDisplay');
@@ -1046,14 +1399,17 @@ async function openEditBatchModal(batchId) {
 
   const recalculateEdit = () => {
     const milk = Number(editMilk.value) || 0;
-    const b1 = Number(editB1.value) || 0;
-    const b2 = Number(editB2.value) || 0;
-    const totalL = b1 * 1 + b2 * 2;
+    const totalL = Number(editTotalProduced.value) || 0;
     editTotalDisplay.textContent = `${totalL} L`;
 
     if (milk > 0) {
       const pct = Math.round((totalL / milk) * 100);
-      editYieldDisplay.textContent = `${pct}%`;
+      const diff = totalL - milk;
+      if (diff > 0) {
+        editYieldDisplay.innerHTML = `${pct}% <span style="font-size: 0.75rem; color: var(--success);">(+${diff.toFixed(1)}L)</span>`;
+      } else {
+        editYieldDisplay.textContent = `${pct}%`;
+      }
       editYieldDisplay.style.color = pct >= 85 ? 'var(--success)' : 'var(--warning)';
     } else {
       editYieldDisplay.textContent = '0%';
@@ -1061,8 +1417,23 @@ async function openEditBatchModal(batchId) {
   };
 
   editMilk?.addEventListener('input', recalculateEdit);
-  editB1?.addEventListener('input', recalculateEdit);
-  editB2?.addEventListener('input', recalculateEdit);
+  editTotalProduced?.addEventListener('input', recalculateEdit);
+  editB1?.addEventListener('input', () => {
+    const b1 = Number(editB1.value) || 0;
+    const b2 = Number(editB2.value) || 0;
+    if (b1 * 1 + b2 * 2 > 0) {
+      editTotalProduced.value = b1 * 1 + b2 * 2;
+    }
+    recalculateEdit();
+  });
+  editB2?.addEventListener('input', () => {
+    const b1 = Number(editB1.value) || 0;
+    const b2 = Number(editB2.value) || 0;
+    if (b1 * 1 + b2 * 2 > 0) {
+      editTotalProduced.value = b1 * 1 + b2 * 2;
+    }
+    recalculateEdit();
+  });
 
   const closeModal = () => (modalOverlay.innerHTML = '');
   document.getElementById('btnCloseEditBatchModal')?.addEventListener('click', closeModal);
@@ -1073,9 +1444,12 @@ async function openEditBatchModal(batchId) {
     const payload = {
       flavor: document.getElementById('editBatchFlavor').value,
       status: document.getElementById('editBatchStatus').value,
+      price1L: Number(document.getElementById('editBatchPrice1L')?.value) || 10000,
+      price2L: Number(document.getElementById('editBatchPrice2L')?.value) || 20000,
       preparationDate: document.getElementById('editBatchDate').value,
       expirationDate: document.getElementById('editBatchExpDate').value || null,
       milkUsedLiters: Number(editMilk.value),
+      totalLitersProduced: Number(editTotalProduced.value),
       bottles1LProduced: Number(editB1.value),
       bottles2LProduced: Number(editB2.value),
       notes: document.getElementById('editBatchNotes').value,
@@ -1083,11 +1457,11 @@ async function openEditBatchModal(batchId) {
 
     try {
       await api.updateBatch(batchId, payload);
-      showToast('Lote actualizado por completo con éxito 🍶');
+      showToast(`¡Lote ${batch.batchCode} actualizado correctamente! ✅`);
       closeModal();
       renderBatches(document.getElementById('contentContainer'));
     } catch (err) {
-      showToast('Error al actualizar lote', 'danger');
+      showToast(err.message || 'Error al actualizar lote', 'danger');
     }
   });
 }

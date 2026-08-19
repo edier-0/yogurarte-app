@@ -8,6 +8,7 @@ export const getOrders = async (req: Request, res: Response) => {
       paymentStatus,
       deliveryStatus,
       debtCategory, // 'DELIVERED_DEBT' | 'IN_PROCESS' | 'PAID' | 'ALL'
+      sortBy, // 'UPDATED_DESC' | 'PRIORITY_DEBT' | 'DATE_DESC' | 'DATE_ASC'
       startDate,
       endDate,
       month, // formato YYYY-MM
@@ -34,6 +35,11 @@ export const getOrders = async (req: Request, res: Response) => {
       conditions.push({
         deliveryStatus: 'DELIVERED',
         paymentStatus: { in: ['PENDING', 'PARTIAL'] },
+      });
+    } else if (debtCategory === 'PAID_NOT_DELIVERED' || debtCategory === 'PAID_PENDING_DELIVERY') {
+      conditions.push({
+        deliveryStatus: { not: 'DELIVERED' },
+        paymentStatus: 'PAID',
       });
     } else if (debtCategory === 'IN_PROCESS') {
       conditions.push({
@@ -103,29 +109,51 @@ export const getOrders = async (req: Request, res: Response) => {
       include: {
         customer: true,
         items: true,
+        batch: {
+          select: {
+            id: true,
+            batchCode: true,
+            flavor: true,
+            price1L: true,
+            price2L: true,
+            status: true,
+          },
+        },
       },
-      orderBy: { orderDate: 'desc' },
+      orderBy: { updatedAt: 'desc' },
       take: limit ? Number(limit) : undefined,
     });
 
-    // Ordenar jerárquicamente igual que en clientes:
-    // 1. Pedidos ENTREGADOS y NO PAGADOS (Deuda real de cobro inmediato)
-    // 2. Pedidos ENCARGADOS / EN PROCESO (Pendientes de entrega)
-    // 3. Pedidos PAGADOS (Al día)
-    // Dentro de cada grupo, ordenar por fecha más reciente
-    orders.sort((a, b) => {
-      const aDeliveredDebt = a.deliveryStatus === 'DELIVERED' && a.paymentStatus !== 'PAID';
-      const bDeliveredDebt = b.deliveryStatus === 'DELIVERED' && b.paymentStatus !== 'PAID';
-      if (aDeliveredDebt && !bDeliveredDebt) return -1;
-      if (!aDeliveredDebt && bDeliveredDebt) return 1;
+    if (sortBy === 'UPDATED_DESC') {
+      orders.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    } else if (sortBy === 'DATE_ASC') {
+      orders.sort((a, b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
+    } else if (sortBy === 'DATE_DESC') {
+      orders.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+    } else {
+      // Ordenar jerárquicamente:
+      // 1. Pedidos ENTREGADOS y NO PAGADOS (Deuda real de cobro inmediato)
+      // 2. Pedidos YA PAGADOS pero NO ENTREGADOS (Compromiso de entrega prioritario)
+      // 3. Pedidos ENCARGADOS / EN PROCESO (Pendientes de entrega y pago)
+      // 4. Pedidos COMPLETADOS (Entregados y Pagados al día)
+      const getOrderPriorityRank = (o: any): number => {
+        const isDelivered = o.deliveryStatus === 'DELIVERED';
+        const isPaid = o.paymentStatus === 'PAID';
 
-      const aInProcess = a.deliveryStatus !== 'DELIVERED' && a.paymentStatus !== 'PAID';
-      const bInProcess = b.deliveryStatus !== 'DELIVERED' && b.paymentStatus !== 'PAID';
-      if (aInProcess && !bInProcess) return -1;
-      if (!aInProcess && bInProcess) return 1;
+        if (isDelivered && !isPaid) return 1; // 1. Deuda entregada
+        if (!isDelivered && isPaid) return 2; // 2. Ya pagaron, falta entregar
+        if (!isDelivered && !isPaid) return 3; // 3. Encargos en proceso
+        return 4; // 4. Entregado y pagado
+      };
 
-      return new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
-    });
+      orders.sort((a, b) => {
+        const rankA = getOrderPriorityRank(a);
+        const rankB = getOrderPriorityRank(b);
+        if (rankA !== rankB) return rankA - rankB;
+
+        return new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
+      });
+    }
 
     res.json(orders);
   } catch (error) {
@@ -142,6 +170,7 @@ export const getOrderById = async (req: Request, res: Response) => {
       include: {
         customer: true,
         items: true,
+        batch: true,
       },
     });
 
@@ -164,7 +193,8 @@ export const createOrder = async (req: Request, res: Response) => {
       customerPhone,
       customerAddress,
       customerNeighborhood,
-      items, // Array de { bottleSize, flavor, quantity, unitPrice }
+      batchId, // ID opcional del lote de producción
+      items, // Array de { bottleSize, flavor, quantity, unitPrice, batchId }
       bottleSize, // legacy fallback
       quantityBottles, // legacy fallback
       totalLiters, // legacy fallback
@@ -215,7 +245,10 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     // Procesar ítems múltiples del pedido
+    const parsedBatchId = batchId ? Number(batchId) : null;
+
     let parsedItems: Array<{
+      batchId?: number | null;
       bottleSize: string;
       flavor: string;
       quantity: number;
@@ -232,6 +265,7 @@ export const createOrder = async (req: Request, res: Response) => {
         const litersPerUnit = size === '2L' ? 2.0 : 1.0;
         const itemUnitPrice = Number(item.unitPrice) || (size === '2L' ? 20000 : 10000);
         return {
+          batchId: item.batchId ? Number(item.batchId) : parsedBatchId,
           bottleSize: size,
           flavor: (item.flavor || 'Natural').trim(),
           quantity: qty,
@@ -249,6 +283,7 @@ export const createOrder = async (req: Request, res: Response) => {
       const price = Number(unitPrice) || (size === '2L' ? 20000 : 10000);
       parsedItems = [
         {
+          batchId: parsedBatchId,
           bottleSize: size,
           flavor: (flavor || 'Natural').trim(),
           quantity: qty,
@@ -314,6 +349,7 @@ export const createOrder = async (req: Request, res: Response) => {
       data: {
         orderNumber,
         customerId: finalCustomerId,
+        batchId: parsedBatchId,
         bottleSize: bottleSizeSummary,
         quantityBottles: totalQuantityBottles,
         totalLiters: totalLitersCalculated,
@@ -331,6 +367,7 @@ export const createOrder = async (req: Request, res: Response) => {
         registeredBy: registeredBy || 'Edier',
         items: {
           create: parsedItems.map((i) => ({
+            batchId: i.batchId || parsedBatchId,
             bottleSize: i.bottleSize,
             flavor: i.flavor,
             quantity: i.quantity,
@@ -344,6 +381,7 @@ export const createOrder = async (req: Request, res: Response) => {
       include: {
         customer: true,
         items: true,
+        batch: true,
       },
     });
 
@@ -362,6 +400,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       customerPhone,
       customerAddress,
       customerNeighborhood,
+      batchId, // ID opcional del lote
       items, // Array de ítems actualizados
       bottleSize,
       quantityBottles,
@@ -386,6 +425,8 @@ export const updateOrder = async (req: Request, res: Response) => {
     if (!currentOrder) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
+
+    const parsedBatchId = batchId !== undefined ? (batchId ? Number(batchId) : null) : currentOrder.batchId;
 
     // 1. Actualizar cliente si se proporcionaron datos
     if (customerName || customerPhone || customerAddress) {
@@ -414,6 +455,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         const litersPerUnit = size === '2L' ? 2.0 : 1.0;
         const itemUnitPrice = Number(item.unitPrice) || (size === '2L' ? 20000 : 10000);
         return {
+          batchId: item.batchId ? Number(item.batchId) : parsedBatchId,
           bottleSize: size,
           flavor: (item.flavor || 'Natural').trim(),
           quantity: qty,
@@ -440,6 +482,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       await prisma.orderItem.createMany({
         data: parsedItems.map((i) => ({
           orderId: Number(id),
+          batchId: i.batchId || parsedBatchId,
           bottleSize: i.bottleSize,
           flavor: i.flavor,
           quantity: i.quantity,
@@ -474,6 +517,7 @@ export const updateOrder = async (req: Request, res: Response) => {
     const updated = await prisma.order.update({
       where: { id: Number(id) },
       data: {
+        batchId: parsedBatchId,
         bottleSize: updatedBottleSize,
         quantityBottles: updatedQuantity,
         totalLiters: updatedLiters,
@@ -492,6 +536,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       include: {
         customer: true,
         items: true,
+        batch: true,
       },
     });
 
@@ -518,6 +563,7 @@ export const deleteOrder = async (req: Request, res: Response) => {
 export const getWhatsAppLink = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const { type } = req.query; // 'THANK_PAYMENT' | 'ORDER_INFO'
     const order = await prisma.order.findUnique({
       where: { id: Number(id) },
       include: {
@@ -546,8 +592,38 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
 
     const formatCurrency = (val: number) => `$${new Intl.NumberFormat('es-CO').format(val)} COP`;
 
-    // Si el pedido ya está ENTREGADO: Mensaje especial de agradecimiento y disfrute
-    if (order.deliveryStatus === 'DELIVERED') {
+    let statusText = '🕒 Pendiente por preparar';
+    if (order.deliveryStatus === 'PREPARING') {
+      statusText = '🥣 En preparación (elaborando tu yogur fresco)';
+    } else if (order.deliveryStatus === 'IN_ROUTE') {
+      statusText = '🛵 En camino / En ruta a tu dirección';
+    } else if (order.deliveryStatus === 'DELIVERED') {
+      statusText = '✅ Entregado';
+    }
+
+    let itemsBreakdown = '';
+    if (order.items && order.items.length > 0) {
+      itemsBreakdown = order.items
+        .map((i) => `• ${i.quantity}x Botella ${i.bottleSize} (${i.flavor}) - ${formatCurrency(i.totalPrice)}`)
+        .join('\n');
+    } else {
+      itemsBreakdown = `• ${order.quantityBottles}x Botella ${order.bottleSize} (${order.flavor}) - ${formatCurrency(order.totalAmount)}`;
+    }
+
+    const formatOrderDate = (d: Date) => {
+      const date = new Date(d);
+      return date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+    };
+
+    let dateLine = `📅 *Fecha Pedido:* ${formatOrderDate(order.orderDate)}`;
+    if (order.deliveryDate) {
+      const dDate = new Date(order.deliveryDate);
+      const deliveryFormatted = dDate.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });
+      dateLine += `\n🛵 *Entrega Programada:* ${deliveryFormatted}`;
+    }
+
+    // 1. Si el pedido ya está ENTREGADO y no se forzó otro tipo: Mensaje especial de agradecimiento y disfrute
+    if (order.deliveryStatus === 'DELIVERED' && type !== 'ORDER_INFO') {
       let deliveredMsg = `🥛 *¡Muchas gracias por tu compra en YogurArte!* ✨\n\n`;
       deliveredMsg += `Hola *${order.customer.fullName}*, tu pedido *#${order.orderNumber}* ha sido entregado con éxito. 🎉\n\n`;
       deliveredMsg += `¡Esperamos que disfrutes al máximo tu delicioso yogur artesanal 100% natural! 🍇🍓🥛\n\n`;
@@ -576,23 +652,32 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
       });
     }
 
-    // Estados previos a la entrega (PENDING, PREPARING, IN_ROUTE)
-    let statusText = '🕒 Pendiente por preparar';
-    if (order.deliveryStatus === 'PREPARING') {
-      statusText = '🥣 En preparación (elaborando tu yogur fresco)';
-    } else if (order.deliveryStatus === 'IN_ROUTE') {
-      statusText = '🛵 En camino / En ruta a tu dirección';
+    // 2. Si el pedido ya está PAGADO pero aún NO entregado y no se pidió solo ORDER_INFO (Confirmación de pago y agradecimiento al estilo YogurArte)
+    if (type !== 'ORDER_INFO' && order.deliveryStatus !== 'DELIVERED' && (order.paymentStatus === 'PAID' || order.pendingAmount <= 0)) {
+      let paidMsg = `🥛 *¡Pago Recibido con Éxito - YogurArte!* ✨\n\n`;
+      paidMsg += `¡Hola *${order.customer.fullName}*! Te saludamos con mucho aprecio y cariño de parte del equipo de *YogurArte*.\n\n`;
+      paidMsg += `🎉 Te confirmamos que hemos recibido con éxito tu pago de *${formatCurrency(order.totalAmount)}* para tu pedido *#${order.orderNumber}*. ¡Muchísimas gracias por tu compra y por confiar en nuestro trabajo artesanal! 🙌🐄\n\n`;
+      paidMsg += `📦 *Detalle de tu pedido:*\n${itemsBreakdown}\n`;
+      paidMsg += `🥤 *Total:* ${order.totalLiters} Litro(s) • ${formatCurrency(order.totalAmount)}\n`;
+      paidMsg += `✅ *Estado del Pago:* Totalmente Pagado / Paz y Salvo ✨\n`;
+      paidMsg += `🛵 *Estado de Entrega:* ${statusText}\n`;
+      paidMsg += `${dateLine}\n\n`;
+      paidMsg += `🥣 Tu yogur 100% natural, fresco y sin conservantes está siendo preparado con todo el amor. Te notificaremos apenas nuestro domiciliario vaya en camino hacia tu dirección (${order.deliveryAddress || order.customer.address || 'Fonseca'}). 🍓🍑🛵💨\n\n`;
+      paidMsg += `¡Que tengas un día maravilloso! ✨🥛`;
+
+      const encodedMessage = encodeURIComponent(paidMsg);
+      const whatsappUrl = isUsername
+        ? `https://wa.me/${whatsappPhoneParam}?text=${encodedMessage}`
+        : `https://api.whatsapp.com/send?phone=${whatsappPhoneParam}&text=${encodedMessage}`;
+
+      return res.json({
+        whatsappUrl,
+        rawMessage: paidMsg,
+        phone: rawContact,
+      });
     }
 
-    let itemsBreakdown = '';
-    if (order.items && order.items.length > 0) {
-      itemsBreakdown = order.items
-        .map((i) => `• ${i.quantity}x Botella ${i.bottleSize} (${i.flavor}) - ${formatCurrency(i.totalPrice)}`)
-        .join('\n');
-    } else {
-      itemsBreakdown = `• ${order.quantityBottles}x Botella ${order.bottleSize} (${order.flavor}) - ${formatCurrency(order.totalAmount)}`;
-    }
-
+    // 3. Estados previos a la entrega con pago pendiente o parcial
     let paymentInfo = '';
     if (order.pendingAmount > 0) {
       paymentInfo = `💵 *Abonado:* ${formatCurrency(order.paidAmount)} | ⚠️ *Saldo Pendiente:* ${formatCurrency(order.pendingAmount)}`;
@@ -606,18 +691,6 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
       closingPhrase = '🥣 ¡Tu yogur artesanal 100% natural está siendo preparado y empacado con el mayor amor! Cualquier duda estamos a tu disposición. 🥛🍇🍓';
     } else if (order.deliveryStatus === 'IN_ROUTE') {
       closingPhrase = '🛵 ¡Tu yogur artesanal 100% natural ya va en camino hacia tu dirección! Atento para recibirlo. Cualquier duda estamos a tu disposición. 🥛🍇🍓';
-    }
-
-    const formatOrderDate = (d: Date) => {
-      const date = new Date(d);
-      return date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
-    };
-
-    let dateLine = `📅 *Fecha Pedido:* ${formatOrderDate(order.orderDate)}`;
-    if (order.deliveryDate) {
-      const dDate = new Date(order.deliveryDate);
-      const deliveryFormatted = dDate.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });
-      dateLine += `\n🛵 *Entrega Programada:* ${deliveryFormatted}`;
     }
 
     let message = `🥛 *YogurArte - Pedido #${order.orderNumber}*\n`;

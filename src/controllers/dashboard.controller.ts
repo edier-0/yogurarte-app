@@ -3,7 +3,7 @@ import prisma from '../prisma.js';
 
 export const getDashboardSummary = async (req: Request, res: Response) => {
   try {
-    const { period, date, month } = req.query;
+    const { period, date, startDate, endDate, month } = req.query;
     const now = new Date();
 
     const getColombiaDateStr = (d = new Date()) => {
@@ -22,11 +22,23 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const purchaseWhere: any = {};
 
     let activeFilterDate = '';
+    let customDateRange: { gte: Date; lte: Date } | null = null;
 
     if (date && typeof date === 'string') {
       activeFilterDate = date.split('T')[0];
+    } else if (startDate || endDate) {
+      const s = startDate ? String(startDate).split('T')[0] : '2020-01-01';
+      const e = endDate ? String(endDate).split('T')[0] : '2099-12-31';
+      customDateRange = {
+        gte: new Date(`${s}T00:00:00.000Z`),
+        lte: new Date(`${e}T23:59:59.999Z`),
+      };
     } else if (period === 'today') {
       activeFilterDate = todayStr;
+    } else if (period === 'yesterday') {
+      const yest = new Date();
+      yest.setDate(yest.getDate() - 1);
+      activeFilterDate = getColombiaDateStr(yest);
     } else if (period === 'tomorrow') {
       const tmrw = new Date();
       tmrw.setDate(tmrw.getDate() + 1);
@@ -39,16 +51,18 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       const dayRange = { gte: dayStart, lte: dayEnd };
 
       orderWhere.OR = [
+        { orderDate: dayRange },
         { deliveryDate: dayRange },
-        {
-          AND: [
-            { deliveryDate: null },
-            { orderDate: dayRange },
-          ],
-        },
       ];
       expenseWhere.expenseDate = dayRange;
       purchaseWhere.purchaseDate = dayRange;
+    } else if (customDateRange) {
+      orderWhere.OR = [
+        { orderDate: customDateRange },
+        { deliveryDate: customDateRange },
+      ];
+      expenseWhere.expenseDate = customDateRange;
+      purchaseWhere.purchaseDate = customDateRange;
     } else if (month && typeof month === 'string') {
       const [year, m] = month.split('-').map(Number);
       if (year && m) {
@@ -92,7 +106,17 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     // 1. Consultar pedidos
     const orders = await prisma.order.findMany({
       where: orderWhere,
-      include: { customer: true },
+      include: {
+        customer: true,
+        items: true,
+        batch: {
+          select: {
+            id: true,
+            batchCode: true,
+            flavor: true,
+          },
+        },
+      },
       orderBy: { orderDate: 'desc' },
     });
 
@@ -240,7 +264,8 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         minStockAlert: m.minStockAlert,
         unit: m.unit,
       })),
-      recentOrders: orders.slice(0, 6),
+      recentOrders: orders.slice(0, 8),
+      periodOrders: orders,
       inventorySummary: rawMaterials,
     });
   } catch (error) {

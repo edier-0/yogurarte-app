@@ -107,13 +107,28 @@ export const deleteMaterial = async (req: Request, res: Response) => {
 
 export const createPurchase = async (req: Request, res: Response) => {
   try {
-    const { rawMaterialId, quantity, unitCost, supplier, purchaseDate, notes, registeredBy } = req.body;
+    const { rawMaterialId, quantity, unitCost, totalCost, supplier, purchaseDate, notes, registeredBy } = req.body;
 
     const parsedQty = Number(quantity);
-    const parsedCost = Number(unitCost);
+    let parsedUnitCost = Number(unitCost);
+    let parsedTotalCost = Number(totalCost);
 
-    if (!rawMaterialId || isNaN(parsedQty) || parsedQty <= 0 || isNaN(parsedCost) || parsedCost < 0) {
-      return res.status(400).json({ error: 'Datos de compra inválidos (cantidad y costo son requeridos)' });
+    if (!rawMaterialId || isNaN(parsedQty) || parsedQty <= 0) {
+      return res.status(400).json({ error: 'Debe ingresar una cantidad válida mayor a 0' });
+    }
+
+    if ((isNaN(parsedUnitCost) || parsedUnitCost < 0) && (isNaN(parsedTotalCost) || parsedTotalCost < 0)) {
+      return res.status(400).json({ error: 'Debe ingresar el costo unitario o el costo total de la compra' });
+    }
+
+    // Si ingresó costo total, calcular unitario exacto dividiendo entre cantidad
+    if (parsedTotalCost > 0 && (!parsedUnitCost || parsedUnitCost <= 0)) {
+      parsedUnitCost = parsedTotalCost / parsedQty;
+    } else if (parsedUnitCost >= 0 && (!parsedTotalCost || parsedTotalCost <= 0)) {
+      parsedTotalCost = parsedQty * parsedUnitCost;
+    } else if (parsedTotalCost > 0 && parsedUnitCost > 0) {
+      // Si ambos vienen, asegurar consistencia exacta
+      parsedUnitCost = parsedTotalCost / parsedQty;
     }
 
     const material = await prisma.rawMaterial.findUnique({
@@ -124,13 +139,11 @@ export const createPurchase = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Insumo no encontrado' });
     }
 
-    const totalCost = parsedQty * parsedCost;
-
     // Calcular nuevo costo promedio ponderado
     const newStock = material.currentStock + parsedQty;
     const currentTotalValue = material.currentStock * material.avgCost;
-    const newTotalValue = currentTotalValue + totalCost;
-    const newAvgCost = newStock > 0 ? Math.round(newTotalValue / newStock) : parsedCost;
+    const newTotalValue = currentTotalValue + parsedTotalCost;
+    const newAvgCost = newStock > 0 ? Math.round(newTotalValue / newStock) : Math.round(parsedUnitCost);
 
     // Parse date keeping local calendar day
     const dateObj = purchaseDate ? new Date(`${String(purchaseDate).split('T')[0]}T12:00:00.000Z`) : new Date();
@@ -141,8 +154,8 @@ export const createPurchase = async (req: Request, res: Response) => {
         data: {
           rawMaterialId: Number(rawMaterialId),
           quantity: parsedQty,
-          unitCost: parsedCost,
-          totalCost: totalCost,
+          unitCost: Math.round(parsedUnitCost * 100) / 100, // guardar con 2 decimales de precisión
+          totalCost: Math.round(parsedTotalCost),
           supplier: supplier ? supplier.trim() : null,
           purchaseDate: dateObj,
           notes: notes ? notes.trim() : null,
@@ -168,7 +181,7 @@ export const createPurchase = async (req: Request, res: Response) => {
 export const updatePurchase = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { supplier, invoiceNumber, quantity, unitCost, purchaseDate, notes } = req.body;
+    const { supplier, invoiceNumber, quantity, unitCost, totalCost, purchaseDate, notes } = req.body;
 
     const currentPurchase = await prisma.purchase.findUnique({
       where: { id: Number(id) },
@@ -180,8 +193,17 @@ export const updatePurchase = async (req: Request, res: Response) => {
     }
 
     const newQty = quantity !== undefined ? Number(quantity) : currentPurchase.quantity;
-    const newUnitCost = unitCost !== undefined ? Number(unitCost) : currentPurchase.unitCost;
-    const newTotalCost = newQty * newUnitCost;
+    let newUnitCost = unitCost !== undefined ? Number(unitCost) : currentPurchase.unitCost;
+    let newTotalCost = totalCost !== undefined ? Number(totalCost) : (newQty * newUnitCost);
+
+    if (totalCost !== undefined && Number(totalCost) > 0 && newQty > 0) {
+      newTotalCost = Number(totalCost);
+      newUnitCost = newTotalCost / newQty;
+    } else if (unitCost !== undefined && Number(unitCost) > 0 && newQty > 0) {
+      newUnitCost = Number(unitCost);
+      newTotalCost = newQty * newUnitCost;
+    }
+
     const qtyDiff = newQty - currentPurchase.quantity;
 
     // Actualizar compra y ajustar el stock
@@ -191,8 +213,8 @@ export const updatePurchase = async (req: Request, res: Response) => {
         data: {
           supplier: supplier !== undefined ? supplier.trim() : currentPurchase.supplier,
           quantity: newQty,
-          unitCost: newUnitCost,
-          totalCost: newTotalCost,
+          unitCost: Math.round(newUnitCost * 100) / 100,
+          totalCost: Math.round(newTotalCost),
           purchaseDate: purchaseDate ? new Date(`${String(purchaseDate).split('T')[0]}T12:00:00.000Z`) : currentPurchase.purchaseDate,
           notes: notes !== undefined ? notes.trim() : currentPurchase.notes,
         },
@@ -204,7 +226,7 @@ export const updatePurchase = async (req: Request, res: Response) => {
         where: { id: currentPurchase.rawMaterialId },
         data: {
           currentStock: Math.max(0, currentPurchase.rawMaterial.currentStock + qtyDiff),
-          avgCost: newUnitCost,
+          avgCost: Math.round(newUnitCost),
         },
       }),
     ]);

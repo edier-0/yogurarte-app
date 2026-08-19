@@ -29,11 +29,55 @@ export const getBatches = async (req: Request, res: Response) => {
             },
           },
         },
+        orders: {
+          select: {
+            id: true,
+            orderNumber: true,
+            totalAmount: true,
+            paidAmount: true,
+            totalLiters: true,
+            quantityBottles: true,
+            bottleSize: true,
+            orderDate: true,
+            deliveryStatus: true,
+            paymentStatus: true,
+            customer: {
+              select: {
+                fullName: true,
+              },
+            },
+          },
+        },
+        orderItems: {
+          select: {
+            id: true,
+            quantity: true,
+            totalLiters: true,
+            totalPrice: true,
+            bottleSize: true,
+          },
+        },
       },
       orderBy: { preparationDate: 'desc' },
     });
 
-    res.json(batches);
+    // Enriquecer con cálculo de ventas asociadas al lote
+    const enrichedBatches = batches.map((b) => {
+      const soldLitersFromOrders = b.orders.reduce((sum, o) => sum + o.totalLiters, 0);
+      const soldLitersFromItems = b.orderItems.reduce((sum, i) => sum + i.totalLiters, 0);
+      const totalSoldLiters = Math.max(soldLitersFromOrders, soldLitersFromItems);
+      const totalSoldBottles = b.orders.reduce((sum, o) => sum + o.quantityBottles, 0);
+      const totalRevenue = b.orders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+      return {
+        ...b,
+        totalSoldLiters,
+        totalSoldBottles,
+        totalRevenue,
+      };
+    });
+
+    res.json(enrichedBatches);
   } catch (error) {
     console.error('Error fetching batches:', error);
     res.status(500).json({ error: 'Error al obtener lotes de producción' });
@@ -50,6 +94,13 @@ export const getBatchById = async (req: Request, res: Response) => {
           include: {
             rawMaterial: true,
           },
+        },
+        orders: {
+          include: {
+            customer: true,
+            items: true,
+          },
+          orderBy: { orderDate: 'desc' },
         },
       },
     });
@@ -81,6 +132,7 @@ export const createBatch = async (req: Request, res: Response) => {
   try {
     const {
       milkUsedLiters,
+      totalLitersProduced: customTotalLiters,
       bottles1LProduced,
       bottles2LProduced,
       flavor,
@@ -94,21 +146,30 @@ export const createBatch = async (req: Request, res: Response) => {
       powderedMilkGramsPerLiter, // default 30
       useLabels, // boolean
       extraItems, // Array opcional de { rawMaterialId: number, quantityUsed: number, unit?: string }
+      price1L,
+      price2L,
+      status,
     } = req.body;
 
     const milkUsed = Number(milkUsedLiters);
     const b1L = Number(bottles1LProduced || 0);
     const b2L = Number(bottles2LProduced || 0);
+    const bottleLiters = b1L * 1.0 + b2L * 2.0;
 
     if (isNaN(milkUsed) || milkUsed <= 0) {
       return res.status(400).json({ error: 'Debe ingresar la cantidad de litros de leche utilizados' });
     }
 
-    if (b1L <= 0 && b2L <= 0) {
-      return res.status(400).json({ error: 'Debe ingresar al menos una botella producida (1L o 2L)' });
+    // Litros de yogur resultantes / salidos de la producción
+    let totalLitersProduced = Number(customTotalLiters);
+    if (isNaN(totalLitersProduced) || totalLitersProduced <= 0) {
+      totalLitersProduced = bottleLiters > 0 ? bottleLiters : milkUsed;
     }
 
-    const totalLitersProduced = b1L * 1.0 + b2L * 2.0;
+    if (totalLitersProduced <= 0 && b1L <= 0 && b2L <= 0) {
+      return res.status(400).json({ error: 'Debe ingresar los litros de yogur obtenidos o las botellas envasadas' });
+    }
+
     const yieldPercentage = Math.round((totalLitersProduced / milkUsed) * 10000) / 100;
 
     // 1. Validar Stock Obligatorio de Leche Líquida
@@ -116,7 +177,7 @@ export const createBatch = async (req: Request, res: Response) => {
       where: {
         OR: [
           { code: 'LECHE' },
-          { category: 'MATERIA_PRIMA' },
+          { name: { contains: 'leche entera', mode: 'insensitive' } },
           { name: { contains: 'leche', mode: 'insensitive' } },
         ],
         NOT: { name: { contains: 'polvo', mode: 'insensitive' } },
@@ -504,13 +565,15 @@ export const createBatch = async (req: Request, res: Response) => {
           totalLitersProduced,
           yieldPercentage,
           flavor: flavor ? flavor.trim() : 'Natural',
+          price1L: price1L !== undefined && Number(price1L) > 0 ? Number(price1L) : 10000,
+          price2L: price2L !== undefined && Number(price2L) > 0 ? Number(price2L) : 20000,
           preparationDate: dateObj,
           expirationDate: expirationDate ? new Date(`${String(expirationDate).split('T')[0]}T12:00:00.000Z`) : null,
           totalCost: totalBatchCost,
           costPerLiter,
           notes: notes ? notes.trim() : null,
           registeredBy: registeredBy || 'Edier',
-          status: 'COMPLETADO',
+          status: status || 'COMPLETADO',
           isActive: true,
           itemsUsed: {
             create: usageRecords,
@@ -540,6 +603,7 @@ export const updateBatch = async (req: Request, res: Response) => {
     const { id } = req.params;
     const {
       milkUsedLiters,
+      totalLitersProduced: customTotalLiters,
       bottles1LProduced,
       bottles2LProduced,
       flavor,
@@ -547,6 +611,8 @@ export const updateBatch = async (req: Request, res: Response) => {
       expirationDate,
       notes,
       status,
+      price1L,
+      price2L,
     } = req.body;
 
     const currentBatch = await prisma.productionBatch.findUnique({
@@ -560,8 +626,9 @@ export const updateBatch = async (req: Request, res: Response) => {
     const newMilk = milkUsedLiters !== undefined ? Number(milkUsedLiters) : currentBatch.milkUsedLiters;
     const newB1L = bottles1LProduced !== undefined ? Number(bottles1LProduced) : currentBatch.bottles1LProduced;
     const newB2L = bottles2LProduced !== undefined ? Number(bottles2LProduced) : currentBatch.bottles2LProduced;
+    const bottleLiters = newB1L * 1.0 + newB2L * 2.0;
 
-    const newTotalLiters = newB1L * 1.0 + newB2L * 2.0;
+    let newTotalLiters = customTotalLiters !== undefined && Number(customTotalLiters) > 0 ? Number(customTotalLiters) : (bottleLiters > 0 ? bottleLiters : currentBatch.totalLitersProduced);
     const newYield = newMilk > 0 ? Math.round((newTotalLiters / newMilk) * 10000) / 100 : 0;
     const newCostPerLiter = newTotalLiters > 0 ? Math.round(currentBatch.totalCost / newTotalLiters) : 0;
 
@@ -575,10 +642,12 @@ export const updateBatch = async (req: Request, res: Response) => {
         yieldPercentage: newYield,
         costPerLiter: newCostPerLiter,
         flavor: flavor !== undefined ? flavor.trim() : undefined,
+        price1L: price1L !== undefined && Number(price1L) > 0 ? Number(price1L) : undefined,
+        price2L: price2L !== undefined && Number(price2L) > 0 ? Number(price2L) : undefined,
         preparationDate: preparationDate ? new Date(`${String(preparationDate).split('T')[0]}T12:00:00.000Z`) : undefined,
         expirationDate: expirationDate ? new Date(`${String(expirationDate).split('T')[0]}T12:00:00.000Z`) : undefined,
         notes: notes !== undefined ? notes.trim() : undefined,
-        status: status !== undefined ? status : undefined,
+        status: status !== undefined ? String(status).trim() : undefined,
       },
       include: {
         itemsUsed: {

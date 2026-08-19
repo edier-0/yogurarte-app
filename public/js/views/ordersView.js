@@ -1,11 +1,12 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store } from '../store.js';
 
 let currentFilters = {
   search: '',
-  debtCategory: 'ALL', // 'ALL' | 'DELIVERED_DEBT' | 'IN_PROCESS' | 'PAID'
+  debtCategory: 'ALL', // 'ALL' | 'DELIVERED_DEBT' | 'PAID_NOT_DELIVERED' | 'IN_PROCESS' | 'PAID'
   paymentStatus: 'ALL',
   deliveryStatus: 'ALL',
+  sortBy: 'PRIORITY_DEBT', // 'PRIORITY_DEBT' | 'UPDATED_DESC' | 'DATE_DESC' | 'DATE_ASC'
   month: '', // YYYY-MM
   specificDate: '', // YYYY-MM-DD
   dateRange: 'ALL', // TODAY, TOMORROW, WEEK, ALL, CUSTOM
@@ -94,23 +95,29 @@ export async function renderOrders(container) {
         </div>
       </div>
 
-      <!-- Fila de Filtros Jerárquicos de Cobro / Deuda (Como en Clientes) -->
-      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
-        <button class="filter-chip ${currentFilters.debtCategory === 'ALL' ? 'active' : ''}" data-debt-cat="ALL">
-          📋 Todos los Pedidos
+      <!-- Fila de Filtros Jerárquicos de Cobro / Deuda y Orden Rápido -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle); align-items: center;">
+        <button class="filter-chip ${currentFilters.debtCategory === 'ALL' && currentFilters.sortBy !== 'UPDATED_DESC' ? 'active' : ''}" data-debt-cat="ALL">
+          📋 Todos
         </button>
-        <button class="filter-chip ${currentFilters.debtCategory === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt-cat="DELIVERED_DEBT" style="${currentFilters.debtCategory === 'DELIVERED_DEBT' ? 'background: #DC2626; color: white;' : 'border-color: #FECACA; color: #DC2626;'}">
+        <button class="filter-chip ${currentFilters.debtCategory === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt-cat="DELIVERED_DEBT" style="${currentFilters.debtCategory === 'DELIVERED_DEBT' ? 'background: #DC2626; color: white;' : 'border-color: #FECACA; color: #DC2626; font-weight: 700;'}">
           🚨 Entregados por Cobrar
         </button>
-        <button class="filter-chip ${currentFilters.debtCategory === 'IN_PROCESS' ? 'active' : ''}" data-debt-cat="IN_PROCESS" style="${currentFilters.debtCategory === 'IN_PROCESS' ? 'background: var(--primary); color: white;' : 'border-color: #DDD6FE; color: var(--primary);'}">
+        <button class="filter-chip ${currentFilters.debtCategory === 'PAID_NOT_DELIVERED' ? 'active' : ''}" data-debt-cat="PAID_NOT_DELIVERED" style="${currentFilters.debtCategory === 'PAID_NOT_DELIVERED' ? 'background: #059669; color: white;' : 'border-color: #A7F3D0; color: #059669; font-weight: 700;'}">
+          🟢🥣 Pagados por Entregar
+        </button>
+        <button class="filter-chip ${currentFilters.debtCategory === 'IN_PROCESS' ? 'active' : ''}" data-debt-cat="IN_PROCESS" style="${currentFilters.debtCategory === 'IN_PROCESS' ? 'background: var(--primary); color: white;' : 'border-color: #DDD6FE; color: var(--primary); font-weight: 700;'}">
           🥣 Encargos por Entregar
         </button>
-        <button class="filter-chip ${currentFilters.debtCategory === 'PAID' ? 'active' : ''}" data-debt-cat="PAID" style="${currentFilters.debtCategory === 'PAID' ? 'background: var(--success); color: white;' : 'border-color: #BBF7D0; color: #15803D;'}">
+        <button class="filter-chip ${currentFilters.debtCategory === 'PAID' ? 'active' : ''}" data-debt-cat="PAID" style="${currentFilters.debtCategory === 'PAID' ? 'background: var(--success); color: white;' : 'border-color: #BBF7D0; color: #15803D; font-weight: 700;'}">
           🟢 Totalmente Pagados
+        </button>
+        <button class="filter-chip ${currentFilters.sortBy === 'UPDATED_DESC' ? 'active' : ''}" id="btnQuickSortUpdated" style="${currentFilters.sortBy === 'UPDATED_DESC' ? 'background: #0f766e; color: white; border-color: #0f766e;' : 'border-color: #99f6e4; color: #0f766e; font-weight: 700;'}" title="Ordenar pedidos desde el más recientemente modificado al más antiguo">
+          🔄 Últimos Actualizados
         </button>
       </div>
 
-      <!-- Fila Secundaria: Filtros Rápidos de Fecha, Estados de Entrega y Pago -->
+      <!-- Fila Secundaria: Filtros Rápidos de Fecha, Estados de Entrega, Pago y Ordenamiento -->
       <div class="orders-filters-sub-row" style="margin-top: 10px;">
         <div class="orders-filter-chips">
           <button class="filter-chip ${currentFilters.dateRange === 'ALL' && !currentFilters.specificDate && !currentFilters.month ? 'active' : ''}" data-date="ALL">Todos los Días</button>
@@ -120,6 +127,14 @@ export async function renderOrders(container) {
         </div>
 
         <div class="orders-selects-group">
+          <!-- Selector de Ordenamiento -->
+          <select id="selectOrderSort" class="orders-select-item" style="font-weight: 700; color: var(--primary);">
+            <option value="PRIORITY_DEBT" ${currentFilters.sortBy === 'PRIORITY_DEBT' ? 'selected' : ''}>🎯 Prioridad: Deudas de primero</option>
+            <option value="UPDATED_DESC" ${currentFilters.sortBy === 'UPDATED_DESC' ? 'selected' : ''}>🔄 Últimos Actualizados (Reciente a antiguo)</option>
+            <option value="DATE_DESC" ${currentFilters.sortBy === 'DATE_DESC' ? 'selected' : ''}>📅 Fecha de Entrega (Más reciente)</option>
+            <option value="DATE_ASC" ${currentFilters.sortBy === 'DATE_ASC' ? 'selected' : ''}>📅 Fecha de Entrega (Más antigua)</option>
+          </select>
+
           <!-- Selector de Meses -->
           <select id="selectMonthFilter" class="orders-select-item">
             <option value="">📅 Por Mes</option>
@@ -235,6 +250,34 @@ export async function renderOrders(container) {
     loadOrdersList(container);
   });
 
+  const sortSelect = container.querySelector('#selectOrderSort');
+  sortSelect?.addEventListener('change', (e) => {
+    currentFilters.sortBy = e.target.value;
+    const quickBtn = container.querySelector('#btnQuickSortUpdated');
+    if (quickBtn) {
+      if (currentFilters.sortBy === 'UPDATED_DESC') {
+        quickBtn.classList.add('active');
+        quickBtn.style.background = '#0f766e';
+        quickBtn.style.color = 'white';
+      } else {
+        quickBtn.classList.remove('active');
+        quickBtn.style.background = '';
+        quickBtn.style.color = '#0f766e';
+      }
+    }
+    loadOrdersList(container);
+  });
+
+  container.querySelector('#btnQuickSortUpdated')?.addEventListener('click', () => {
+    if (currentFilters.sortBy === 'UPDATED_DESC') {
+      currentFilters.sortBy = 'PRIORITY_DEBT';
+    } else {
+      currentFilters.sortBy = 'UPDATED_DESC';
+    }
+    if (sortSelect) sortSelect.value = currentFilters.sortBy;
+    renderOrders(container);
+  });
+
   // Toggles de vista
   container.querySelector('#btnToggleListView')?.addEventListener('click', () => {
     currentFilters.viewMode = 'list';
@@ -265,6 +308,7 @@ async function loadOrdersList(container) {
       debtCategory: currentFilters.debtCategory,
       paymentStatus: currentFilters.paymentStatus,
       deliveryStatus: currentFilters.deliveryStatus,
+      sortBy: currentFilters.sortBy,
       month: currentFilters.month,
     };
 
@@ -513,8 +557,8 @@ async function renderDeliveryCalendarWidget(calendarContainer, mainContainer) {
 
 function createOrderCardHtml(o) {
   const isDeliveredDebt = o.deliveryStatus === 'DELIVERED' && (o.pendingAmount || 0) > 0;
+  const isPaidNotDelivered = o.deliveryStatus !== 'DELIVERED' && (o.paymentStatus === 'PAID' || (o.pendingAmount || 0) <= 0);
   const isInProcessPending = o.deliveryStatus !== 'DELIVERED' && (o.pendingAmount || 0) > 0;
-  const isFullyPaid = (o.pendingAmount || 0) <= 0;
 
   let cardBorder = '';
   let payBadge = '';
@@ -525,6 +569,11 @@ function createOrderCardHtml(o) {
     cardBorder = 'border: 1.5px solid #F87171; background: #FFFDFD; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.08);';
     payBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-weight: 800; font-size: 0.78rem;">🚨 Entregado • Deuda: ${formatCOP(o.pendingAmount)}</span>`;
     waBtnText = '📲 Recordar Pago';
+  } else if (isPaidNotDelivered) {
+    cardBorder = 'border: 1.5px solid #34D399; background: #F0FDF4; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.08);';
+    payBadge = `<span class="badge" style="background: #DCFCE7; color: #059669; font-weight: 800; font-size: 0.78rem;">🟢🥣 Pagado • Por Entregar 🛵</span>`;
+    waBtnText = '📲 Agradecer Pago';
+    waBtnClass = 'btn-whatsapp';
   } else if (isInProcessPending) {
     cardBorder = 'border: 1.5px solid #DDD6FE; background: #FAF7FC; box-shadow: 0 4px 14px rgba(109, 40, 217, 0.05);';
     if (o.paidAmount > 0) {
@@ -569,6 +618,7 @@ function createOrderCardHtml(o) {
           <div class="order-date" style="display: flex; flex-direction: column; gap: 2px;">
             <span>📅 Pedido: <strong>${formatDate(o.orderDate)}</strong></span>
             ${o.deliveryDate ? `<span style="color: var(--primary); font-weight: 800; font-size: 0.78rem;">🛵 Entrega: ${formatDate(o.deliveryDate)}</span>` : ''}
+            ${o.updatedAt ? `<span style="color: #0f766e; font-size: 0.73rem; font-weight: 700; background: #f0fdfa; padding: 1px 5px; border-radius: 4px; border: 1px solid #ccfbf1; display: inline-block; width: fit-content; margin-top: 2px;" title="Última modificación">🔄 Modificado: ${formatDateTime(o.updatedAt)}</span>` : ''}
           </div>
         </div>
         <div>
@@ -585,6 +635,15 @@ function createOrderCardHtml(o) {
         <div class="order-customer-address">
           <span>📍</span> ${o.deliveryAddress || o.customer.address || 'Fonseca'}
         </div>
+        ${
+          o.batch
+            ? `<div style="margin-top: 4px;">
+                <span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-size: 0.73rem; font-weight: 800; padding: 2px 6px;">
+                  🍶 Lote: ${o.batch.batchCode} (${o.batch.flavor})
+                </span>
+               </div>`
+            : ''
+        }
       </div>
 
       <div style="margin: 8px 0;">
@@ -630,9 +689,18 @@ function createOrderCardHtml(o) {
       }
 
       <div class="order-actions">
-        <button class="btn ${waBtnClass} btn-sm btn-whatsapp-action" data-id="${o.id}" title="Enviar mensaje por WhatsApp">
-          <span>${waBtnText}</span>
-        </button>
+        ${
+          isPaidNotDelivered
+            ? `<button class="btn btn-whatsapp btn-sm btn-whatsapp-action" data-id="${o.id}" data-type="THANK_PAYMENT" title="Notificar recepción del pago y agradecer al estilo YogurArte">
+                 <span>📲 Agradecer Pago</span>
+               </button>
+               <button class="btn btn-outline btn-sm btn-whatsapp-action" data-id="${o.id}" data-type="ORDER_INFO" style="color: var(--primary); border-color: var(--primary); font-weight: 700;" title="Enviar información completa y estado actual del pedido">
+                 <span>💬 Info Pedido</span>
+               </button>`
+            : `<button class="btn ${waBtnClass} btn-sm btn-whatsapp-action" data-id="${o.id}" title="Enviar mensaje por WhatsApp">
+                 <span>${waBtnText}</span>
+               </button>`
+        }
 
         ${
           o.pendingAmount > 0
@@ -659,8 +727,9 @@ function attachOrderCardEvents(container) {
   container.querySelectorAll('.btn-whatsapp-action').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const id = e.currentTarget.dataset.id;
+      const type = e.currentTarget.dataset.type || '';
       try {
-        const res = await api.getWhatsAppLink(id);
+        const res = await api.getWhatsAppLink(id, type);
         if (res.whatsappUrl) {
           window.open(res.whatsappUrl, '_blank');
         }
@@ -756,9 +825,23 @@ export async function openOrderModal(orderData = null) {
     console.error('Error fetching customers for modal:', e);
   }
 
+  // Cargar lotes de producción disponibles
+  let availableBatches = [];
+  try {
+    const fetchedBatches = await api.getBatches({ includeInactive: 'false' });
+    availableBatches = (fetchedBatches || []).filter((b) => b.status !== 'DESCARTADO');
+  } catch (e) {
+    console.error('Error fetching batches for modal:', e);
+  }
+
+  const initialBatchId = orderData?.batchId || (orderData?.batch?.id) || '';
+  const initialBatchObj = availableBatches.find((b) => b.id === Number(initialBatchId));
+  let currentBatchPrice1L = initialBatchObj?.price1L || (orderData?.batch?.price1L) || 10000;
+  let currentBatchPrice2L = initialBatchObj?.price2L || (orderData?.batch?.price2L) || 20000;
+
   // Lista inicial de ítems
   let initialItems = [
-    { bottleSize: '1L', flavor: 'Natural', quantity: 1, unitPrice: 10000 },
+    { bottleSize: '1L', flavor: initialBatchObj?.flavor || 'Natural', quantity: 1, unitPrice: currentBatchPrice1L },
   ];
 
   if (isEditing && orderData.items && orderData.items.length > 0) {
@@ -772,16 +855,16 @@ export async function openOrderModal(orderData = null) {
     initialItems = [
       {
         bottleSize: orderData.bottleSize || '1L',
-        flavor: orderData.flavor || 'Natural',
+        flavor: orderData.flavor || (initialBatchObj?.flavor || 'Natural'),
         quantity: orderData.quantityBottles || 1,
-        unitPrice: orderData.unitPrice || 10000,
+        unitPrice: orderData.unitPrice || currentBatchPrice1L,
       },
     ];
   }
 
   modalOverlay.innerHTML = `
     <div class="modal-overlay active" id="orderModal">
-      <div class="modal-card" style="max-width: 560px;">
+      <div class="modal-card" style="max-width: 580px;">
         <div class="modal-header">
           <h3 class="modal-title">${modalTitle}</h3>
           <button class="modal-close-btn" id="btnCloseOrderModal">✕</button>
@@ -822,6 +905,29 @@ export async function openOrderModal(orderData = null) {
               <input type="text" id="custAddress" class="form-input" placeholder="Ej: Calle 12 # 15-40, Barrio San Agustín" value="${defaultAddress}" required />
             </div>
 
+            <!-- Selector de Lote de Producción (Opcional/Recomendado) -->
+            <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 14px;">
+              <label class="form-label" style="font-size: 0.85rem; font-weight: 800; color: var(--primary); margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <span>🍶 Lote de Producción (Escoge de dónde vendes)</span>
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">Opcional</span>
+              </label>
+              <select id="orderBatchSelect" class="form-select" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">
+                <option value="" data-price1l="10000" data-price2l="20000" data-flavor="">-- Sin lote específico (Precios estándar $10.000 / $20.000) --</option>
+                ${availableBatches
+                  .map(
+                    (b) => `
+                  <option value="${b.id}" data-price1l="${b.price1L || 10000}" data-price2l="${b.price2L || 20000}" data-flavor="${b.flavor}" ${String(initialBatchId) === String(b.id) ? 'selected' : ''}>
+                    🍶 ${b.batchCode} • ${b.flavor} (1L: ${formatCOP(b.price1L || 10000)} • 2L: ${formatCOP(b.price2L || 20000)}) ${b.status === 'AGOTADO' ? '⚠️ Agotado' : '✅'}
+                  </option>
+                `
+                  )
+                  .join('')}
+              </select>
+              <div id="batchHintDisplay" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                💡 Al seleccionar un lote, se aplicarán automáticamente sus precios de venta configurados.
+              </div>
+            </div>
+
             <!-- Sección de Múltiples Productos en el Pedido -->
             <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -845,7 +951,7 @@ export async function openOrderModal(orderData = null) {
 
               <div class="form-group">
                 <label class="form-label">Total a Cobrar ($ COP) *</label>
-                <input type="number" id="orderTotalAmount" class="form-input" value="10000" required style="font-weight: 800; color: var(--primary);" />
+                <input type="number" id="orderTotalAmount" class="form-input" value="${initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) || 10000}" required style="font-weight: 800; color: var(--primary);" />
               </div>
             </div>
 
@@ -905,18 +1011,22 @@ export async function openOrderModal(orderData = null) {
   const totalInput = document.getElementById('orderTotalAmount');
   const paidInput = document.getElementById('orderPaidAmount');
   const pendingDisplay = document.getElementById('orderPendingDisplay');
+  const batchSelect = document.getElementById('orderBatchSelect');
+  const batchHintDisplay = document.getElementById('batchHintDisplay');
   const modalBody = modalOverlay.querySelector('.modal-body');
 
   // Función para renderizar una fila de producto
-  function addProductRow(item = { bottleSize: '1L', flavor: 'Natural', quantity: 1, unitPrice: 10000 }) {
+  function addProductRow(item = { bottleSize: '1L', flavor: 'Natural', quantity: 1, unitPrice: currentBatchPrice1L }) {
     const row = document.createElement('div');
     row.className = 'order-item-row';
     row.style.cssText = 'display: flex; gap: 6px; align-items: center; background: #FFFFFF; padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);';
 
+    const itemPrice = item.bottleSize === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
+
     row.innerHTML = `
-      <select class="form-select item-size" style="flex: 1.3; font-size: 0.82rem; padding: 6px 8px;">
-        <option value="1L" ${item.bottleSize === '1L' ? 'selected' : ''}>1 Litro ($10.000)</option>
-        <option value="2L" ${item.bottleSize === '2L' ? 'selected' : ''}>2 Litros ($20.000)</option>
+      <select class="form-select item-size" style="flex: 1.4; font-size: 0.82rem; padding: 6px 8px;">
+        <option value="1L" ${item.bottleSize === '1L' ? 'selected' : ''}>1 Litro (${formatCOP(currentBatchPrice1L)})</option>
+        <option value="2L" ${item.bottleSize === '2L' ? 'selected' : ''}>2 Litros (${formatCOP(currentBatchPrice2L)})</option>
       </select>
 
       <select class="form-select item-flavor" style="flex: 1.4; font-size: 0.82rem; padding: 6px 8px;">
@@ -930,7 +1040,7 @@ export async function openOrderModal(orderData = null) {
       <input type="number" class="form-input item-qty" min="1" value="${item.quantity || 1}" style="width: 55px; text-align: center; font-weight: 700; padding: 6px 4px;" title="Cantidad de botellas" />
 
       <span class="item-subtotal-display" style="font-size: 0.82rem; font-weight: 800; color: var(--primary); min-width: 65px; text-align: right;">
-        ${formatCOP((item.quantity || 1) * (item.unitPrice || 10000))}
+        ${formatCOP((item.quantity || 1) * itemPrice)}
       </span>
 
       <button type="button" class="btn btn-outline btn-sm btn-remove-item" style="color: var(--danger); padding: 4px 8px; font-size: 0.85rem;" title="Quitar producto">
@@ -971,7 +1081,7 @@ export async function openOrderModal(orderData = null) {
     itemsContainer.querySelectorAll('.order-item-row').forEach((row) => {
       const size = row.querySelector('.item-size').value;
       const qty = Number(row.querySelector('.item-qty').value) || 1;
-      const unitPrice = size === '2L' ? 20000 : 10000;
+      const unitPrice = size === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
       const rowTotal = qty * unitPrice;
       const rowLiters = size === '2L' ? qty * 2 : qty * 1;
 
@@ -990,12 +1100,52 @@ export async function openOrderModal(orderData = null) {
     pendingDisplay.value = formatCOP(pending);
   }
 
+  // Listener para cambio de lote de producción
+  batchSelect?.addEventListener('change', (e) => {
+    const selectedOpt = e.target.selectedOptions[0];
+    if (selectedOpt) {
+      currentBatchPrice1L = Number(selectedOpt.dataset.price1l) || 10000;
+      currentBatchPrice2L = Number(selectedOpt.dataset.price2l) || 20000;
+      const batchFlavor = selectedOpt.dataset.flavor;
+
+      // Actualizar texto en los select de tamaño
+      itemsContainer.querySelectorAll('.order-item-row').forEach((row) => {
+        const sizeSelect = row.querySelector('.item-size');
+        if (sizeSelect) {
+          const opt1L = sizeSelect.querySelector('option[value="1L"]');
+          const opt2L = sizeSelect.querySelector('option[value="2L"]');
+          if (opt1L) opt1L.textContent = `1 Litro (${formatCOP(currentBatchPrice1L)})`;
+          if (opt2L) opt2L.textContent = `2 Litros (${formatCOP(currentBatchPrice2L)})`;
+        }
+
+        // Si el lote tiene un sabor específico y el ítem está en Natural, sugerir el sabor del lote
+        if (batchFlavor) {
+          const flavorSelect = row.querySelector('.item-flavor');
+          if (flavorSelect && flavorSelect.value === 'Natural') {
+            flavorSelect.value = batchFlavor;
+          }
+        }
+      });
+
+      if (batchHintDisplay) {
+        if (e.target.value) {
+          batchHintDisplay.innerHTML = `✅ Lote aplicado. Precios: <strong>1L: ${formatCOP(currentBatchPrice1L)}</strong> • <strong>2L: ${formatCOP(currentBatchPrice2L)}</strong>`;
+        } else {
+          batchHintDisplay.innerHTML = `💡 Al seleccionar un lote, se aplicarán automáticamente sus precios de venta configurados.`;
+        }
+      }
+
+      recalculateOrderTotals();
+    }
+  });
+
   // Inicializar filas existentes
   initialItems.forEach((it) => addProductRow(it));
 
   // Botón para agregar más productos
   document.getElementById('btnAddOrderItem')?.addEventListener('click', () => {
-    addProductRow({ bottleSize: '1L', flavor: 'Natural', quantity: 1, unitPrice: 10000 });
+    const selectedBatchFlavor = batchSelect?.selectedOptions[0]?.dataset?.flavor || 'Natural';
+    addProductRow({ bottleSize: '1L', flavor: selectedBatchFlavor, quantity: 1, unitPrice: currentBatchPrice1L });
     if (modalBody) {
       setTimeout(() => {
         modalBody.scrollTo({ top: modalBody.scrollHeight / 2, behavior: 'smooth' });
@@ -1062,7 +1212,7 @@ export async function openOrderModal(orderData = null) {
   };
 
   nameInput?.addEventListener('input', (e) => {
-    selectedCustomerId = null; // Si sigue escribiendo libremente, es un cliente nuevo o modificado
+    selectedCustomerId = null;
     renderSuggestions(e.target.value);
   });
 
@@ -1072,7 +1222,6 @@ export async function openOrderModal(orderData = null) {
     }
   });
 
-  // Cerrar sugerencias si hace clic fuera
   const handleOutsideClick = (e) => {
     if (!nameInput?.contains(e.target) && !suggestionsBox?.contains(e.target)) {
       suggestionsBox?.classList.remove('active');
@@ -1080,7 +1229,6 @@ export async function openOrderModal(orderData = null) {
   };
   document.addEventListener('click', handleOutsideClick);
 
-  // Autocompletar datos si es nuevo y el cliente ya existe al escribir teléfono
   if (!isEditing) {
     phoneInput?.addEventListener('blur', async () => {
       const phone = phoneInput.value.trim();
@@ -1106,14 +1254,17 @@ export async function openOrderModal(orderData = null) {
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    const selectedBatchId = batchSelect?.value || null;
+
     // Recoger todos los ítems de las filas
     const items = [];
     itemsContainer.querySelectorAll('.order-item-row').forEach((row) => {
       const size = row.querySelector('.item-size').value;
       const flavor = row.querySelector('.item-flavor').value;
       const qty = Number(row.querySelector('.item-qty').value) || 1;
-      const unitPrice = size === '2L' ? 20000 : 10000;
+      const unitPrice = size === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
       items.push({
+        batchId: selectedBatchId ? Number(selectedBatchId) : null,
         bottleSize: size,
         flavor,
         quantity: qty,
@@ -1129,6 +1280,7 @@ export async function openOrderModal(orderData = null) {
       customerName: document.getElementById('custFullName').value,
       customerPhone: document.getElementById('custPhone').value,
       customerAddress: document.getElementById('custAddress').value,
+      batchId: selectedBatchId ? Number(selectedBatchId) : null,
       items,
       totalAmount: total,
       paidAmount: paid,
