@@ -14,7 +14,11 @@ model User {
   username  String   @unique
   password  String   @default("")
   pin       String   @default("1234")
-  role      String   @default("ADMIN")
+  role      String   @default("ADMIN") // ADMIN, PRODUCCION, VENTAS, DOMICILIARIO
+  phone     String?
+  email     String?
+  bankInfo  String?  // Nequi o cuenta bancaria
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 }
@@ -154,6 +158,10 @@ model Order {
   paymentStatus   String           @default("PENDING") // PENDING, PARTIAL, PAID
   paymentMethod   String           @default("EFECTIVO") // EFECTIVO, TRANSFERENCIA, NEQUI, BANCOLOMBIA
   deliveryStatus  String           @default("PENDING") // PENDING, PREPARING, IN_ROUTE, DELIVERED, CANCELLED
+  deliveryType    String           @default("PROPIO")  // PROPIO, DOMICILIARIO, LOCAL
+  deliveryDriverId Int?
+  deliveryDriverName String?
+  dispatchedAt    DateTime?
   orderDate       DateTime         @default(now())
   deliveryDate    DateTime?
   deliveryAddress String?

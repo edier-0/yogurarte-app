@@ -14,10 +14,32 @@ export const getOrders = async (req: Request, res: Response) => {
       month, // formato YYYY-MM
       date, // formato YYYY-MM-DD
       batchId, // ID del lote
+      deliveryType, // 'PROPIO' | 'DOMICILIARIO' | 'LOCAL' | 'ALL'
+      driverId, // ID del repartidor o 'UNASSIGNED'
+      deliveryDriverId, // Alias de driverId
       limit,
     } = req.query;
 
     const conditions: any[] = [];
+
+    if (deliveryType && typeof deliveryType === 'string' && deliveryType !== 'ALL') {
+      conditions.push({ deliveryType: deliveryType.toUpperCase() });
+    }
+
+    const targetDriver = driverId || deliveryDriverId;
+    if (targetDriver && typeof targetDriver === 'string' && targetDriver !== 'ALL') {
+      if (targetDriver === 'UNASSIGNED') {
+        conditions.push({
+          deliveryType: 'DOMICILIARIO',
+          deliveryDriverId: null,
+        });
+      } else {
+        const dId = Number(targetDriver);
+        if (!isNaN(dId)) {
+          conditions.push({ deliveryDriverId: dId });
+        }
+      }
+    }
 
     if (batchId && typeof batchId === 'string' && batchId !== 'ALL' && batchId.trim() !== '') {
       const bId = Number(batchId);
@@ -217,6 +239,9 @@ export const createOrder = async (req: Request, res: Response) => {
       paidAmount,
       paymentMethod,
       deliveryStatus,
+      deliveryType, // 'PROPIO' | 'DOMICILIARIO' | 'LOCAL'
+      deliveryDriverId,
+      deliveryDriverName,
       orderDate,
       deliveryDate,
       deliveryAddress,
@@ -375,6 +400,9 @@ export const createOrder = async (req: Request, res: Response) => {
         paymentStatus: calculatedPaymentStatus,
         paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
         deliveryStatus: deliveryStatus || 'PENDING',
+        deliveryType: deliveryType ? String(deliveryType).toUpperCase() : 'PROPIO',
+        deliveryDriverId: deliveryDriverId ? Number(deliveryDriverId) : null,
+        deliveryDriverName: deliveryDriverName ? String(deliveryDriverName).trim() : null,
         orderDate: dateObj,
         deliveryDate: deliveryDate ? new Date(`${String(deliveryDate).split('T')[0]}T12:00:00.000Z`) : null,
         deliveryAddress: deliveryAddress ? deliveryAddress.trim() : (customerAddress ? customerAddress.trim() : 'Fonseca'),
@@ -427,6 +455,9 @@ export const updateOrder = async (req: Request, res: Response) => {
       paymentStatus,
       paymentMethod,
       deliveryStatus,
+      deliveryType,
+      deliveryDriverId,
+      deliveryDriverName,
       orderDate,
       deliveryDate,
       deliveryAddress,
@@ -545,6 +576,9 @@ export const updateOrder = async (req: Request, res: Response) => {
         paymentStatus: finalPaymentStatus,
         paymentMethod: paymentMethod !== undefined ? paymentMethod.trim() : currentOrder.paymentMethod,
         deliveryStatus: deliveryStatus || currentOrder.deliveryStatus,
+        deliveryType: deliveryType !== undefined ? String(deliveryType).toUpperCase() : currentOrder.deliveryType,
+        deliveryDriverId: deliveryDriverId !== undefined ? (deliveryDriverId ? Number(deliveryDriverId) : null) : currentOrder.deliveryDriverId,
+        deliveryDriverName: deliveryDriverName !== undefined ? deliveryDriverName : currentOrder.deliveryDriverName,
         orderDate: orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : currentOrder.orderDate,
         deliveryDate: deliveryDate ? new Date(`${String(deliveryDate).split('T')[0]}T12:00:00.000Z`) : currentOrder.deliveryDate,
         deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : (customerAddress ? customerAddress.trim() : currentOrder.deliveryAddress),
@@ -561,6 +595,104 @@ export const updateOrder = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error updating order:', error);
     res.status(500).json({ error: 'Error al actualizar pedido' });
+  }
+};
+
+// Asignar o cambiar repartidor y tipo de entrega con 1 clic
+export const assignDriver = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { deliveryType, deliveryDriverId, deliveryDriverName } = req.body;
+
+    const orderId = Number(id);
+    const existing = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    const type = deliveryType ? String(deliveryType).toUpperCase() : existing.deliveryType;
+    let driverIdNum = deliveryDriverId !== undefined ? (deliveryDriverId ? Number(deliveryDriverId) : null) : existing.deliveryDriverId;
+    let driverNameStr = deliveryDriverName !== undefined ? deliveryDriverName : existing.deliveryDriverName;
+
+    if (type !== 'DOMICILIARIO') {
+      driverIdNum = null;
+      driverNameStr = null;
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        deliveryType: type,
+        deliveryDriverId: driverIdNum,
+        deliveryDriverName: driverNameStr,
+      },
+      include: {
+        customer: true,
+        items: true,
+        batch: true,
+      },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error assigning driver:', error);
+    res.status(500).json({ error: 'Error al asignar repartidor' });
+  }
+};
+
+// Actualizar estado de entrega y recaudo (para Domiciliarios o Admins)
+export const updateDeliveryStatus = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { deliveryStatus, paymentMethod, paidAmount } = req.body;
+
+    const orderId = Number(id);
+    const existing = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    const updateData: any = {};
+    if (deliveryStatus) {
+      updateData.deliveryStatus = deliveryStatus;
+      if (deliveryStatus === 'IN_ROUTE' && !existing.dispatchedAt) {
+        updateData.dispatchedAt = new Date();
+      } else if (deliveryStatus === 'PENDING' || deliveryStatus === 'PREPARING') {
+        updateData.dispatchedAt = null;
+      }
+    }
+
+    if (paidAmount !== undefined) {
+      const finalPaid = Number(paidAmount);
+      updateData.paidAmount = finalPaid;
+      updateData.pendingAmount = Math.max(0, existing.totalAmount - finalPaid);
+      if (finalPaid >= existing.totalAmount) {
+        updateData.paymentStatus = 'PAID';
+      } else if (finalPaid > 0) {
+        updateData.paymentStatus = 'PARTIAL';
+      } else {
+        updateData.paymentStatus = 'PENDING';
+      }
+    }
+
+    if (paymentMethod) {
+      updateData.paymentMethod = String(paymentMethod).trim();
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: updateData,
+      include: {
+        customer: true,
+        items: true,
+        batch: true,
+      },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating delivery status:', error);
+    res.status(500).json({ error: 'Error al actualizar estado de entrega' });
   }
 };
 

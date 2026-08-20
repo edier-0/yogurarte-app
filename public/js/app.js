@@ -8,16 +8,18 @@ import { renderExpenses } from './views/expensesView.js';
 import { renderCashControl } from './views/cashControlView.js';
 import { renderStaff } from './views/staffView.js';
 import { renderCustomers } from './views/customersView.js';
+import { renderDelivery } from './views/deliveryView.js';
 
 // Mapa de Vistas
 const views = {
   dashboard: { title: 'Panel de Control', render: renderDashboard },
+  delivery: { title: '🛵 Mis Domicilios de Hoy', render: renderDelivery },
   orders: { title: 'Pedidos y Ventas', render: renderOrders },
   cashControl: { title: 'Control de Caja y Finanzas', render: renderCashControl },
   batches: { title: 'Producción de Lotes', render: renderBatches },
   inventory: { title: 'Materia Prima e Insumos', render: renderInventory },
   expenses: { title: 'Gastos e Inversión', render: renderExpenses },
-  staff: { title: 'Nómina y Personal', render: renderStaff },
+  staff: { title: 'Nómina, Personal y Accesos', render: renderStaff },
   customers: { title: 'Clientes Frecuentes', render: renderCustomers },
 };
 
@@ -32,13 +34,81 @@ document.addEventListener('DOMContentLoaded', () => {
   const headerUserAvatar = document.getElementById('headerUserAvatar');
 
   // Función para sincronizar la UI del usuario logueado
-  function updateActiveUserUI(userName) {
-    const name = userName || 'Edier';
+  function updateActiveUserUI(userObj) {
+    const name = (typeof userObj === 'object' ? userObj.name : userObj) || 'Edier';
+    const role = (typeof userObj === 'object' ? userObj.role : store.getUserRole()) || 'ADMIN';
     const initial = name.charAt(0).toUpperCase();
-    if (activeUserNameDisplay) activeUserNameDisplay.textContent = name;
+
+    let roleName = '👑 Socio Admin';
+    if (role === 'PRODUCCION') roleName = '🧑‍🍳 Producción';
+    if (role === 'VENTAS') roleName = '🛍️ Ventas';
+    if (role === 'DOMICILIARIO') roleName = '🛵 Repartidor';
+
+    if (activeUserNameDisplay) activeUserNameDisplay.innerHTML = `${name} <small style="display:block; font-size:0.72rem; color:var(--text-muted); font-weight:600;">${roleName}</small>`;
     if (userAvatar) userAvatar.textContent = initial;
     if (headerUserNameDisplay) headerUserNameDisplay.textContent = name;
     if (headerUserAvatar) headerUserAvatar.textContent = initial;
+
+    updateNavigationForRole(role);
+  }
+
+  // Actualizar navegación según el rol del usuario
+  function updateNavigationForRole(role) {
+    const isDelivery = role === 'DOMICILIARIO';
+    const isProd = role === 'PRODUCCION';
+    const isSales = role === 'VENTAS';
+    const isAdmin = role === 'ADMIN';
+
+    // Sidebar items
+    document.querySelectorAll('.sidebar .nav-item[data-tab]').forEach((btn) => {
+      const tab = btn.dataset.tab;
+      if (tab === 'delivery') {
+        btn.style.display = isDelivery || isAdmin ? 'flex' : 'none';
+      } else if (isDelivery) {
+        btn.style.display = 'none';
+      } else if (isProd) {
+        btn.style.display = ['batches', 'inventory', 'orders'].includes(tab) ? 'flex' : 'none';
+      } else if (isSales) {
+        btn.style.display = ['orders', 'customers', 'batches'].includes(tab) ? 'flex' : 'none';
+      } else {
+        btn.style.display = 'flex';
+      }
+    });
+
+    // Mobile nav items
+    document.querySelectorAll('.mobile-nav .mobile-nav-btn[data-tab]').forEach((btn) => {
+      const tab = btn.dataset.tab;
+      if (tab === 'delivery') {
+        btn.style.display = isDelivery || isAdmin ? 'flex' : 'none';
+      } else if (isDelivery) {
+        btn.style.display = 'none';
+      } else if (isProd) {
+        btn.style.display = ['batches', 'orders'].includes(tab) ? 'flex' : 'none';
+      } else if (isSales) {
+        btn.style.display = ['orders', 'batches'].includes(tab) ? 'flex' : 'none';
+      } else {
+        btn.style.display = 'flex';
+      }
+    });
+
+    const btnMobileMore = document.getElementById('btnMobileMore');
+    if (btnMobileMore) {
+      btnMobileMore.style.display = isDelivery ? 'none' : 'flex';
+    }
+
+    // Botones de crear pedido
+    const btnNewOrderGlobal = document.getElementById('btnNewOrderGlobal');
+    const mobileFabOrder = document.getElementById('mobileFabOrder');
+    if (btnNewOrderGlobal) btnNewOrderGlobal.style.display = isDelivery ? 'none' : 'inline-flex';
+    if (mobileFabOrder) mobileFabOrder.style.display = isDelivery ? 'none' : 'flex';
+  }
+
+  // Obtener la pestaña inicial recomendada según el rol
+  function getDefaultTabForRole(role) {
+    if (role === 'DOMICILIARIO') return 'delivery';
+    if (role === 'PRODUCCION') return 'batches';
+    if (role === 'VENTAS') return 'orders';
+    return 'dashboard';
   }
 
   // Comprobar autenticación al cargar
@@ -47,14 +117,25 @@ document.addEventListener('DOMContentLoaded', () => {
       showLoginScreen();
     } else {
       if (loginScreenContainer) loginScreenContainer.innerHTML = '';
-      updateActiveUserUI(store.currentUser);
-      navigateTo(store.currentTab || 'dashboard');
+      const role = store.getUserRole();
+      updateActiveUserUI({ name: store.currentUser, role });
+      
+      const defaultTab = getDefaultTabForRole(role);
+      const targetTab = store.currentTab || defaultTab;
+      navigateTo(targetTab);
     }
   }
 
   // Pantalla de Inicio de Sesión
-  function showLoginScreen() {
+  async function showLoginScreen() {
     if (!loginScreenContainer) return;
+
+    let usersList = [];
+    try {
+      usersList = await api.getUsers();
+    } catch (e) {
+      console.warn('Could not fetch user list for login, using defaults:', e);
+    }
 
     loginScreenContainer.innerHTML = `
       <div class="login-overlay">
@@ -66,10 +147,26 @@ document.addEventListener('DOMContentLoaded', () => {
           <form id="loginForm">
             <div class="form-group" style="text-align: left;">
               <label class="form-label">Usuario *</label>
-              <select id="loginUsername" class="form-select" required style="font-weight: 700;">
-                <option value="edier">👤 Edier</option>
-                <option value="yeilin">👤 Yeilin</option>
-              </select>
+              ${
+                usersList && usersList.length > 0
+                  ? `
+                <select id="loginUsername" class="form-select" required style="font-weight: 700;">
+                  ${usersList
+                    .filter((u) => u.isActive !== false)
+                    .map((u) => {
+                      let roleLabel = '👑 Admin';
+                      if (u.role === 'PRODUCCION') roleLabel = '🧑‍🍳 Producción';
+                      if (u.role === 'VENTAS') roleLabel = '🛍️ Ventas';
+                      if (u.role === 'DOMICILIARIO') roleLabel = '🛵 Domiciliario';
+                      return `<option value="${u.username}">👤 ${u.name} (${roleLabel})</option>`;
+                    })
+                    .join('')}
+                </select>
+              `
+                  : `
+                <input type="text" id="loginUsername" class="form-input" placeholder="Ingresa tu usuario (ej: edier, yeilin)..." required style="font-weight: 700;" />
+              `
+              }
             </div>
 
             <div class="form-group" style="text-align: left;">
@@ -109,7 +206,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     form?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const username = document.getElementById('loginUsername').value;
+      const usernameInput = document.getElementById('loginUsername');
+      const username = usernameInput ? usernameInput.value.trim() : 'edier';
       const password = pwdInput.value;
       const submitBtn = document.getElementById('btnLoginSubmit');
 
@@ -124,8 +222,10 @@ document.addEventListener('DOMContentLoaded', () => {
         store.setAuth(res.user);
         showToast(`¡Bienvenido de nuevo, ${res.user.name}! 🥛✨`);
         loginScreenContainer.innerHTML = '';
-        updateActiveUserUI(res.user.name);
-        navigateTo('dashboard');
+        updateActiveUserUI(res.user);
+        
+        const defaultTab = getDefaultTabForRole(res.user.role);
+        navigateTo(defaultTab);
       } catch (err) {
         errorDiv.textContent = err.message || 'Contraseña incorrecta';
         errorDiv.style.display = 'block';
@@ -156,8 +256,20 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const view = views[tabName] || views.dashboard;
-    store.currentTab = tabName;
+    const role = store.getUserRole();
+    let effectiveTab = tabName;
+
+    // Control de permisos según el rol
+    if (role === 'DOMICILIARIO' && tabName !== 'delivery') {
+      effectiveTab = 'delivery';
+    } else if (role === 'PRODUCCION' && !['batches', 'inventory', 'orders'].includes(tabName)) {
+      effectiveTab = 'batches';
+    } else if (role === 'VENTAS' && !['orders', 'customers', 'batches'].includes(tabName)) {
+      effectiveTab = 'orders';
+    }
+
+    const view = views[effectiveTab] || views.dashboard;
+    store.currentTab = effectiveTab;
 
     // Actualizar Título
     if (pageTitleElement) {
@@ -166,7 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Actualizar Estados Activos en Sidebar Desktop
     document.querySelectorAll('.sidebar .nav-item').forEach((btn) => {
-      if (btn.dataset.tab === tabName) {
+      if (btn.dataset.tab === effectiveTab) {
         btn.classList.add('active');
       } else {
         btn.classList.remove('active');

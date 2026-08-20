@@ -6,6 +6,7 @@ let currentFilters = {
   debtCategory: 'ALL', // 'ALL' | 'DELIVERED_DEBT' | 'PAID_NOT_DELIVERED' | 'IN_PROCESS' | 'PAID'
   paymentStatus: 'ALL',
   deliveryStatus: 'ALL',
+  driverFilter: 'ALL', // 'ALL' | 'PROPIO' | 'LOCAL' | 'UNASSIGNED' | 'DRIVER_1'
   batchId: 'ALL',
   sortBy: 'PRIORITY_DEBT', // 'PRIORITY_DEBT' | 'UPDATED_DESC' | 'DATE_DESC' | 'DATE_ASC'
   month: '', // YYYY-MM
@@ -22,15 +23,21 @@ let calendarState = {
 
 let cachedOrders = [];
 let availableBatches = [];
+let availableDrivers = [];
 
 export async function renderOrders(container) {
-  // Cargar lotes disponibles para el filtro
+  // Cargar lotes disponibles y repartidores para el filtro
   try {
-    const batchesRes = await api.getBatches();
+    const [batchesRes, usersRes] = await Promise.all([
+      api.getBatches(),
+      api.getUsers(),
+    ]);
     availableBatches = batchesRes || [];
+    availableDrivers = (usersRes || []).filter((u) => u.role === 'DOMICILIARIO' && u.isActive !== false);
   } catch (err) {
-    console.error('Error fetching batches for filter:', err);
+    console.error('Error fetching batches or drivers for filter:', err);
     availableBatches = [];
+    availableDrivers = [];
   }
 
   // Generar opciones de meses anteriores dinámicamente
@@ -138,6 +145,23 @@ export async function renderOrders(container) {
         </div>
 
         <div class="orders-selects-group">
+          <!-- Selector de Reparto / Repartidor -->
+          <select id="selectDriverFilter" class="orders-select-item" style="font-weight: 700; color: #0284C7;">
+            <option value="ALL" ${currentFilters.driverFilter === 'ALL' ? 'selected' : ''}>🛵 Todos los Repartos</option>
+            <option value="PROPIO" ${currentFilters.driverFilter === 'PROPIO' ? 'selected' : ''}>👤 Entrega Propia (Socios)</option>
+            <option value="LOCAL" ${currentFilters.driverFilter === 'LOCAL' ? 'selected' : ''}>🏪 Recoge en Local</option>
+            <option value="UNASSIGNED" ${currentFilters.driverFilter === 'UNASSIGNED' ? 'selected' : ''}>⚠️ Sin Repartidor Asignado</option>
+            ${availableDrivers
+              .map(
+                (d) => `
+              <option value="DRIVER_${d.id}" ${currentFilters.driverFilter === `DRIVER_${d.id}` ? 'selected' : ''}>
+                🛵 Repartidor: ${d.name}
+              </option>
+            `
+              )
+              .join('')}
+          </select>
+
           <!-- Selector de Lote de Producción -->
           <select id="selectBatchFilter" class="orders-select-item" style="font-weight: 700; color: var(--primary);">
             <option value="ALL" ${currentFilters.batchId === 'ALL' ? 'selected' : ''}>🍶 Todos los Lotes</option>
@@ -263,6 +287,12 @@ export async function renderOrders(container) {
     });
   });
 
+  const driverSelect = container.querySelector('#selectDriverFilter');
+  driverSelect?.addEventListener('change', (e) => {
+    currentFilters.driverFilter = e.target.value;
+    loadOrdersList(container);
+  });
+
   const batchSelect = container.querySelector('#selectBatchFilter');
   batchSelect?.addEventListener('change', (e) => {
     currentFilters.batchId = e.target.value;
@@ -343,6 +373,17 @@ async function loadOrdersList(container) {
       month: currentFilters.month,
       batchId: currentFilters.batchId,
     };
+
+    if (currentFilters.driverFilter === 'PROPIO') {
+      params.deliveryType = 'PROPIO';
+    } else if (currentFilters.driverFilter === 'LOCAL') {
+      params.deliveryType = 'LOCAL';
+    } else if (currentFilters.driverFilter === 'UNASSIGNED') {
+      params.deliveryType = 'DOMICILIARIO';
+      params.deliveryDriverId = 'null';
+    } else if (currentFilters.driverFilter && currentFilters.driverFilter.startsWith('DRIVER_')) {
+      params.deliveryDriverId = currentFilters.driverFilter.replace('DRIVER_', '');
+    }
 
     if (currentFilters.specificDate) {
       params.date = currentFilters.specificDate;
@@ -644,6 +685,20 @@ function createOrderCardHtml(o) {
     `;
   }
 
+  // Insignia de modalidad de entrega y repartidor
+  let deliveryBadge = '';
+  if (o.deliveryType === 'LOCAL') {
+    deliveryBadge = `<span class="badge" style="background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">🏪 Recoge en Local</span>`;
+  } else if (o.deliveryType === 'DOMICILIARIO') {
+    if (o.deliveryDriverName) {
+      deliveryBadge = `<span class="badge" style="background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">🛵 Repartidor: ${o.deliveryDriverName}</span>`;
+    } else {
+      deliveryBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">⚠️ Sin Repartidor Asignado</span>`;
+    }
+  } else {
+    deliveryBadge = `<span class="badge" style="background: #EDE9FE; color: #6D28D9; border: 1px solid #DDD6FE; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">👤 Entrega Propia (Socios)</span>`;
+  }
+
   return `
     <div class="order-card" data-id="${o.id}" style="${cardBorder}">
       <div class="order-card-header">
@@ -669,19 +724,18 @@ function createOrderCardHtml(o) {
         <div class="order-customer-address">
           <span>📍</span> ${o.deliveryAddress || o.customer.address || 'Fonseca'}
         </div>
-        ${
-          o.batch
-            ? `<div style="margin-top: 4px;">
-                <span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-size: 0.73rem; font-weight: 800; padding: 2px 6px;">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center;">
+          ${
+            o.batch
+              ? `<span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-size: 0.73rem; font-weight: 800; padding: 2px 6px;">
                   🍶 Lote: ${o.batch.batchCode} (${o.batch.flavor})
-                </span>
-               </div>`
-            : `<div style="margin-top: 4px;">
-                <span class="badge" style="background: #FFFBEB; color: #92400E; border: 1px solid #FCD34D; font-size: 0.73rem; font-weight: 800; padding: 2px 6px;">
+                 </span>`
+              : `<span class="badge" style="background: #FFFBEB; color: #92400E; border: 1px solid #FCD34D; font-size: 0.73rem; font-weight: 800; padding: 2px 6px;">
                   🥣 Encargo Preventa (Sin lote aún)
-                </span>
-               </div>`
-        }
+                 </span>`
+          }
+          ${deliveryBadge}
+        </div>
       </div>
 
       <div style="margin: 8px 0;">
@@ -709,9 +763,9 @@ function createOrderCardHtml(o) {
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
         <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted);">Estado Entrega:</span>
         <select class="form-select select-delivery-status" data-id="${o.id}" style="width: auto; padding: 4px 10px; font-size: 0.82rem; font-weight: 700;">
-          <option value="PENDING" ${o.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Pendiente</option>
+          <option value="PENDING" ${o.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Por Entregar (Pendiente)</option>
           <option value="PREPARING" ${o.deliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
-          <option value="IN_ROUTE" ${o.deliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Ruta</option>
+          <option value="IN_ROUTE" ${o.deliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Camino (En Ruta)</option>
           <option value="DELIVERED" ${o.deliveryStatus === 'DELIVERED' ? 'selected' : ''}>✅ Entregado</option>
         </select>
       </div>
@@ -748,6 +802,10 @@ function createOrderCardHtml(o) {
             : ''
         }
 
+        <button class="btn btn-outline btn-sm btn-assign-driver-action" data-id="${o.id}" title="Asignar repartidor o cambiar modo de entrega" style="color: #0284C7; border-color: #BAE6FD; font-weight: 700;">
+          🛵 Reparto
+        </button>
+
         <button class="btn btn-outline btn-sm btn-edit-order" data-id="${o.id}" title="Editar pedido">
           ✏️ Editar
         </button>
@@ -777,6 +835,17 @@ function attachOrderCardEvents(container) {
     });
   });
 
+  // Asignar Repartidor / Cambiar Modalidad de Entrega Rápido
+  container.querySelectorAll('.btn-assign-driver-action').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const id = Number(e.currentTarget.dataset.id);
+      const order = cachedOrders.find((o) => o.id === id);
+      if (order) {
+        openAssignDriverModal(order, availableDrivers);
+      }
+    });
+  });
+
   // Cambio de estado de entrega
   container.querySelectorAll('.select-delivery-status').forEach((select) => {
     select.addEventListener('change', async (e) => {
@@ -784,7 +853,17 @@ function attachOrderCardEvents(container) {
       const deliveryStatus = e.target.value;
       try {
         await api.updateOrder(id, { deliveryStatus });
-        showToast('Estado de entrega actualizado con éxito ✅');
+        let statusMsg = 'Estado de entrega actualizado con éxito ✅';
+        if (deliveryStatus === 'PENDING') {
+          statusMsg = '¡Pedido regresado a Por Entregar (Pendiente)! 🕒';
+        } else if (deliveryStatus === 'IN_ROUTE') {
+          statusMsg = '¡Pedido marcado En Camino a reparto! 🛵💨';
+        } else if (deliveryStatus === 'DELIVERED') {
+          statusMsg = '¡Pedido marcado como Entregado! ✅';
+        } else if (deliveryStatus === 'PREPARING') {
+          statusMsg = '¡Pedido marcado En Preparación! 🥣';
+        }
+        showToast(statusMsg);
         const mainContainer = document.getElementById('contentContainer');
         if (mainContainer) {
           await loadOrdersList(mainContainer);
@@ -864,14 +943,22 @@ export async function openOrderModal(orderData = null) {
     console.error('Error fetching customers for modal:', e);
   }
 
-  // Cargar lotes de producción disponibles
+  // Cargar lotes de producción y repartidores disponibles
   let availableBatches = [];
+  let modalDrivers = [];
   try {
-    const fetchedBatches = await api.getBatches({ includeInactive: 'false' });
+    const [fetchedBatches, fetchedUsers] = await Promise.all([
+      api.getBatches({ includeInactive: 'false' }),
+      api.getUsers(),
+    ]);
     availableBatches = (fetchedBatches || []).filter((b) => b.status !== 'DESCARTADO');
+    modalDrivers = (fetchedUsers || []).filter((u) => u.role === 'DOMICILIARIO' && u.isActive !== false);
   } catch (e) {
-    console.error('Error fetching batches for modal:', e);
+    console.error('Error fetching batches or drivers for modal:', e);
   }
+
+  const defaultDeliveryType = isEditing ? (orderData.deliveryType || 'PROPIO') : 'PROPIO';
+  const defaultDeliveryDriverId = isEditing ? (orderData.deliveryDriverId || '') : '';
 
   const initialBatchId = orderData?.batchId || (orderData?.batch?.id) || '';
   const initialBatchObj = availableBatches.find((b) => b.id === Number(initialBatchId));
@@ -944,6 +1031,34 @@ export async function openOrderModal(orderData = null) {
             <div class="form-group">
               <label class="form-label">Dirección de Entrega (Fonseca) *</label>
               <input type="text" id="custAddress" class="form-input" placeholder="Ej: Calle 12 # 15-40, Barrio San Agustín" value="${defaultAddress}" required />
+            </div>
+
+            <!-- Modalidad de Entrega y Asignación de Repartidor -->
+            <div class="form-row" style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 14px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.84rem; font-weight: 800; color: #15803D;">Modalidad de Entrega *</label>
+                <select id="orderDeliveryType" class="form-select" style="font-weight: 700; font-size: 0.85rem;">
+                  <option value="PROPIO" ${defaultDeliveryType === 'PROPIO' ? 'selected' : ''}>👤 Entrega Propia (Socios Edier / Yeilin)</option>
+                  <option value="DOMICILIARIO" ${defaultDeliveryType === 'DOMICILIARIO' ? 'selected' : ''}>🛵 Domicilio con Repartidor</option>
+                  <option value="LOCAL" ${defaultDeliveryType === 'LOCAL' ? 'selected' : ''}>🏪 Recoge en Local / Tienda</option>
+                </select>
+              </div>
+
+              <div class="form-group" id="driverSelectGroup" style="margin-bottom: 0; ${defaultDeliveryType === 'DOMICILIARIO' ? '' : 'display: none;'}">
+                <label class="form-label" style="font-size: 0.84rem; font-weight: 800; color: #0369A1;">Repartidor Asignado</label>
+                <select id="orderDeliveryDriver" class="form-select" style="font-weight: 700; font-size: 0.85rem;">
+                  <option value="">-- Sin asignar aún --</option>
+                  ${modalDrivers
+                    .map(
+                      (d) => `
+                    <option value="${d.id}" data-name="${d.name}" ${String(defaultDeliveryDriverId) === String(d.id) ? 'selected' : ''}>
+                      🛵 ${d.name}
+                    </option>
+                  `
+                    )
+                    .join('')}
+                </select>
+              </div>
             </div>
 
             <!-- Selector de Lote de Producción (Opcional/Recomendado) -->
@@ -1062,7 +1177,19 @@ export async function openOrderModal(orderData = null) {
   const pendingDisplay = document.getElementById('orderPendingDisplay');
   const batchSelect = document.getElementById('orderBatchSelect');
   const batchHintDisplay = document.getElementById('batchHintDisplay');
+  const deliveryTypeSelect = document.getElementById('orderDeliveryType');
+  const driverSelectGroup = document.getElementById('driverSelectGroup');
+  const driverSelect = document.getElementById('orderDeliveryDriver');
   const modalBody = modalOverlay.querySelector('.modal-body');
+
+  deliveryTypeSelect?.addEventListener('change', (e) => {
+    if (e.target.value === 'DOMICILIARIO') {
+      if (driverSelectGroup) driverSelectGroup.style.display = 'block';
+    } else {
+      if (driverSelectGroup) driverSelectGroup.style.display = 'none';
+      if (driverSelect) driverSelect.value = '';
+    }
+  });
 
   // Función para renderizar una fila de producto
   function addProductRow(item = { bottleSize: '1L', flavor: 'Natural', quantity: 1, unitPrice: currentBatchPrice1L }) {
@@ -1428,6 +1555,11 @@ export async function openOrderModal(orderData = null) {
     const total = Number(totalInput.value) || 10000;
     const paid = Number(paidInput.value) || 0;
 
+    const deliveryType = deliveryTypeSelect?.value || 'PROPIO';
+    const driverIdVal = driverSelect?.value ? Number(driverSelect.value) : null;
+    const selectedDriverOpt = driverSelect?.selectedOptions[0];
+    const driverNameVal = driverIdVal ? (selectedDriverOpt?.dataset?.name || selectedDriverOpt?.text?.replace(/^🛵\s*/, '')) : null;
+
     const orderPayload = {
       customerId: selectedCustomerId || undefined,
       customerName: document.getElementById('custFullName').value,
@@ -1438,6 +1570,9 @@ export async function openOrderModal(orderData = null) {
       totalAmount: total,
       paidAmount: paid,
       paymentMethod: document.getElementById('orderPaymentMethod')?.value || 'EFECTIVO',
+      deliveryType,
+      deliveryDriverId: deliveryType === 'DOMICILIARIO' ? driverIdVal : null,
+      deliveryDriverName: deliveryType === 'DOMICILIARIO' ? driverNameVal : null,
       deliveryStatus: document.getElementById('orderDeliveryStatus').value,
       orderDate: document.getElementById('orderDateInput').value,
       deliveryDate: document.getElementById('orderDeliveryDateInput').value || null,
@@ -1457,6 +1592,111 @@ export async function openOrderModal(orderData = null) {
       renderOrders(document.getElementById('contentContainer'));
     } catch (err) {
       showToast(err.message || 'Error al guardar pedido', 'danger');
+    }
+  });
+}
+
+// Modal de Asignación Rápida de Repartidor / Modalidad de Entrega
+export function openAssignDriverModal(order, availableDrivers = []) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const currentType = order.deliveryType || 'PROPIO';
+  const currentDriverId = order.deliveryDriverId || '';
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 440px;">
+        <div class="modal-header">
+          <h3 class="modal-title">🛵 Modalidad de Entrega: ${order.orderNumber}</h3>
+          <button class="modal-close-btn" id="btnCloseAssignModal">✕</button>
+        </div>
+        <form id="assignDriverForm">
+          <div class="modal-body">
+            
+            <div style="background: var(--bg-app); padding: 12px; border-radius: var(--radius-md); margin-bottom: 14px;">
+              <div style="font-weight: 800; color: var(--primary); font-size: 0.95rem;">👤 ${order.customer?.fullName || 'Cliente'}</div>
+              <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">📍 ${order.deliveryAddress || order.customer?.address || 'Fonseca'}</div>
+              <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">🥛 <strong>${order.totalLiters || 1}L</strong> • Saldo a cobrar: <strong style="color: var(--danger);">${formatCOP(order.pendingAmount)}</strong></div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Modalidad de Entrega *</label>
+              <select id="quickDeliveryType" class="form-select" style="font-weight: 700;">
+                <option value="PROPIO" ${currentType === 'PROPIO' ? 'selected' : ''}>👤 Entrega Propia (Socios Edier / Yeilin)</option>
+                <option value="DOMICILIARIO" ${currentType === 'DOMICILIARIO' ? 'selected' : ''}>🛵 Domicilio con Repartidor</option>
+                <option value="LOCAL" ${currentType === 'LOCAL' ? 'selected' : ''}>🏪 Recoge en Local / Tienda</option>
+              </select>
+            </div>
+
+            <div class="form-group" id="quickDriverGroup" style="${currentType === 'DOMICILIARIO' ? '' : 'display: none;'}">
+              <label class="form-label">Repartidor Asignado</label>
+              <select id="quickDeliveryDriver" class="form-select" style="font-weight: 700;">
+                <option value="">-- Sin asignar (Por definir) --</option>
+                ${availableDrivers
+                  .map(
+                    (d) => `
+                  <option value="${d.id}" data-name="${d.name}" ${String(currentDriverId) === String(d.id) ? 'selected' : ''}>
+                    🛵 ${d.name} ${d.phone ? `(${d.phone})` : ''}
+                  </option>
+                `
+                  )
+                  .join('')}
+              </select>
+            </div>
+
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+            <button type="button" class="btn btn-outline" id="btnCancelAssignModal">Cancelar</button>
+            <button type="submit" class="btn btn-accent" style="font-weight: 800; padding: 8px 18px;">
+              Guardar Modalidad
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnCloseAssignModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnCancelAssignModal')?.addEventListener('click', closeModal);
+
+  const typeSelect = document.getElementById('quickDeliveryType');
+  const driverGroup = document.getElementById('quickDriverGroup');
+  const driverSelect = document.getElementById('quickDeliveryDriver');
+
+  typeSelect?.addEventListener('change', (e) => {
+    if (e.target.value === 'DOMICILIARIO') {
+      if (driverGroup) driverGroup.style.display = 'block';
+    } else {
+      if (driverGroup) driverGroup.style.display = 'none';
+      if (driverSelect) driverSelect.value = '';
+    }
+  });
+
+  document.getElementById('assignDriverForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const type = typeSelect.value;
+    const driverId = driverSelect.value ? Number(driverSelect.value) : null;
+    const selectedOpt = driverSelect.selectedOptions[0];
+    const driverName = driverId ? (selectedOpt.dataset.name || selectedOpt.text.replace(/^🛵\s*/, '')) : null;
+
+    try {
+      if (type === 'DOMICILIARIO' && driverId) {
+        await api.assignOrderDriver(order.id, driverId, driverName);
+      } else {
+        await api.updateOrder(order.id, {
+          deliveryType: type,
+          deliveryDriverId: type === 'DOMICILIARIO' ? driverId : null,
+          deliveryDriverName: type === 'DOMICILIARIO' ? driverName : null,
+        });
+      }
+      showToast('¡Modalidad de entrega actualizada con éxito! 🛵');
+      closeModal();
+      const contentContainer = document.getElementById('contentContainer');
+      if (contentContainer) renderOrders(contentContainer);
+    } catch (err) {
+      showToast(err.message || 'Error al actualizar modalidad de entrega', 'danger');
     }
   });
 }
@@ -1537,3 +1777,4 @@ export function openPaymentModal(orderId, totalAmount, currentPaid, currentPendi
     }
   });
 }
+

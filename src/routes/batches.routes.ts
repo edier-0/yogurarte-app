@@ -8,15 +8,23 @@ import {
   getPendingOrdersByFlavor,
   linkOrdersToBatch,
 } from '../controllers/batches.controller.js';
+import { validateBody, validateParams } from '../middlewares/validate.middleware.js';
+import {
+  createBatchSchema,
+  updateBatchSchema,
+  linkOrdersToBatchSchema,
+  deactivateBatchSchema,
+} from '../schemas/batches.schema.js';
+import { idParamSchema } from '../schemas/common.schema.js';
 
 const router = Router();
 
 router.get('/', getBatches);
 router.get('/pending-orders', getPendingOrdersByFlavor);
-router.get('/:id', getBatchById);
-router.post('/', createBatch);
-router.post('/:id/link-orders', linkOrdersToBatch);
-router.put('/:id', updateBatch);
-router.put('/:id/deactivate', deactivateBatch);
+router.get('/:id', validateParams(idParamSchema), getBatchById);
+router.post('/', validateBody(createBatchSchema), createBatch);
+router.post('/:id/link-orders', validateParams(idParamSchema), validateBody(linkOrdersToBatchSchema), linkOrdersToBatch);
+router.put('/:id', validateParams(idParamSchema), validateBody(updateBatchSchema), updateBatch);
+router.put('/:id/deactivate', validateParams(idParamSchema), validateBody(deactivateBatchSchema), deactivateBatch);
 
 export default router;

@@ -4,7 +4,7 @@ import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast,
 const WA_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: inline-block; vertical-align: -2px; margin-right: 4px;"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>`;
 
 let staffFilters = {
-  tab: 'all', // 'all', 'socios', 'empleados', 'historial'
+  tab: 'all', // 'all', 'socios', 'empleados', 'historial', 'usuarios'
   searchTerm: '',
   month: '',
 };
@@ -12,17 +12,24 @@ let staffFilters = {
 export async function renderStaff(container) {
   container.innerHTML = `
     <div style="display: flex; justify-content: center; padding: 40px;">
-      <span style="color: var(--primary); font-weight: 700;">Cargando nómina y personal de YogurArte... 🥛</span>
+      <span style="color: var(--primary); font-weight: 700;">Cargando nómina, personal y accesos de YogurArte... 🥛</span>
     </div>
   `;
 
   try {
-    const [staffList, paymentsData] = await Promise.all([
+    const promises = [
       api.getStaff({ includeInactive: 'false' }),
       api.getStaffPayments(),
-    ]);
+    ];
+
+    if (store.isAdmin()) {
+      promises.push(api.getUsers());
+    }
+
+    const [staffList, paymentsData, usersData] = await Promise.all(promises);
 
     const allPayments = paymentsData?.payments || [];
+    const usersList = usersData || [];
     const totalPayroll = allPayments
       .filter((p) => p.paymentType !== 'RETIRO_SOCIO')
       .reduce((sum, p) => sum + (p.netAmount || 0), 0);
@@ -44,26 +51,38 @@ export async function renderStaff(container) {
       );
     }
 
+    const isUsersTab = staffFilters.tab === 'usuarios';
+
     container.innerHTML = `
       <!-- Toolbar y Acciones Principales -->
       <div class="orders-toolbar-card" style="padding: 16px 20px; margin-bottom: 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
           <div>
             <h2 style="font-size: 1.3rem; font-weight: 800; color: var(--primary); margin: 0;">
-              👥 Nómina, Personal y Retiros
+              👥 Nómina, Personal y Accesos
             </h2>
             <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">
-              Administra tu equipo, liquida nóminas flexibles y registra retiros de utilidades de socios.
+              Administra tu equipo, liquida nóminas flexibles, registra retiros de socios y gestiona usuarios del sistema.
             </span>
           </div>
 
           <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <button class="btn btn-outline" id="btnNewStaffMember">
-              👤 + Registrar Integrante
-            </button>
-            <button class="btn btn-accent" id="btnNewPaymentGlobal" style="font-weight: 800; padding: 8px 18px;">
-              💵 + Registrar Pago / Retiro
-            </button>
+            ${
+              isUsersTab && store.isAdmin()
+                ? `
+              <button class="btn btn-primary" id="btnNewUserGlobal" style="font-weight: 800; padding: 8px 18px;">
+                🔐 + Crear Usuario del Sistema
+              </button>
+            `
+                : `
+              <button class="btn btn-outline" id="btnNewStaffMember">
+                👤 + Registrar Integrante
+              </button>
+              <button class="btn btn-accent" id="btnNewPaymentGlobal" style="font-weight: 800; padding: 8px 18px;">
+                💵 + Registrar Pago / Retiro
+              </button>
+            `
+            }
           </div>
         </div>
 
@@ -84,6 +103,15 @@ export async function renderStaff(container) {
             <button class="filter-chip ${staffFilters.tab === 'historial' ? 'active' : ''}" data-tab-filter="historial">
               📜 Historial de Pagos (${allPayments.length})
             </button>
+            ${
+              store.isAdmin()
+                ? `
+              <button class="filter-chip ${staffFilters.tab === 'usuarios' ? 'active' : ''}" data-tab-filter="usuarios" style="${staffFilters.tab === 'usuarios' ? 'background: #0284C7; color: white;' : 'color: #0284C7; border-color: #BAE6FD; font-weight: 700;'}">
+                🔐 Usuarios y Accesos (${usersList.length})
+              </button>
+            `
+                : ''
+            }
           </div>
 
           <div style="display: flex; gap: 8px; align-items: center;">
@@ -99,7 +127,10 @@ export async function renderStaff(container) {
         </div>
       </div>
 
-      <!-- Tarjetas de Resumen Financiero de Personal -->
+      <!-- Tarjetas de Resumen Financiero de Personal (si no está en usuarios) -->
+      ${
+        !isUsersTab
+          ? `
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 22px;">
         <div class="kpi-card" style="border: 1.5px solid var(--border-color); background: #FFFFFF;">
           <div class="kpi-header">
@@ -140,17 +171,22 @@ export async function renderStaff(container) {
           </div>
         </div>
       </div>
+      `
+          : ''
+      }
 
-      <!-- Contenido Principal: Directorio o Historial -->
+      <!-- Contenido Principal: Directorio, Historial o Usuarios -->
       ${
-        staffFilters.tab === 'historial'
+        isUsersTab
+          ? renderUsersTableHtml(usersList)
+          : staffFilters.tab === 'historial'
           ? renderPaymentsHistoryTableHtml(allPayments)
           : renderStaffGridHtml(filteredStaff)
       }
     `;
 
     // Conectar eventos
-    attachStaffEvents(container, staffList, allPayments);
+    attachStaffEvents(container, staffList, allPayments, usersList);
   } catch (error) {
     console.error('Error rendering staff view:', error);
     container.innerHTML = `
@@ -354,8 +390,133 @@ function renderPaymentsHistoryTableHtml(payments) {
   `;
 }
 
+// Renderizar tabla de gestión de usuarios del sistema
+function renderUsersTableHtml(usersList) {
+  if (!usersList || usersList.length === 0) {
+    return `
+      <div class="empty-state" style="padding: 40px 20px; background: #FFFFFF; border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+        <div class="empty-state-icon">🔐</div>
+        <div class="empty-state-title">No hay usuarios registrados</div>
+        <div class="empty-state-text">Crea usuarios para que tus socios, personal de producción, vendedores o domiciliarios inicien sesión.</div>
+        <button class="btn btn-primary" id="btnEmptyNewUser" style="margin-top: 12px;">+ Crear Primer Usuario</button>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="table-container" style="padding: 20px; background: #FFFFFF;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--primary); margin: 0; display: flex; align-items: center; gap: 8px;">
+            <span>🔐</span> Usuarios y Accesos al Sistema
+          </h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">
+            Administra los roles, contraseñas, números de contacto y cuentas de cobro de cada usuario.
+          </span>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btnNewUserFromTable" style="font-weight: 800; padding: 6px 14px;">
+          + Crear Usuario
+        </button>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="app-table">
+          <thead>
+            <tr>
+              <th>Usuario / Nombre</th>
+              <th>Rol Asignado</th>
+              <th>Teléfono / WhatsApp</th>
+              <th>Correo Electrónico</th>
+              <th>Nequi / Banco</th>
+              <th>Estado</th>
+              <th style="text-align: right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${usersList
+              .map((u) => {
+                let roleBadge = '';
+                if (u.role === 'ADMIN') {
+                  roleBadge = `<span class="badge" style="background: #EDE9FE; color: #6D28D9; border: 1px solid #DDD6FE; font-weight: 800;">👑 Administrador (Socio)</span>`;
+                } else if (u.role === 'PRODUCCION') {
+                  roleBadge = `<span class="badge" style="background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; font-weight: 800;">🧑‍🍳 Producción / Planta</span>`;
+                } else if (u.role === 'VENTAS') {
+                  roleBadge = `<span class="badge" style="background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: 800;">🛍️ Ventas / Mostrador</span>`;
+                } else if (u.role === 'DOMICILIARIO') {
+                  roleBadge = `<span class="badge" style="background: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; font-weight: 800;">🛵 Domiciliario / Reparto</span>`;
+                } else {
+                  roleBadge = `<span class="badge" style="background: var(--bg-subtle); color: var(--text-main); font-weight: 700;">${u.role}</span>`;
+                }
+
+                const statusBadge = u.isActive
+                  ? `<span class="badge badge-success">🟢 Activo</span>`
+                  : `<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA;">🔴 Inactivo</span>`;
+
+                const cleanPhone = (u.phone || '').replace(/\D/g, '');
+                const waPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
+                const waUrl = cleanPhone ? `https://api.whatsapp.com/send?phone=${waPhone}` : '';
+
+                return `
+                <tr>
+                  <td>
+                    <div><strong>${u.name}</strong></div>
+                    <small style="color: var(--text-muted); font-weight: 700;">@${u.username}</small>
+                  </td>
+                  <td>${roleBadge}</td>
+                  <td>
+                    ${
+                      u.phone
+                        ? `<div style="display: flex; align-items: center; gap: 6px;">
+                            <span>📞 ${u.phone}</span>
+                            <a href="${waUrl}" target="_blank" style="text-decoration: none; font-size: 0.9rem;" title="Abrir WhatsApp">💬</a>
+                           </div>`
+                        : `<span style="color: var(--text-muted); font-size: 0.82rem;">No registrado</span>`
+                    }
+                  </td>
+                  <td>
+                    ${
+                      u.email
+                        ? `<span style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">✉️ ${u.email}</span>`
+                        : `<span style="color: var(--text-muted); font-size: 0.82rem;">No registrado</span>`
+                    }
+                  </td>
+                  <td>
+                    ${
+                      u.bankInfo
+                        ? `<span style="font-size: 0.85rem; font-weight: 700; color: var(--accent);">🏦 ${u.bankInfo}</span>`
+                        : `<span style="color: var(--text-muted); font-size: 0.82rem;">No registrado</span>`
+                    }
+                  </td>
+                  <td>${statusBadge}</td>
+                  <td style="text-align: right;">
+                    <div style="display: inline-flex; gap: 6px;">
+                      <button class="btn btn-outline btn-sm btn-edit-user" data-id="${u.id}" style="padding: 4px 10px;" title="Editar usuario o cambiar contraseña">
+                        ✏️ Editar
+                      </button>
+                      ${
+                        u.username !== 'edier' && u.username !== 'yeilin'
+                          ? `
+                        <button class="btn btn-outline btn-sm btn-delete-user" data-id="${u.id}" data-name="${u.name}" style="padding: 4px 8px; color: var(--danger); border-color: #FECACA;" title="Eliminar usuario">
+                          🗑️
+                        </button>
+                      `
+                          : ''
+                      }
+                    </div>
+                  </td>
+                </tr>
+              `;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
 // Conectar eventos del módulo
-function attachStaffEvents(container, staffList, allPayments) {
+function attachStaffEvents(container, staffList, allPayments, usersList = []) {
   // Filtros de pestaña
   container.querySelectorAll('[data-tab-filter]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
@@ -369,6 +530,41 @@ function attachStaffEvents(container, staffList, allPayments) {
   searchInput?.addEventListener('input', (e) => {
     staffFilters.searchTerm = e.target.value;
     renderStaff(container);
+  });
+
+  // Botones de Usuario
+  container.querySelector('#btnNewUserGlobal')?.addEventListener('click', () => {
+    openUserModal();
+  });
+  container.querySelector('#btnNewUserFromTable')?.addEventListener('click', () => {
+    openUserModal();
+  });
+  container.querySelector('#btnEmptyNewUser')?.addEventListener('click', () => {
+    openUserModal();
+  });
+
+  container.querySelectorAll('.btn-edit-user').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.id);
+      const user = usersList.find((u) => u.id === id);
+      if (user) openUserModal(user);
+    });
+  });
+
+  container.querySelectorAll('.btn-delete-user').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = Number(btn.dataset.id);
+      const name = btn.dataset.name || 'este usuario';
+      if (confirm(`¿Estás seguro de que deseas eliminar la cuenta de "${name}"?`)) {
+        try {
+          await api.deleteUser(id);
+          showToast(`¡Usuario "${name}" eliminado! 🗑️`);
+          renderStaff(container);
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar usuario', 'danger');
+        }
+      }
+    });
   });
 
   // Botón Nuevo Integrante
@@ -846,3 +1042,125 @@ export function openStaffPaymentModal(staffList = [], preselectedStaffId = null)
     }
   });
 }
+
+// Modal de Creación / Edición de Usuario del Sistema
+export function openUserModal(userData = null) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const isEditing = !!userData;
+  const modalTitle = isEditing ? `✏️ Editar Usuario: ${userData.name}` : `🔐 Crear Nuevo Usuario del Sistema`;
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 500px;">
+        <div class="modal-header">
+          <h3 class="modal-title">${modalTitle}</h3>
+          <button class="modal-close-btn" id="btnCloseUserModal">✕</button>
+        </div>
+        <form id="userForm">
+          <div class="modal-body">
+            
+            <div class="form-group">
+              <label class="form-label">Nombre Completo *</label>
+              <input type="text" id="userFullName" class="form-input" placeholder="Ej: Camilo Andrés Domicilios" value="${userData?.name || ''}" required />
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Teléfono / WhatsApp</label>
+                <input type="text" id="userPhone" class="form-input" placeholder="Ej: 3024581882" value="${userData?.phone || ''}" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Correo Electrónico</label>
+                <input type="email" id="userEmail" class="form-input" placeholder="Ej: usuario@gmail.com" value="${userData?.email || ''}" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Nombre de Usuario (Login) *</label>
+                <input type="text" id="userUsername" class="form-input" placeholder="Ej: camilo" value="${userData?.username || ''}" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">${isEditing ? 'Nueva Contraseña (Opcional)' : 'Contraseña de Acceso *'}</label>
+                <input type="password" id="userPassword" class="form-input" placeholder="${isEditing ? 'Dejar en blanco para no cambiar' : 'Ej: camilo123'}" ${isEditing ? '' : 'required'} />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Rol Asignado *</label>
+                <select id="userRole" class="form-select" style="font-weight: 700;">
+                  <option value="ADMIN" ${userData?.role === 'ADMIN' ? 'selected' : ''}>👑 Administrador (Acceso Total)</option>
+                  <option value="PRODUCCION" ${userData?.role === 'PRODUCCION' ? 'selected' : ''}>🧑‍🍳 Producción (Lotes e Insumos)</option>
+                  <option value="VENTAS" ${userData?.role === 'VENTAS' || !userData ? 'selected' : ''}>🛍️ Ventas (Pedidos y Clientes)</option>
+                  <option value="DOMICILIARIO" ${userData?.role === 'DOMICILIARIO' ? 'selected' : ''}>🛵 Domiciliario (Ruta y Entregas)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Cuenta Nequi / Bancaria</label>
+                <input type="text" id="userBankInfo" class="form-input" placeholder="Ej: 3024581882" value="${userData?.bankInfo || ''}" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Estado de la Cuenta</label>
+              <select id="userIsActive" class="form-select">
+                <option value="true" ${userData?.isActive !== false ? 'selected' : ''}>🟢 Activo (Puede iniciar sesión)</option>
+                <option value="false" ${userData?.isActive === false ? 'selected' : ''}>🔴 Inactivo (Acceso bloqueado)</option>
+              </select>
+            </div>
+
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+            <button type="button" class="btn btn-outline" id="btnCancelUserModal">Cancelar</button>
+            <button type="submit" class="btn btn-accent" style="font-weight: 800; padding: 10px 20px;">
+              ${isEditing ? 'Guardar Cambios' : 'Crear Usuario'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnCloseUserModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnCancelUserModal')?.addEventListener('click', closeModal);
+
+  document.getElementById('userForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      name: document.getElementById('userFullName').value,
+      phone: document.getElementById('userPhone').value || null,
+      email: document.getElementById('userEmail').value || null,
+      username: document.getElementById('userUsername').value,
+      role: document.getElementById('userRole').value,
+      bankInfo: document.getElementById('userBankInfo').value || null,
+      isActive: document.getElementById('userIsActive').value === 'true',
+    };
+
+    const pwd = document.getElementById('userPassword').value;
+    if (pwd && pwd.trim() !== '') {
+      payload.password = pwd.trim();
+    }
+
+    try {
+      if (isEditing) {
+        await api.updateUser(userData.id, payload);
+        showToast(`¡Usuario ${payload.name} actualizado con éxito! 🔐`);
+      } else {
+        await api.createUser(payload);
+        showToast(`¡Usuario ${payload.name} creado con éxito! 🔐`);
+      }
+      closeModal();
+      renderStaff(document.getElementById('contentContainer'));
+    } catch (err) {
+      showToast(err.message || 'Error al guardar usuario', 'danger');
+    }
+  });
+}
+

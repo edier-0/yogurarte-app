@@ -8,6 +8,26 @@ export const store = {
     return !!this.authUser;
   },
 
+  getUserRole() {
+    return this.authUser?.role || 'ADMIN';
+  },
+
+  isAdmin() {
+    return this.getUserRole() === 'ADMIN';
+  },
+
+  isDelivery() {
+    return this.getUserRole() === 'DOMICILIARIO';
+  },
+
+  isProduction() {
+    return this.getUserRole() === 'PRODUCCION';
+  },
+
+  isSales() {
+    return this.getUserRole() === 'VENTAS';
+  },
+
   setAuth(user) {
     this.authUser = user;
     this.currentUser = user ? user.name : 'Edier';

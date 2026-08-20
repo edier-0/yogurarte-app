@@ -55,6 +55,24 @@ export const api = {
     return res.json();
   },
 
+  async assignOrderDriver(id, data) {
+    const res = await fetch(`${API_BASE}/orders/${id}/assign-driver`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  async updateOrderDeliveryStatus(id, data) {
+    const res = await fetch(`${API_BASE}/orders/${id}/delivery-status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
   async deleteOrder(id) {
     const res = await fetch(`${API_BASE}/orders/${id}`, {
       method: 'DELETE',
@@ -516,4 +534,52 @@ export const api = {
     }
     return res.json();
   },
+
+  // Gestión de Usuarios y Accesos
+  async getUsers() {
+    const res = await fetch(`${API_BASE}/users`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al obtener usuarios');
+    }
+    return res.json();
+  },
+
+  async createUser(data) {
+    const res = await fetch(`${API_BASE}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al crear usuario');
+    }
+    return res.json();
+  },
+
+  async updateUser(id, data) {
+    const res = await fetch(`${API_BASE}/users/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al actualizar usuario');
+    }
+    return res.json();
+  },
+
+  async deleteUser(id) {
+    const res = await fetch(`${API_BASE}/users/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al eliminar usuario');
+    }
+    return res.json();
+  },
 };
+

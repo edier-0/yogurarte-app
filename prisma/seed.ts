@@ -18,30 +18,38 @@ async function main() {
 
   console.log('✨ Base de datos limpia.');
 
-  // 2. Crear los dos usuarios administradores con sus credenciales
+  // 2. Crear los dos usuarios administradores con sus credenciales completas
   const user1 = await prisma.user.create({
     data: {
-      name: 'Edier',
+      name: 'Edier Robles',
       username: 'edier',
       password: 'edier123',
       pin: '1234',
+      phone: '3024581882',
+      email: 'edierrobles6@gmail.com',
+      bankInfo: '3024581882',
       role: 'ADMIN',
+      isActive: true,
     },
   });
 
   const user2 = await prisma.user.create({
     data: {
-      name: 'Yeilin',
+      name: 'Yeilin Gomez',
       username: 'yeilin',
       password: 'yeilin123',
       pin: '1234',
+      phone: '3147464663',
+      email: 'gomezyeilin23@gmail.com',
+      bankInfo: '3116709583',
       role: 'ADMIN',
+      isActive: true,
     },
   });
 
-  console.log('👥 Usuarios creados con éxito:');
-  console.log('   👤 Usuario 1: edier / Contraseña: edier123');
-  console.log('   👤 Usuario 2: yeilin / Contraseña: yeilin123');
+  console.log('👥 Usuarios administradores configurados con éxito:');
+  console.log('   👑 Edier Robles: edier / edier123 | Tel: 3024581882 | Email: edierrobles6@gmail.com');
+  console.log('   👑 Yeilin Gomez: yeilin / yeilin123 | Tel: 3147464663 | Email: gomezyeilin23@gmail.com');
 
   // 3. Crear insumos base con stock 0
   const initialMaterials = [
