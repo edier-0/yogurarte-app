@@ -91,6 +91,7 @@ model Purchase {
   totalCost     Float
   supplier      String?
   purchaseDate  DateTime     @default(now())
+  paymentMethod String       @default("EFECTIVO") // EFECTIVO, TRANSFERENCIA, NEQUI, BANCOLOMBIA
   notes         String?
   registeredBy  String?
   createdAt     DateTime     @default(now())
@@ -151,6 +152,7 @@ model Order {
   paidAmount      Float            @default(0)
   pendingAmount   Float            @default(0)
   paymentStatus   String           @default("PENDING") // PENDING, PARTIAL, PAID
+  paymentMethod   String           @default("EFECTIVO") // EFECTIVO, TRANSFERENCIA, NEQUI, BANCOLOMBIA
   deliveryStatus  String           @default("PENDING") // PENDING, PREPARING, IN_ROUTE, DELIVERED, CANCELLED
   orderDate       DateTime         @default(now())
   deliveryDate    DateTime?
@@ -179,14 +181,15 @@ model OrderItem {
 }
 
 model Expense {
-  id           Int      @id @default(autoincrement())
-  category     String   // INFRAESTRUCTURA, SERVICIOS, TRANSPORTE, PUBLICIDAD, INSUMOS_EXTRA, OTRO
-  description  String
-  amount       Float
-  expenseDate  DateTime @default(now())
-  notes        String?
-  registeredBy String?
-  createdAt    DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  category      String   // INFRAESTRUCTURA, SERVICIOS, TRANSPORTE, PUBLICIDAD, INSUMOS_EXTRA, OTRO
+  description   String
+  amount        Float
+  expenseDate   DateTime @default(now())
+  paymentMethod String   @default("EFECTIVO") // EFECTIVO, TRANSFERENCIA, NEQUI, BANCOLOMBIA
+  notes         String?
+  registeredBy  String?
+  createdAt     DateTime @default(now())
 }
 
 model StaffMember {
@@ -222,4 +225,59 @@ model StaffPayment {
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @default(now()) @updatedAt
 }
+
+model CashMovement {
+  id            Int      @id @default(autoincrement())
+  type          String   // BASE_INICIAL, APORTE_SOCIO, RETIRO_BASE, AJUSTE_CAJA
+  amount        Float
+  movementDate  DateTime @default(now())
+  concept       String   // ej: "Base para dar vuelto", "Aporte de bolsillo para comprar etiquetas y envases"
+  paymentMethod String   @default("EFECTIVO") // EFECTIVO, NEQUI, BANCOLOMBIA, TRANSFERENCIA
+  registeredBy  String?  @default("Edier")
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+}
+
+model CreditObligation {
+  id                Int             @id @default(autoincrement())
+  title             String          // Ej: "Congelador 400L", "Selladora", "Adecuación Local", "Moto de Reparto"
+  category          String          @default("EQUIPO_MAQUINARIA") // EQUIPO_MAQUINARIA, INFRAESTRUCTURA_LOCAL, TRANSPORTE_VEHICULO, HERRAMIENTAS, OTRO
+  creditor          String          // Proveedor, almacén, persona o banco acreedor
+  principalAmount   Float           // Valor base / contado
+  interestRate      Float           @default(0) // Porcentaje de interés (%)
+  totalAmount       Float           // Valor total financiado (principal + interés)
+  initialPayment    Float           @default(0) // Cuota inicial pagada de contado
+  remainingBalance  Float           // Saldo pendiente por pagar
+  paymentType       String          @default("CUOTAS_FIJAS") // CUOTAS_FIJAS, ABONOS_LIBRES
+  frequency         String          @default("MENSUAL") // DIARIA, SEMANAL, QUINCENAL, MENSUAL, LIBRE
+  installmentAmount Float           @default(0) // Valor sugerido de cuota periódica
+  totalInstallments Int?            // Número total de cuotas acordadas
+  paidInstallments  Int             @default(0) // Cuotas/abonos realizados
+  startDate         DateTime        @default(now()) // Fecha de compra/crédito
+  nextDueDate       DateTime?       // Próximo vencimiento
+  status            String          @default("ACTIVO") // ACTIVO, PAGADO_TOTAL, CANCELADO
+  notes             String?         // Factura, garantía, observaciones
+  registeredBy      String?         @default("Edier")
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @default(now()) @updatedAt
+  payments          CreditPayment[]
+}
+
+model CreditPayment {
+  id                Int              @id @default(autoincrement())
+  creditId          Int
+  credit            CreditObligation @relation(fields: [creditId], references: [id], onDelete: Cascade)
+  actionType        String           @default("PAGO_CUOTA") // PAGO_CUOTA, ABONO_EXTRAORDINARIO, CUOTA_OMITIDA_APLAZADA
+  amount            Float            // Monto pagado ($0 si fue omitida)
+  paymentDate       DateTime         @default(now())
+  paymentMethod     String           @default("EFECTIVO") // EFECTIVO, TRANSFERENCIA, NEQUI, BANCOLOMBIA
+  installmentNumber Int?             // Número de cuota
+  justification     String?          // Motivo si fue omitida o nota de abono
+  receiptNumber     String?          // Comprobante
+  registeredBy      String?          @default("Edier")
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @default(now()) @updatedAt
+}
+
 

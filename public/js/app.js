@@ -5,6 +5,7 @@ import { renderOrders, openOrderModal } from './views/ordersView.js';
 import { renderBatches } from './views/batchesView.js';
 import { renderInventory } from './views/inventoryView.js';
 import { renderExpenses } from './views/expensesView.js';
+import { renderCashControl } from './views/cashControlView.js';
 import { renderStaff } from './views/staffView.js';
 import { renderCustomers } from './views/customersView.js';
 
@@ -12,6 +13,7 @@ import { renderCustomers } from './views/customersView.js';
 const views = {
   dashboard: { title: 'Panel de Control', render: renderDashboard },
   orders: { title: 'Pedidos y Ventas', render: renderOrders },
+  cashControl: { title: 'Control de Caja y Finanzas', render: renderCashControl },
   batches: { title: 'Producción de Lotes', render: renderBatches },
   inventory: { title: 'Materia Prima e Insumos', render: renderInventory },
   expenses: { title: 'Gastos e Inversión', render: renderExpenses },
@@ -172,7 +174,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Actualizar Estados Activos en Mobile Nav
-    document.querySelectorAll('.mobile-nav .mobile-nav-btn').forEach((btn) => {
+    const moreTabs = ['inventory', 'expenses', 'staff', 'customers'];
+    const btnMobileMore = document.getElementById('btnMobileMore');
+    const mobileMoreIcon = document.getElementById('mobileMoreIcon');
+    const mobileMoreLabel = document.getElementById('mobileMoreLabel');
+
+    document.querySelectorAll('.mobile-nav .mobile-nav-btn[data-tab]').forEach((btn) => {
       if (btn.dataset.tab === tabName) {
         btn.classList.add('active');
       } else {
@@ -180,12 +187,77 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
+    if (moreTabs.includes(tabName)) {
+      btnMobileMore?.classList.add('active');
+      if (tabName === 'inventory') {
+        if (mobileMoreIcon) mobileMoreIcon.textContent = '📦';
+        if (mobileMoreLabel) mobileMoreLabel.textContent = 'Insumos';
+      } else if (tabName === 'expenses') {
+        if (mobileMoreIcon) mobileMoreIcon.textContent = '🧾';
+        if (mobileMoreLabel) mobileMoreLabel.textContent = 'Gastos';
+      } else if (tabName === 'staff') {
+        if (mobileMoreIcon) mobileMoreIcon.textContent = '👥';
+        if (mobileMoreLabel) mobileMoreLabel.textContent = 'Nómina';
+      } else if (tabName === 'customers') {
+        if (mobileMoreIcon) mobileMoreIcon.textContent = '🤝';
+        if (mobileMoreLabel) mobileMoreLabel.textContent = 'Clientes';
+      }
+    } else {
+      btnMobileMore?.classList.remove('active');
+      if (mobileMoreIcon) mobileMoreIcon.textContent = '☰';
+      if (mobileMoreLabel) mobileMoreLabel.textContent = 'Más';
+    }
+
+    // Actualizar items dentro del Bottom Sheet "Más"
+    document.querySelectorAll('.mobile-more-item').forEach((btn) => {
+      if (btn.dataset.tab === tabName) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // Cerrar el sheet de Más si estaba abierto
+    closeMobileMore();
+
     // Renderizar la vista correspondiente
     view.render(contentContainer);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // Listeners para botones de navegación Desktop y Mobile
+  // Control del Bottom Sheet de Más Opciones en Móvil
+  const mobileMoreOverlay = document.getElementById('mobileMoreOverlay');
+  const btnCloseMobileMore = document.getElementById('btnCloseMobileMore');
+  const btnMobileMore = document.getElementById('btnMobileMore');
+
+  function openMobileMore() {
+    mobileMoreOverlay?.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeMobileMore() {
+    mobileMoreOverlay?.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  btnMobileMore?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (mobileMoreOverlay?.classList.contains('active')) {
+      closeMobileMore();
+    } else {
+      openMobileMore();
+    }
+  });
+
+  btnCloseMobileMore?.addEventListener('click', closeMobileMore);
+
+  mobileMoreOverlay?.addEventListener('click', (e) => {
+    if (e.target === mobileMoreOverlay) {
+      closeMobileMore();
+    }
+  });
+
+  // Listeners para botones de navegación Desktop, Mobile y Bottom Sheet
   document.querySelectorAll('[data-tab]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const tab = e.currentTarget.dataset.tab;

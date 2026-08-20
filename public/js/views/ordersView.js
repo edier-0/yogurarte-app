@@ -853,6 +853,7 @@ export async function openOrderModal(orderData = null) {
   const defaultNotes = isEditing ? (orderData.notes || '') : '';
   const defaultDeliveryStatus = isEditing ? orderData.deliveryStatus : 'PENDING';
   const defaultPaid = isEditing ? orderData.paidAmount : 0;
+  const defaultPaymentMethod = isEditing ? (orderData.paymentMethod || 'EFECTIVO') : 'EFECTIVO';
   let selectedCustomerId = orderData?.customerId || null;
 
   // Cargar clientes existentes para selector rápido
@@ -1002,9 +1003,17 @@ export async function openOrderModal(orderData = null) {
               </div>
 
               <div class="form-group">
-                <label class="form-label">Saldo Pendiente Calculado</label>
-                <input type="text" id="orderPendingDisplay" class="form-input" value="$10.000 COP" disabled style="background: var(--bg-subtle); font-weight: 800; color: var(--danger);" />
+                <label class="form-label">Modalidad de Pago</label>
+                <select id="orderPaymentMethod" class="form-select">
+                  <option value="EFECTIVO" ${defaultPaymentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo</option>
+                  <option value="TRANSFERENCIA" ${defaultPaymentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>🟣 Transferencia (Nequi / Bancolombia)</option>
+                </select>
               </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Saldo Pendiente Calculado</label>
+              <input type="text" id="orderPendingDisplay" class="form-input" value="$10.000 COP" disabled style="background: var(--bg-subtle); font-weight: 800; color: var(--danger);" />
             </div>
 
             <!-- Fechas de Pedido y Entrega Programada -->
@@ -1428,6 +1437,7 @@ export async function openOrderModal(orderData = null) {
       items,
       totalAmount: total,
       paidAmount: paid,
+      paymentMethod: document.getElementById('orderPaymentMethod')?.value || 'EFECTIVO',
       deliveryStatus: document.getElementById('orderDeliveryStatus').value,
       orderDate: document.getElementById('orderDateInput').value,
       deliveryDate: document.getElementById('orderDeliveryDateInput').value || null,
@@ -1484,6 +1494,14 @@ export function openPaymentModal(orderId, totalAmount, currentPaid, currentPendi
               <label class="form-label">¿Cuánto va a abonar o pagar ahora? ($ COP) *</label>
               <input type="number" id="newPaymentAmount" class="form-input" min="1" max="${currentPending}" value="${currentPending}" required />
             </div>
+
+            <div class="form-group">
+              <label class="form-label">Modalidad / Medio de Pago *</label>
+              <select id="newPaymentMethod" class="form-select" required>
+                <option value="EFECTIVO">💵 Efectivo (Billetes / Monedas)</option>
+                <option value="TRANSFERENCIA">🟣 Transferencia (Nequi / Bancolombia)</option>
+              </select>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline" id="btnCancelPaymentModal">Cancelar</button>
@@ -1501,10 +1519,11 @@ export function openPaymentModal(orderId, totalAmount, currentPaid, currentPendi
   document.getElementById('paymentForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const additionalPaid = Number(document.getElementById('newPaymentAmount').value);
+    const paymentMethod = document.getElementById('newPaymentMethod')?.value || 'EFECTIVO';
     const newTotalPaid = currentPaid + additionalPaid;
 
     try {
-      await api.updateOrder(orderId, { paidAmount: newTotalPaid });
+      await api.updateOrder(orderId, { paidAmount: newTotalPaid, paymentMethod });
       showToast('Abono registrado correctamente');
       closeModal();
       if (onSuccess) {

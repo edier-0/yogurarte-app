@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatStock, getTodayLocalDateStr, showToast, store } from '../store.js';
 
 let includeInactive = false;
 let batchStatusFilter = 'ALL';
@@ -366,9 +366,9 @@ async function openBatchModal() {
               <label class="form-label" style="color: #0369A1; font-weight: 800; font-size: 0.92rem;">
                 🥛 Litros de Leche Invertidos (Se descontarán del inventario) *
               </label>
-              <input type="number" id="batchMilkLiters" class="form-input" min="0.5" step="0.1" placeholder="Ej: 10" required style="font-size: 1.05rem; font-weight: 700;" />
+              <input type="number" id="batchMilkLiters" class="form-input" min="0.1" step="any" placeholder="Ej: 10" required style="font-size: 1.05rem; font-weight: 700;" />
               <div id="milkStockHint" style="font-size: 0.78rem; margin-top: 5px; font-weight: 700; color: ${milkStock > 0 ? 'var(--text-muted)' : 'var(--danger)'};">
-                🥛 Stock disponible: <strong>${milkStock} L</strong> • Costo promedio: ${formatCOP(milkCost)}/L
+                🥛 Stock disponible: <strong>${formatStock(milkStock, 2)} L</strong> • Costo promedio: ${formatCOP(milkCost)}/L
               </div>
             </div>
 
@@ -382,7 +382,7 @@ async function openBatchModal() {
                   🔄 Igualar a botellas
                 </button>
               </div>
-              <input type="number" id="batchTotalProducedLiters" class="form-input" min="0.1" step="0.1" placeholder="Ej: 11.5" required style="font-size: 1.05rem; font-weight: 700; color: var(--primary);" />
+              <input type="number" id="batchTotalProducedLiters" class="form-input" min="0.1" step="any" placeholder="Ej: 11.5" required style="font-size: 1.05rem; font-weight: 700; color: var(--primary);" />
               <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px;">
                 💡 <em>Indica cuántos litros reales salieron del lote (suelen salir más litros que los invertidos por la adición de azúcar, leche en polvo, frutas y fermento).</em>
               </div>
@@ -392,17 +392,17 @@ async function openBatchModal() {
             <div class="form-row" style="margin-bottom: 12px;">
               <div class="form-group">
                 <label class="form-label">🍾 Botellas 1 Litro Envasadas</label>
-                <input type="number" id="batchBottles1L" class="form-input" min="0" value="0" />
+                <input type="number" id="batchBottles1L" class="form-input" min="0" step="any" value="0" />
                 <div id="b1StockHint" style="font-size: 0.75rem; margin-top: 3px; font-weight: 700; color: ${b1Stock > 0 ? 'var(--text-muted)' : 'var(--danger)'};">
-                  🍾 Stock 1L: <strong>${b1Stock} und</strong> ${b1Stock <= 0 ? '⚠️' : ''}
+                  🍾 Stock 1L: <strong>${formatStock(b1Stock, 0)} und</strong> ${b1Stock <= 0 ? '⚠️' : ''}
                 </div>
               </div>
 
               <div class="form-group">
                 <label class="form-label">🍾 Botellas 2 Litros Envasadas</label>
-                <input type="number" id="batchBottles2L" class="form-input" min="0" value="0" />
+                <input type="number" id="batchBottles2L" class="form-input" min="0" step="any" value="0" />
                 <div id="b2StockHint" style="font-size: 0.75rem; margin-top: 3px; font-weight: 700; color: ${b2Stock > 0 ? 'var(--text-muted)' : 'var(--danger)'};">
-                  🍾 Stock 2L: <strong>${b2Stock} und</strong> ${b2Stock <= 0 ? '⚠️' : ''}
+                  🍾 Stock 2L: <strong>${formatStock(b2Stock, 0)} und</strong> ${b2Stock <= 0 ? '⚠️' : ''}
                 </div>
               </div>
             </div>
@@ -425,7 +425,7 @@ async function openBatchModal() {
                   </label>
                   
                   <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" id="batchSugarGramsPerL" class="form-input" min="0" step="5" value="80" style="width: 75px; padding: 4px 8px; font-size: 0.85rem; text-align: center; font-weight: 800; color: var(--primary);" title="Gramos de azúcar por cada litro de leche" />
+                    <input type="number" id="batchSugarGramsPerL" class="form-input" min="0" step="any" value="80" style="width: 85px; padding: 4px 8px; font-size: 0.85rem; text-align: center; font-weight: 800; color: var(--primary);" title="Gramos de azúcar por cada litro de leche (ej: 80, 100, 108.33)" />
                     <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted);">g / L</span>
                   </div>
                 </div>
@@ -434,7 +434,7 @@ async function openBatchModal() {
                   <strong id="sugarCostBadge" style="color: var(--primary);">$0 COP</strong>
                 </div>
                 <div id="sugarStockHint" style="font-size: 0.74rem; margin-top: 3px; color: var(--text-muted);">
-                  ${sugarMat ? `Stock disponible: <strong>${sugarStock} ${sugarUnit}</strong> (${formatCOP(sugarCost)}/kg)` : '⚠️ Insumo Azúcar no registrado'}
+                  ${sugarMat ? `Stock disponible: <strong>${formatStock(sugarStock, 2)} ${sugarUnit}</strong> (${formatCOP(sugarCost)}/kg)` : '⚠️ Insumo Azúcar no registrado'}
                 </div>
               </div>
 
@@ -447,7 +447,7 @@ async function openBatchModal() {
                   </label>
                   
                   <div style="display: flex; align-items: center; gap: 6px;">
-                    <input type="number" id="batchPowderGramsPerL" class="form-input" min="0" step="5" value="30" style="width: 75px; padding: 4px 8px; font-size: 0.85rem; text-align: center; font-weight: 800; color: var(--primary);" title="Gramos de leche en polvo por cada litro de leche" />
+                    <input type="number" id="batchPowderGramsPerL" class="form-input" min="0" step="any" value="30" style="width: 85px; padding: 4px 8px; font-size: 0.85rem; text-align: center; font-weight: 800; color: var(--primary);" title="Gramos de leche en polvo por cada litro de leche (ej: 30, 25, 33.3)" />
                     <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted);">g / L</span>
                   </div>
                 </div>
@@ -456,7 +456,7 @@ async function openBatchModal() {
                   <strong id="powderCostBadge" style="color: var(--primary);">$0 COP</strong>
                 </div>
                 <div id="powderStockHint" style="font-size: 0.74rem; margin-top: 3px; color: var(--text-muted);">
-                  ${powderMat ? `Stock disponible: <strong>${powderStock} ${powderUnit}</strong> (${formatCOP(powderCost)}/kg)` : '⚠️ Insumo Leche en Polvo no registrado'}
+                  ${powderMat ? `Stock disponible: <strong>${formatStock(powderStock, 2)} ${powderUnit}</strong> (${formatCOP(powderCost)}/kg)` : '⚠️ Insumo Leche en Polvo no registrado'}
                 </div>
               </div>
 
@@ -487,7 +487,7 @@ async function openBatchModal() {
                 <span>🏷️ Aplicar y descontar etiquetas adhesivas (Opcional)</span>
               </label>
               <div id="labelStockAlert" style="font-size: 0.76rem; margin-top: 4px; margin-left: 24px; color: ${hasLabelStock ? 'var(--text-muted)' : '#b78103'};">
-                ${hasLabelStock ? `Stock disponible: <strong>${labelStock} und</strong>` : '⚠️ No tienes etiquetas registradas en inventario (se omitirá)'}
+                ${hasLabelStock ? `Stock disponible: <strong>${formatStock(labelStock, 0)} und</strong>` : '⚠️ No tienes etiquetas registradas en inventario (se omitirá)'}
               </div>
             </div>
 
@@ -502,11 +502,11 @@ async function openBatchModal() {
               <div class="form-row" style="margin-bottom: 0;">
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label">Precio Botella 1L ($ COP) *</label>
-                  <input type="number" id="batchPrice1L" class="form-input" min="0" step="500" value="10000" required style="font-weight: 800; color: var(--primary);" />
+                  <input type="number" id="batchPrice1L" class="form-input" min="0" step="any" value="10000" required style="font-weight: 800; color: var(--primary);" />
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label">Precio Botella 2L ($ COP) *</label>
-                  <input type="number" id="batchPrice2L" class="form-input" min="0" step="500" value="20000" required style="font-weight: 800; color: var(--primary);" />
+                  <input type="number" id="batchPrice2L" class="form-input" min="0" step="any" value="20000" required style="font-weight: 800; color: var(--primary);" />
                 </div>
               </div>
               <div id="batchMarginPreview" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; font-weight: 600;">
@@ -652,7 +652,7 @@ async function openBatchModal() {
     const totalSugarCost = sugarGrams * sugarUnitCostPerGram;
     if (useSugar) totalBatchCost += totalSugarCost;
 
-    sugarCalcText.textContent = useSugar ? `Consumo: ${sugarGrams} g (${sugarKg.toFixed(2)} kg) • ${sugarGpl} g/L leche` : 'Desactivado';
+    sugarCalcText.textContent = useSugar ? `Consumo: ${Number(sugarGrams.toFixed(2))} g (${sugarKg.toFixed(2)} kg) • ${sugarGpl} g/L leche` : 'Desactivado';
     sugarCostBadge.textContent = useSugar ? `+${formatCOP(Math.round(totalSugarCost))}` : '$0 COP';
 
     // 3. Costo Leche en Polvo (calculado por gramo / kg)
@@ -661,7 +661,7 @@ async function openBatchModal() {
     const totalPowderCost = powderGrams * powderUnitCostPerGram;
     if (usePowder) totalBatchCost += totalPowderCost;
 
-    powderCalcText.textContent = usePowder ? `Consumo: ${powderGrams} g (${powderKg.toFixed(2)} kg) • ${powderGpl} g/L leche` : 'Desactivado';
+    powderCalcText.textContent = usePowder ? `Consumo: ${Number(powderGrams.toFixed(2))} g (${powderKg.toFixed(2)} kg) • ${powderGpl} g/L leche` : 'Desactivado';
     powderCostBadge.textContent = usePowder ? `+${formatCOP(Math.round(totalPowderCost))}` : '$0 COP';
 
     // 4. Costo Botellas 1L y 2L
@@ -727,18 +727,18 @@ async function openBatchModal() {
     if (milkStock <= 0) {
       milkStockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">No tienes leche registrada en inventario</strong> (Stock: 0 L)`;
     } else if (milk > milkStock) {
-      milkStockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Stock insuficiente</strong>: Tienes ${milkStock} L e intentas usar ${milk} L`;
+      milkStockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Stock insuficiente</strong>: Tienes ${formatStock(milkStock, 2)} L e intentas usar ${formatStock(milk, 2)} L`;
     } else {
-      milkStockHint.innerHTML = `🥛 Stock disponible: <strong>${milkStock} L</strong> • Costo: ${formatCOP(milkCost)}/L (Se descontarán exactamente ${milk} L)`;
+      milkStockHint.innerHTML = `🥛 Stock disponible: <strong>${formatStock(milkStock, 2)} L</strong> • Costo: ${formatCOP(milkCost)}/L (Se descontarán exactamente ${formatStock(milk, 2)} L)`;
     }
 
     // Hint dinámico de azúcar
     if (useSugar && sugarMat) {
       const sugarNeededStock = isSugarInKg ? sugarKg : sugarGrams;
       if (sugarStock < sugarNeededStock) {
-        sugarStockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Stock insuficiente de azúcar</strong>: Tienes ${sugarStock} ${sugarUnit} y requieres ${sugarGrams} g (${sugarKg.toFixed(2)} kg)`;
+        sugarStockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Stock insuficiente de azúcar</strong>: Tienes ${formatStock(sugarStock, 2)} ${sugarUnit} y requieres ${Number(sugarGrams.toFixed(2))} g (${sugarKg.toFixed(2)} kg)`;
       } else {
-        sugarStockHint.innerHTML = `Stock disponible: <strong>${sugarStock} ${sugarUnit}</strong>`;
+        sugarStockHint.innerHTML = `Stock disponible: <strong>${formatStock(sugarStock, 2)} ${sugarUnit}</strong>`;
       }
     } else if (!useSugar) {
       sugarStockHint.innerHTML = `<em>Desactivado para este lote</em>`;
@@ -748,9 +748,9 @@ async function openBatchModal() {
     if (usePowder && powderMat) {
       const powderNeededStock = isPowderInKg ? powderKg : powderGrams;
       if (powderStock < powderNeededStock) {
-        powderStockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Stock insuficiente de leche en polvo</strong>: Tienes ${powderStock} ${powderUnit} y requieres ${powderGrams} g (${powderKg.toFixed(2)} kg)`;
+        powderStockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Stock insuficiente de leche en polvo</strong>: Tienes ${formatStock(powderStock, 2)} ${powderUnit} y requieres ${Number(powderGrams.toFixed(2))} g (${powderKg.toFixed(2)} kg)`;
       } else {
-        powderStockHint.innerHTML = `Stock disponible: <strong>${powderStock} ${powderUnit}</strong>`;
+        powderStockHint.innerHTML = `Stock disponible: <strong>${formatStock(powderStock, 2)} ${powderUnit}</strong>`;
       }
     } else if (!usePowder) {
       powderStockHint.innerHTML = `<em>Desactivado para este lote</em>`;
@@ -758,21 +758,21 @@ async function openBatchModal() {
 
     // Hints de botellas
     if (b1 > b1Stock) {
-      b1StockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Insuficiente</strong>: Stock ${b1Stock} und`;
+      b1StockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Insuficiente</strong>: Stock ${formatStock(b1Stock, 0)} und`;
     } else {
-      b1StockHint.innerHTML = `🍾 Stock 1L: <strong>${b1Stock} und</strong>`;
+      b1StockHint.innerHTML = `🍾 Stock 1L: <strong>${formatStock(b1Stock, 0)} und</strong>`;
     }
 
     if (b2 > b2Stock) {
-      b2StockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Insuficiente</strong>: Stock ${b2Stock} und`;
+      b2StockHint.innerHTML = `⚠️ <strong style="color: var(--danger);">Insuficiente</strong>: Stock ${formatStock(b2Stock, 0)} und`;
     } else {
-      b2StockHint.innerHTML = `🍾 Stock 2L: <strong>${b2Stock} und</strong>`;
+      b2StockHint.innerHTML = `🍾 Stock 2L: <strong>${formatStock(b2Stock, 0)} und</strong>`;
     }
 
     // Desglose de insumos en caja
     summaryMilk.innerHTML = `<strong>${milk} L</strong> (${formatCOP(totalMilkCost)}) <small style="color: #0369A1; font-weight: 700;">• Exacto de stock</small>`;
-    summarySugar.innerHTML = useSugar ? `<strong>${sugarGrams} g (${sugarKg.toFixed(2)} kg)</strong> (${formatCOP(Math.round(totalSugarCost))})` : `<em>Omitido</em>`;
-    summaryPowder.innerHTML = usePowder ? `<strong>${powderGrams} g (${powderKg.toFixed(2)} kg)</strong> (${formatCOP(Math.round(totalPowderCost))})` : `<em>Omitido</em>`;
+    summarySugar.innerHTML = useSugar ? `<strong>${Number(sugarGrams.toFixed(2))} g (${sugarKg.toFixed(2)} kg)</strong> (${formatCOP(Math.round(totalSugarCost))})` : `<em>Omitido</em>`;
+    summaryPowder.innerHTML = usePowder ? `<strong>${Number(powderGrams.toFixed(2))} g (${powderKg.toFixed(2)} kg)</strong> (${formatCOP(Math.round(totalPowderCost))})` : `<em>Omitido</em>`;
     summaryB1.innerHTML = `<strong>${b1} und</strong> (${formatCOP(totalB1Cost)})`;
     summaryB2.innerHTML = `<strong>${b2} und</strong> (${formatCOP(totalB2Cost)})`;
     
@@ -1010,7 +1010,7 @@ async function openBatchModal() {
         </select>
         
         <div style="display: flex; align-items: center; gap: 4px;">
-          <input type="number" class="form-input extra-gpl" min="0" step="5" value="50" placeholder="g/L" style="width: 65px; padding: 4px 6px; font-size: 0.84rem; text-align: center; font-weight: 800; color: ${isBase ? '#0369A1' : 'var(--primary)'};" title="Gramos por cada litro ${isBase ? 'de leche invertida' : 'de yogur obtenido'}" />
+          <input type="number" class="form-input extra-gpl" min="0" step="any" value="50" placeholder="g/L" style="width: 75px; padding: 4px 6px; font-size: 0.84rem; text-align: center; font-weight: 800; color: ${isBase ? '#0369A1' : 'var(--primary)'};" title="Gramos por cada litro ${isBase ? 'de leche invertida' : 'de yogur obtenido'}" />
           <span style="font-size: 0.72rem; font-weight: 700; color: var(--text-muted);">${isBase ? 'g/L leche' : 'g/L prod.'}</span>
         </div>
 
@@ -1513,33 +1513,33 @@ async function openEditBatchModal(batchId) {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">🥛 Leche Invertida (L) *</label>
-                <input type="number" id="editBatchMilk" class="form-input" min="0.1" step="0.1" value="${milk}" required />
+                <input type="number" id="editBatchMilk" class="form-input" min="0.1" step="any" value="${milk}" required />
               </div>
               <div class="form-group">
                 <label class="form-label">🍶 Yogur Salido (L) *</label>
-                <input type="number" id="editBatchTotalProduced" class="form-input" min="0.1" step="0.1" value="${produced}" required />
+                <input type="number" id="editBatchTotalProduced" class="form-input" min="0.1" step="any" value="${produced}" required />
               </div>
             </div>
 
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">🍾 Botellas 1L Envasadas</label>
-                <input type="number" id="editBatchB1" class="form-input" min="0" value="${b1}" />
+                <input type="number" id="editBatchB1" class="form-input" min="0" step="any" value="${b1}" />
               </div>
               <div class="form-group">
                 <label class="form-label">🍾 Botellas 2L Envasadas</label>
-                <input type="number" id="editBatchB2" class="form-input" min="0" value="${b2}" />
+                <input type="number" id="editBatchB2" class="form-input" min="0" step="any" value="${b2}" />
               </div>
             </div>
 
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">💲 Precio Venta 1L ($ COP) *</label>
-                <input type="number" id="editBatchPrice1L" class="form-input" min="1000" step="500" value="${p1}" required />
+                <input type="number" id="editBatchPrice1L" class="form-input" min="0" step="any" value="${p1}" required />
               </div>
               <div class="form-group">
                 <label class="form-label">💲 Precio Venta 2L ($ COP) *</label>
-                <input type="number" id="editBatchPrice2L" class="form-input" min="2000" step="500" value="${p2}" required />
+                <input type="number" id="editBatchPrice2L" class="form-input" min="0" step="any" value="${p2}" required />
               </div>
             </div>
 

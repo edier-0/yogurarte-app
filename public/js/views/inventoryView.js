@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatStock, getTodayLocalDateStr, showToast, store } from '../store.js';
 
 let selectedCategory = 'ALL';
 let purchaseDateFilter = '';
@@ -177,10 +177,12 @@ async function loadInventoryData(container) {
             const isLow = m.currentStock <= m.minStockAlert;
             const unitLower = (m.unit || '').toLowerCase();
             const isKg = unitLower.includes('k');
+            const formattedStock = formatStock(m.currentStock, 2);
             
-            let stockDisplay = `${m.currentStock} <span style="font-size: 1rem; font-weight: 600; color: var(--text-muted);">${m.unit}</span>`;
+            let stockDisplay = `${formattedStock} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">${m.unit}</span>`;
             if (isKg) {
-              stockDisplay = `${m.currentStock} <span style="font-size: 1rem; font-weight: 600; color: var(--text-muted);">kg</span> <small style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">(${Math.round(m.currentStock * 1000)} g)</small>`;
+              const gramsVal = Math.round(m.currentStock * 1000);
+              stockDisplay = `${formattedStock} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">kg</span> <small style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted);">(${formatStock(gramsVal, 0)} g)</small>`;
             }
 
             let costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}</strong>`;
@@ -190,9 +192,9 @@ async function loadInventoryData(container) {
 
             return `
             <div class="inventory-card ${isLow ? 'low-stock' : ''}">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <span class="badge" style="background: var(--bg-subtle); color: var(--text-muted);">${m.category}</span>
-                ${isLow ? '<span class="badge badge-pending">⚠️ Stock Bajo</span>' : '<span class="badge badge-paid">Stock Óptimo</span>'}
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;">
+                <span class="badge" style="background: var(--bg-subtle); color: var(--text-muted); font-size: 0.72rem;">${m.category}</span>
+                ${isLow ? '<span class="badge badge-pending" style="font-size: 0.72rem;">⚠️ Stock Bajo</span>' : '<span class="badge badge-paid" style="font-size: 0.72rem;">Stock Óptimo</span>'}
               </div>
 
               <div class="inventory-card-title">${m.name}</div>
@@ -202,11 +204,11 @@ async function loadInventoryData(container) {
                   ${stockDisplay}
                 </div>
                 <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
-                  Mínimo sugerido: ${m.minStockAlert} ${m.unit}
+                  Mínimo sugerido: ${formatStock(m.minStockAlert, 2)} ${m.unit}
                 </div>
               </div>
 
-              <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 10px; margin-top: auto; gap: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 10px; margin-top: auto; gap: 6px; flex-wrap: wrap;">
                 <span style="font-size: 0.78rem; color: var(--text-muted);">${costDisplay}</span>
                 <div style="display: flex; gap: 4px;">
                   <button class="btn btn-outline btn-sm btn-edit-material" data-id="${m.id}" title="Editar campos del insumo">
@@ -473,7 +475,7 @@ async function openPurchaseModal() {
                   .map(
                     (m) => `
                   <option value="${m.id}" data-cost="${m.avgCost}" data-unit="${m.unit}">
-                    ${m.name} (${m.unit}) - Stock: ${m.currentStock} ${m.unit}
+                    ${m.name} (${m.unit}) - Stock: ${formatStock(m.currentStock, 2)} ${m.unit}
                   </option>
                 `
                   )
@@ -521,6 +523,14 @@ async function openPurchaseModal() {
               <div class="form-group">
                 <label class="form-label">Proveedor / Lugar de Compra</label>
                 <input type="text" id="purchaseSupplier" class="form-input" placeholder="Ej: El Bodegón / Distribuidora / Ara" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Medio de Pago</label>
+                <select id="purchasePaymentMethod" class="form-select">
+                  <option value="EFECTIVO" selected>💵 Efectivo</option>
+                  <option value="TRANSFERENCIA">🟣 Transferencia (Nequi / Bancolombia)</option>
+                </select>
               </div>
 
               <div class="form-group">
@@ -992,14 +1002,22 @@ function openEditPurchaseModal(purchase) {
 
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label">Fecha de Compra *</label>
-                <input type="date" id="editPurchDate" class="form-input" value="${purchaseDateStr}" required />
+                <label class="form-label">Medio de Pago</label>
+                <select id="editPurchPaymentMethod" class="form-select">
+                  <option value="EFECTIVO" ${purchase.paymentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo</option>
+                  <option value="TRANSFERENCIA" ${purchase.paymentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>🟣 Transferencia (Nequi / Bancolombia)</option>
+                </select>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Notas Adicionales</label>
-                <input type="text" id="editPurchNotes" class="form-input" placeholder="Observaciones de la compra..." value="${purchase.notes || ''}" />
+                <label class="form-label">Fecha de Compra *</label>
+                <input type="date" id="editPurchDate" class="form-input" value="${purchaseDateStr}" required />
               </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Notas Adicionales</label>
+              <input type="text" id="editPurchNotes" class="form-input" placeholder="Observaciones de la compra..." value="${purchase.notes || ''}" />
             </div>
 
           </div>
@@ -1083,6 +1101,7 @@ function openEditPurchaseModal(purchase) {
       unitCost: unitCost,
       totalCost: totalCost,
       purchaseDate: document.getElementById('editPurchDate').value,
+      paymentMethod: document.getElementById('editPurchPaymentMethod')?.value || 'EFECTIVO',
       notes: document.getElementById('editPurchNotes').value,
     };
 
@@ -1167,7 +1186,7 @@ function openNewPreparationModal(materials) {
                   <option value="">-- Seleccionar Insumo de la lista --</option>
                   ${materials
                     .filter((m) => m.category === 'INSUMO' || m.category === 'MATERIA_PRIMA')
-                    .map((m) => `<option value="${m.id}">${m.name} (Stock: ${m.currentStock} ${m.unit})</option>`)
+                    .map((m) => `<option value="${m.id}">${m.name} (Stock: ${formatStock(m.currentStock, 2)} ${m.unit})</option>`)
                     .join('')}
                 </select>
               </div>
@@ -1316,7 +1335,7 @@ function openNewPreparationModal(materials) {
           .filter((m) => m.category !== 'EMPAQUE' && m.isActive)
           .map((m) => {
             const isSelected = m.id === defaultMatId ? 'selected' : '';
-            return `<option value="${m.id}" ${isSelected}>${getPrepIcon(m.name)} ${m.name} (Stock: ${m.currentStock} ${m.unit})</option>`;
+            return `<option value="${m.id}" ${isSelected}>${getPrepIcon(m.name)} ${m.name} (Stock: ${formatStock(m.currentStock, 2)} ${m.unit})</option>`;
           })
           .join('')}
       </select>

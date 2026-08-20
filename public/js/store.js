@@ -57,6 +57,17 @@ export const formatCOP = (amount) => {
   }).format(amount);
 };
 
+// Formato de Cantidad/Stock amigable (evita desbordes de decimales largos como 48.7000000000001)
+export const formatStock = (val, maxDecimals = 2) => {
+  if (val === null || val === undefined || isNaN(val)) return '0';
+  const num = Number(val);
+  if (Number.isInteger(num)) return num.toLocaleString('es-CO');
+  return num.toLocaleString('es-CO', {
+    maximumFractionDigits: maxDecimals,
+    minimumFractionDigits: 0,
+  });
+};
+
 // Formato de Fecha amigable sin desfase de zona horaria
 export const formatDate = (dateStr) => {
   if (!dateStr) return '';

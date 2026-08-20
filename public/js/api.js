@@ -251,6 +251,45 @@ export const api = {
     return res.json();
   },
 
+  // Movimientos de Caja y Bases
+  async getCashMovements(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (val) query.append(key, val);
+    });
+    const res = await fetch(`${API_BASE}/cash-movements?${query.toString()}`);
+    return res.json();
+  },
+
+  async createCashMovement(data) {
+    const res = await fetch(`${API_BASE}/cash-movements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  async updateCashMovement(id, data) {
+    const res = await fetch(`${API_BASE}/cash-movements/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al actualizar movimiento de caja');
+    }
+    return res.json();
+  },
+
+  async deleteCashMovement(id) {
+    const res = await fetch(`${API_BASE}/cash-movements/${id}`, {
+      method: 'DELETE',
+    });
+    return res.json();
+  },
+
   // Clientes
   async getCustomers(params = {}) {
     let query = '';
@@ -415,6 +454,66 @@ export const api = {
 
   async getStaffPaymentWhatsAppLink(id) {
     const res = await fetch(`${API_BASE}/staff/payments/${id}/whatsapp`);
+    return res.json();
+  },
+
+  // Créditos y Compras a Cuotas
+  async getCredits() {
+    const res = await fetch(`${API_BASE}/credits`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al obtener créditos');
+    }
+    return res.json();
+  },
+
+  async createCredit(data) {
+    const res = await fetch(`${API_BASE}/credits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al registrar crédito');
+    }
+    return res.json();
+  },
+
+  async payCreditInstallment(id, data) {
+    const res = await fetch(`${API_BASE}/credits/${id}/pay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al registrar pago de cuota');
+    }
+    return res.json();
+  },
+
+  async skipCreditInstallment(id, data) {
+    const res = await fetch(`${API_BASE}/credits/${id}/skip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al aplazar cuota');
+    }
+    return res.json();
+  },
+
+  async deleteCredit(id) {
+    const res = await fetch(`${API_BASE}/credits/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al eliminar crédito');
+    }
     return res.json();
   },
 };

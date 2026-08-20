@@ -814,3 +814,21 @@
   }
 }
 
+/* ==================== KPI INTERACTIVE CARDS ==================== */
+.kpi-clickable-card {
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  user-select: none;
+}
+
+.kpi-clickable-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.kpi-clickable-card:active {
+  transform: translateY(-1px);
+}
+
+

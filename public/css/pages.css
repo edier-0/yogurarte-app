@@ -737,13 +737,15 @@
 .inventory-card {
   background: #FFFFFF;
   border-radius: var(--radius-lg);
-  padding: 18px;
+  padding: 16px 18px;
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
   gap: 10px;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .inventory-card.low-stock {
@@ -755,12 +757,20 @@
   font-size: 1rem;
   font-weight: 800;
   color: var(--text-main);
+  word-break: break-word;
 }
 
 .inventory-card-stock {
-  font-size: 1.8rem;
+  font-size: 1.55rem;
   font-weight: 800;
   color: var(--primary);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  line-height: 1.2;
 }
 
 .inventory-card-stock.warning {

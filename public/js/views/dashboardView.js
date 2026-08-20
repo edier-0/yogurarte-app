@@ -1,6 +1,7 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, formatStock, getTodayLocalDateStr, showToast } from '../store.js';
 import { openPaymentModal } from './ordersView.js';
+import { openCashMovementModal } from './expensesView.js';
 
 const WA_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: inline-block; vertical-align: -2px; margin-right: 4px;"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>`;
 
@@ -43,8 +44,33 @@ export async function renderDashboard(container) {
     }
 
     const data = await api.getDashboardSummary(params);
-    const { kpis, deliveredStats, inProcessStats, paymentBreakdown, deliveryBreakdown, lowStockAlerts, recentOrders, periodOrders } = data;
+    const { kpis, deliveredStats, inProcessStats, paymentBreakdown, deliveryBreakdown, lowStockAlerts, recentOrders, periodOrders, creditSummary } = data;
     const ordersList = periodOrders || recentOrders || [];
+
+    let creditAlertHtml = '';
+    if (creditSummary && creditSummary.activeCreditsCount > 0) {
+      const activeList = creditSummary.activeCredits || [];
+      const nextDue = activeList.find((c) => c.nextDueDate);
+
+      creditAlertHtml = `
+        <div style="background: #EFF6FF; border: 1.5px solid #BFDBFE; border-radius: var(--radius-md); padding: 12px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; box-shadow: var(--shadow-sm);">
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <span style="font-size: 1.5rem;">💳</span>
+            <div>
+              <div style="font-weight: 800; font-size: 0.92rem; color: #1E40AF;">
+                Compras a Cuotas Activas (${creditSummary.activeCreditsCount}) • Deuda Pendiente: <strong style="color: #DC2626;">${formatCOP(creditSummary.totalRemainingDebt)}</strong>
+              </div>
+              <div style="font-size: 0.76rem; color: #1E40AF;">
+                ${nextDue ? `Próximo pago: <strong>${formatDate(nextDue.nextDueDate)}</strong> (${formatCOP(nextDue.installmentAmount || nextDue.remainingBalance)} - ${nextDue.title})` : 'Créditos y cuotas al día'}
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="btnDashGoToCredits" style="font-weight: 800; font-size: 0.8rem;">
+            Gestionar Cuotas ↗
+          </button>
+        </div>
+      `;
+    }
 
     let lowStockHtml = '';
     if (lowStockAlerts && lowStockAlerts.length > 0) {
@@ -55,7 +81,7 @@ export async function renderDashboard(container) {
             <div class="stock-alert-title">¡Atención! Insumos con bajo inventario:</div>
             <div class="stock-alert-list">
               ${lowStockAlerts
-                .map((m) => `<strong>${m.name}</strong>: quedan ${m.currentStock} ${m.unit} (Mínimo sugerido: ${m.minStockAlert})`)
+                .map((m) => `<strong>${m.name}</strong>: quedan ${formatStock(m.currentStock, 2)} ${m.unit} (Mínimo sugerido: ${formatStock(m.minStockAlert, 2)})`)
                 .join(' • ')}
             </div>
           </div>
@@ -234,12 +260,32 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
+      ${creditAlertHtml}
       ${lowStockHtml}
 
       <!-- KPI Grid Principal con Desglose de Recaudos y Clic Interactivo -->
       <div class="kpi-grid" style="margin-bottom: 24px;">
         
-        <!-- KPI 1: Por Cobrar de Entregados (Cobro Inmediato) -->
+        <!-- KPI 1: Dinero en Caja (Saldo Disponible Real) -->
+        <div class="kpi-card ${kpis.cashBalance >= 0 ? 'kpi-success' : 'kpi-warning'} kpi-clickable" id="kpiCashBalanceCard" style="cursor: pointer; position: relative; transition: all 0.2s ease; border: 2px solid ${kpis.cashBalance >= 0 ? '#10B981' : '#F59E0B'}; background: ${kpis.cashBalance >= 0 ? '#F0FDF4' : '#FFFBEB'};" title="🔍 Haz clic para ver el arqueo de caja y flujo de dinero">
+          <div class="kpi-header">
+            <span class="kpi-title" style="color: ${kpis.cashBalance >= 0 ? '#065F46' : '#92400E'}; font-weight: 800;">
+              💵 Dinero en Caja (Saldo) 🔍
+            </span>
+            <div class="kpi-icon" style="background: ${kpis.cashBalance >= 0 ? '#D1FAE5' : '#FEF3C7'}; color: ${kpis.cashBalance >= 0 ? '#059669' : '#D97706'};">💵</div>
+          </div>
+          <div class="kpi-value" style="color: ${kpis.cashBalance >= 0 ? '#047857' : '#D97706'}; font-weight: 900;">
+            ${formatCOP(kpis.cashBalance)}
+          </div>
+          <div class="kpi-subtitle" style="display: flex; justify-content: space-between; align-items: center; font-weight: 700;">
+            <span style="font-size: 0.76rem; color: ${kpis.cashBalance >= 0 ? '#065F46' : '#92400E'};">
+              🟢 +${formatCOP(kpis.totalCashCollected)} • 🔴 -${formatCOP(kpis.totalOutflow || kpis.totalExpenses)}
+            </span>
+            <span style="font-size: 0.72rem; color: ${kpis.cashBalance >= 0 ? '#059669' : '#D97706'}; font-weight: 800;">Ver arqueo ↗</span>
+          </div>
+        </div>
+
+        <!-- KPI 2: Por Cobrar de Entregados (Cobro Inmediato) -->
         <div class="kpi-card ${deliveredStats.deliveredPendingToCollect > 0 ? 'kpi-warning' : 'kpi-success'}" style="border: 1.5px solid ${deliveredStats.deliveredPendingToCollect > 0 ? '#F87171' : '#86EFAC'};">
           <div class="kpi-header">
             <span class="kpi-title" style="color: ${deliveredStats.deliveredPendingToCollect > 0 ? '#DC2626' : 'var(--text-main)'}; font-weight: 800;">
@@ -253,7 +299,7 @@ export async function renderDashboard(container) {
           </div>
         </div>
 
-        <!-- KPI 2: Total Recaudado / Cobrado (Clicable para Desglose por Lote/Sabor) -->
+        <!-- KPI 3: Total Recaudado / Cobrado (Clicable para Desglose por Lote/Sabor) -->
         <div class="kpi-card kpi-success kpi-clickable" id="kpiTotalCollectedCard" style="cursor: pointer; position: relative; transition: all 0.2s ease;" title="🔍 Haz clic para ver el desglose por lote, sabor y ventas por cobrar">
           <div class="kpi-header">
             <span class="kpi-title">Total Recaudado (Cobrado) 🔍</span>
@@ -316,18 +362,6 @@ export async function renderDashboard(container) {
             <span>Insumos, nómina y otros</span>
             <span style="font-size: 0.72rem; color: var(--info); font-weight: 800;">Ver egresos ↗</span>
           </div>
-        </div>
-
-        <!-- KPI 7: Ganancia Neta Real -->
-        <div class="kpi-card">
-          <div class="kpi-header">
-            <span class="kpi-title">Ganancia Neta Real</span>
-            <div class="kpi-icon" style="background: var(--primary-light); color: var(--primary);">📈</div>
-          </div>
-          <div class="kpi-value" style="color: ${kpis.netProfit >= 0 ? 'var(--success)' : 'var(--danger)'};">
-            ${formatCOP(kpis.netProfit)}
-          </div>
-          <div class="kpi-subtitle">Cobrado menos gastos totales del periodo</div>
         </div>
 
       </div>
@@ -577,6 +611,11 @@ export async function renderDashboard(container) {
     // Clics en KPIs para abrir Modales Interactivos
     const detailedData = data.detailedBreakdowns || {};
 
+    // 0. Clic en Dinero en Caja (Saldo)
+    container.querySelector('#kpiCashBalanceCard')?.addEventListener('click', () => {
+      openCashBalanceModal(detailedData.cashFlow || {}, kpis, activeFilterLabel);
+    });
+
     // 1. Clic en Gastos Totales
     container.querySelector('#kpiTotalExpensesCard')?.addEventListener('click', () => {
       openExpensesBreakdownModal(detailedData.expenses || {}, kpis, activeFilterLabel);
@@ -636,6 +675,12 @@ export async function renderDashboard(container) {
     });
     container.querySelector('#btnGoToOrders')?.addEventListener('click', () => {
       document.querySelector('[data-tab="orders"]')?.click();
+    });
+    container.querySelector('#btnDashGoToCredits')?.addEventListener('click', () => {
+      document.querySelector('[data-tab="expenses"]')?.click();
+      setTimeout(() => {
+        document.getElementById('btnSubTabCredits')?.click();
+      }, 100);
     });
     container.querySelector('#btnNewOrderFromDash')?.addEventListener('click', () => {
       document.getElementById('btnNewOrderGlobal')?.click();
@@ -1372,4 +1417,270 @@ function openInProcessLitersModal(salesData, kpis, periodLabel) {
   document.getElementById('btnCloseQueueModal')?.addEventListener('click', closeModal);
   document.getElementById('btnOkQueueModal')?.addEventListener('click', closeModal);
 }
+
+// 6. Modal de Arqueo y Dinero en Caja
+// 6. Modal de Arqueo y Dinero en Caja
+function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const totalInjections = Number(cashFlowData.totalInjections !== undefined ? cashFlowData.totalInjections : (kpis.totalInjections || 0)) || 0;
+  const totalSalesCollected = Number(cashFlowData.totalSalesCollected !== undefined ? cashFlowData.totalSalesCollected : (kpis.totalCashCollected || 0)) || 0;
+  const totalInflow = Number(cashFlowData.totalInflow !== undefined ? cashFlowData.totalInflow : (totalInjections + totalSalesCollected)) || 0;
+  const totalOutflow = Number(cashFlowData.totalOutflow !== undefined ? cashFlowData.totalOutflow : (kpis.totalOutflow || kpis.totalExpenses)) || 0;
+  const cashBalance = Number(cashFlowData.cashBalance !== undefined ? cashFlowData.cashBalance : kpis.cashBalance) || 0;
+
+  const inflows = cashFlowData.inflows || [];
+  const outflows = cashFlowData.outflows || [];
+
+  const baseMovements = inflows.filter((i) => i.isCashMovement);
+  const salesMovements = inflows.filter((i) => !i.isCashMovement);
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 820px;">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title">💵 Arqueo y Dinero en Caja</h3>
+            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+              Periodo: <strong>${periodLabel}</strong> • Flujo Real de Dinero en Mano
+            </span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseCashModal">✕</button>
+        </div>
+        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+
+          <!-- Botones de Acción Rápida para Base / Aportes -->
+          <div style="display: flex; justify-content: space-between; align-items: center; background: #F8FAFC; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <strong style="color: var(--primary); font-size: 0.92rem;">🏦 Gestión de Base en Caja</strong>
+              <div style="font-size: 0.76rem; color: var(--text-muted);">Registra sencillo para dar cambio o dinero de tu bolsillo para compras</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-primary btn-sm" id="btnDashAddBase">
+                ➕ Ingresar Base / Aporte
+              </button>
+              <button type="button" class="btn btn-outline btn-sm" id="btnDashWithdrawBase" style="color: #DC2626; border-color: #FECACA;">
+                ➖ Retirar Base
+              </button>
+            </div>
+          </div>
+
+          <!-- Tarjetas Resumen de Caja -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 18px;">
+            
+            <div style="background: #F0FDF4; padding: 12px; border-radius: var(--radius-md); border: 1.5px solid #BBF7D0; text-align: center;">
+              <span style="font-size: 0.72rem; font-weight: 800; color: #166534;">🏦 Base y Aportes</span>
+              <div style="font-size: 1.15rem; font-weight: 900; color: #15803D; margin-top: 2px;">+${formatCOP(totalInjections)}</div>
+              <small style="font-size: 0.7rem; color: #166534; font-weight: 600;">${baseMovements.length} inyección(es) de capital</small>
+            </div>
+
+            <div style="background: #F0FDF4; padding: 12px; border-radius: var(--radius-md); border: 1.5px solid #BBF7D0; text-align: center;">
+              <span style="font-size: 0.72rem; font-weight: 800; color: #166534;">📥 Ventas Cobradas</span>
+              <div style="font-size: 1.15rem; font-weight: 900; color: #15803D; margin-top: 2px;">+${formatCOP(totalSalesCollected)}</div>
+              <small style="font-size: 0.7rem; color: #166534; font-weight: 600;">${salesMovements.length} cobro(s) de pedidos</small>
+            </div>
+
+            <div style="background: #FEF2F2; padding: 12px; border-radius: var(--radius-md); border: 1.5px solid #FECACA; text-align: center;">
+              <span style="font-size: 0.72rem; font-weight: 800; color: #991B1B;">📤 Egresos Pagados</span>
+              <div style="font-size: 1.15rem; font-weight: 900; color: #DC2626; margin-top: 2px;">-${formatCOP(totalOutflow)}</div>
+              <small style="font-size: 0.7rem; color: #991B1B; font-weight: 600;">${outflows.length} compras / gastos / nómina</small>
+            </div>
+
+            <div style="background: ${cashBalance >= 0 ? '#ECFDF5' : '#FFFBEB'}; padding: 12px; border-radius: var(--radius-md); border: 2px solid ${cashBalance >= 0 ? '#10B981' : '#F59E0B'}; text-align: center;">
+              <span style="font-size: 0.72rem; font-weight: 800; color: ${cashBalance >= 0 ? '#065F46' : '#92400E'};">💰 Dinero en Caja Disponible</span>
+              <div style="font-size: 1.25rem; font-weight: 900; color: ${cashBalance >= 0 ? '#047857' : '#D97706'}; margin-top: 2px;">${formatCOP(cashBalance)}</div>
+              <small style="font-size: 0.7rem; color: ${cashBalance >= 0 ? '#065F46' : '#92400E'}; font-weight: 700;">${cashBalance >= 0 ? '✅ Saldo a favor en caja' : '⚠️ Inversión supera lo recaudado'}</small>
+            </div>
+          </div>
+
+          <!-- Pestañas de Filtrado de Movimientos -->
+          <div style="display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-sm btn-primary" id="btnTabAllCash">📊 Todos (${inflows.length + outflows.length})</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnTabBaseCash" style="color: #0369A1; border-color: #BAE6FD;">🏦 Base / Aportes (${baseMovements.length})</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnTabInflows" style="color: #15803D; border-color: #BBF7D0;">📥 Ventas Cobradas (${salesMovements.length})</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnTabOutflows" style="color: #DC2626; border-color: #FECACA;">📤 Salidas (-${formatCOP(totalOutflow)})</button>
+          </div>
+
+          <!-- Tablas de Movimientos -->
+          <div id="cashInflowsSection" style="margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <strong style="color: #15803D; font-size: 0.88rem;">📥 Entradas de Dinero (Bases, Aportes y Ventas)</strong>
+              <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">Total: +${formatCOP(totalInflow)}</span>
+            </div>
+            ${
+              inflows.length > 0
+                ? `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Tipo / N°</th>
+                      <th>Origen / Cliente</th>
+                      <th>Detalle / Concepto</th>
+                      <th style="text-align: right;">Ingreso a Caja</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${inflows
+                      .map(
+                        (i) => `
+                      <tr class="cash-row ${i.isCashMovement ? 'row-base' : 'row-sale'}">
+                        <td><small>${formatDate(i.date)}</small></td>
+                        <td>
+                          <span class="badge" style="background: ${i.isCashMovement ? '#E0F2FE' : '#DCFCE7'}; color: ${i.isCashMovement ? '#0369A1' : '#15803D'}; font-weight: 800; font-size: 0.72rem;">
+                            ${i.orderNumber}
+                          </span>
+                        </td>
+                        <td><strong>${i.customerName}</strong></td>
+                        <td>${i.isCashMovement ? `<strong>${i.flavor}</strong>` : `${i.liters}L (${i.flavor})`}</td>
+                        <td style="text-align: right; color: #15803D; font-weight: 800;">+${formatCOP(i.amount)}</td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+            `
+                : `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 10px; text-align: center; background: #F8FAFC; border-radius: var(--radius-sm);">No hay ingresos registrados en este periodo</div>`
+            }
+          </div>
+
+          <div id="cashOutflowsSection" style="margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <strong style="color: #DC2626; font-size: 0.88rem;">📤 Salidas de Dinero (Compras, Nómina y Gastos)</strong>
+              <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">Total: -${formatCOP(totalOutflow)}</span>
+            </div>
+            ${
+              outflows.length > 0
+                ? `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Tipo</th>
+                      <th>Descripción / Proveedor</th>
+                      <th style="text-align: right;">Pagado de Caja</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${outflows
+                      .map(
+                        (o) => `
+                      <tr>
+                        <td><small>${formatDate(o.date)}</small></td>
+                        <td><span class="badge" style="background: var(--bg-subtle); color: var(--text-main); font-size: 0.72rem;">${o.categoryLabel || o.category}</span></td>
+                        <td>
+                          <strong>${o.description}</strong>
+                          ${o.supplier ? `<div style="font-size: 0.72rem; color: var(--text-muted);">🏢 ${o.supplier}</div>` : ''}
+                          ${o.notes ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📝 ${o.notes}</div>` : ''}
+                        </td>
+                        <td style="text-align: right; color: #DC2626; font-weight: 800;">-${formatCOP(o.amount)}</td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+            `
+                : `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 10px; text-align: center; background: #F8FAFC; border-radius: var(--radius-sm);">No hay salidas de dinero registradas en este periodo</div>`
+            }
+          </div>
+
+          <div style="background: #F0F9FF; border: 1px solid #BAE6FD; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 0.76rem; color: #0369A1;">
+            💡 <strong>¿Cómo funciona el Dinero en Caja?</strong> Suma la Base Inicial y Aportes propios + Todo el dinero cobrado de ventas - Todas las compras, gastos y nómina pagados en el período.
+          </div>
+
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-primary" id="btnGoToCashControl" style="font-weight: 800;">
+            💵 Ir a Control de Caja Completo ↗
+          </button>
+          <button type="button" class="btn btn-outline" id="btnOkCashModal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnCloseCashModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnOkCashModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnGoToCashControl')?.addEventListener('click', () => {
+    closeModal();
+    document.querySelector('.sidebar .nav-item[data-tab="cashControl"]')?.click();
+  });
+
+  // Acciones rápidas de Base
+  document.getElementById('btnDashAddBase')?.addEventListener('click', () => {
+    openCashMovementModal(() => {
+      closeModal();
+      renderDashboard(document.getElementById('contentContainer'));
+    }, 'BASE_INICIAL');
+  });
+
+  document.getElementById('btnDashWithdrawBase')?.addEventListener('click', () => {
+    openCashMovementModal(() => {
+      closeModal();
+      renderDashboard(document.getElementById('contentContainer'));
+    }, 'RETIRO_BASE');
+  });
+
+  // Filtros de pestañas
+  const tabAll = document.getElementById('btnTabAllCash');
+  const tabBase = document.getElementById('btnTabBaseCash');
+  const tabIn = document.getElementById('btnTabInflows');
+  const tabOut = document.getElementById('btnTabOutflows');
+  const secIn = document.getElementById('cashInflowsSection');
+  const secOut = document.getElementById('cashOutflowsSection');
+
+  const rows = modalOverlay.querySelectorAll('.cash-row');
+
+  tabAll?.addEventListener('click', () => {
+    tabAll.className = 'btn btn-sm btn-primary';
+    tabBase.className = 'btn btn-sm btn-outline';
+    tabIn.className = 'btn btn-sm btn-outline';
+    tabOut.className = 'btn btn-sm btn-outline';
+    if (secIn) secIn.style.display = 'block';
+    if (secOut) secOut.style.display = 'block';
+    rows.forEach((r) => (r.style.display = ''));
+  });
+
+  tabBase?.addEventListener('click', () => {
+    tabBase.className = 'btn btn-sm btn-primary';
+    tabAll.className = 'btn btn-sm btn-outline';
+    tabIn.className = 'btn btn-sm btn-outline';
+    tabOut.className = 'btn btn-sm btn-outline';
+    if (secIn) secIn.style.display = 'block';
+    if (secOut) secOut.style.display = 'none';
+    rows.forEach((r) => {
+      r.style.display = r.classList.contains('row-base') ? '' : 'none';
+    });
+  });
+
+  tabIn?.addEventListener('click', () => {
+    tabIn.className = 'btn btn-sm btn-primary';
+    tabAll.className = 'btn btn-sm btn-outline';
+    tabBase.className = 'btn btn-sm btn-outline';
+    tabOut.className = 'btn btn-sm btn-outline';
+    if (secIn) secIn.style.display = 'block';
+    if (secOut) secOut.style.display = 'none';
+    rows.forEach((r) => {
+      r.style.display = r.classList.contains('row-sale') ? '' : 'none';
+    });
+  });
+
+  tabOut?.addEventListener('click', () => {
+    tabOut.className = 'btn btn-sm btn-primary';
+    tabAll.className = 'btn btn-sm btn-outline';
+    tabBase.className = 'btn btn-sm btn-outline';
+    tabIn.className = 'btn btn-sm btn-outline';
+    if (secIn) secIn.style.display = 'none';
+    if (secOut) secOut.style.display = 'block';
+  });
+}
+
 

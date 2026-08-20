@@ -43,6 +43,11 @@
           <span>Pedidos y Ventas</span>
         </button>
 
+        <button class="nav-item" data-tab="cashControl">
+          <span class="nav-icon">💵</span>
+          <span>Control de Caja</span>
+        </button>
+
         <button class="nav-item" data-tab="batches">
           <span class="nav-icon">🍶</span>
           <span>Producción (Lotes)</span>
@@ -128,31 +133,67 @@
         <span>Pedidos</span>
       </button>
 
+      <button class="mobile-nav-btn" data-tab="cashControl">
+        <span class="icon">💵</span>
+        <span>Caja</span>
+      </button>
+
       <button class="mobile-nav-btn" data-tab="batches">
         <span class="icon">🍶</span>
         <span>Lotes</span>
       </button>
 
-      <button class="mobile-nav-btn" data-tab="inventory">
-        <span class="icon">📦</span>
-        <span>Insumos</span>
-      </button>
-
-      <button class="mobile-nav-btn" data-tab="expenses">
-        <span class="icon">🧾</span>
-        <span>Gastos</span>
-      </button>
-
-      <button class="mobile-nav-btn" data-tab="staff">
-        <span class="icon">👥</span>
-        <span>Nómina</span>
-      </button>
-
-      <button class="mobile-nav-btn" data-tab="customers">
-        <span class="icon">🤝</span>
-        <span>Clientes</span>
+      <button class="mobile-nav-btn" id="btnMobileMore" title="Más opciones">
+        <span class="icon" id="mobileMoreIcon">☰</span>
+        <span id="mobileMoreLabel">Más</span>
       </button>
     </nav>
+
+    <!-- Panel Desplegable Inferior para Móvil (Bottom Sheet "Más") -->
+    <div class="mobile-more-overlay" id="mobileMoreOverlay">
+      <div class="mobile-more-sheet" id="mobileMoreSheet">
+        <div class="mobile-more-handle"></div>
+        <div class="mobile-more-header">
+          <div class="mobile-more-title">
+            <span>✨ Más Opciones y Módulos</span>
+          </div>
+          <button class="mobile-more-close" id="btnCloseMobileMore" title="Cerrar">✕</button>
+        </div>
+        <div class="mobile-more-grid">
+          <button class="mobile-more-item" data-tab="inventory">
+            <span class="more-item-icon">📦</span>
+            <div class="more-item-info">
+              <span class="more-item-title">Materia Prima</span>
+              <span class="more-item-desc">Insumos y stock</span>
+            </div>
+          </button>
+
+          <button class="mobile-more-item" data-tab="expenses">
+            <span class="more-item-icon">🧾</span>
+            <div class="more-item-info">
+              <span class="more-item-title">Gastos y Créditos</span>
+              <span class="more-item-desc">Operativos y cuotas</span>
+            </div>
+          </button>
+
+          <button class="mobile-more-item" data-tab="staff">
+            <span class="more-item-icon">👥</span>
+            <div class="more-item-info">
+              <span class="more-item-title">Nómina y Personal</span>
+              <span class="more-item-desc">Equipo y retiros</span>
+            </div>
+          </button>
+
+          <button class="mobile-more-item" data-tab="customers">
+            <span class="more-item-icon">🤝</span>
+            <div class="more-item-info">
+              <span class="more-item-title">Clientes</span>
+              <span class="more-item-desc">Directorio y deudas</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Botón Flotante para Móvil (FAB) -->
     <button class="mobile-fab" id="mobileFabOrder" title="Nuevo Pedido">

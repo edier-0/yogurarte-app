@@ -43,7 +43,7 @@ export const getExpenses = async (req: Request, res: Response) => {
 
 export const createExpense = async (req: Request, res: Response) => {
   try {
-    const { category, description, amount, expenseDate, notes, registeredBy } = req.body;
+    const { category, description, amount, expenseDate, paymentMethod, notes, registeredBy } = req.body;
 
     const parsedAmount = Number(amount);
     if (!description || isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -56,6 +56,7 @@ export const createExpense = async (req: Request, res: Response) => {
         description: description.trim(),
         amount: parsedAmount,
         expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
+        paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
         notes: notes ? notes.trim() : null,
         registeredBy: registeredBy || 'Edier',
       },

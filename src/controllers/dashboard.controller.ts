@@ -21,6 +21,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const expenseWhere: any = {};
     const purchaseWhere: any = {};
     const staffPaymentWhere: any = {};
+    const cashMovementWhere: any = {};
 
     let activeFilterDate = '';
     let customDateRange: { gte: Date; lte: Date } | null = null;
@@ -58,6 +59,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       expenseWhere.expenseDate = dayRange;
       purchaseWhere.purchaseDate = dayRange;
       staffPaymentWhere.paymentDate = dayRange;
+      cashMovementWhere.movementDate = dayRange;
     } else if (customDateRange) {
       orderWhere.OR = [
         { orderDate: customDateRange },
@@ -66,6 +68,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       expenseWhere.expenseDate = customDateRange;
       purchaseWhere.purchaseDate = customDateRange;
       staffPaymentWhere.paymentDate = customDateRange;
+      cashMovementWhere.movementDate = customDateRange;
     } else if (month && typeof month === 'string') {
       const [year, m] = month.split('-').map(Number);
       if (year && m) {
@@ -79,6 +82,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         expenseWhere.expenseDate = monthRange;
         purchaseWhere.purchaseDate = monthRange;
         staffPaymentWhere.paymentDate = monthRange;
+        cashMovementWhere.movementDate = monthRange;
       }
     } else if (period === 'month') {
       const [year, m] = todayStr.split('-').map(Number);
@@ -92,6 +96,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       expenseWhere.expenseDate = monthRange;
       purchaseWhere.purchaseDate = monthRange;
       staffPaymentWhere.paymentDate = monthRange;
+      cashMovementWhere.movementDate = monthRange;
     } else if (period === 'week') {
       const now = new Date();
       const dayOfWeek = now.getDay();
@@ -107,6 +112,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       expenseWhere.expenseDate = { gte: startOfWeek };
       purchaseWhere.purchaseDate = { gte: startOfWeek };
       staffPaymentWhere.paymentDate = { gte: startOfWeek };
+      cashMovementWhere.movementDate = { gte: startOfWeek };
     }
 
     // 1. Consultar pedidos
@@ -158,13 +164,25 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       orderBy: { paymentDate: 'desc' },
     });
 
-    // 5. Consultar insumos con bajo stock
+    // 5. Consultar movimientos de caja (Bases iniciales, aportes y retiros)
+    const cashMovements = await prisma.cashMovement.findMany({
+      where: cashMovementWhere,
+      orderBy: { movementDate: 'desc' },
+    });
+
+    // 6. Consultar créditos y compras a cuotas activas
+    const activeCreditObligations = await prisma.creditObligation.findMany({
+      where: { status: 'ACTIVO' },
+      orderBy: { nextDueDate: 'asc' },
+    });
+
+    // 7. Consultar insumos con bajo stock
     const rawMaterials = await prisma.rawMaterial.findMany({
       where: { isActive: true },
     });
     const lowStockMaterials = rawMaterials.filter((m) => m.currentStock <= m.minStockAlert);
 
-    // 6. Consultar lotes de producción activos
+    // 8. Consultar lotes de producción activos
     const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const [batchesThisMonth, allActiveBatches] = await Promise.all([
       prisma.productionBatch.findMany({
@@ -183,6 +201,17 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const ownerDrawPayments = staffPayments.filter((p) => p.paymentType === 'RETIRO_SOCIO');
     const totalPayrollExpenses = payrollPayments.reduce((sum, p) => sum + p.netAmount, 0);
     const totalOwnerDraws = ownerDrawPayments.reduce((sum, p) => sum + p.netAmount, 0);
+
+    // Cálculos de Movimientos de Caja (Bases y Aportes)
+    const totalInjections = cashMovements
+      .filter((m) => m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA')
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const totalWithdrawals = cashMovements
+      .filter((m) => m.type === 'RETIRO_BASE')
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const netCashInjections = totalInjections - totalWithdrawals;
 
     // Cálculos Generales
     const totalOrdersCount = orders.length;
@@ -212,8 +241,94 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const totalRawMaterialPurchases = purchases.reduce((sum, p) => sum + p.totalCost, 0);
     const totalGeneralExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
     const totalExpenses = totalRawMaterialPurchases + totalGeneralExpenses + totalPayrollExpenses;
+    const totalOutflow = totalRawMaterialPurchases + totalGeneralExpenses + totalPayrollExpenses + totalOwnerDraws + totalWithdrawals;
 
     const netProfit = totalCashCollected - totalExpenses;
+
+    // Helper para clasificar Efectivo vs Transferencias (Nequi / Bancolombia)
+    const isCash = (m?: string | null) => !m || m.toUpperCase().trim() === 'EFECTIVO';
+
+    let cashInHand = 0;
+    let digitalBank = 0;
+    let totalInflowCash = 0;
+    let totalInflowBank = 0;
+    let totalOutflowCash = 0;
+    let totalOutflowBank = 0;
+
+    // 1. Movimientos de Caja (Bases, Aportes, Retiros y Traslados)
+    for (const m of cashMovements) {
+      if (m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA') {
+        if (isCash(m.paymentMethod)) {
+          cashInHand += m.amount;
+          totalInflowCash += m.amount;
+        } else {
+          digitalBank += m.amount;
+          totalInflowBank += m.amount;
+        }
+      } else if (m.type === 'RETIRO_BASE') {
+        if (isCash(m.paymentMethod)) {
+          cashInHand -= m.amount;
+          totalOutflowCash += m.amount;
+        } else {
+          digitalBank -= m.amount;
+          totalOutflowBank += m.amount;
+        }
+      } else if (m.type === 'TRASLADO_EFECTIVO_A_BANCO') {
+        cashInHand -= m.amount;
+        digitalBank += m.amount;
+      } else if (m.type === 'TRASLADO_BANCO_A_EFECTIVO') {
+        cashInHand += m.amount;
+        digitalBank -= m.amount;
+      }
+    }
+
+    // 2. Pedidos Cobrados (Ventas)
+    for (const o of orders) {
+      if (o.paidAmount > 0) {
+        if (isCash(o.paymentMethod)) {
+          cashInHand += o.paidAmount;
+          totalInflowCash += o.paidAmount;
+        } else {
+          digitalBank += o.paidAmount;
+          totalInflowBank += o.paidAmount;
+        }
+      }
+    }
+
+    // 3. Compras de Insumos
+    for (const p of purchases) {
+      if (isCash(p.paymentMethod)) {
+        cashInHand -= p.totalCost;
+        totalOutflowCash += p.totalCost;
+      } else {
+        digitalBank -= p.totalCost;
+        totalOutflowBank += p.totalCost;
+      }
+    }
+
+    // 4. Gastos Generales
+    for (const e of expenses) {
+      if (isCash(e.paymentMethod)) {
+        cashInHand -= e.amount;
+        totalOutflowCash += e.amount;
+      } else {
+        digitalBank -= e.amount;
+        totalOutflowBank += e.amount;
+      }
+    }
+
+    // 5. Nómina y Retiros
+    for (const sp of staffPayments) {
+      if (isCash(sp.paymentMethod)) {
+        cashInHand -= sp.netAmount;
+        totalOutflowCash += sp.netAmount;
+      } else {
+        digitalBank -= sp.netAmount;
+        totalOutflowBank += sp.netAmount;
+      }
+    }
+
+    const cashBalance = cashInHand + digitalBank;
 
     const totalLitersProducedThisMonth = batchesThisMonth.reduce((sum, b) => sum + b.totalLitersProduced, 0);
     const totalLitersProducedAllTime = allActiveBatches.reduce((sum, b) => sum + b.totalLitersProduced, 0);
@@ -329,6 +444,9 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         deliveredLiters,
         inProcessLiters,
         totalSalesAmount,
+        totalInjections,
+        totalWithdrawals,
+        netCashInjections,
         totalCashCollected,
         totalPendingToCollect,
         deliveredPendingToCollect,
@@ -342,6 +460,14 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         totalPayrollExpenses,
         totalOwnerDraws,
         totalExpenses,
+        totalOutflow,
+        cashBalance,
+        cashInHand,
+        digitalBank,
+        totalInflowCash,
+        totalInflowBank,
+        totalOutflowCash,
+        totalOutflowBank,
         netProfit,
         totalLitersProducedThisMonth,
         totalLitersProducedAllTime,
@@ -365,6 +491,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           pendingAmount: o.pendingAmount,
           totalLiters: o.totalLiters,
           flavor: o.flavor,
+          paymentMethod: o.paymentMethod || 'EFECTIVO',
           deliveryDate: o.deliveryDate || o.orderDate,
         })),
       },
@@ -385,6 +512,146 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         pendingDelivery: ordersPendingDeliveryCount,
       },
       detailedBreakdowns: {
+        cashFlow: {
+          totalInflow: totalInjections + totalCashCollected,
+          totalInjections,
+          totalWithdrawals,
+          netCashInjections,
+          totalSalesCollected: totalCashCollected,
+          totalOutflow,
+          cashBalance,
+          cashInHand,
+          digitalBank,
+          totalInflowCash,
+          totalInflowBank,
+          totalOutflowCash,
+          totalOutflowBank,
+          inflows: [
+            ...cashMovements
+              .filter((m) => m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA')
+              .map((m) => ({
+                id: `cash_inj_${m.id}`,
+                rawId: m.id,
+                orderNumber: m.type === 'BASE_INICIAL' ? '🏦 BASE-INICIAL' : m.type === 'AJUSTE_CAJA' ? '⚖️ AJUSTE-CAJA' : '💼 APORTE-BOLSILLO',
+                date: m.movementDate,
+                customerName: m.registeredBy || 'Edier',
+                customerPhone: '',
+                amount: m.amount,
+                totalAmount: m.amount,
+                pendingAmount: 0,
+                flavor: m.concept,
+                liters: 0,
+                deliveryStatus: 'DEPOSITADO',
+                paymentStatus: 'PAID',
+                paymentMethod: m.paymentMethod || 'EFECTIVO',
+                notes: m.notes,
+                isCashMovement: true,
+                movementType: m.type,
+                rawMovement: m,
+              })),
+            ...orders
+              .filter((o) => o.paidAmount > 0)
+              .map((o) => ({
+                id: o.id,
+                rawId: o.id,
+                orderNumber: o.orderNumber,
+                date: o.deliveryDate || o.orderDate,
+                customerName: o.customer?.fullName || 'Cliente',
+                customerPhone: o.customer?.phone || '',
+                amount: o.paidAmount,
+                totalAmount: o.totalAmount,
+                pendingAmount: o.pendingAmount,
+                flavor: o.flavor,
+                liters: o.totalLiters,
+                deliveryStatus: o.deliveryStatus,
+                paymentStatus: o.paymentStatus,
+                paymentMethod: o.paymentMethod || 'EFECTIVO',
+                notes: o.notes,
+                isCashMovement: false,
+                movementType: 'VENTA',
+              })),
+          ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+          outflows: [
+            ...purchases.map((p) => ({
+              id: `purch_${p.id}`,
+              rawId: p.id,
+              date: p.purchaseDate,
+              category: 'COMPRA_INSUMO',
+              categoryLabel: '🥛 Compra Insumo',
+              description: `${p.rawMaterial?.name || 'Insumo'} (${p.quantity} ${p.rawMaterial?.unit || 'und'})`,
+              amount: p.totalCost,
+              supplier: p.supplier || 'Proveedor local',
+              paymentMethod: p.paymentMethod || 'EFECTIVO',
+              notes: p.notes,
+            })),
+            ...expenses.map((e) => ({
+              id: `exp_${e.id}`,
+              rawId: e.id,
+              date: e.expenseDate,
+              category: 'GASTO_GENERAL',
+              categoryLabel: `⚙️ ${e.category}`,
+              description: e.description,
+              amount: e.amount,
+              notes: e.notes,
+              registeredBy: e.registeredBy,
+              paymentMethod: e.paymentMethod || 'EFECTIVO',
+            })),
+            ...payrollPayments.map((p) => ({
+              id: `pay_${p.id}`,
+              rawId: p.id,
+              date: p.paymentDate,
+              category: 'NOMINA',
+              categoryLabel: '👥 Nómina',
+              description: `${p.staff?.fullName || 'Personal'} - ${p.calculationDetails || 'Pago'}`,
+              amount: p.netAmount,
+              paymentMethod: p.paymentMethod || 'EFECTIVO',
+              notes: p.notes,
+            })),
+            ...ownerDrawPayments.map((p) => ({
+              id: `draw_${p.id}`,
+              rawId: p.id,
+              date: p.paymentDate,
+              category: 'RETIRO_SOCIO',
+              categoryLabel: '💼 Retiro Socio',
+              description: `${p.staff?.fullName || 'Socio'} - ${p.calculationDetails || 'Retiro'}`,
+              amount: p.netAmount,
+              paymentMethod: p.paymentMethod || 'EFECTIVO',
+              notes: p.notes,
+            })),
+            ...cashMovements
+              .filter((m) => m.type === 'RETIRO_BASE')
+              .map((m) => ({
+                id: `cash_ret_${m.id}`,
+                rawId: m.id,
+                date: m.movementDate,
+                category: 'RETIRO_BASE',
+                categoryLabel: '🏦 Retiro de Base',
+                description: `${m.concept} (${m.registeredBy || 'Edier'})`,
+                amount: m.amount,
+                notes: m.notes,
+                paymentMethod: m.paymentMethod || 'EFECTIVO',
+                isCashMovement: true,
+                rawMovement: m,
+              })),
+          ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+          transfers: cashMovements
+            .filter((m) => m.type === 'TRASLADO_EFECTIVO_A_BANCO' || m.type === 'TRASLADO_BANCO_A_EFECTIVO')
+            .map((m) => ({
+              id: `cash_trans_${m.id}`,
+              rawId: m.id,
+              date: m.movementDate,
+              type: m.type,
+              category: 'TRASLADO',
+              categoryLabel: m.type === 'TRASLADO_EFECTIVO_A_BANCO' ? '🔄 Efectivo ➔ Transferencia' : '🔄 Transferencia ➔ Efectivo',
+              description: m.concept,
+              amount: m.amount,
+              paymentMethod: m.type === 'TRASLADO_EFECTIVO_A_BANCO' ? 'EFECTIVO ➔ TRANSFERENCIA' : 'TRANSFERENCIA ➔ EFECTIVO',
+              notes: m.notes,
+              registeredBy: m.registeredBy || 'Edier',
+              isCashMovement: true,
+              rawMovement: m,
+            })),
+        },
         expenses: {
           rawMaterials: purchases.map((p) => ({
             id: p.id,
@@ -439,6 +706,11 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         minStockAlert: m.minStockAlert,
         unit: m.unit,
       })),
+      creditSummary: {
+        totalRemainingDebt: activeCreditObligations.reduce((sum, c) => sum + c.remainingBalance, 0),
+        activeCreditsCount: activeCreditObligations.length,
+        activeCredits: activeCreditObligations,
+      },
       recentOrders: orders.slice(0, 8),
       periodOrders: orders,
       inventorySummary: rawMaterials,

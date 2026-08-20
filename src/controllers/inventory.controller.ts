@@ -107,7 +107,7 @@ export const deleteMaterial = async (req: Request, res: Response) => {
 
 export const createPurchase = async (req: Request, res: Response) => {
   try {
-    const { rawMaterialId, quantity, unitCost, totalCost, supplier, purchaseDate, notes, registeredBy } = req.body;
+    const { rawMaterialId, quantity, unitCost, totalCost, supplier, purchaseDate, paymentMethod, notes, registeredBy } = req.body;
 
     const parsedQty = Number(quantity);
     let parsedUnitCost = Number(unitCost);
@@ -158,6 +158,7 @@ export const createPurchase = async (req: Request, res: Response) => {
           totalCost: Math.round(parsedTotalCost),
           supplier: supplier ? supplier.trim() : null,
           purchaseDate: dateObj,
+          paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
           notes: notes ? notes.trim() : null,
           registeredBy: registeredBy || 'Edier',
         },
@@ -181,7 +182,7 @@ export const createPurchase = async (req: Request, res: Response) => {
 export const updatePurchase = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { supplier, invoiceNumber, quantity, unitCost, totalCost, purchaseDate, notes } = req.body;
+    const { supplier, invoiceNumber, quantity, unitCost, totalCost, purchaseDate, paymentMethod, notes } = req.body;
 
     const currentPurchase = await prisma.purchase.findUnique({
       where: { id: Number(id) },
@@ -216,6 +217,7 @@ export const updatePurchase = async (req: Request, res: Response) => {
           unitCost: Math.round(newUnitCost * 100) / 100,
           totalCost: Math.round(newTotalCost),
           purchaseDate: purchaseDate ? new Date(`${String(purchaseDate).split('T')[0]}T12:00:00.000Z`) : currentPurchase.purchaseDate,
+          paymentMethod: paymentMethod !== undefined ? paymentMethod.trim() : currentPurchase.paymentMethod,
           notes: notes !== undefined ? notes.trim() : currentPurchase.notes,
         },
         include: {
