@@ -1703,53 +1703,119 @@ export function openAssignDriverModal(order, availableDrivers = []) {
   });
 }
 
-// Modal de Abono / Pago rápido
-export function openPaymentModal(orderId, totalAmount, currentPaid, currentPending, onSuccess = null) {
+// Modal de Abono / Pago rápido con desglose individual de medios de pago
+export async function openPaymentModal(orderId, totalAmount, currentPaid, currentPending, onSuccess = null) {
   const modalOverlay = document.getElementById('modalContainer');
   if (!modalOverlay) return;
 
+  let existingPayments = [];
+  try {
+    const freshOrder = await api.getOrderById(orderId);
+    if (freshOrder && Array.isArray(freshOrder.payments)) {
+      existingPayments = freshOrder.payments;
+    }
+  } catch (e) {
+    console.warn('Could not fetch fresh order payments:', e);
+  }
+
+  const getMethodBadge = (m) => {
+    if (m === 'NEQUI') return '<span class="badge" style="background: #EDE9FE; color: #6D28D9; font-weight: 800;">🟣 Nequi</span>';
+    if (m === 'BANCOLOMBIA') return '<span class="badge" style="background: #FEF08A; color: #854D0E; font-weight: 800;">🟡 Bancolombia</span>';
+    if (m === 'TRANSFERENCIA') return '<span class="badge" style="background: #E0F2FE; color: #0369A1; font-weight: 800;">💳 Transferencia</span>';
+    return '<span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800;">💵 Efectivo</span>';
+  };
+
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-card" style="max-width: 440px;">
         <div class="modal-header">
-          <h3 class="modal-title">💵 Registrar Abono o Pago</h3>
+          <h3 class="modal-title">💵 Control de Abonos y Pagos</h3>
           <button class="modal-close-btn" id="btnClosePaymentModal">✕</button>
         </div>
         <form id="paymentForm">
           <div class="modal-body">
-            <div style="background: var(--bg-app); padding: 14px; border-radius: var(--radius-md); margin-bottom: 16px;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            
+            <!-- Resumen Financiero del Pedido -->
+            <div style="background: var(--bg-app); padding: 14px; border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9rem;">
                 <span style="color: var(--text-muted);">Total del Pedido:</span>
                 <strong>${formatCOP(totalAmount)}</strong>
               </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                <span style="color: var(--text-muted);">Abonado Anteriormente:</span>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9rem;">
+                <span style="color: var(--text-muted);">Abonado Acumulado:</span>
                 <strong style="color: var(--success);">${formatCOP(currentPaid)}</strong>
               </div>
-              <div style="display: flex; justify-content: space-between;">
-                <span style="color: var(--danger); font-weight: 700;">Saldo Pendiente:</span>
+              <div style="display: flex; justify-content: space-between; font-size: 0.95rem; border-top: 1px dashed var(--border-color); padding-top: 6px; margin-top: 6px;">
+                <span style="color: var(--danger); font-weight: 800;">Saldo Pendiente:</span>
                 <strong style="color: var(--danger);">${formatCOP(currentPending)}</strong>
               </div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">¿Cuánto va a abonar o pagar ahora? ($ COP) *</label>
-              <input type="number" id="newPaymentAmount" class="form-input" min="1" max="${currentPending}" value="${currentPending}" required />
-            </div>
+            <!-- Historial de Abonos Realizados -->
+            ${
+              existingPayments.length > 0
+                ? `
+              <div style="margin-bottom: 16px;">
+                <label class="form-label" style="font-size: 0.8rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">
+                  📋 Historial de Abonos Recibidos (${existingPayments.length}):
+                </label>
+                <div style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto; background: #FFFFFF; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px;">
+                  ${existingPayments
+                    .map(
+                      (p, idx) => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; padding: 4px 6px; border-bottom: ${idx < existingPayments.length - 1 ? '1px dashed #E2E8F0' : 'none'};">
+                      <div style="display: flex; align-items: center; gap: 6px;">
+                        ${getMethodBadge(p.paymentMethod)}
+                        <span style="color: var(--text-muted); font-size: 0.75rem;">${formatDate(p.paymentDate)}</span>
+                      </div>
+                      <strong style="color: var(--text-main);">${formatCOP(p.amount)}</strong>
+                    </div>
+                  `
+                    )
+                    .join('')}
+                </div>
+              </div>
+            `
+                : ''
+            }
 
-            <div class="form-group">
-              <label class="form-label">Modalidad / Medio de Pago *</label>
-              <select id="newPaymentMethod" class="form-select" required style="font-weight: 700;">
-                <option value="EFECTIVO">💵 Efectivo (Billetes / Monedas)</option>
-                <option value="NEQUI" selected>🟣 Transferencia Nequi</option>
-                <option value="BANCOLOMBIA">🟡 Transferencia Bancolombia</option>
-                <option value="TRANSFERENCIA">💳 Otra Transferencia</option>
-              </select>
-            </div>
+            ${
+              currentPending > 0
+                ? `
+              <div class="form-group">
+                <label class="form-label" style="font-weight: 700;">¿Cuánto va a abonar o pagar ahora? ($ COP) *</label>
+                <input type="number" id="newPaymentAmount" class="form-input" min="100" max="${currentPending}" value="${currentPending}" required style="font-weight: 800; font-size: 1.05rem;" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" style="font-weight: 700;">Modalidad / Medio de este Pago *</label>
+                <select id="newPaymentMethod" class="form-select" required style="font-weight: 700;">
+                  <option value="EFECTIVO">💵 Efectivo (Caja Física)</option>
+                  <option value="NEQUI" selected>🟣 Transferencia Nequi</option>
+                  <option value="BANCOLOMBIA">🟡 Transferencia Bancolombia</option>
+                  <option value="TRANSFERENCIA">💳 Otra Transferencia</option>
+                </select>
+              </div>
+            `
+                : `
+              <div style="background: #F0FDF4; border: 1px solid #BBF7D0; color: #15803D; padding: 12px; border-radius: var(--radius-md); text-align: center; font-weight: 700; font-size: 0.88rem;">
+                ✅ ¡Este pedido ya se encuentra totalmente cancelado y al día!
+              </div>
+            `
+            }
+
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-outline" id="btnCancelPaymentModal">Cancelar</button>
-            <button type="submit" class="btn btn-success">Confirmar Pago</button>
+            <button type="button" class="btn btn-outline" id="btnCancelPaymentModal">Cerrar</button>
+            ${
+              currentPending > 0
+                ? `
+              <button type="submit" class="btn btn-success" id="btnSubmitPayment" style="font-weight: 800;">
+                💰 Confirmar Abono
+              </button>
+            `
+                : ''
+            }
           </div>
         </form>
       </div>
@@ -1762,13 +1828,25 @@ export function openPaymentModal(orderId, totalAmount, currentPaid, currentPendi
 
   document.getElementById('paymentForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const additionalPaid = Number(document.getElementById('newPaymentAmount').value);
+    const additionalPaid = Number(document.getElementById('newPaymentAmount')?.value);
     const paymentMethod = document.getElementById('newPaymentMethod')?.value || 'EFECTIVO';
-    const newTotalPaid = currentPaid + additionalPaid;
+    const submitBtn = document.getElementById('btnSubmitPayment');
+
+    if (!additionalPaid || additionalPaid <= 0) return;
 
     try {
-      await api.updateOrder(orderId, { paidAmount: newTotalPaid, paymentMethod });
-      showToast('Abono registrado correctamente');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Guardando... ⏳';
+      }
+
+      await api.addOrderPayment(orderId, {
+        amount: additionalPaid,
+        paymentMethod,
+        notes: 'Abono registrado',
+      });
+
+      showToast(`¡Abono de ${formatCOP(additionalPaid)} registrado con éxito! 💵✨`);
       closeModal();
       if (onSuccess) {
         onSuccess();
@@ -1777,7 +1855,11 @@ export function openPaymentModal(orderId, totalAmount, currentPaid, currentPendi
         if (contentContainer) renderOrders(contentContainer);
       }
     } catch (err) {
-      showToast('Error al registrar abono', 'danger');
+      showToast(err.message || 'Error al registrar abono', 'danger');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '💰 Confirmar Abono';
+      }
     }
   });
 }

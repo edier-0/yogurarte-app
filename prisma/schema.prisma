@@ -170,6 +170,20 @@ model Order {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @default(now()) @updatedAt
   items           OrderItem[]
+  payments        OrderPayment[]
+}
+
+model OrderPayment {
+  id            Int      @id @default(autoincrement())
+  orderId       Int
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentDate   DateTime @default(now())
+  paymentMethod String   @default("EFECTIVO") // EFECTIVO, NEQUI, BANCOLOMBIA, TRANSFERENCIA
+  notes         String?
+  registeredBy  String?  @default("Edier")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
 }
 
 model OrderItem {

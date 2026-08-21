@@ -126,115 +126,344 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Pantalla de Inicio de Sesión
-  async function showLoginScreen() {
+  // Escuchar cuando una sesión expire en segundo plano (401)
+  window.addEventListener('session-expired', () => {
+    store.logout();
+    showToast('Tu sesión ha expirado. Por favor inicia sesión nuevamente.', 'warning');
+    showLoginScreen();
+  });
+
+  // Función para renderizar la pantalla de Login y Recuperación integrada
+  function showLoginScreen(initialView = 'login', initialData = {}) {
     if (!loginScreenContainer) return;
 
-    let usersList = [];
-    try {
-      usersList = await api.getUsers();
-    } catch (e) {
-      console.warn('Could not fetch user list for login, using defaults:', e);
-    }
+    // 1. VISTA: Formulario Principal de Login
+    if (initialView === 'login') {
+      loginScreenContainer.innerHTML = `
+        <div class="login-overlay">
+          <div class="login-card">
+            <img src="/assets/logo-yogurarte.svg" alt="YogurArte" class="login-logo" />
+            <h2 class="login-title">Bienvenido a YogurArte</h2>
+            <p class="login-subtitle">Sistema de Control y Producción Artesanal</p>
 
-    loginScreenContainer.innerHTML = `
-      <div class="login-overlay">
-        <div class="login-card">
-          <img src="/assets/logo-yogurarte.svg" alt="YogurArte" class="login-logo" />
-          <h2 class="login-title">Bienvenido a YogurArte</h2>
-          <p class="login-subtitle">Sistema de Control y Producción Artesanal</p>
+            <form id="loginForm">
+              <div class="form-group" style="text-align: left;">
+                <label class="form-label" style="font-weight: 700;">Usuario o Correo *</label>
+                <input 
+                  type="text" 
+                  id="loginUsername" 
+                  class="form-input" 
+                  placeholder="Ej: edier, yeilin, camilo..." 
+                  value="${initialData.username || ''}"
+                  required 
+                  autocomplete="username"
+                  autofocus
+                  style="font-weight: 700; font-size: 0.98rem;" 
+                />
+              </div>
 
-          <form id="loginForm">
-            <div class="form-group" style="text-align: left;">
-              <label class="form-label">Usuario *</label>
-              ${
-                usersList && usersList.length > 0
-                  ? `
-                <select id="loginUsername" class="form-select" required style="font-weight: 700;">
-                  ${usersList
-                    .filter((u) => u.isActive !== false)
-                    .map((u) => {
-                      let roleLabel = '👑 Admin';
-                      if (u.role === 'PRODUCCION') roleLabel = '🧑‍🍳 Producción';
-                      if (u.role === 'VENTAS') roleLabel = '🛍️ Ventas';
-                      if (u.role === 'DOMICILIARIO') roleLabel = '🛵 Domiciliario';
-                      return `<option value="${u.username}">👤 ${u.name} (${roleLabel})</option>`;
-                    })
-                    .join('')}
-                </select>
-              `
-                  : `
-                <input type="text" id="loginUsername" class="form-input" placeholder="Ingresa tu usuario (ej: edier, yeilin)..." required style="font-weight: 700;" />
-              `
-              }
-            </div>
+              <div class="form-group" style="text-align: left; margin-bottom: 8px;">
+                <label class="form-label" style="font-weight: 700;">Contraseña *</label>
+                <div style="position: relative;">
+                  <input 
+                    type="password" 
+                    id="loginPassword" 
+                    class="form-input" 
+                    placeholder="Ingresa tu contraseña..." 
+                    required 
+                    autocomplete="current-password"
+                    style="padding-right: 40px; font-size: 0.98rem;" 
+                  />
+                  <button type="button" id="btnTogglePassword" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 1.1rem; color: var(--text-muted);" title="Ver contraseña">
+                    👁️
+                  </button>
+                </div>
+              </div>
 
-            <div class="form-group" style="text-align: left;">
-              <label class="form-label">Contraseña *</label>
-              <div style="position: relative;">
-                <input type="password" id="loginPassword" class="form-input" placeholder="Ingresa tu contraseña..." required style="padding-right: 40px;" />
-                <button type="button" id="btnTogglePassword" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 1.1rem; color: var(--text-muted);" title="Ver contraseña">
-                  👁️
+              <div style="text-align: right; margin-bottom: 16px;">
+                <button type="button" id="btnForgotPassword" style="background: none; border: none; padding: 0; color: var(--primary); font-size: 0.84rem; font-weight: 700; cursor: pointer; text-decoration: underline;">
+                  ¿Olvidaste tu contraseña?
                 </button>
               </div>
+
+              <div id="loginError" style="display: none; color: var(--danger); font-size: 0.85rem; margin-bottom: 14px; font-weight: 700; background: var(--danger-light); padding: 8px; border-radius: var(--radius-sm);"></div>
+
+              <button type="submit" class="btn btn-primary" id="btnLoginSubmit" style="width: 100%; padding: 12px; font-weight: 800; font-size: 1rem;">
+                🚀 Iniciar Sesión
+              </button>
+            </form>
+          </div>
+        </div>
+      `;
+
+      const form = document.getElementById('loginForm');
+      const pwdInput = document.getElementById('loginPassword');
+      const toggleBtn = document.getElementById('btnTogglePassword');
+      const errorDiv = document.getElementById('loginError');
+
+      toggleBtn?.addEventListener('click', () => {
+        if (pwdInput.type === 'password') {
+          pwdInput.type = 'text';
+          toggleBtn.textContent = '🙈';
+        } else {
+          pwdInput.type = 'password';
+          toggleBtn.textContent = '👁️';
+        }
+      });
+
+      document.getElementById('btnForgotPassword')?.addEventListener('click', () => {
+        showLoginScreen('forgot_identifier');
+      });
+
+      form?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const usernameInput = document.getElementById('loginUsername');
+        const username = usernameInput ? usernameInput.value.trim() : '';
+        const password = pwdInput.value;
+        const submitBtn = document.getElementById('btnLoginSubmit');
+
+        try {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Verificando... ⏳';
+          }
+          errorDiv.style.display = 'none';
+
+          const res = await api.login(username, password);
+          store.setAuth(res.user, res.token);
+          showToast(`¡Bienvenido de nuevo, ${res.user.name}! 🥛✨`);
+          loginScreenContainer.innerHTML = '';
+          updateActiveUserUI(res.user);
+          
+          const defaultTab = getDefaultTabForRole(res.user.role);
+          navigateTo(defaultTab);
+        } catch (err) {
+          errorDiv.textContent = err.message || 'Usuario o contraseña incorrectos';
+          errorDiv.style.display = 'block';
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '🚀 Iniciar Sesión';
+          }
+        }
+      });
+      return;
+    }
+
+    // 2. VISTA: Solicitar Usuario o Correo ("¿Olvidaste tu contraseña?")
+    if (initialView === 'forgot_identifier') {
+      loginScreenContainer.innerHTML = `
+        <div class="login-overlay">
+          <div class="login-card" style="max-width: 440px;">
+            <img src="/assets/logo-yogurarte.svg" alt="YogurArte" class="login-logo" />
+            <h2 class="login-title" style="font-size: 1.25rem;">🔐 Recuperar Contraseña</h2>
+            <p class="login-subtitle" style="margin-bottom: 18px;">Ingresa tu usuario o correo electrónico registrado</p>
+
+            <form id="forgotIdentifierForm">
+              <div class="form-group" style="text-align: left;">
+                <label class="form-label" style="font-weight: 700;">Usuario o Correo *</label>
+                <input 
+                  type="text" 
+                  id="forgotIdentifierInput" 
+                  class="form-input" 
+                  placeholder="Ej: edier, yeilin, camilo..." 
+                  required 
+                  autofocus
+                  style="font-weight: 700;" 
+                />
+              </div>
+
+              <div id="forgotErrorDiv" style="display: none; color: var(--danger); font-size: 0.85rem; margin-bottom: 14px; font-weight: 700; background: var(--danger-light); padding: 8px; border-radius: var(--radius-sm);"></div>
+
+              <button type="submit" class="btn btn-primary" id="btnSubmitForgotIdentifier" style="width: 100%; padding: 11px; font-weight: 800; font-size: 0.95rem; margin-bottom: 10px;">
+                Continuar ➡️
+              </button>
+
+              <button type="button" class="btn btn-outline" id="btnBackToLoginFromForgot" style="width: 100%; padding: 9px; font-size: 0.88rem;">
+                ⬅️ Volver al Inicio de Sesión
+              </button>
+            </form>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btnBackToLoginFromForgot')?.addEventListener('click', () => {
+        showLoginScreen('login');
+      });
+
+      const form = document.getElementById('forgotIdentifierForm');
+      const input = document.getElementById('forgotIdentifierInput');
+      const errorDiv = document.getElementById('forgotErrorDiv');
+      const submitBtn = document.getElementById('btnSubmitForgotIdentifier');
+
+      form?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const identifier = input.value.trim();
+        if (!identifier) return;
+
+        try {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Buscando cuenta... ⏳';
+          }
+          errorDiv.style.display = 'none';
+
+          const res = await api.forgotPassword(identifier);
+
+          if (res.status === 'admin_recovery') {
+            showLoginScreen('admin_reset', { ...res, identifier });
+          } else if (res.status === 'notify_admin') {
+            showLoginScreen('colab_notify', res);
+          }
+        } catch (err) {
+          errorDiv.textContent = err.message || 'No encontramos ninguna cuenta con estos datos';
+          errorDiv.style.display = 'block';
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Continuar ➡️';
+          }
+        }
+      });
+      return;
+    }
+
+    // 3. VISTA: Restablecer Contraseña de Administrador (con código recibido al correo)
+    if (initialView === 'admin_reset') {
+      const data = initialData || {};
+      loginScreenContainer.innerHTML = `
+        <div class="login-overlay">
+          <div class="login-card" style="max-width: 440px;">
+            <div style="font-size: 2.2rem; margin-bottom: 4px;">👑</div>
+            <h2 class="login-title" style="font-size: 1.25rem;">Hola, ${data.name || 'Administrador'}</h2>
+            
+            <div style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 12px; margin: 12px 0 16px; text-align: left;">
+              <p style="font-size: 0.82rem; color: #15803D; margin: 0; line-height: 1.45;">
+                📧 Hemos enviado un código de seguridad de 6 dígitos a tu correo registrado <strong>(${data.emailMasked || 'tu correo'})</strong>. Revisa tu bandeja de entrada o carpeta de spam.
+              </p>
             </div>
 
-            <div id="loginError" style="display: none; color: var(--danger); font-size: 0.85rem; margin-bottom: 14px; font-weight: 700; background: var(--danger-light); padding: 8px; border-radius: var(--radius-sm);"></div>
+            <form id="resetAdminForm">
+              <div class="form-group" style="text-align: left;">
+                <label class="form-label" style="font-weight: 700;">Código de Seguridad (6 dígitos) *</label>
+                <input 
+                  type="text" 
+                  id="resetAdminCode" 
+                  class="form-input" 
+                  placeholder="Ej: 123456" 
+                  maxlength="6"
+                  required 
+                  autofocus
+                  style="font-weight: 800; font-size: 1.25rem; text-align: center; letter-spacing: 4px; font-family: monospace;" 
+                />
+              </div>
 
-            <button type="submit" class="btn btn-primary" id="btnLoginSubmit" style="width: 100%; padding: 12px; font-weight: 800; font-size: 1rem;">
-              🚀 Iniciar Sesión
-            </button>
-          </form>
+              <div class="form-group" style="text-align: left;">
+                <label class="form-label" style="font-weight: 700;">Nueva Contraseña *</label>
+                <input 
+                  type="password" 
+                  id="resetAdminNewPassword" 
+                  class="form-input" 
+                  placeholder="Mínimo 4 caracteres..." 
+                  required 
+                  style="font-size: 0.95rem;" 
+                />
+              </div>
+
+              <div id="resetErrorDiv" style="display: none; color: var(--danger); font-size: 0.85rem; margin-bottom: 14px; font-weight: 700; background: var(--danger-light); padding: 8px; border-radius: var(--radius-sm);"></div>
+
+              <button type="submit" class="btn btn-primary" id="btnSubmitResetAdmin" style="width: 100%; padding: 11px; font-weight: 800; font-size: 0.95rem; margin-bottom: 10px;">
+                💾 Guardar Nueva Contraseña
+              </button>
+
+              <button type="button" class="btn btn-outline" id="btnBackToLoginFromReset" style="width: 100%; padding: 9px; font-size: 0.88rem;">
+                ⬅️ Cancelar y Volver
+              </button>
+            </form>
+          </div>
         </div>
-      </div>
-    `;
+      `;
 
-    const form = document.getElementById('loginForm');
-    const pwdInput = document.getElementById('loginPassword');
-    const toggleBtn = document.getElementById('btnTogglePassword');
-    const errorDiv = document.getElementById('loginError');
+      document.getElementById('btnBackToLoginFromReset')?.addEventListener('click', () => {
+        showLoginScreen('login');
+      });
 
-    toggleBtn?.addEventListener('click', () => {
-      if (pwdInput.type === 'password') {
-        pwdInput.type = 'text';
-        toggleBtn.textContent = '🙈';
-      } else {
-        pwdInput.type = 'password';
-        toggleBtn.textContent = '👁️';
-      }
-    });
+      const form = document.getElementById('resetAdminForm');
+      const codeInput = document.getElementById('resetAdminCode');
+      const newPwdInput = document.getElementById('resetAdminNewPassword');
+      const errorDiv = document.getElementById('resetErrorDiv');
+      const submitBtn = document.getElementById('btnSubmitResetAdmin');
 
-    form?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const usernameInput = document.getElementById('loginUsername');
-      const username = usernameInput ? usernameInput.value.trim() : 'edier';
-      const password = pwdInput.value;
-      const submitBtn = document.getElementById('btnLoginSubmit');
+      form?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const code = codeInput.value.trim();
+        const newPassword = newPwdInput.value.trim();
+        if (!code || !newPassword) return;
 
-      try {
-        if (submitBtn) {
-          submitBtn.disabled = true;
-          submitBtn.textContent = 'Verificando... ⏳';
+        try {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Actualizando... ⏳';
+          }
+          errorDiv.style.display = 'none';
+
+          await api.resetPassword(data.username || data.identifier, code, newPassword);
+          showToast('¡Tu contraseña ha sido restablecida con éxito! 🔑✨');
+          showLoginScreen('login', { username: data.username });
+        } catch (err) {
+          errorDiv.textContent = err.message || 'Código incorrecto o expirado';
+          errorDiv.style.display = 'block';
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '💾 Guardar Nueva Contraseña';
+          }
         }
-        errorDiv.style.display = 'none';
+      });
+      return;
+    }
 
-        const res = await api.login(username, password);
-        store.setAuth(res.user);
-        showToast(`¡Bienvenido de nuevo, ${res.user.name}! 🥛✨`);
-        loginScreenContainer.innerHTML = '';
-        updateActiveUserUI(res.user);
-        
-        const defaultTab = getDefaultTabForRole(res.user.role);
-        navigateTo(defaultTab);
-      } catch (err) {
-        errorDiv.textContent = err.message || 'Contraseña incorrecta';
-        errorDiv.style.display = 'block';
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = '🚀 Iniciar Sesión';
-        }
-      }
-    });
+    // 4. VISTA: Notificación de Seguridad para Colaboradores (Contactar a los dueños)
+    if (initialView === 'colab_notify') {
+      const data = initialData || {};
+      let roleName = 'Colaborador';
+      if (data.role === 'DOMICILIARIO') roleName = 'Domiciliario / Repartidor';
+      if (data.role === 'PRODUCCION') roleName = 'Encargado de Producción';
+      if (data.role === 'VENTAS') roleName = 'Encargado de Ventas';
+
+      const msgEdier = encodeURIComponent(`¡Hola Edier! Soy ${data.name || 'del equipo'} (${roleName}). Olvidé mi contraseña de acceso a YogurArte. ¿Podrías por favor restablecerla?`);
+      const msgYeilin = encodeURIComponent(`¡Hola Yeilin! Soy ${data.name || 'del equipo'} (${roleName}). Olvidé mi contraseña de acceso a YogurArte. ¿Podrías por favor restablecerla?`);
+
+      loginScreenContainer.innerHTML = `
+        <div class="login-overlay">
+          <div class="login-card" style="max-width: 440px;">
+            <div style="font-size: 2.2rem; margin-bottom: 4px;">🛡️</div>
+            <h2 class="login-title" style="font-size: 1.25rem;">Hola, ${data.name || 'Colaborador'}</h2>
+            <span class="badge" style="background: var(--primary-light); color: var(--primary); font-weight: 700; margin-bottom: 12px; display: inline-block;">${roleName}</span>
+
+            <p style="font-size: 0.85rem; color: var(--text-main); line-height: 1.45; text-align: left; background: #F8FAFC; border: 1px solid var(--border-color); padding: 12px; border-radius: var(--radius-md); margin-bottom: 16px;">
+              Por políticas de seguridad de YogurArte, las contraseñas del equipo son administradas directamente por <strong>Edier</strong> y <strong>Yeilin</strong>.
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+              <a href="https://wa.me/573024581882?text=${msgEdier}" target="_blank" class="btn btn-outline" style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #15803D; border-color: #86EFAC; font-weight: 800; padding: 10px;">
+                <span>💬 Solicitar a Edier por WhatsApp</span>
+              </a>
+
+              <a href="https://wa.me/573147464663?text=${msgYeilin}" target="_blank" class="btn btn-outline" style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #6D28D9; border-color: #DDD6FE; font-weight: 800; padding: 10px;">
+                <span>💬 Solicitar a Yeilin por WhatsApp</span>
+              </a>
+            </div>
+
+            <button type="button" class="btn btn-primary" id="btnBackToLoginFromNotify" style="width: 100%; padding: 10px; font-weight: 800;">
+              ⬅️ Volver al Inicio de Sesión
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btnBackToLoginFromNotify')?.addEventListener('click', () => {
+        showLoginScreen('login');
+      });
+      return;
+    }
   }
 
   // Logout en Desktop y Móvil

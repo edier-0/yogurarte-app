@@ -121,6 +121,9 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       include: {
         customer: true,
         items: true,
+        payments: {
+          orderBy: { paymentDate: 'asc' },
+        },
         batch: {
           select: {
             id: true,
@@ -284,7 +287,19 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
 
     // 2. Pedidos Cobrados (Ventas)
     for (const o of orders) {
-      if (o.paidAmount > 0) {
+      if (o.payments && o.payments.length > 0) {
+        for (const p of o.payments) {
+          if (p.amount > 0) {
+            if (isCash(p.paymentMethod)) {
+              cashInHand += p.amount;
+              totalInflowCash += p.amount;
+            } else {
+              digitalBank += p.amount;
+              totalInflowBank += p.amount;
+            }
+          }
+        }
+      } else if (o.paidAmount > 0) {
         if (isCash(o.paymentMethod)) {
           cashInHand += o.paidAmount;
           totalInflowCash += o.paidAmount;
@@ -551,26 +566,53 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
               })),
             ...orders
               .filter((o) => o.paidAmount > 0)
-              .map((o) => ({
-                id: o.id,
-                rawId: o.id,
-                orderNumber: o.orderNumber,
-                date: o.deliveryDate || o.orderDate,
-                customerName: o.customer?.fullName || 'Cliente',
-                customerPhone: o.customer?.phone || '',
-                amount: o.paidAmount,
-                totalAmount: o.totalAmount,
-                pendingAmount: o.pendingAmount,
-                flavor: o.flavor,
-                liters: o.totalLiters,
-                deliveryStatus: o.deliveryStatus,
-                paymentStatus: o.paymentStatus,
-                paymentMethod: o.paymentMethod || 'EFECTIVO',
-                notes: o.notes,
-                isCashMovement: false,
-                movementType: 'VENTA',
-              })),
-          ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+              .flatMap((o) => {
+                if (o.payments && o.payments.length > 0) {
+                  return o.payments
+                    .filter((p) => p.amount > 0)
+                    .map((p) => ({
+                      id: `order_pay_${p.id}`,
+                      rawId: o.id,
+                      paymentId: p.id,
+                      orderNumber: o.orderNumber,
+                      date: p.paymentDate || o.deliveryDate || o.orderDate,
+                      customerName: o.customer?.fullName || 'Cliente',
+                      customerPhone: o.customer?.phone || '',
+                      amount: p.amount,
+                      totalAmount: o.totalAmount,
+                      pendingAmount: o.pendingAmount,
+                      flavor: o.flavor,
+                      liters: o.totalLiters,
+                      deliveryStatus: o.deliveryStatus,
+                      paymentStatus: o.paymentStatus,
+                      paymentMethod: p.paymentMethod || 'EFECTIVO',
+                      notes: p.notes || o.notes,
+                      isCashMovement: false,
+                      movementType: 'VENTA',
+                    }));
+                }
+                return [{
+                  id: String(o.id),
+                  rawId: o.id,
+                  paymentId: null as number | null,
+                  orderNumber: o.orderNumber,
+                  date: o.deliveryDate || o.orderDate,
+                  customerName: o.customer?.fullName || 'Cliente',
+                  customerPhone: o.customer?.phone || '',
+                  amount: o.paidAmount,
+                  totalAmount: o.totalAmount,
+                  pendingAmount: o.pendingAmount,
+                  flavor: o.flavor,
+                  liters: o.totalLiters,
+                  deliveryStatus: o.deliveryStatus,
+                  paymentStatus: o.paymentStatus,
+                  paymentMethod: o.paymentMethod || 'EFECTIVO',
+                  notes: o.notes,
+                  isCashMovement: false,
+                  movementType: 'VENTA',
+                }];
+              }),
+          ].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()),
           outflows: [
             ...purchases.map((p) => ({
               id: `purch_${p.id}`,

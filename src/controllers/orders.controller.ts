@@ -145,6 +145,9 @@ export const getOrders = async (req: Request, res: Response) => {
       include: {
         customer: true,
         items: true,
+        payments: {
+          orderBy: { paymentDate: 'asc' },
+        },
         batch: {
           select: {
             id: true,
@@ -206,6 +209,9 @@ export const getOrderById = async (req: Request, res: Response) => {
       include: {
         customer: true,
         items: true,
+        payments: {
+          orderBy: { paymentDate: 'asc' },
+        },
         batch: true,
       },
     });
@@ -421,11 +427,23 @@ export const createOrder = async (req: Request, res: Response) => {
             totalPrice: i.totalPrice,
           })),
         },
+        payments: paid > 0 ? {
+          create: [{
+            amount: paid,
+            paymentDate: dateObj,
+            paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
+            notes: notes ? `Abono inicial (${notes.trim()})` : 'Abono inicial al crear pedido',
+            registeredBy: registeredBy || 'Edier',
+          }],
+        } : undefined,
       },
       include: {
         customer: true,
         items: true,
         batch: true,
+        payments: {
+          orderBy: { paymentDate: 'asc' },
+        },
       },
     });
 
@@ -589,6 +607,9 @@ export const updateOrder = async (req: Request, res: Response) => {
         customer: true,
         items: true,
         batch: true,
+        payments: {
+          orderBy: { paymentDate: 'asc' },
+        },
       },
     });
 
@@ -631,6 +652,9 @@ export const assignDriver = async (req: Request, res: Response) => {
         customer: true,
         items: true,
         batch: true,
+        payments: {
+          orderBy: { paymentDate: 'asc' },
+        },
       },
     });
 
@@ -648,7 +672,10 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
     const { deliveryStatus, paymentMethod, paidAmount, notes } = req.body;
 
     const orderId = Number(id);
-    const existing = await prisma.order.findUnique({ where: { id: orderId } });
+    const existing = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { payments: true },
+    });
     if (!existing) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
@@ -674,6 +701,21 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
       } else {
         updateData.paymentStatus = 'PENDING';
       }
+
+      // Si el monto pagado aumentó, registrar el abono delta en OrderPayment
+      const delta = finalPaid - existing.paidAmount;
+      if (delta > 0) {
+        await prisma.orderPayment.create({
+          data: {
+            orderId,
+            amount: delta,
+            paymentDate: new Date(),
+            paymentMethod: paymentMethod ? String(paymentMethod).trim() : (existing.paymentMethod || 'EFECTIVO'),
+            notes: 'Pago recibido al entregar domicilio',
+            registeredBy: existing.deliveryDriverName || 'Domiciliario',
+          },
+        });
+      }
     }
 
     if (paymentMethod) {
@@ -691,6 +733,9 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
         customer: true,
         items: true,
         batch: true,
+        payments: {
+          orderBy: { paymentDate: 'asc' },
+        },
       },
     });
 
@@ -698,6 +743,152 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error updating delivery status:', error);
     res.status(500).json({ error: 'Error al actualizar estado de entrega' });
+  }
+};
+
+// Registrar abono a un pedido existente con método de pago individual
+export const addOrderPayment = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { amount, paymentMethod, paymentDate, notes, registeredBy } = req.body;
+
+    const orderId = Number(id);
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { payments: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    const payAmount = Number(amount);
+    if (!payAmount || payAmount <= 0) {
+      return res.status(400).json({ error: 'El monto del abono debe ser mayor a 0' });
+    }
+
+    const pDate = paymentDate ? new Date(`${String(paymentDate).split('T')[0]}T12:00:00.000Z`) : new Date();
+
+    // Crear registro de abono
+    await prisma.orderPayment.create({
+      data: {
+        orderId,
+        amount: payAmount,
+        paymentDate: pDate,
+        paymentMethod: paymentMethod ? String(paymentMethod).trim() : 'EFECTIVO',
+        notes: notes ? String(notes).trim() : null,
+        registeredBy: registeredBy || 'Edier',
+      },
+    });
+
+    // Recalcular todos los abonos del pedido
+    const allPayments = await prisma.orderPayment.findMany({
+      where: { orderId },
+      orderBy: { paymentDate: 'asc' },
+    });
+
+    const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
+    const pendingAmount = Math.max(0, order.totalAmount - totalPaid);
+
+    let paymentStatus = 'PENDING';
+    if (totalPaid >= order.totalAmount) {
+      paymentStatus = 'PAID';
+    } else if (totalPaid > 0) {
+      paymentStatus = 'PARTIAL';
+    }
+
+    const uniqueMethods = Array.from(new Set(allPayments.map((p) => p.paymentMethod)));
+    let finalMethod = order.paymentMethod;
+    if (uniqueMethods.length === 1) {
+      finalMethod = uniqueMethods[0];
+    } else if (uniqueMethods.length > 1) {
+      finalMethod = `MIXTO (${uniqueMethods.join(' + ')})`;
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        paidAmount: totalPaid,
+        pendingAmount,
+        paymentStatus,
+        paymentMethod: finalMethod,
+      },
+      include: {
+        customer: true,
+        items: true,
+        batch: true,
+        payments: {
+          orderBy: { paymentDate: 'asc' },
+        },
+      },
+    });
+
+    res.status(201).json(updatedOrder);
+  } catch (error) {
+    console.error('Error adding order payment:', error);
+    res.status(500).json({ error: 'Error al registrar abono del pedido' });
+  }
+};
+
+// Eliminar un abono de un pedido
+export const deleteOrderPayment = async (req: Request, res: Response) => {
+  try {
+    const { id, paymentId } = req.params;
+    const orderId = Number(id);
+    const pId = Number(paymentId);
+
+    await prisma.orderPayment.delete({
+      where: { id: pId },
+    });
+
+    const allPayments = await prisma.orderPayment.findMany({
+      where: { orderId },
+      orderBy: { paymentDate: 'asc' },
+    });
+
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+    const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
+    const pendingAmount = Math.max(0, order.totalAmount - totalPaid);
+
+    let paymentStatus = 'PENDING';
+    if (totalPaid >= order.totalAmount) {
+      paymentStatus = 'PAID';
+    } else if (totalPaid > 0) {
+      paymentStatus = 'PARTIAL';
+    }
+
+    const uniqueMethods = Array.from(new Set(allPayments.map((p) => p.paymentMethod)));
+    let finalMethod = 'EFECTIVO';
+    if (uniqueMethods.length === 1) {
+      finalMethod = uniqueMethods[0];
+    } else if (uniqueMethods.length > 1) {
+      finalMethod = `MIXTO (${uniqueMethods.join(' + ')})`;
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        paidAmount: totalPaid,
+        pendingAmount,
+        paymentStatus,
+        paymentMethod: finalMethod,
+      },
+      include: {
+        customer: true,
+        items: true,
+        batch: true,
+        payments: {
+          orderBy: { paymentDate: 'asc' },
+        },
+      },
+    });
+
+    res.json(updatedOrder);
+  } catch (error) {
+    console.error('Error deleting order payment:', error);
+    res.status(500).json({ error: 'Error al eliminar abono' });
   }
 };
 

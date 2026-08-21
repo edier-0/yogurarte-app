@@ -27,3 +27,13 @@ export const updateUserSchema = z.object({
   bankInfo: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
 });
+
+export const forgotPasswordSchema = z.object({
+  identifier: z.string().min(1, 'Por favor ingresa tu nombre de usuario o correo'),
+});
+
+export const resetPasswordSchema = z.object({
+  identifier: z.string().min(1, 'Por favor ingresa tu usuario o correo'),
+  resetCode: z.string().min(4, 'El código de recuperación es obligatorio'),
+  newPassword: z.string().min(4, 'La nueva contraseña debe tener al menos 4 caracteres'),
+});

@@ -1,11 +1,16 @@
 export const store = {
   authUser: JSON.parse(localStorage.getItem('yogurarte_auth_user') || 'null'),
+  token: localStorage.getItem('yogurarte_token') || null,
   currentUser: localStorage.getItem('yogurarte_user') || 'Edier',
   currentTab: 'dashboard',
   listeners: [],
 
   isAuthenticated() {
-    return !!this.authUser;
+    return !!this.authUser && !!this.token;
+  },
+
+  getToken() {
+    return this.token || localStorage.getItem('yogurarte_token');
   },
 
   getUserRole() {
@@ -28,20 +33,26 @@ export const store = {
     return this.getUserRole() === 'VENTAS';
   },
 
-  setAuth(user) {
+  setAuth(user, token = null) {
     this.authUser = user;
     this.currentUser = user ? user.name : 'Edier';
+    if (token) {
+      this.token = token;
+      localStorage.setItem('yogurarte_token', token);
+    }
     if (user) {
       localStorage.setItem('yogurarte_auth_user', JSON.stringify(user));
       localStorage.setItem('yogurarte_user', user.name);
     } else {
+      this.token = null;
       localStorage.removeItem('yogurarte_auth_user');
+      localStorage.removeItem('yogurarte_token');
     }
     this.notify();
   },
 
   logout() {
-    this.setAuth(null);
+    this.setAuth(null, null);
   },
 
   setUser(userName) {

@@ -1,5 +1,42 @@
-// API Client para YogurArte
+// API Client Seguro para YogurArte
 const API_BASE = '/api';
+
+/**
+ * Función central para realizar peticiones HTTP a la API
+ * Adjunta automáticamente el token JWT y maneja expiración de sesión (401)
+ */
+async function apiFetch(endpoint, options = {}) {
+  const token = localStorage.getItem('yogurarte_token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  // Manejo de sesión expirada o token inválido (401)
+  if (res.status === 401 && !endpoint.includes('/users/login') && !endpoint.includes('/users/public-list')) {
+    localStorage.removeItem('yogurarte_token');
+    localStorage.removeItem('yogurarte_auth_user');
+    window.dispatchEvent(new CustomEvent('session-expired'));
+    const errData = await res.json().catch(() => ({ error: 'Sesión expirada' }));
+    throw new Error(errData.error || 'Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
+  }
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({ error: `Error en la petición (${res.status})` }));
+    throw new Error(errData.error || errData.message || `Error en la petición (${res.status})`);
+  }
+
+  return res.json();
+}
 
 export const api = {
   // Dashboard
@@ -16,8 +53,7 @@ export const api = {
       });
       query = sp.toString();
     }
-    const res = await fetch(`${API_BASE}/dashboard/summary${query ? '?' + query : ''}`);
-    return res.json();
+    return apiFetch(`/dashboard/summary${query ? '?' + query : ''}`);
   },
 
   // Pedidos
@@ -28,61 +64,62 @@ export const api = {
         query.append(key, val);
       }
     });
-    const res = await fetch(`${API_BASE}/orders?${query.toString()}`);
-    return res.json();
+    return apiFetch(`/orders?${query.toString()}`);
   },
 
   async getOrderById(id) {
-    const res = await fetch(`${API_BASE}/orders/${id}`);
-    return res.json();
+    return apiFetch(`/orders/${id}`);
   },
 
   async createOrder(data) {
-    const res = await fetch(`${API_BASE}/orders`, {
+    return apiFetch('/orders', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async updateOrder(id, data) {
-    const res = await fetch(`${API_BASE}/orders/${id}`, {
+    return apiFetch(`/orders/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
+  },
+
+  async addOrderPayment(id, data) {
+    return apiFetch(`/orders/${id}/payments`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteOrderPayment(orderId, paymentId) {
+    return apiFetch(`/orders/${orderId}/payments/${paymentId}`, {
+      method: 'DELETE',
+    });
   },
 
   async assignOrderDriver(id, data) {
-    const res = await fetch(`${API_BASE}/orders/${id}/assign-driver`, {
+    return apiFetch(`/orders/${id}/assign-driver`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async updateOrderDeliveryStatus(id, data) {
-    const res = await fetch(`${API_BASE}/orders/${id}/delivery-status`, {
+    return apiFetch(`/orders/${id}/delivery-status`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async deleteOrder(id) {
-    const res = await fetch(`${API_BASE}/orders/${id}`, {
+    return apiFetch(`/orders/${id}`, {
       method: 'DELETE',
     });
-    return res.json();
   },
 
   async getWhatsAppLink(id, type = '') {
-    const res = await fetch(`${API_BASE}/orders/${id}/whatsapp${type ? `?type=${encodeURIComponent(type)}` : ''}`);
-    return res.json();
+    return apiFetch(`/orders/${id}/whatsapp${type ? `?type=${encodeURIComponent(type)}` : ''}`);
   },
 
   // Producción (Lotes)
@@ -91,120 +128,96 @@ export const api = {
     Object.entries(params).forEach(([key, val]) => {
       if (val !== undefined && val !== null && val !== '') query.append(key, val);
     });
-    const res = await fetch(`${API_BASE}/batches?${query.toString()}`);
-    return res.json();
+    return apiFetch(`/batches?${query.toString()}`);
   },
 
   async getBatchById(id) {
-    const res = await fetch(`${API_BASE}/batches/${id}`);
-    return res.json();
+    return apiFetch(`/batches/${id}`);
   },
 
   async createBatch(data) {
-    const res = await fetch(`${API_BASE}/batches`, {
+    return apiFetch('/batches', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async updateBatch(id, data) {
-    const res = await fetch(`${API_BASE}/batches/${id}`, {
+    return apiFetch(`/batches/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async deactivateBatch(id, reason, restoreStock = false, unlinkOrders = true) {
-    const res = await fetch(`${API_BASE}/batches/${id}/deactivate`, {
+    return apiFetch(`/batches/${id}/deactivate`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason, restoreStock, unlinkOrders }),
     });
-    return res.json();
   },
 
   async getPendingBatchOrders(flavor = '') {
     const query = flavor ? `?flavor=${encodeURIComponent(flavor)}` : '';
-    const res = await fetch(`${API_BASE}/batches/pending-orders${query}`);
-    return res.json();
+    return apiFetch(`/batches/pending-orders${query}`);
   },
 
   async linkOrdersToBatch(batchId, payload = {}) {
-    const res = await fetch(`${API_BASE}/batches/${batchId}/link-orders`, {
+    return apiFetch(`/batches/${batchId}/link-orders`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    return res.json();
   },
 
   // Inventario y Materia Prima
   async getMaterials() {
-    const res = await fetch(`${API_BASE}/inventory/materials`);
-    return res.json();
+    return apiFetch('/inventory/materials');
   },
 
   async createMaterial(data) {
-    const res = await fetch(`${API_BASE}/inventory/materials`, {
+    return apiFetch('/inventory/materials', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async updateMaterial(id, data) {
-    const res = await fetch(`${API_BASE}/inventory/materials/${id}`, {
+    return apiFetch(`/inventory/materials/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async deleteMaterial(id) {
-    const res = await fetch(`${API_BASE}/inventory/materials/${id}`, {
+    return apiFetch(`/inventory/materials/${id}`, {
       method: 'DELETE',
     });
-    return res.json();
   },
 
   async createPurchase(data) {
-    const res = await fetch(`${API_BASE}/inventory/purchases`, {
+    return apiFetch('/inventory/purchases', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async updatePurchase(id, data) {
-    const res = await fetch(`${API_BASE}/inventory/purchases/${id}`, {
+    return apiFetch(`/inventory/purchases/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async deletePurchase(id) {
-    const res = await fetch(`${API_BASE}/inventory/purchases/${id}`, {
+    return apiFetch(`/inventory/purchases/${id}`, {
       method: 'DELETE',
     });
-    return res.json();
   },
 
   async adjustStock(id, newStock, reason) {
-    const res = await fetch(`${API_BASE}/inventory/materials/${id}/adjust`, {
+    return apiFetch(`/inventory/materials/${id}/adjust`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ newStock, reason }),
     });
-    return res.json();
   },
 
   async getPurchasesHistory(params = {}) {
@@ -212,35 +225,29 @@ export const api = {
     Object.entries(params).forEach(([key, val]) => {
       if (val !== undefined && val !== null && val !== '') query.append(key, val);
     });
-    const res = await fetch(`${API_BASE}/inventory/purchases?${query.toString()}`);
-    return res.json();
+    return apiFetch(`/inventory/purchases?${query.toString()}`);
   },
 
   // Preparaciones / Elaboración de Insumos (Mermeladas, Jarabes)
   async getPreparations() {
-    const res = await fetch(`${API_BASE}/preparations`);
-    return res.json();
+    return apiFetch('/preparations');
   },
 
   async getPreparationById(id) {
-    const res = await fetch(`${API_BASE}/preparations/${id}`);
-    return res.json();
+    return apiFetch(`/preparations/${id}`);
   },
 
   async createPreparation(data) {
-    const res = await fetch(`${API_BASE}/preparations`, {
+    return apiFetch('/preparations', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async deletePreparation(id) {
-    const res = await fetch(`${API_BASE}/preparations/${id}`, {
+    return apiFetch(`/preparations/${id}`, {
       method: 'DELETE',
     });
-    return res.json();
   },
 
   // Gastos
@@ -249,24 +256,20 @@ export const api = {
     Object.entries(params).forEach(([key, val]) => {
       if (val) query.append(key, val);
     });
-    const res = await fetch(`${API_BASE}/expenses?${query.toString()}`);
-    return res.json();
+    return apiFetch(`/expenses?${query.toString()}`);
   },
 
   async createExpense(data) {
-    const res = await fetch(`${API_BASE}/expenses`, {
+    return apiFetch('/expenses', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async deleteExpense(id) {
-    const res = await fetch(`${API_BASE}/expenses/${id}`, {
+    return apiFetch(`/expenses/${id}`, {
       method: 'DELETE',
     });
-    return res.json();
   },
 
   // Movimientos de Caja y Bases
@@ -275,37 +278,27 @@ export const api = {
     Object.entries(params).forEach(([key, val]) => {
       if (val) query.append(key, val);
     });
-    const res = await fetch(`${API_BASE}/cash-movements?${query.toString()}`);
-    return res.json();
+    return apiFetch(`/cash-movements?${query.toString()}`);
   },
 
   async createCashMovement(data) {
-    const res = await fetch(`${API_BASE}/cash-movements`, {
+    return apiFetch('/cash-movements', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async updateCashMovement(id, data) {
-    const res = await fetch(`${API_BASE}/cash-movements/${id}`, {
+    return apiFetch(`/cash-movements/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al actualizar movimiento de caja');
-    }
-    return res.json();
   },
 
   async deleteCashMovement(id) {
-    const res = await fetch(`${API_BASE}/cash-movements/${id}`, {
+    return apiFetch(`/cash-movements/${id}`, {
       method: 'DELETE',
     });
-    return res.json();
   },
 
   // Clientes
@@ -322,75 +315,96 @@ export const api = {
       });
       query = sp.toString();
     }
-    const res = await fetch(`${API_BASE}/customers${query ? '?' + query : ''}`);
-    return res.json();
+    return apiFetch(`/customers${query ? '?' + query : ''}`);
   },
 
   async getCustomerById(id) {
-    const res = await fetch(`${API_BASE}/customers/${id}`);
-    return res.json();
+    return apiFetch(`/customers/${id}`);
   },
 
   async getCustomerWhatsAppLink(id) {
-    const res = await fetch(`${API_BASE}/customers/${id}/whatsapp`);
-    return res.json();
+    return apiFetch(`/customers/${id}/whatsapp`);
   },
 
   async createOrUpdateCustomer(data) {
-    const res = await fetch(`${API_BASE}/customers`, {
+    return apiFetch('/customers', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async updateCustomer(id, data) {
-    const res = await fetch(`${API_BASE}/customers/${id}`, {
+    return apiFetch(`/customers/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
   },
 
   async registerCustomerPayment(id, data) {
-    const res = await fetch(`${API_BASE}/customers/${id}/payment`, {
+    return apiFetch(`/customers/${id}/payment`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al registrar pago');
-    }
-    return res.json();
   },
 
   async deleteCustomer(id) {
-    const res = await fetch(`${API_BASE}/customers/${id}`, {
+    return apiFetch(`/customers/${id}`, {
       method: 'DELETE',
     });
-    return res.json();
   },
 
   // Usuarios y Autenticación
+  async getPublicUsersList() {
+    return apiFetch('/users/public-list');
+  },
+
   async getUsers() {
-    const res = await fetch(`${API_BASE}/users`);
-    return res.json();
+    return apiFetch('/users');
+  },
+
+  async getMe() {
+    return apiFetch('/users/me');
   },
 
   async login(username, password) {
-    const res = await fetch(`${API_BASE}/users/login`, {
+    return apiFetch('/users/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al iniciar sesión');
-    }
-    return res.json();
+  },
+
+  async forgotPassword(identifier) {
+    return apiFetch('/users/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ identifier }),
+    });
+  },
+
+  async resetPassword(identifier, resetCode, newPassword) {
+    return apiFetch('/users/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, resetCode, newPassword }),
+    });
+  },
+
+  async createUser(data) {
+    return apiFetch('/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateUser(id, data) {
+    return apiFetch(`/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteUser(id) {
+    return apiFetch(`/users/${id}`, {
+      method: 'DELETE',
+    });
   },
 
   // Personal, Nómina y Retiros de Socios
@@ -399,46 +413,31 @@ export const api = {
     Object.entries(params).forEach(([key, val]) => {
       if (val !== undefined && val !== null && val !== '') query.append(key, val);
     });
-    const res = await fetch(`${API_BASE}/staff?${query.toString()}`);
-    return res.json();
+    return apiFetch(`/staff?${query.toString()}`);
   },
 
   async getStaffById(id) {
-    const res = await fetch(`${API_BASE}/staff/${id}`);
-    return res.json();
+    return apiFetch(`/staff/${id}`);
   },
 
   async createStaff(data) {
-    const res = await fetch(`${API_BASE}/staff`, {
+    return apiFetch('/staff', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al crear integrante');
-    }
-    return res.json();
   },
 
   async updateStaff(id, data) {
-    const res = await fetch(`${API_BASE}/staff/${id}`, {
+    return apiFetch(`/staff/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al actualizar integrante');
-    }
-    return res.json();
   },
 
   async deleteStaff(id) {
-    const res = await fetch(`${API_BASE}/staff/${id}`, {
+    return apiFetch(`/staff/${id}`, {
       method: 'DELETE',
     });
-    return res.json();
   },
 
   async getStaffPayments(params = {}) {
@@ -446,163 +445,67 @@ export const api = {
     Object.entries(params).forEach(([key, val]) => {
       if (val !== undefined && val !== null && val !== '') query.append(key, val);
     });
-    const res = await fetch(`${API_BASE}/staff/payments/list?${query.toString()}`);
-    return res.json();
+    return apiFetch(`/staff/payments/list?${query.toString()}`);
   },
 
   async createStaffPayment(data) {
-    const res = await fetch(`${API_BASE}/staff/payments`, {
+    return apiFetch('/staff/payments', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al registrar pago');
-    }
-    return res.json();
   },
 
   async deleteStaffPayment(id) {
-    const res = await fetch(`${API_BASE}/staff/payments/${id}`, {
+    return apiFetch(`/staff/payments/${id}`, {
       method: 'DELETE',
     });
-    return res.json();
   },
 
   async getStaffPaymentWhatsAppLink(id) {
-    const res = await fetch(`${API_BASE}/staff/payments/${id}/whatsapp`);
-    return res.json();
+    return apiFetch(`/staff/payments/${id}/whatsapp`);
   },
 
   // Créditos y Compras a Cuotas
   async getCredits() {
-    const res = await fetch(`${API_BASE}/credits`);
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al obtener créditos');
-    }
-    return res.json();
+    return apiFetch('/credits');
   },
 
   async createCredit(data) {
-    const res = await fetch(`${API_BASE}/credits`, {
+    return apiFetch('/credits', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al registrar crédito');
-    }
-    return res.json();
   },
 
   async payCreditInstallment(id, data) {
-    const res = await fetch(`${API_BASE}/credits/${id}/pay`, {
+    return apiFetch(`/credits/${id}/pay`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al registrar pago de cuota');
-    }
-    return res.json();
   },
 
   async skipCreditInstallment(id, data) {
-    const res = await fetch(`${API_BASE}/credits/${id}/skip`, {
+    return apiFetch(`/credits/${id}/skip`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al aplazar cuota');
-    }
-    return res.json();
   },
 
   async deleteCredit(id) {
-    const res = await fetch(`${API_BASE}/credits/${id}`, {
+    return apiFetch(`/credits/${id}`, {
       method: 'DELETE',
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al eliminar crédito');
-    }
-    return res.json();
-  },
-
-  // Gestión de Usuarios y Accesos
-  async getUsers() {
-    const res = await fetch(`${API_BASE}/users`);
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al obtener usuarios');
-    }
-    return res.json();
-  },
-
-  async createUser(data) {
-    const res = await fetch(`${API_BASE}/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al crear usuario');
-    }
-    return res.json();
-  },
-
-  async updateUser(id, data) {
-    const res = await fetch(`${API_BASE}/users/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al actualizar usuario');
-    }
-    return res.json();
-  },
-
-  async deleteUser(id) {
-    const res = await fetch(`${API_BASE}/users/${id}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al eliminar usuario');
-    }
-    return res.json();
   },
 
   // Configuración del Sistema (Datos Bancarios, Nequi, etc.)
   async getSettings() {
-    const res = await fetch(`${API_BASE}/settings`);
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al obtener la configuración');
-    }
-    return res.json();
+    return apiFetch('/settings');
   },
 
   async updateSettings(data) {
-    const res = await fetch(`${API_BASE}/settings`, {
+    return apiFetch('/settings', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al actualizar la configuración');
-    }
-    return res.json();
   },
 };
-

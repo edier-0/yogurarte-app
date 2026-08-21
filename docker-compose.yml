@@ -29,6 +29,10 @@ services:
       PORT: 3000
       NODE_ENV: production
       DATABASE_URL: "postgresql://postgres:postgrespassword@postgres:5432/yogurarte_db?schema=public"
+      JWT_SECRET: "${JWT_SECRET:-ba6822f65365a699a960575fe416b3a00770fd1659c34654d56e8c955ce6a78a}"
+      JWT_EXPIRES_IN: "${JWT_EXPIRES_IN:-1d}"
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy

@@ -1241,7 +1241,7 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
       <table class="app-table" style="font-size: 0.85rem;">
         <thead>
           <tr>
-            <th>Fecha</th>
+            <th>Fecha Pago / Movimiento</th>
             <th>Tipo / Origen</th>
             <th>Concepto / Detalle</th>
             <th>Modalidad / Medio</th>
@@ -1507,15 +1507,17 @@ export function openCashKpiDetailModal({
   // Renderizar modal inicial
   const renderContent = (filterText = '') => {
     const normalizedFilter = filterText.toLowerCase().trim();
-    const filteredItems = items.filter((item) => {
-      if (!normalizedFilter) return true;
-      const desc = (item.concept || item.description || item.flavor || item.orderNumber || '').toLowerCase();
-      const person = (item.customerName || item.supplier || item.registeredBy || item.staffName || '').toLowerCase();
-      const notes = (item.notes || '').toLowerCase();
-      const method = (item.paymentMethod || '').toLowerCase();
-      const cat = (item.categoryLabel || item.category || item.type || '').toLowerCase();
-      return desc.includes(normalizedFilter) || person.includes(normalizedFilter) || notes.includes(normalizedFilter) || method.includes(normalizedFilter) || cat.includes(normalizedFilter);
-    });
+    const filteredItems = items
+      .filter((item) => {
+        if (!normalizedFilter) return true;
+        const desc = (item.concept || item.description || item.flavor || item.orderNumber || '').toLowerCase();
+        const person = (item.customerName || item.supplier || item.registeredBy || item.staffName || '').toLowerCase();
+        const notes = (item.notes || '').toLowerCase();
+        const method = (item.paymentMethod || '').toLowerCase();
+        const cat = (item.categoryLabel || item.category || item.type || '').toLowerCase();
+        return desc.includes(normalizedFilter) || person.includes(normalizedFilter) || notes.includes(normalizedFilter) || method.includes(normalizedFilter) || cat.includes(normalizedFilter);
+      })
+      .sort((a, b) => new Date(b.date || b.paymentDate || b.movementDate || 0).getTime() - new Date(a.date || a.paymentDate || a.movementDate || 0).getTime());
 
     const listHtml =
       filteredItems.length === 0

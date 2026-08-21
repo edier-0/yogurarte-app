@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -17,6 +18,10 @@ import cashMovementsRoutes from './routes/cashMovements.routes.js';
 import creditsRoutes from './routes/credits.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 
+import { requireAuth } from './middlewares/auth.middleware.js';
+import { apiLimiter } from './middlewares/rateLimiter.middleware.js';
+import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,12 +30,23 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middlewares
+// Configuración de Proxy para entornos de producción (HTTPS / Reverse Proxy)
+app.set('trust proxy', 1);
+
+// 1. Blindaje de Cabeceras HTTP con Helmet
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Permite compatibilidad con la SPA y scripts modulares
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
+// 2. Middlewares de análisis de cuerpo y CORS
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Logger de Peticiones HTTP en Tiempo Real para la API
+// 3. Logger de Peticiones HTTP en Tiempo Real para la API
 app.use((req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
   const { method, originalUrl } = req;
@@ -52,44 +68,52 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Servir archivos estáticos del frontend
+// 4. Limitador de peticiones general para la API
+app.use('/api', apiLimiter);
+
+// 5. Servir archivos estáticos del frontend
 const publicPath = path.join(__dirname, '../public');
 app.use(express.static(publicPath));
 
-// Rutas de la API
-app.use('/api/orders', ordersRoutes);
-app.use('/api/batches', batchesRoutes);
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/preparations', preparationsRoutes);
-app.use('/api/expenses', expensesRoutes);
-app.use('/api/customers', customersRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/users', usersRoutes);
-app.use('/api/staff', staffRoutes);
-app.use('/api/cash-movements', cashMovementsRoutes);
-app.use('/api/credits', creditsRoutes);
-app.use('/api/settings', settingsRoutes);
-
-// Health check
+// 6. Rutas Públicas de la API
 app.get('/api/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', app: 'YogurArte API', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    app: 'YogurArte API',
+    security: 'JWT + Helmet + RateLimit + Bcrypt',
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// Fallback para SPA: cualquier ruta no-API sirve index.html
+// Rutas de Usuarios (Login público + Me y Admin protegidos)
+app.use('/api/users', usersRoutes);
+
+// 7. Rutas Protegidas de la API (Requieren Token JWT Válido)
+app.use('/api/orders', requireAuth, ordersRoutes);
+app.use('/api/batches', requireAuth, batchesRoutes);
+app.use('/api/inventory', requireAuth, inventoryRoutes);
+app.use('/api/preparations', requireAuth, preparationsRoutes);
+app.use('/api/expenses', requireAuth, expensesRoutes);
+app.use('/api/customers', requireAuth, customersRoutes);
+app.use('/api/dashboard', requireAuth, dashboardRoutes);
+app.use('/api/staff', requireAuth, staffRoutes);
+app.use('/api/cash-movements', requireAuth, cashMovementsRoutes);
+app.use('/api/credits', requireAuth, creditsRoutes);
+app.use('/api/settings', settingsRoutes);
+
+// 8. Manejador 404 para rutas API no encontradas
+app.use(notFoundHandler);
+
+// 9. Fallback para SPA: cualquier ruta no-API sirve index.html
 app.get('*', (req: Request, res: Response) => {
   res.sendFile(path.join(publicPath, 'index.html'));
 });
 
-// Manejador global de errores
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({
-    error: 'Error interno del servidor',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined,
-  });
-});
+// 10. Manejador centralizado de errores
+app.use(errorHandler);
 
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor YogurArte corriendo en http://localhost:${PORT}`);
+  console.log(`🚀 Servidor YogurArte Seguro corriendo en http://localhost:${PORT}`);
+  console.log(`🔒 Protección: Helmet + Rate Limiting + Bcrypt + JWT`);
   console.log(`📁 Frontend servido desde: ${publicPath}`);
 });
