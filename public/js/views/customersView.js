@@ -7,6 +7,12 @@ let currentDebtFilter = 'ALL'; // 'ALL', 'DELIVERED_DEBT', 'IN_PROCESS', 'PAID'
 let currentBatchFilter = 'ALL';
 let cachedCustomers = [];
 let availableBatches = [];
+let cachedSettings = {
+  nequiNumber: '3024581882',
+  bankName: 'Nequi / Bancolombia',
+  bankHolder: 'Edier / YogurArte',
+  paymentInstructions: 'Para transferencias por Nequi o Bancolombia',
+};
 
 export async function renderCustomers(container) {
   try {
@@ -15,6 +21,13 @@ export async function renderCustomers(container) {
   } catch (err) {
     console.error('Error loading batches in customersView:', err);
     availableBatches = [];
+  }
+
+  try {
+    const settingsRes = await api.getSettings();
+    if (settingsRes) cachedSettings = { ...cachedSettings, ...settingsRes };
+  } catch (err) {
+    console.warn('Could not load settings in customersView:', err);
   }
 
   container.innerHTML = `
@@ -49,6 +62,11 @@ export async function renderCustomers(container) {
               )
               .join('')}
           </select>
+
+          <!-- Botón Configuración de Cuenta de Cobro (Nequi) -->
+          <button class="btn btn-outline" id="btnOpenBankSettingsModal" style="height: 40px; white-space: nowrap; flex: 0 0 auto; border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: #FAF5FF;" title="Configurar número de Nequi o cuenta para recordatorios de cobro">
+            ⚙️ Cuenta de Cobro (Nequi)
+          </button>
 
           <button class="btn btn-accent" id="btnOpenNewCustModal" style="height: 40px; white-space: nowrap; flex: 0 0 auto;">
             <span>+</span> Registrar Cliente
@@ -108,6 +126,10 @@ export async function renderCustomers(container) {
     });
   });
 
+  container.querySelector('#btnOpenBankSettingsModal')?.addEventListener('click', () => {
+    openBankSettingsModal();
+  });
+
   container.querySelector('#btnOpenNewCustModal')?.addEventListener('click', () => {
     openCustomerEditModal();
   });
@@ -123,22 +145,40 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
   const rawPhone = phone.trim();
   const isUsername = rawPhone.startsWith('@') || /[a-zA-Z]/.test(rawPhone);
 
+  const nequiNum = cachedSettings.nequiNumber || '3024581882';
+  const bankName = cachedSettings.bankName || 'Nequi / Bancolombia';
+  const bankHolder = cachedSettings.bankHolder ? ` (Titular: ${cachedSettings.bankHolder})` : '';
+
   let msg = '';
   if (deliveredPendingDebt > 0) {
     // Pedido ya entregado y no pagado (deuda real)
-    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos cordialmente de *YogurArte*.\n\nEsperamos que estés disfrutando de nuestros deliciosos yogures artesanales 100% naturales.\n\nTe recordamos con mucho aprecio que presentas un saldo pendiente de *${formatCOP(deliveredPendingDebt)}* de tu pedido entregado.\n\nSi ya realizaste la transferencia, por favor compártenos el comprobante por este medio. ¡Muchísimas gracias por tu preferencia y apoyo continuo! 🙌🐄`;
+    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos cordialmente de parte del equipo de *YogurArte*.\n\n` +
+          `Esperamos que estés disfrutando de nuestros deliciosos yogures artesanales 100% naturales. 🍇🍓🥛\n\n` +
+          `Te recordamos con mucho aprecio que presentas un saldo pendiente de *${formatCOP(deliveredPendingDebt)}* de tu pedido entregado.\n\n` +
+          `💳 *Medios de Pago / Transferencia:*\n` +
+          `• *${bankName}:* *${nequiNum}*${bankHolder}\n` +
+          `• *Efectivo:* Contraentrega\n\n` +
+          `Si ya realizaste la transferencia, por favor compártenos el comprobante por este medio para dejar tu cuenta en paz y salvo. ¡Muchísimas gracias por tu preferencia y apoyo continuo! 🙌🐄✨`;
   } else if (isPaidInProcess && mode === 'INFO') {
     // Info del pedido pagado en proceso
-    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\nTu pedido de yogur artesanal 100% natural está siendo preparado con todo el cuidado. 🥣🍓 Te avisaremos apenas vaya en camino para la entrega. ¡Muchas gracias por tu compra! 🛵💨`;
+    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\n` +
+          `Tu pedido de yogur artesanal 100% natural está siendo preparado con todo el cuidado. 🥣🍓 Te avisaremos apenas vaya en camino para la entrega. ¡Muchas gracias por tu compra! 🛵💨`;
   } else if (isPaidInProcess) {
     // Pedido pagado en proceso (agradecimiento y confirmación de pago YogurArte)
-    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos con mucho cariño de parte del equipo de *YogurArte*.\n\n🎉 ¡Confirmamos que recibimos con éxito el pago de tu pedido! Muchísimas gracias por tu compra y confianza en nuestro producto 100% natural. 🥣🍓\n\nTu pedido está en preparación y te avisaremos en cuanto vaya en camino para la entrega. 🛵💨 ¡Que tengas un día maravilloso! 🙌🐄✨`;
+    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos con mucho cariño de parte del equipo de *YogurArte*.\n\n` +
+          `🎉 ¡Confirmamos que recibimos con éxito el pago de tu pedido! Muchísimas gracias por tu compra y confianza en nuestro producto 100% natural. 🥣🍓\n\n` +
+          `Tu pedido está en preparación y te avisaremos en cuanto vaya en camino para la entrega. 🛵💨 ¡Que tengas un día maravilloso! 🙌🐄✨`;
   } else if (inProcessPendingAmount > 0) {
     // Pedido en proceso / encargado (aún no se entrega)
-    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de *YogurArte*.\n\nTu pedido de yogur artesanal 100% natural está siendo preparado con todo el cuidado. Te avisaremos apenas esté en camino para entrega. ¡Gracias por tu encargo! 🥣🍓`;
+    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\n` +
+          `Tu pedido de yogur artesanal 100% natural está siendo preparado con todo el amor. 🥣🍓\n\n` +
+          `🚨 Saldo pendiente: *${formatCOP(inProcessPendingAmount)}*\n` +
+          `💳 *Transferencia ${bankName}:* *${nequiNum}*${bankHolder}\n\n` +
+          `Te avisaremos apenas esté en camino para la entrega. ¡Gracias por tu encargo! 🛵💨`;
   } else {
     // Cliente al día
-    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de *YogurArte*.\n\n¿Te gustaría ordenar más de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos para prepararte los mejores sabores. 🍓🍑🍇`;
+    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\n` +
+          `¿Te gustaría ordenar más de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos para prepararte los mejores sabores. 🍓🍑🍇🥛`;
   }
 
   const encoded = encodeURIComponent(msg);
@@ -775,11 +815,11 @@ async function openCustomerPaymentModal(customer) {
               <!-- Método de Pago -->
               <div class="form-group">
                 <label class="form-label">Método de Pago Recibido *</label>
-                <select id="custPayMethod" class="form-select">
+                <select id="custPayMethod" class="form-select" style="font-weight: 700;">
                   <option value="Efectivo" selected>💵 Efectivo</option>
                   <option value="Transferencia Nequi">📱 Transferencia Nequi</option>
-                  <option value="Transferencia Daviplata">📱 Transferencia Daviplata</option>
                   <option value="Transferencia Bancolombia">🏦 Transferencia Bancolombia</option>
+                  <option value="Transferencia Daviplata">📱 Transferencia Daviplata</option>
                   <option value="Otro">💳 Otro medio de pago</option>
                 </select>
               </div>
@@ -846,4 +886,162 @@ async function openCustomerPaymentModal(customer) {
     showToast('Error al cargar datos de pago del cliente', 'danger');
   }
 }
+
+// Modal de Configuración de Cuenta de Cobro y Nequi
+export async function openBankSettingsModal() {
+  let modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) {
+    modalOverlay = document.createElement('div');
+    modalOverlay.id = 'modalContainer';
+    document.body.appendChild(modalOverlay);
+  }
+
+  let current = {
+    nequiNumber: cachedSettings.nequiNumber || '3024581882',
+    bankName: cachedSettings.bankName || 'Nequi / Bancolombia',
+    bankHolder: cachedSettings.bankHolder || 'Edier / YogurArte',
+    paymentInstructions: cachedSettings.paymentInstructions || 'Para transferencias por Nequi o Bancolombia',
+  };
+
+  try {
+    const res = await api.getSettings();
+    if (res) current = { ...current, ...res };
+  } catch (err) {
+    console.warn('Could not load bank settings, using current:', err);
+  }
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active" id="bankSettingsModalOverlay">
+      <div class="modal-card" style="max-width: 520px;">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title">⚙️ Cuenta de Cobro y Datos Bancarios</h3>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+              Configura el número y datos que aparecerán automáticamente en los recordatorios de cobro por WhatsApp
+            </p>
+          </div>
+          <button type="button" class="modal-close-btn" id="btnCloseBankSettingsModal">✕</button>
+        </div>
+
+        <form id="bankSettingsForm">
+          <div class="modal-body">
+            
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 700;">📱 Número de Nequi / Celular de Cobro *</label>
+              <input type="text" id="settingNequiNumber" class="form-input" value="${current.nequiNumber || ''}" placeholder="Ej: 3024581882" required style="font-size: 1.05rem; font-weight: 800; color: #7E22CE;" />
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">🏦 Banco o Plataforma *</label>
+                <input type="text" id="settingBankName" class="form-input" value="${current.bankName || 'Nequi / Bancolombia'}" placeholder="Ej: Nequi / Bancolombia" required style="font-weight: 700;" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">👤 Titular de la Cuenta</label>
+                <input type="text" id="settingBankHolder" class="form-input" value="${current.bankHolder || ''}" placeholder="Ej: Edier / YogurArte" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">📝 Instrucción Adicional (Opcional)</label>
+              <input type="text" id="settingPaymentInstructions" class="form-input" value="${current.paymentInstructions || ''}" placeholder="Ej: Enviar comprobante al transferir" />
+            </div>
+
+            <!-- Vista Previa en Vivo -->
+            <div style="background: #F5F3FF; border: 1.5px solid #DDD6FE; border-radius: var(--radius-md); padding: 12px; margin-top: 12px;">
+              <div style="font-size: 0.76rem; font-weight: 800; color: #6D28D9; text-transform: uppercase; margin-bottom: 4px;">
+                👁️ Vista Previa en los Mensajes de WhatsApp:
+              </div>
+              <div id="bankPreviewBox" style="font-size: 0.82rem; color: #4C1D95; line-height: 1.4; font-family: monospace; white-space: pre-wrap; background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #C4B5FD;">
+💳 *Medios de Pago / Transferencia:*
+• *${current.bankName || 'Nequi / Bancolombia'}:* *${current.nequiNumber || '3024581882'}*${current.bankHolder ? ` (Titular: ${current.bankHolder})` : ''}
+• *Efectivo:* Contraentrega
+              </div>
+            </div>
+
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btnCancelBankSettingsModal">Cancelar</button>
+            <button type="submit" class="btn btn-accent" id="btnSaveBankSettings" style="font-weight: 800; background: #7E22CE; border-color: #7E22CE;">
+              💾 Guardar Datos de Cobro
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const updatePreview = () => {
+    const num = document.getElementById('settingNequiNumber')?.value.trim() || '3024581882';
+    const bank = document.getElementById('settingBankName')?.value.trim() || 'Nequi / Bancolombia';
+    const holder = document.getElementById('settingBankHolder')?.value.trim() || '';
+    const previewBox = document.getElementById('bankPreviewBox');
+    if (previewBox) {
+      previewBox.textContent = `💳 *Medios de Pago / Transferencia:*\n• *${bank}:* *${num}*${holder ? ` (Titular: ${holder})` : ''}\n• *Efectivo:* Contraentrega`;
+    }
+  };
+
+  document.getElementById('settingNequiNumber')?.addEventListener('input', updatePreview);
+  document.getElementById('settingBankName')?.addEventListener('input', updatePreview);
+  document.getElementById('settingBankHolder')?.addEventListener('input', updatePreview);
+
+  const closeSettingsModal = () => {
+    modalOverlay.innerHTML = '';
+  };
+
+  document.getElementById('btnCloseBankSettingsModal')?.addEventListener('click', closeSettingsModal);
+  document.getElementById('btnCancelBankSettingsModal')?.addEventListener('click', closeSettingsModal);
+  document.getElementById('bankSettingsModalOverlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'bankSettingsModalOverlay') closeSettingsModal();
+  });
+
+  document.getElementById('bankSettingsForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btnSaveBankSettings');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Guardando... ⏳';
+    }
+
+    try {
+      const nequiNumber = document.getElementById('settingNequiNumber')?.value.trim();
+      const bankName = document.getElementById('settingBankName')?.value.trim();
+      const bankHolder = document.getElementById('settingBankHolder')?.value.trim();
+      const paymentInstructions = document.getElementById('settingPaymentInstructions')?.value.trim();
+
+      const res = await api.updateSettings({
+        nequiNumber,
+        bankName,
+        bankHolder,
+        paymentInstructions,
+      });
+
+      cachedSettings = {
+        nequiNumber: res.settings?.nequiNumber || nequiNumber,
+        bankName: res.settings?.bankName || bankName,
+        bankHolder: res.settings?.bankHolder || bankHolder,
+        paymentInstructions: res.settings?.paymentInstructions || paymentInstructions,
+      };
+
+      showToast('✅ Cuenta de cobro y Nequi actualizados correctamente');
+      closeSettingsModal();
+
+      const contentContainer = document.getElementById('contentContainer');
+      if (contentContainer && contentContainer.querySelector('#customersGridContainer')) {
+        renderCustomers(contentContainer);
+      }
+    } catch (err) {
+      console.error('Error saving bank settings:', err);
+      showToast(err.message || 'Error al guardar datos de cobro', 'danger');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '💾 Guardar Datos de Cobro';
+      }
+    }
+  });
+}
+
 

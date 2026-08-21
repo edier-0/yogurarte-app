@@ -1119,9 +1119,11 @@ export async function openOrderModal(orderData = null) {
 
               <div class="form-group">
                 <label class="form-label">Modalidad de Pago</label>
-                <select id="orderPaymentMethod" class="form-select">
+                <select id="orderPaymentMethod" class="form-select" style="font-weight: 700;">
                   <option value="EFECTIVO" ${defaultPaymentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo</option>
-                  <option value="TRANSFERENCIA" ${defaultPaymentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>🟣 Transferencia (Nequi / Bancolombia)</option>
+                  <option value="NEQUI" ${defaultPaymentMethod === 'NEQUI' ? 'selected' : ''}>🟣 Transferencia Nequi</option>
+                  <option value="BANCOLOMBIA" ${defaultPaymentMethod === 'BANCOLOMBIA' ? 'selected' : ''}>🟡 Transferencia Bancolombia</option>
+                  <option value="TRANSFERENCIA" ${defaultPaymentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>💳 Otra Transferencia</option>
                 </select>
               </div>
             </div>
@@ -1737,9 +1739,11 @@ export function openPaymentModal(orderId, totalAmount, currentPaid, currentPendi
 
             <div class="form-group">
               <label class="form-label">Modalidad / Medio de Pago *</label>
-              <select id="newPaymentMethod" class="form-select" required>
+              <select id="newPaymentMethod" class="form-select" required style="font-weight: 700;">
                 <option value="EFECTIVO">💵 Efectivo (Billetes / Monedas)</option>
-                <option value="TRANSFERENCIA">🟣 Transferencia (Nequi / Bancolombia)</option>
+                <option value="NEQUI" selected>🟣 Transferencia Nequi</option>
+                <option value="BANCOLOMBIA">🟡 Transferencia Bancolombia</option>
+                <option value="TRANSFERENCIA">💳 Otra Transferencia</option>
               </select>
             </div>
           </div>

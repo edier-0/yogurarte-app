@@ -1413,7 +1413,7 @@ export function openCashTransferModal(onSaved) {
             
             <div class="form-group">
               <label class="form-label">Dirección del Traslado *</label>
-              <select id="cashTransType" class="form-select" required>
+              <select id="cashTransType" class="form-select" required style="font-weight: 700;">
                 <option value="TRASLADO_EFECTIVO_A_BANCO" selected>💵 Efectivo ➔ 🟣 Transferencia / Nequi / Bancolombia (Consignación)</option>
                 <option value="TRASLADO_BANCO_A_EFECTIVO">🟣 Transferencia / Nequi / Bancolombia ➔ 💵 Efectivo (Retiro de cajero)</option>
               </select>

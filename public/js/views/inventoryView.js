@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatStock, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatPaymentBadge, formatStock, getTodayLocalDateStr, showToast, store } from '../store.js';
 
 let selectedCategory = 'ALL';
 let purchaseDateFilter = '';
@@ -388,6 +388,7 @@ async function loadInventoryData(container) {
                 <th>Cantidad</th>
                 <th>Costo Unitario</th>
                 <th>Total Invertido</th>
+                <th>Medio de Pago</th>
                 <th>Proveedor</th>
                 <th>Fecha</th>
                 <th>Acción</th>
@@ -401,7 +402,8 @@ async function loadInventoryData(container) {
                   <td><strong>${p.rawMaterial?.name || 'Insumo'}</strong></td>
                   <td><strong>${p.quantity} ${p.rawMaterial?.unit || ''}</strong></td>
                   <td>${formatCOP(p.unitCost)}</td>
-                  <td><strong style="color: var(--primary);">${formatCOP(p.totalCost)}</strong></td>
+                  <td><strong style="color: var(--primary); font-size: 0.95rem;">${formatCOP(p.totalCost)}</strong></td>
+                  <td>${formatPaymentBadge(p.paymentMethod)}</td>
                   <td>${p.supplier || 'N/A'}</td>
                   <td>${formatDate(p.purchaseDate)}</td>
                   <td>
@@ -527,9 +529,11 @@ async function openPurchaseModal() {
 
               <div class="form-group">
                 <label class="form-label">Medio de Pago</label>
-                <select id="purchasePaymentMethod" class="form-select">
-                  <option value="EFECTIVO" selected>💵 Efectivo</option>
-                  <option value="TRANSFERENCIA">🟣 Transferencia (Nequi / Bancolombia)</option>
+                <select id="purchasePaymentMethod" class="form-select" style="font-weight: 700;">
+                  <option value="EFECTIVO" selected>💵 Efectivo (Dinero en Mano)</option>
+                  <option value="NEQUI">🟣 Transferencia Nequi</option>
+                  <option value="BANCOLOMBIA">🟡 Transferencia Bancolombia</option>
+                  <option value="TRANSFERENCIA">💳 Otra Transferencia</option>
                 </select>
               </div>
 
@@ -598,7 +602,6 @@ async function openPurchaseModal() {
       totalCostInput.value = total;
       calcBadge.innerHTML = `💰 <strong>${qty} ${unit}</strong> × <strong>${formatCOP(unitCost)}</strong> = Inversión Total: <strong style="color: var(--primary);">${formatCOP(total)}</strong>`;
       calcBadge.style.color = 'var(--text-main)';
-      calcBadge.style.background = '#EFF6FF';
     } else {
       calcBadge.innerHTML = `💡 Ingrese la cantidad y el costo unitario o el total pagado.`;
       calcBadge.style.color = 'var(--text-muted)';
@@ -615,7 +618,7 @@ async function openPurchaseModal() {
     if (qty > 0 && total > 0) {
       const unitCost = total / qty;
       unitCostInput.value = Math.round(unitCost * 100) / 100;
-      calcBadge.innerHTML = `🏷️ <strong>Promoción / Paquete:</strong> Inversión <strong>${formatCOP(total)}</strong> ÷ <strong>${qty} ${unit}</strong> = Costo unitario exacto: <strong style="color: var(--success);">${formatCOP(unitCost)} / ${unit}</strong>`;
+      calcBadge.innerHTML = `🏷️ Inversión <strong>${formatCOP(total)}</strong> ÷ <strong>${qty} ${unit}</strong> = Costo unitario: <strong style="color: var(--success);">${formatCOP(unitCost)} / ${unit}</strong>`;
       calcBadge.style.color = '#065F46';
       calcBadge.style.background = '#ECFDF5';
     } else {
@@ -666,6 +669,7 @@ async function openPurchaseModal() {
       unitCost: unitCost,
       totalCost: totalCost,
       supplier: document.getElementById('purchaseSupplier').value,
+      paymentMethod: document.getElementById('purchasePaymentMethod')?.value || 'EFECTIVO',
       purchaseDate: document.getElementById('purchaseDate').value,
       notes: document.getElementById('purchaseNotes').value,
       registeredBy: store.currentUser,
@@ -1003,9 +1007,11 @@ function openEditPurchaseModal(purchase) {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Medio de Pago</label>
-                <select id="editPurchPaymentMethod" class="form-select">
-                  <option value="EFECTIVO" ${purchase.paymentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo</option>
-                  <option value="TRANSFERENCIA" ${purchase.paymentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>🟣 Transferencia (Nequi / Bancolombia)</option>
+                <select id="editPurchPaymentMethod" class="form-select" style="font-weight: 700;">
+                  <option value="EFECTIVO" ${purchase.paymentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo (Dinero en Mano)</option>
+                  <option value="NEQUI" ${purchase.paymentMethod === 'NEQUI' ? 'selected' : ''}>🟣 Transferencia Nequi</option>
+                  <option value="BANCOLOMBIA" ${purchase.paymentMethod === 'BANCOLOMBIA' ? 'selected' : ''}>🟡 Transferencia Bancolombia</option>
+                  <option value="TRANSFERENCIA" ${purchase.paymentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>💳 Otra Transferencia</option>
                 </select>
               </div>
 

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
+import { getAllSettingsMap } from './settings.controller.js';
 
 export const getOrders = async (req: Request, res: Response) => {
   try {
@@ -644,7 +645,7 @@ export const assignDriver = async (req: Request, res: Response) => {
 export const updateDeliveryStatus = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { deliveryStatus, paymentMethod, paidAmount } = req.body;
+    const { deliveryStatus, paymentMethod, paidAmount, notes } = req.body;
 
     const orderId = Number(id);
     const existing = await prisma.order.findUnique({ where: { id: orderId } });
@@ -677,6 +678,10 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
 
     if (paymentMethod) {
       updateData.paymentMethod = String(paymentMethod).trim();
+    }
+
+    if (notes !== undefined) {
+      updateData.notes = notes ? String(notes).trim() : null;
     }
 
     const updated = await prisma.order.update({
@@ -771,6 +776,11 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
       dateLine += `\n🛵 *Entrega Programada:* ${deliveryFormatted}`;
     }
 
+    const settings = await getAllSettingsMap();
+    const nequiNum = settings.nequiNumber || '3024581882';
+    const bankName = settings.bankName || 'Nequi / Bancolombia';
+    const bankHolder = settings.bankHolder || 'Edier / YogurArte';
+
     // 1. Si el pedido ya está ENTREGADO y no se forzó otro tipo: Mensaje especial de agradecimiento y disfrute
     if (order.deliveryStatus === 'DELIVERED' && type !== 'ORDER_INFO') {
       let deliveredMsg = `🥛 *¡Muchas gracias por tu compra en YogurArte!* ✨\n\n`;
@@ -784,7 +794,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
         if (order.paidAmount > 0) {
           deliveredMsg += `• Ya abonado: ${formatCurrency(order.paidAmount)}\n`;
         }
-        deliveredMsg += `\n`;
+        deliveredMsg += `💳 *${bankName}:* ${nequiNum}\n\n`;
       }
 
       deliveredMsg += `Estamos siempre atentos a cualquier duda o para tu próximo pedido. ¡Que lo disfrutes mucho! 🥛🍇🍓`;
@@ -829,7 +839,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
     // 3. Estados previos a la entrega con pago pendiente o parcial
     let paymentInfo = '';
     if (order.pendingAmount > 0) {
-      paymentInfo = `💵 *Abonado:* ${formatCurrency(order.paidAmount)} | 🚨 *Saldo Pendiente:* ${formatCurrency(order.pendingAmount)}`;
+      paymentInfo = `💵 *Abonado:* ${formatCurrency(order.paidAmount)} | 🚨 *Saldo Pendiente:* ${formatCurrency(order.pendingAmount)}\n💳 *Transferencia ${bankName}:* ${nequiNum}`;
     } else {
       paymentInfo = `✅ *Pago:* Totalmente Pagado`;
     }

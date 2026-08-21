@@ -165,3 +165,19 @@ export const showToast = (message, type = 'success') => {
     setTimeout(() => toast.remove(), 300);
   }, 3500);
 };
+
+// Formato de Insignia de Medio de Pago
+export const formatPaymentBadge = (method) => {
+  const m = (method || 'EFECTIVO').toUpperCase().trim();
+  if (m === 'NEQUI' || m.includes('NEQUI')) {
+    return `<span class="badge" style="background: #F3E8FF; color: #7E22CE; font-weight: 800; font-size: 0.76rem; border: 1px solid #D8B4FE;">🟣 Nequi</span>`;
+  }
+  if (m === 'BANCOLOMBIA' || m.includes('BANCOLOMBIA')) {
+    return `<span class="badge" style="background: #FEF3C7; color: #92400E; font-weight: 800; font-size: 0.76rem; border: 1px solid #FDE68A;">🟡 Bancolombia</span>`;
+  }
+  if (m.includes('TRANSF') || m === 'DIGITAL') {
+    return `<span class="badge" style="background: #E0F2FE; color: #0369A1; font-weight: 800; font-size: 0.76rem; border: 1px solid #BAE6FD;">💳 Transferencia</span>`;
+  }
+  return `<span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.76rem; border: 1px solid #86EFAC;">💵 Efectivo</span>`;
+};
+

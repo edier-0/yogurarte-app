@@ -288,4 +288,11 @@ model CreditPayment {
   updatedAt         DateTime         @default(now()) @updatedAt
 }
 
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+
 

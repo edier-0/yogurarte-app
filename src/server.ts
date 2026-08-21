@@ -15,6 +15,7 @@ import preparationsRoutes from './routes/preparations.routes.js';
 import staffRoutes from './routes/staff.routes.js';
 import cashMovementsRoutes from './routes/cashMovements.routes.js';
 import creditsRoutes from './routes/credits.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
 
 dotenv.config();
 
@@ -67,6 +68,7 @@ app.use('/api/users', usersRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/cash-movements', cashMovementsRoutes);
 app.use('/api/credits', creditsRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {

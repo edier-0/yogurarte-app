@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, formatPaymentBadge, getTodayLocalDateStr, showToast, store } from '../store.js';
 
 let creditFilterStatus = 'ALL'; // 'ALL' | 'ACTIVO' | 'PAGADO_TOTAL'
 
@@ -405,9 +405,11 @@ export function openNewCreditModal(onSaved) {
 
               <div class="form-group">
                 <label class="form-label">Medio Pago Cuota Inicial</label>
-                <select id="creditInitialPayMethod" class="form-select">
+                <select id="creditInitialPayMethod" class="form-select" style="font-weight: 700;">
                   <option value="EFECTIVO">💵 Efectivo</option>
-                  <option value="TRANSFERENCIA">🟣 Transferencia (Nequi/Banco)</option>
+                  <option value="NEQUI">🟣 Transferencia Nequi</option>
+                  <option value="BANCOLOMBIA">🟡 Transferencia Bancolombia</option>
+                  <option value="TRANSFERENCIA">💳 Otra Transferencia</option>
                 </select>
               </div>
             </div>
@@ -591,9 +593,11 @@ export function openPayInstallmentModal(credit, onSaved) {
 
               <div class="form-group">
                 <label class="form-label">Medio de Pago *</label>
-                <select id="payMethod" class="form-select" required>
-                  <option value="EFECTIVO" selected>💵 Efectivo</option>
-                  <option value="TRANSFERENCIA">🟣 Transferencia (Nequi / Bancolombia)</option>
+                <select id="payMethod" class="form-select" required style="font-weight: 700;">
+                  <option value="EFECTIVO" selected>💵 Efectivo (Dinero en Mano)</option>
+                  <option value="NEQUI">🟣 Transferencia Nequi</option>
+                  <option value="BANCOLOMBIA">🟡 Transferencia Bancolombia</option>
+                  <option value="TRANSFERENCIA">💳 Otra Transferencia</option>
                 </select>
               </div>
             </div>
@@ -821,9 +825,7 @@ export function openCreditHistoryModal(credit, onSaved) {
                           ${
                             isSkip
                               ? '<span style="color: var(--text-muted); font-size: 0.72rem;">N/A</span>'
-                              : p.paymentMethod === 'EFECTIVO'
-                              ? '<span class="badge" style="background: #F1F5F9; color: #475569; font-size: 0.7rem;">💵 Efectivo</span>'
-                              : '<span class="badge" style="background: #FAF5FF; color: #7E22CE; font-size: 0.7rem;">🟣 Transf</span>'
+                              : formatPaymentBadge(p.paymentMethod)
                           }
                         </td>
                         <td style="text-align: right;">

@@ -581,5 +581,28 @@ export const api = {
     }
     return res.json();
   },
+
+  // Configuración del Sistema (Datos Bancarios, Nequi, etc.)
+  async getSettings() {
+    const res = await fetch(`${API_BASE}/settings`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al obtener la configuración');
+    }
+    return res.json();
+  },
+
+  async updateSettings(data) {
+    const res = await fetch(`${API_BASE}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Error al actualizar la configuración');
+    }
+    return res.json();
+  },
 };
 

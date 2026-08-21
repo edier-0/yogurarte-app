@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatPaymentBadge, getTodayLocalDateStr, showToast, store } from '../store.js';
 import { renderCredits } from './creditsView.js';
 
 let activeCategory = 'ALL';
@@ -162,6 +162,7 @@ async function loadExpensesList(container) {
               <th>Categoría</th>
               <th>Descripción</th>
               <th>Monto</th>
+              <th>Medio de Pago</th>
               <th>Fecha</th>
               <th>Notas</th>
               <th>Responsable</th>
@@ -180,6 +181,7 @@ async function loadExpensesList(container) {
                 </td>
                 <td><strong>${e.description}</strong></td>
                 <td><strong style="color: var(--danger); font-size: 1rem;">${formatCOP(e.amount)}</strong></td>
+                <td>${formatPaymentBadge(e.paymentMethod)}</td>
                 <td>${formatDate(e.expenseDate)}</td>
                 <td><small style="color: var(--text-muted);">${e.notes || '-'}</small></td>
                 <td><small>${e.registeredBy || 'Edier'}</small></td>
@@ -258,9 +260,11 @@ export function openExpenseModal(onSaved) {
 
               <div class="form-group">
                 <label class="form-label">Medio de Pago</label>
-                <select id="expensePaymentMethod" class="form-select">
-                  <option value="EFECTIVO" selected>💵 Efectivo</option>
-                  <option value="TRANSFERENCIA">🟣 Transferencia (Nequi / Bancolombia)</option>
+                <select id="expensePaymentMethod" class="form-select" style="font-weight: 700;">
+                  <option value="EFECTIVO" selected>💵 Efectivo (Dinero en Mano)</option>
+                  <option value="NEQUI">🟣 Transferencia Nequi</option>
+                  <option value="BANCOLOMBIA">🟡 Transferencia Bancolombia</option>
+                  <option value="TRANSFERENCIA">💳 Otra Transferencia</option>
                 </select>
               </div>
 
@@ -359,9 +363,11 @@ export function openCashMovementModal(onSaved, defaultType = 'BASE_INICIAL', mov
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Medio de Pago</label>
-                <select id="cashMovMethod" class="form-select">
+                <select id="cashMovMethod" class="form-select" style="font-weight: 700;">
                   <option value="EFECTIVO" ${currentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo (Billetes / Monedas)</option>
-                  <option value="TRANSFERENCIA" ${currentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>🟣 Transferencia (Nequi / Bancolombia)</option>
+                  <option value="NEQUI" ${currentMethod === 'NEQUI' ? 'selected' : ''}>🟣 Transferencia Nequi</option>
+                  <option value="BANCOLOMBIA" ${currentMethod === 'BANCOLOMBIA' ? 'selected' : ''}>🟡 Transferencia Bancolombia</option>
+                  <option value="TRANSFERENCIA" ${currentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>💳 Otra Transferencia</option>
                 </select>
               </div>
 

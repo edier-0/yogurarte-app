@@ -566,45 +566,137 @@ function attachCardActionEvents(listContainer, mainContainer) {
 
   listContainer.querySelectorAll('.btn-deliver-modal').forEach((btn) => {
     btn.addEventListener('click', (e) => {
-      const orderId = e.currentTarget.dataset.orderId;
-      const pendingAmount = Number(e.currentTarget.dataset.pending) || 0;
-      const totalAmount = Number(e.currentTarget.dataset.total) || 0;
-      openDeliveryConfirmModal(orderId, pendingAmount, totalAmount, mainContainer);
+      const orderId = Number(e.currentTarget.dataset.orderId);
+      const order = cachedDeliveryOrders.find((o) => o.id === orderId);
+      openDeliveryConfirmModal(orderId, order, mainContainer);
     });
   });
 }
 
 // Modal de Confirmación de Entrega y Recaudo
-function openDeliveryConfirmModal(orderId, pendingAmount, totalAmount, parentContainer) {
+function openDeliveryConfirmModal(orderId, order, parentContainer) {
   const modalOverlay = document.getElementById('modalContainer');
   if (!modalOverlay) return;
 
+  const currentOrder = order || cachedDeliveryOrders.find((o) => o.id === Number(orderId)) || {};
+  const totalAmount = Number(currentOrder.totalAmount) || 0;
+  const previousPaid = Number(currentOrder.paidAmount) || 0;
+  const pendingAmount = Number(currentOrder.pendingAmount !== undefined ? currentOrder.pendingAmount : (totalAmount - previousPaid)) || 0;
+  const customerName = currentOrder.customer?.fullName || currentOrder.customerName || 'Cliente';
+  const orderNumber = currentOrder.orderNumber || orderId;
+  const existingNotes = currentOrder.notes || '';
+
+  let selectedPaymentOption = pendingAmount > 0 ? 'FULL' : 'NONE'; // 'FULL' | 'PARTIAL' | 'NO_PAYMENT' | 'NONE'
+
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-card" style="max-width: 480px;">
         <div class="modal-header">
-          <h3 class="modal-title">🛵 Confirmar Entrega y Recaudo</h3>
+          <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <span>🛵</span> Confirmar Entrega de Pedido
+          </h3>
           <button class="modal-close-btn" id="btnCloseDeliveryModal">✕</button>
         </div>
         <form id="deliveryConfirmForm">
           <div class="modal-body">
-            <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px; text-align: center;">
-              <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 700;">Saldo a recaudar de este pedido:</div>
-              <div style="font-size: 1.6rem; font-weight: 800; color: ${pendingAmount > 0 ? '#DC2626' : 'var(--success)'}; margin: 4px 0;">
-                ${pendingAmount > 0 ? formatCOP(pendingAmount) : '¡Ya está totalmente pagado! ✨'}
+            
+            <!-- Resumen del Pedido y Cliente -->
+            <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted);">PEDIDO #${orderNumber}</span>
+                <span style="font-size: 0.82rem; font-weight: 700; color: var(--primary);">Total: ${formatCOP(totalAmount)}</span>
+              </div>
+              <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-main); margin-bottom: 4px;">
+                👤 ${customerName}
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem;">
+                <span style="color: var(--text-muted);">Saldo pendiente de cobro:</span>
+                <strong style="font-size: 1.05rem; color: ${pendingAmount > 0 ? '#DC2626' : '#16A34A'};">
+                  ${pendingAmount > 0 ? formatCOP(pendingAmount) : '✅ Ya pagado ($0)'}
+                </strong>
               </div>
             </div>
 
             ${
               pendingAmount > 0
                 ? `
-              <div class="form-group" style="margin-bottom: 14px;">
-                <label class="form-label" style="font-weight: 700;">¿Cuánto te pagó el cliente? ($ COP) *</label>
-                <input type="number" id="delivPaidAmount" class="form-input" value="${pendingAmount}" min="0" max="${pendingAmount}" required style="font-weight: 800; font-size: 1.1rem;" />
+              <!-- Selector de Opciones de Recaudo -->
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label" style="font-weight: 800; margin-bottom: 6px;">
+                  💰 ¿Cómo se gestionó el pago en la entrega? *
+                </label>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                  
+                  <!-- Opción 1: Pago Total -->
+                  <label class="payment-option-card" id="cardOptFull" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 2px solid #16A34A; background: #F0FDF4; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease;">
+                    <input type="radio" name="deliveryPayOption" value="FULL" checked style="accent-color: #16A34A; transform: scale(1.15);" />
+                    <div style="flex: 1;">
+                      <div style="font-weight: 800; font-size: 0.9rem; color: #15803D;">
+                        🟢 Pago Total Recibido (${formatCOP(pendingAmount)})
+                      </div>
+                      <div style="font-size: 0.74rem; color: #166534;">El cliente pagó la totalidad del saldo contraentrega</div>
+                    </div>
+                  </label>
+
+                  <!-- Opción 2: Abono Parcial -->
+                  <label class="payment-option-card" id="cardOptPartial" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1.5px solid var(--border-color); background: var(--bg-card); border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease;">
+                    <input type="radio" name="deliveryPayOption" value="PARTIAL" style="accent-color: #D97706; transform: scale(1.15);" />
+                    <div style="flex: 1;">
+                      <div style="font-weight: 800; font-size: 0.9rem; color: #92400E;">
+                        🟡 Abono Parcial (Paga solo una parte)
+                      </div>
+                      <div style="font-size: 0.74rem; color: #B45309;">El cliente entregó una parte y queda debiendo el resto</div>
+                    </div>
+                  </label>
+
+                  <!-- Opción 3: Se Entregó Fiado / No Pagó -->
+                  <label class="payment-option-card" id="cardOptNoPay" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1.5px solid var(--border-color); background: var(--bg-card); border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease;">
+                    <input type="radio" name="deliveryPayOption" value="NO_PAYMENT" style="accent-color: #DC2626; transform: scale(1.15);" />
+                    <div style="flex: 1;">
+                      <div style="font-weight: 800; font-size: 0.9rem; color: #DC2626;">
+                        🔴 Se Entregó y NO PAGÓ / NO ABONÓ ($0)
+                      </div>
+                      <div style="font-size: 0.74rem; color: #991B1B;">Se entregó el producto fiado (queda como saldo por cobrar)</div>
+                    </div>
+                  </label>
+
+                </div>
               </div>
 
-              <div class="form-group" style="margin-bottom: 16px;">
-                <label class="form-label" style="font-weight: 700;">Medio de Pago Recibido *</label>
+              <!-- Campo de Monto Abonado (Visible solo si es Abono Parcial) -->
+              <div id="containerPartialAmount" class="form-group" style="display: none; margin-bottom: 12px; background: #FFFBEB; border: 1.5px solid #FDE68A; padding: 10px 12px; border-radius: var(--radius-md);">
+                <label class="form-label" style="font-weight: 700; color: #92400E;">
+                  ¿Cuánto dinero abonó el cliente? ($ COP) *
+                </label>
+                <input
+                  type="number"
+                  id="delivPartialAmountInput"
+                  class="form-input"
+                  min="1"
+                  max="${pendingAmount}"
+                  placeholder="Ej: 10000"
+                  style="font-weight: 800; font-size: 1.05rem; color: #B45309;"
+                />
+                <small style="font-size: 0.74rem; color: #B45309; margin-top: 3px; display: block;">
+                  El saldo restante quedará registrado automáticamente en la cuenta del cliente para cobrárselo después.
+                </small>
+              </div>
+
+              <!-- Alerta Informativa cuando se selecciona No Pagó -->
+              <div id="containerNoPayAlert" style="display: none; margin-bottom: 12px; background: #FEF2F2; border: 1.5px solid #FECACA; padding: 10px 12px; border-radius: var(--radius-md);">
+                <div style="font-weight: 800; font-size: 0.85rem; color: #991B1B; display: flex; align-items: center; gap: 6px;">
+                  <span>⚠️</span> Entrega registrada sin pago (Fiado)
+                </div>
+                <div style="font-size: 0.76rem; color: #7F1D1D; margin-top: 2px;">
+                  El pedido cambiará al estado <strong>ENTREGADO</strong> y la deuda de <strong>${formatCOP(pendingAmount)}</strong> quedará pendiente en el módulo de Clientes para cobrarle después.
+                </div>
+              </div>
+
+              <!-- Medio de Pago Recibido (Oculto si No Pagó) -->
+              <div id="containerPaymentMethod" class="form-group" style="margin-bottom: 14px;">
+                <label class="form-label" style="font-weight: 700;">
+                  Medio de Pago Recibido *
+                </label>
                 <select id="delivPaymentMethod" class="form-select" style="font-weight: 700;">
                   <option value="EFECTIVO" selected>💵 Efectivo (Dinero en mano)</option>
                   <option value="NEQUI">🟣 Transferencia Nequi</option>
@@ -614,22 +706,97 @@ function openDeliveryConfirmModal(orderId, pendingAmount, totalAmount, parentCon
               </div>
             `
                 : `
-              <p style="font-size: 0.9rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
-                Este pedido ya fue pagado con anterioridad. Solo debes entregarlo y marcarlo como completado.
-              </p>
+              <div style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px; text-align: center;">
+                <div style="font-size: 1.2rem;">✨</div>
+                <div style="font-weight: 800; color: #15803D; font-size: 0.95rem;">Pedido Pagado con Anterioridad</div>
+                <div style="font-size: 0.78rem; color: #166534; margin-top: 2px;">
+                  Este pedido ya no tiene saldo pendiente. Solo debes confirmar la entrega física al cliente.
+                </div>
+              </div>
             `
             }
+
+            <!-- Campo de Nota Opcional -->
+            <div class="form-group" style="margin-bottom: 4px;">
+              <label class="form-label" style="font-weight: 700; display: flex; justify-content: space-between; align-items: center;">
+                <span>📝 Nota u Observación de la Entrega</span>
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">(Opcional)</span>
+              </label>
+              <textarea
+                id="delivNotesInput"
+                class="form-input"
+                rows="2"
+                placeholder="Ej: Se entregó en la casa, transfiere en la noche / Paga el viernes / Recibió un familiar..."
+                style="font-size: 0.85rem;"
+              >${existingNotes}</textarea>
+            </div>
+
           </div>
           <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
             <button type="button" class="btn btn-outline" id="btnCancelDeliveryModal">Cancelar</button>
-            <button type="submit" class="btn btn-accent" style="font-weight: 800; padding: 10px 20px;">
-              ✅ Confirmar Entrega
+            <button type="submit" class="btn btn-accent" id="btnSubmitDelivery" style="font-weight: 800; padding: 10px 18px;">
+              ${pendingAmount > 0 ? `✅ Entregar y Cobrar (${formatCOP(pendingAmount)})` : '✅ Confirmar Entrega'}
             </button>
           </div>
         </form>
       </div>
     </div>
   `;
+
+  const cardFull = document.getElementById('cardOptFull');
+  const cardPartial = document.getElementById('cardOptPartial');
+  const cardNoPay = document.getElementById('cardOptNoPay');
+  const containerPartial = document.getElementById('containerPartialAmount');
+  const partialInput = document.getElementById('delivPartialAmountInput');
+  const containerNoPayAlert = document.getElementById('containerNoPayAlert');
+  const containerMethod = document.getElementById('containerPaymentMethod');
+  const submitBtn = document.getElementById('btnSubmitDelivery');
+  const notesInput = document.getElementById('delivNotesInput');
+
+  const updateOptionStyles = (selected) => {
+    selectedPaymentOption = selected;
+    if (cardFull) {
+      cardFull.style.borderColor = selected === 'FULL' ? '#16A34A' : 'var(--border-color)';
+      cardFull.style.background = selected === 'FULL' ? '#F0FDF4' : 'var(--bg-card)';
+    }
+    if (cardPartial) {
+      cardPartial.style.borderColor = selected === 'PARTIAL' ? '#D97706' : 'var(--border-color)';
+      cardPartial.style.background = selected === 'PARTIAL' ? '#FFFBEB' : 'var(--bg-card)';
+    }
+    if (cardNoPay) {
+      cardNoPay.style.borderColor = selected === 'NO_PAYMENT' ? '#DC2626' : 'var(--border-color)';
+      cardNoPay.style.background = selected === 'NO_PAYMENT' ? '#FEF2F2' : 'var(--bg-card)';
+    }
+
+    if (selected === 'FULL') {
+      if (containerPartial) containerPartial.style.display = 'none';
+      if (containerNoPayAlert) containerNoPayAlert.style.display = 'none';
+      if (containerMethod) containerMethod.style.display = 'block';
+      if (submitBtn) submitBtn.innerHTML = `✅ Entregar y Cobrar (${formatCOP(pendingAmount)})`;
+    } else if (selected === 'PARTIAL') {
+      if (containerPartial) containerPartial.style.display = 'block';
+      if (containerNoPayAlert) containerNoPayAlert.style.display = 'none';
+      if (containerMethod) containerMethod.style.display = 'block';
+      if (submitBtn) submitBtn.innerHTML = `✅ Entregar y Registrar Abono`;
+      if (partialInput && !partialInput.value) {
+        partialInput.focus();
+      }
+    } else if (selected === 'NO_PAYMENT') {
+      if (containerPartial) containerPartial.style.display = 'none';
+      if (containerNoPayAlert) containerNoPayAlert.style.display = 'block';
+      if (containerMethod) containerMethod.style.display = 'none';
+      if (submitBtn) submitBtn.innerHTML = `✅ Entregar Sin Pago (Fiado)`;
+      if (notesInput && !notesInput.value) {
+        notesInput.placeholder = 'Ej: Paga el viernes / Transfiere más tarde / No estaba la persona encargada...';
+      }
+    }
+  };
+
+  document.querySelectorAll('input[name="deliveryPayOption"]').forEach((radio) => {
+    radio.addEventListener('change', (e) => {
+      updateOptionStyles(e.target.value);
+    });
+  });
 
   const closeModal = () => (modalOverlay.innerHTML = '');
   document.getElementById('btnCloseDeliveryModal')?.addEventListener('click', closeModal);
@@ -638,20 +805,38 @@ function openDeliveryConfirmModal(orderId, pendingAmount, totalAmount, parentCon
   document.getElementById('deliveryConfirmForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    const notesVal = notesInput?.value?.trim() || null;
     const payload = {
       deliveryStatus: 'DELIVERED',
+      notes: notesVal,
     };
 
     if (pendingAmount > 0) {
-      const paidVal = Number(document.getElementById('delivPaidAmount')?.value) || 0;
-      const methodVal = document.getElementById('delivPaymentMethod')?.value || 'EFECTIVO';
-      payload.paidAmount = (totalAmount - pendingAmount) + paidVal;
-      payload.paymentMethod = methodVal;
+      if (selectedPaymentOption === 'FULL') {
+        payload.paidAmount = totalAmount;
+        payload.paymentMethod = document.getElementById('delivPaymentMethod')?.value || 'EFECTIVO';
+      } else if (selectedPaymentOption === 'PARTIAL') {
+        const partialVal = Number(partialInput?.value) || 0;
+        if (partialVal <= 0 || partialVal > pendingAmount) {
+          showToast(`Ingresa un valor de abono válido entre $1 y ${formatCOP(pendingAmount)}`, 'danger');
+          partialInput?.focus();
+          return;
+        }
+        payload.paidAmount = previousPaid + partialVal;
+        payload.paymentMethod = document.getElementById('delivPaymentMethod')?.value || 'EFECTIVO';
+      } else if (selectedPaymentOption === 'NO_PAYMENT') {
+        payload.paidAmount = previousPaid; // Remains unchanged (e.g. 0)
+        payload.paymentMethod = currentOrder.paymentMethod || 'EFECTIVO';
+      }
     }
 
     try {
       await api.updateOrderDeliveryStatus(orderId, payload);
-      showToast('¡Entrega registrada y confirmada con éxito! 🎉');
+      if (selectedPaymentOption === 'NO_PAYMENT') {
+        showToast('¡Entrega confirmada! Quedó registrada con saldo pendiente (fiado) 🛵📝');
+      } else {
+        showToast('¡Entrega y recaudo confirmados con éxito! 🎉');
+      }
       closeModal();
       renderDelivery(parentContainer);
     } catch (err) {
