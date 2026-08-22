@@ -92,6 +92,13 @@ export const api = {
     });
   },
 
+  async updateOrderPayment(orderId, paymentId, data) {
+    return apiFetch(`/orders/${orderId}/payments/${paymentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   async deleteOrderPayment(orderId, paymentId) {
     return apiFetch(`/orders/${orderId}/payments/${paymentId}`, {
       method: 'DELETE',

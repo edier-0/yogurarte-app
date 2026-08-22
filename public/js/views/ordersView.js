@@ -1703,31 +1703,37 @@ export function openAssignDriverModal(order, availableDrivers = []) {
   });
 }
 
-// Modal de Abono / Pago rápido con desglose individual de medios de pago
+// Modal de Abono / Pago rápido con desglose individual de medios de pago, edición y anulación
 export async function openPaymentModal(orderId, totalAmount, currentPaid, currentPending, onSuccess = null) {
   const modalOverlay = document.getElementById('modalContainer');
   if (!modalOverlay) return;
 
+  let freshOrder = null;
   let existingPayments = [];
   try {
-    const freshOrder = await api.getOrderById(orderId);
-    if (freshOrder && Array.isArray(freshOrder.payments)) {
-      existingPayments = freshOrder.payments;
+    freshOrder = await api.getOrderById(orderId);
+    if (freshOrder) {
+      if (Array.isArray(freshOrder.payments)) {
+        existingPayments = freshOrder.payments;
+      }
+      totalAmount = freshOrder.totalAmount;
+      currentPaid = freshOrder.paidAmount;
+      currentPending = freshOrder.pendingAmount;
     }
   } catch (e) {
     console.warn('Could not fetch fresh order payments:', e);
   }
 
   const getMethodBadge = (m) => {
-    if (m === 'NEQUI') return '<span class="badge" style="background: #EDE9FE; color: #6D28D9; font-weight: 800;">🟣 Nequi</span>';
-    if (m === 'BANCOLOMBIA') return '<span class="badge" style="background: #FEF08A; color: #854D0E; font-weight: 800;">🟡 Bancolombia</span>';
-    if (m === 'TRANSFERENCIA') return '<span class="badge" style="background: #E0F2FE; color: #0369A1; font-weight: 800;">💳 Transferencia</span>';
-    return '<span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800;">💵 Efectivo</span>';
+    if (m === 'NEQUI') return '<span class="badge" style="background: #EDE9FE; color: #6D28D9; font-weight: 800; font-size: 0.72rem;">🟣 Nequi</span>';
+    if (m === 'BANCOLOMBIA') return '<span class="badge" style="background: #FEF08A; color: #854D0E; font-weight: 800; font-size: 0.72rem;">🟡 Bancolombia</span>';
+    if (m === 'TRANSFERENCIA') return '<span class="badge" style="background: #E0F2FE; color: #0369A1; font-weight: 800; font-size: 0.72rem;">💳 Transferencia</span>';
+    return '<span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.72rem;">💵 Efectivo</span>';
   };
 
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-card" style="max-width: 460px;">
         <div class="modal-header">
           <h3 class="modal-title">💵 Control de Abonos y Pagos</h3>
           <button class="modal-close-btn" id="btnClosePaymentModal">✕</button>
@@ -1751,24 +1757,33 @@ export async function openPaymentModal(orderId, totalAmount, currentPaid, curren
               </div>
             </div>
 
-            <!-- Historial de Abonos Realizados -->
+            <!-- Historial de Abonos Realizados con Botones de Edición y Eliminación -->
             ${
               existingPayments.length > 0
                 ? `
               <div style="margin-bottom: 16px;">
-                <label class="form-label" style="font-size: 0.8rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">
-                  📋 Historial de Abonos Recibidos (${existingPayments.length}):
-                </label>
-                <div style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto; background: #FFFFFF; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label class="form-label" style="font-size: 0.8rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin: 0;">
+                    📋 Historial de Abonos (${existingPayments.length}):
+                  </label>
+                  <span style="font-size: 0.72rem; color: var(--text-muted);">Puedes editar o anular duplicados</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; background: #FFFFFF; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px;">
                   ${existingPayments
                     .map(
                       (p, idx) => `
-                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; padding: 4px 6px; border-bottom: ${idx < existingPayments.length - 1 ? '1px dashed #E2E8F0' : 'none'};">
-                      <div style="display: flex; align-items: center; gap: 6px;">
-                        ${getMethodBadge(p.paymentMethod)}
-                        <span style="color: var(--text-muted); font-size: 0.75rem;">${formatDate(p.paymentDate)}</span>
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; padding: 6px; border-radius: var(--radius-sm); background: #F8FAFC; border-bottom: ${idx < existingPayments.length - 1 ? '1px dashed #E2E8F0' : 'none'};">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                          ${getMethodBadge(p.paymentMethod)}
+                          <strong style="color: var(--text-main);">${formatCOP(p.amount)}</strong>
+                        </div>
+                        <span style="color: var(--text-muted); font-size: 0.72rem;">📅 ${formatDate(p.paymentDate)} ${p.notes ? `• ${p.notes}` : ''}</span>
                       </div>
-                      <strong style="color: var(--text-main);">${formatCOP(p.amount)}</strong>
+                      <div style="display: flex; gap: 4px; align-items: center;">
+                        <button type="button" class="btn btn-outline btn-sm btn-edit-order-payment" data-payment-id="${p.id}" data-amount="${p.amount}" data-method="${p.paymentMethod}" data-date="${p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : ''}" data-notes="${p.notes || ''}" style="padding: 3px 6px; font-size: 0.75rem; color: var(--primary);" title="Editar este abono">✏️</button>
+                        <button type="button" class="btn btn-outline btn-sm btn-delete-order-payment" data-payment-id="${p.id}" data-amount="${p.amount}" style="padding: 3px 6px; font-size: 0.75rem; color: var(--danger);" title="Eliminar / Anular este abono">🗑️</button>
+                      </div>
                     </div>
                   `
                     )
@@ -1825,6 +1840,62 @@ export async function openPaymentModal(orderId, totalAmount, currentPaid, curren
   const closeModal = () => (modalOverlay.innerHTML = '');
   document.getElementById('btnClosePaymentModal')?.addEventListener('click', closeModal);
   document.getElementById('btnCancelPaymentModal')?.addEventListener('click', closeModal);
+
+  // Listener para Eliminar Abono
+  modalOverlay.querySelectorAll('.btn-delete-order-payment').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const pId = e.currentTarget.dataset.paymentId;
+      const amt = Number(e.currentTarget.dataset.amount);
+      if (confirm(`¿Estás seguro de eliminar este abono de ${formatCOP(amt)}?\nEsto recalculará el saldo pendiente y el estado del pedido inmediatamente.`)) {
+        try {
+          await api.deleteOrderPayment(orderId, pId);
+          showToast(`¡Abono de ${formatCOP(amt)} eliminado exitosamente! 🗑️`);
+          // Re-abrir modal con los datos frescos
+          openPaymentModal(orderId, totalAmount, currentPaid, currentPending, onSuccess);
+          if (onSuccess) onSuccess();
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar abono', 'danger');
+        }
+      }
+    });
+  });
+
+  // Listener para Editar Abono
+  modalOverlay.querySelectorAll('.btn-edit-order-payment').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const pId = e.currentTarget.dataset.paymentId;
+      const currAmount = e.currentTarget.dataset.amount;
+      const currMethod = e.currentTarget.dataset.method;
+      const currNotes = e.currentTarget.dataset.notes;
+
+      const newAmountStr = prompt('Nuevo monto del abono ($ COP):', currAmount);
+      if (newAmountStr === null) return;
+      const newAmount = Number(newAmountStr);
+      if (isNaN(newAmount) || newAmount <= 0) {
+        showToast('El monto debe ser un número válido mayor a 0', 'danger');
+        return;
+      }
+
+      const methodPrompt = prompt('Método de pago (EFECTIVO, NEQUI, BANCOLOMBIA, TRANSFERENCIA):', currMethod);
+      if (methodPrompt === null) return;
+      const newMethod = methodPrompt.trim().toUpperCase() || 'EFECTIVO';
+
+      try {
+        await api.updateOrderPayment(orderId, pId, {
+          amount: newAmount,
+          paymentMethod: newMethod,
+          notes: currNotes,
+        });
+        showToast('¡Abono actualizado correctamente! ✏️✨');
+        openPaymentModal(orderId, totalAmount, currentPaid, currentPending, onSuccess);
+        if (onSuccess) onSuccess();
+      } catch (err) {
+        showToast(err.message || 'Error al actualizar abono', 'danger');
+      }
+    });
+  });
 
   document.getElementById('paymentForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();

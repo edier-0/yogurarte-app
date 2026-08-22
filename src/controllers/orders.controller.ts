@@ -767,6 +767,22 @@ export const addOrderPayment = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'El monto del abono debe ser mayor a 0' });
     }
 
+    // 🛡️ Protección anti-duplicados y sobrepago:
+    const currentPaid = (order.payments || []).reduce((sum, p) => sum + p.amount, 0);
+    const currentPending = Math.max(0, order.totalAmount - currentPaid);
+
+    if (currentPending <= 0) {
+      return res.status(400).json({
+        error: '⚠️ Este pedido ya fue pagado en su totalidad por otro usuario. Por favor recarga la vista para verificar.',
+      });
+    }
+
+    if (payAmount > currentPending) {
+      return res.status(400).json({
+        error: `⚠️ El monto a abonar ($${payAmount.toLocaleString('es-CO')}) supera el saldo pendiente real del pedido ($${currentPending.toLocaleString('es-CO')}).`,
+      });
+    }
+
     const pDate = paymentDate ? new Date(`${String(paymentDate).split('T')[0]}T12:00:00.000Z`) : new Date();
 
     // Crear registro de abono
@@ -827,6 +843,87 @@ export const addOrderPayment = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error adding order payment:', error);
     res.status(500).json({ error: 'Error al registrar abono del pedido' });
+  }
+};
+
+// Editar un abono existente
+export const updateOrderPayment = async (req: Request, res: Response) => {
+  try {
+    const { id, paymentId } = req.params;
+    const { amount, paymentMethod, paymentDate, notes, registeredBy } = req.body;
+    const orderId = Number(id);
+    const pId = Number(paymentId);
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { payments: true },
+    });
+    if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+    const existingPayment = await prisma.orderPayment.findUnique({ where: { id: pId } });
+    if (!existingPayment) return res.status(404).json({ error: 'Abono no encontrado' });
+
+    const updateData: any = {};
+    if (amount !== undefined) {
+      const payAmount = Number(amount);
+      if (payAmount <= 0) return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
+      updateData.amount = payAmount;
+    }
+    if (paymentMethod) updateData.paymentMethod = String(paymentMethod).trim();
+    if (paymentDate) updateData.paymentDate = new Date(`${String(paymentDate).split('T')[0]}T12:00:00.000Z`);
+    if (notes !== undefined) updateData.notes = notes ? String(notes).trim() : null;
+    if (registeredBy) updateData.registeredBy = String(registeredBy).trim();
+
+    await prisma.orderPayment.update({
+      where: { id: pId },
+      data: updateData,
+    });
+
+    const allPayments = await prisma.orderPayment.findMany({
+      where: { orderId },
+      orderBy: { paymentDate: 'asc' },
+    });
+
+    const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
+    const pendingAmount = Math.max(0, order.totalAmount - totalPaid);
+
+    let paymentStatus = 'PENDING';
+    if (totalPaid >= order.totalAmount) {
+      paymentStatus = 'PAID';
+    } else if (totalPaid > 0) {
+      paymentStatus = 'PARTIAL';
+    }
+
+    const uniqueMethods = Array.from(new Set(allPayments.map((p) => p.paymentMethod)));
+    let finalMethod = 'EFECTIVO';
+    if (uniqueMethods.length === 1) {
+      finalMethod = uniqueMethods[0];
+    } else if (uniqueMethods.length > 1) {
+      finalMethod = `MIXTO (${uniqueMethods.join(' + ')})`;
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        paidAmount: totalPaid,
+        pendingAmount,
+        paymentStatus,
+        paymentMethod: finalMethod,
+      },
+      include: {
+        customer: true,
+        items: true,
+        batch: true,
+        payments: {
+          orderBy: { paymentDate: 'asc' },
+        },
+      },
+    });
+
+    res.json(updatedOrder);
+  } catch (error) {
+    console.error('Error updating order payment:', error);
+    res.status(500).json({ error: 'Error al actualizar abono' });
   }
 };
 

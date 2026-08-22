@@ -9,6 +9,7 @@ import {
   assignDriver,
   updateDeliveryStatus,
   addOrderPayment,
+  updateOrderPayment,
   deleteOrderPayment,
 } from '../controllers/orders.controller.js';
 import { validateBody, validateParams } from '../middlewares/validate.middleware.js';
@@ -27,6 +28,7 @@ router.get('/:id', validateParams(idParamSchema), getOrderById);
 router.get('/:id/whatsapp', validateParams(idParamSchema), getWhatsAppLink);
 router.post('/', validateBody(createOrderSchema), createOrder);
 router.post('/:id/payments', validateParams(idParamSchema), addOrderPayment);
+router.put('/:id/payments/:paymentId', validateParams(idParamSchema), updateOrderPayment);
 router.delete('/:id/payments/:paymentId', validateParams(idParamSchema), deleteOrderPayment);
 router.put('/:id', validateParams(idParamSchema), validateBody(updateOrderSchema), updateOrder);
 router.put('/:id/assign-driver', validateParams(idParamSchema), validateBody(assignDriverSchema), assignDriver);

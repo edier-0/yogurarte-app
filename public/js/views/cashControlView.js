@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store } from '../store.js';
 import { openExpenseModal, openCashMovementModal } from './expensesView.js';
+import { openPaymentModal } from './ordersView.js';
 
 let cashFilters = {
   period: 'all',
@@ -1329,6 +1330,11 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
                         <button class="btn btn-outline btn-sm btn-edit-cash-item" data-id="${m.rawId}" style="color: var(--primary); margin-right: 4px; padding: 4px 8px;" title="Editar registro de base / aporte / traslado">✏️</button>
                         <button class="btn btn-outline btn-sm btn-del-cash-item" data-type="cash" data-id="${m.rawId}" style="color: var(--danger); padding: 4px 8px;" title="Eliminar movimiento">🗑️</button>
                       `
+                      : m.flowType === 'INFLOW' && !m.isCashMovement
+                      ? `
+                        <button class="btn btn-outline btn-sm btn-manage-sale-payment" data-order-id="${m.rawId}" data-total="${m.totalAmount}" data-paid="${m.amount}" data-pending="${m.pendingAmount}" style="color: var(--primary); margin-right: 4px; padding: 4px 8px;" title="Gestionar / Editar abonos de este pedido">💵</button>
+                        <button class="btn btn-outline btn-sm btn-del-sale-payment" data-order-id="${m.rawId}" data-payment-id="${m.paymentId || ''}" data-amount="${m.amount}" data-cust="${m.customerName || 'Cliente'}" style="color: var(--danger); padding: 4px 8px;" title="Eliminar este abono o cobro duplicado">🗑️</button>
+                      `
                       : m.category && m.category !== 'COMPRA_INSUMO' && m.category !== 'NOMINA' && m.category !== 'RETIRO_SOCIO'
                       ? `<button class="btn btn-outline btn-sm btn-del-cash-item" data-type="expense" data-id="${m.rawId}" style="color: var(--danger);" title="Eliminar gasto">🗑️</button>`
                       : `<span style="font-size: 0.72rem; color: var(--text-muted);">🔒 Auto</span>`
@@ -1343,7 +1349,46 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
     </div>
   `;
 
-  // Listeners de edición
+  // Listeners para gestionar abonos de pedidos desde el Libro de Caja
+  tableWrapper.querySelectorAll('.btn-manage-sale-payment').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const orderId = Number(e.currentTarget.dataset.orderId);
+      const total = Number(e.currentTarget.dataset.total);
+      const paid = Number(e.currentTarget.dataset.paid);
+      const pending = Number(e.currentTarget.dataset.pending);
+      openPaymentModal(orderId, total, paid, pending, () => {
+        loadCashData(mainContainer);
+      });
+    });
+  });
+
+  // Listeners para eliminar abonos individuales de ventas desde el Libro de Caja
+  tableWrapper.querySelectorAll('.btn-del-sale-payment').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const orderId = Number(e.currentTarget.dataset.orderId);
+      const paymentId = e.currentTarget.dataset.paymentId;
+      const amount = Number(e.currentTarget.dataset.amount);
+      const cust = e.currentTarget.dataset.cust;
+
+      if (!paymentId) {
+        showToast('Abre el gestor de abonos 💵 para seleccionar el pago a eliminar', 'warning');
+        openPaymentModal(orderId, 0, 0, 0, () => loadCashData(mainContainer));
+        return;
+      }
+
+      if (confirm(`¿Estás seguro de eliminar este abono de ${formatCOP(amount)} de ${cust}?\nEsto reajustará el saldo de caja y el estado del pedido inmediatamente.`)) {
+        try {
+          await api.deleteOrderPayment(orderId, paymentId);
+          showToast(`¡Abono de ${formatCOP(amount)} eliminado exitosamente! 🗑️`);
+          loadCashData(mainContainer);
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar abono', 'danger');
+        }
+      }
+    });
+  });
+
+  // Listeners de edición de movimientos de caja
   tableWrapper.querySelectorAll('.btn-edit-cash-item').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const id = Number(e.currentTarget.dataset.id);
