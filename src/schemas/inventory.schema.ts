@@ -20,8 +20,12 @@ export const updateMaterialSchema = z.object({
 });
 
 export const adjustStockSchema = z.object({
+  rawMaterialId: z.coerce.number().int().positive().optional(),
   newStock: z.coerce.number().min(0, 'El stock no puede ser negativo'),
-  reason: z.string().optional(),
+  type: z.string().optional(),
+  reason: z.string().optional().nullable(),
+  registeredBy: z.string().optional(),
+  adjustmentDate: z.string().optional(),
 });
 
 export const createPurchaseSchema = z.object({

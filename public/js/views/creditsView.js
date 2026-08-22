@@ -1,6 +1,8 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, formatDateTime, formatPaymentBadge, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
+let creditsCurrentPage = 1;
 let creditFilterStatus = 'ALL'; // 'ALL' | 'ACTIVO' | 'PAGADO_TOTAL'
 
 export async function renderCredits(container) {
@@ -45,6 +47,7 @@ export async function renderCredits(container) {
   container.querySelectorAll('[data-cstatus]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       creditFilterStatus = e.currentTarget.dataset.cstatus;
+      creditsCurrentPage = 1;
       container.querySelectorAll('[data-cstatus]').forEach((b) => {
         b.className = b.dataset.cstatus === creditFilterStatus ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline';
       });
@@ -156,6 +159,9 @@ async function loadCreditsData(container) {
       return;
     }
 
+    const { pageItems, totalPages, totalItems, currentPage } = paginateArray(filteredCredits, creditsCurrentPage, 15);
+    creditsCurrentPage = currentPage;
+
     // Helper de iconos por categoría
     const getCatIcon = (cat) => {
       if (cat === 'EQUIPO_MAQUINARIA') return '🧊';
@@ -168,7 +174,7 @@ async function loadCreditsData(container) {
     // Renderizar tarjetas de crédito
     listContainer.innerHTML = `
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 18px;">
-        ${filteredCredits
+        ${pageItems
           .map((c) => {
             const isPaid = c.status === 'PAGADO_TOTAL';
             const paidAmount = c.totalAmount - c.remainingBalance;
@@ -289,7 +295,25 @@ async function loadCreditsData(container) {
           })
           .join('')}
       </div>
+      ${renderPaginationHtml({
+        currentPage: creditsCurrentPage,
+        totalPages,
+        totalItems,
+        pageSize: 15,
+        itemName: 'créditos',
+        paginationId: 'creditsPagination',
+      })}
     `;
+
+    attachPaginationEvents(
+      listContainer,
+      'creditsPagination',
+      (newPage) => {
+        creditsCurrentPage = newPage;
+        loadCreditsData(container);
+      },
+      listContainer
+    );
 
     // Listeners de los botones de cada tarjeta
     listContainer.querySelectorAll('.btn-pay-credit').forEach((btn) => {
@@ -754,104 +778,128 @@ export function openCreditHistoryModal(credit, onSaved) {
   if (!modalOverlay) return;
 
   const payments = credit.payments || [];
+  let creditHistPage = 1;
 
-  modalOverlay.innerHTML = `
-    <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 600px;">
-        <div class="modal-header">
-          <h3 class="modal-title">📜 Historial de Cuotas: ${credit.title}</h3>
-          <button class="modal-close-btn" id="btnCloseHistCreditModal">✕</button>
-        </div>
-        <div class="modal-body">
-          
-          <div style="display: flex; justify-content: space-between; background: var(--bg-app); padding: 10px 14px; border-radius: var(--radius-md); margin-bottom: 14px; font-size: 0.84rem;">
-            <div>Acreedor: <strong>${credit.creditor}</strong></div>
-            <div>Total: <strong>${formatCOP(credit.totalAmount)}</strong></div>
-            <div>Saldo: <strong style="color: var(--danger);">${formatCOP(credit.remainingBalance)}</strong></div>
+  function renderCreditHistModal() {
+    const { pageItems, totalPages, totalItems, currentPage } = paginateArray(payments, creditHistPage, 15);
+    creditHistPage = currentPage;
+
+    modalOverlay.innerHTML = `
+      <div class="modal-overlay active">
+        <div class="modal-card" style="max-width: 640px;">
+          <div class="modal-header">
+            <div>
+              <h3 class="modal-title">📜 Historial de Cuotas: ${credit.title}</h3>
+              <span style="font-size: 0.76rem; color: var(--text-muted);">${payments.length} registro(s) de cuotas</span>
+            </div>
+            <button class="modal-close-btn" id="btnCloseHistCreditModal">✕</button>
           </div>
-
-          ${
-            payments.length === 0
-              ? `
-            <div style="text-align: center; padding: 30px; color: var(--text-muted);">
-              Aún no hay cuotas ni abonos registrados para este crédito.
+          <div class="modal-body">
+            
+            <div style="display: flex; justify-content: space-between; background: var(--bg-app); padding: 10px 14px; border-radius: var(--radius-md); margin-bottom: 14px; font-size: 0.84rem; flex-wrap: wrap; gap: 8px;">
+              <div>Acreedor: <strong>${credit.creditor}</strong></div>
+              <div>Total: <strong>${formatCOP(credit.totalAmount)}</strong></div>
+              <div>Saldo: <strong style="color: var(--danger);">${formatCOP(credit.remainingBalance)}</strong></div>
             </div>
-          `
-              : `
-            <div class="table-responsive">
-              <table class="app-table" style="font-size: 0.82rem;">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Tipo</th>
-                    <th>Detalle / Motivo</th>
-                    <th>Medio</th>
-                    <th style="text-align: right;">Monto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${payments
-                    .map((p) => {
-                      const isSkip = p.actionType === 'CUOTA_OMITIDA_APLAZADA';
-                      const isInitial = p.actionType === 'CUOTA_INICIAL';
 
-                      let badgeBg = '#DCFCE7';
-                      let badgeColor = '#15803D';
-                      let badgeText = `Cuota #${p.installmentNumber || '1'}`;
+            ${
+              payments.length === 0
+                ? `
+              <div style="text-align: center; padding: 30px; color: var(--text-muted);">
+                Aún no hay cuotas ni abonos registrados para este crédito.
+              </div>
+            `
+                : `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Tipo</th>
+                      <th>Detalle / Motivo</th>
+                      <th>Medio</th>
+                      <th style="text-align: right;">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${pageItems
+                      .map((p) => {
+                        const isSkip = p.actionType === 'CUOTA_OMITIDA_APLAZADA';
+                        const isInitial = p.actionType === 'CUOTA_INICIAL';
 
-                      if (isSkip) {
-                        badgeBg = '#FEF3C7';
-                        badgeColor = '#D97706';
-                        badgeText = '⏭️ APLAZADA';
-                      } else if (isInitial) {
-                        badgeBg = '#E0F2FE';
-                        badgeColor = '#0369A1';
-                        badgeText = '💵 INICIAL';
-                      }
+                        let badgeBg = '#DCFCE7';
+                        let badgeColor = '#15803D';
+                        let badgeText = `Cuota #${p.installmentNumber || '1'}`;
 
-                      return `
-                      <tr>
-                        <td><small style="color: var(--text-muted); font-weight: 600;">${formatDate(p.paymentDate)}</small></td>
-                        <td>
-                          <span class="badge" style="background: ${badgeBg}; color: ${badgeColor}; font-weight: 800; font-size: 0.72rem;">
-                            ${badgeText}
-                          </span>
-                        </td>
-                        <td>
-                          <div>${p.justification || 'Abono de cuota'}</div>
-                          ${p.receiptNumber ? `<small style="color: var(--text-muted);">Recibo: ${p.receiptNumber}</small>` : ''}
-                        </td>
-                        <td>
-                          ${
-                            isSkip
-                              ? '<span style="color: var(--text-muted); font-size: 0.72rem;">N/A</span>'
-                              : formatPaymentBadge(p.paymentMethod)
-                          }
-                        </td>
-                        <td style="text-align: right;">
-                          <strong style="color: ${isSkip ? '#94A3B8' : '#15803D'}; font-weight: 900;">
-                            ${isSkip ? '$0' : '+' + formatCOP(p.amount)}
-                          </strong>
-                        </td>
-                      </tr>
-                    `;
-                    })
-                    .join('')}
-                </tbody>
-              </table>
-            </div>
-          `
-          }
+                        if (isSkip) {
+                          badgeBg = '#FEF3C7';
+                          badgeColor = '#D97706';
+                          badgeText = '⏭️ APLAZADA';
+                        } else if (isInitial) {
+                          badgeBg = '#E0F2FE';
+                          badgeColor = '#0369A1';
+                          badgeText = '💵 INICIAL';
+                        }
 
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" id="btnCancelHistCreditModal">Cerrar</button>
+                        return `
+                        <tr>
+                          <td><small style="color: var(--text-muted); font-weight: 600;">${formatDate(p.paymentDate)}</small></td>
+                          <td>
+                            <span class="badge" style="background: ${badgeBg}; color: ${badgeColor}; font-weight: 800; font-size: 0.72rem;">
+                              ${badgeText}
+                            </span>
+                          </td>
+                          <td>
+                            <div>${p.justification || 'Abono de cuota'}</div>
+                            ${p.receiptNumber ? `<small style="color: var(--text-muted);">Recibo: ${p.receiptNumber}</small>` : ''}
+                          </td>
+                          <td>
+                            ${
+                              isSkip
+                                ? '<span style="color: var(--text-muted); font-size: 0.72rem;">N/A</span>'
+                                : formatPaymentBadge(p.paymentMethod)
+                            }
+                          </td>
+                          <td style="text-align: right;">
+                            <strong style="color: ${isSkip ? '#94A3B8' : '#15803D'}; font-weight: 900;">
+                              ${isSkip ? '$0' : '+' + formatCOP(p.amount)}
+                            </strong>
+                          </td>
+                        </tr>
+                      `;
+                      })
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+              ${renderPaginationHtml({
+                currentPage: creditHistPage,
+                totalPages,
+                totalItems,
+                pageSize: 15,
+                itemName: 'cuotas y abonos',
+                paginationId: 'modalCreditHistPagination',
+              })}
+            `
+            }
+
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btnCancelHistCreditModal">Cerrar</button>
+          </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
-  const closeModal = () => (modalOverlay.innerHTML = '');
-  document.getElementById('btnCloseHistCreditModal')?.addEventListener('click', closeModal);
-  document.getElementById('btnCancelHistCreditModal')?.addEventListener('click', closeModal);
+    const closeModal = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnCloseHistCreditModal')?.addEventListener('click', closeModal);
+    document.getElementById('btnCancelHistCreditModal')?.addEventListener('click', closeModal);
+
+    attachPaginationEvents(modalOverlay, 'modalCreditHistPagination', (newPage) => {
+      creditHistPage = newPage;
+      renderCreditHistModal();
+    });
+  }
+
+  renderCreditHistModal();
 }

@@ -623,24 +623,23 @@ export const createBatch = async (req: Request, res: Response) => {
         },
       });
 
-      return [batch];
-    });
+      // 8. Auto-vincular pedidos seleccionados o pendientes dentro de la misma transacción atómica
+      const { autoLinkPendingOrders, linkOrderIds } = req.body;
+      const shouldAutoLink = autoLinkPendingOrders === true || autoLinkPendingOrders === 'true';
+      const hasSpecificOrders = Array.isArray(linkOrderIds) && linkOrderIds.length > 0;
 
-    // Auto-vincular pedidos preventa pendientes del mismo sabor si se solicita
-    const { autoLinkPendingOrders, linkOrderIds } = req.body;
-    if (autoLinkPendingOrders === true || autoLinkPendingOrders === 'true' || (Array.isArray(linkOrderIds) && linkOrderIds.length > 0)) {
-      try {
+      if (shouldAutoLink || hasSpecificOrders) {
         let targetOrderIds: number[] = [];
-        if (Array.isArray(linkOrderIds) && linkOrderIds.length > 0) {
-          targetOrderIds = linkOrderIds.map(Number);
-        } else {
-          const pending = await prisma.order.findMany({
+        if (hasSpecificOrders) {
+          targetOrderIds = linkOrderIds.map(Number).filter((id: number) => !isNaN(id) && id > 0);
+        } else if (shouldAutoLink) {
+          const pending = await tx.order.findMany({
             where: {
               batchId: null,
               deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
               OR: [
-                { flavor: { contains: createdBatch.flavor, mode: 'insensitive' } },
-                { items: { some: { flavor: { contains: createdBatch.flavor, mode: 'insensitive' } } } },
+                { flavor: { contains: batch.flavor, mode: 'insensitive' } },
+                { items: { some: { flavor: { contains: batch.flavor, mode: 'insensitive' } } } },
               ],
             },
             select: { id: true },
@@ -649,25 +648,26 @@ export const createBatch = async (req: Request, res: Response) => {
         }
 
         if (targetOrderIds.length > 0) {
-          await prisma.order.updateMany({
+          await tx.order.updateMany({
             where: { id: { in: targetOrderIds } },
-            data: { batchId: createdBatch.id },
+            data: { batchId: batch.id },
           });
-          await prisma.orderItem.updateMany({
+
+          await tx.orderItem.updateMany({
             where: {
               orderId: { in: targetOrderIds },
               OR: [
-                { flavor: { contains: createdBatch.flavor, mode: 'insensitive' } },
+                { flavor: { contains: batch.flavor, mode: 'insensitive' } },
                 { batchId: null },
               ],
             },
-            data: { batchId: createdBatch.id },
+            data: { batchId: batch.id },
           });
         }
-      } catch (linkErr) {
-        console.error('Error auto-linking orders on batch create:', linkErr);
       }
-    }
+
+      return [batch];
+    });
 
     res.status(201).json(createdBatch);
   } catch (error) {

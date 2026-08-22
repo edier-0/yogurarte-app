@@ -1,7 +1,9 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, formatPaymentBadge, getTodayLocalDateStr, showToast, store } from '../store.js';
 import { renderCredits } from './creditsView.js';
+import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
+let expensesCurrentPage = 1;
 let activeCategory = 'ALL';
 let activeMainTab = 'EXPENSES'; // 'EXPENSES' | 'CREDITS'
 
@@ -101,6 +103,7 @@ async function renderExpensesContent(subContainer) {
       subContainer.querySelectorAll('.expense-pill').forEach((b) => b.classList.remove('active'));
       e.target.classList.add('active');
       activeCategory = e.target.dataset.cat;
+      expensesCurrentPage = 1;
       loadExpensesList(subContainer);
     });
   });
@@ -154,6 +157,9 @@ async function loadExpensesList(container) {
       OTRO: '📦 Otro',
     };
 
+    const { pageItems, totalPages, totalItems, currentPage } = paginateArray(expenses, expensesCurrentPage, 15);
+    expensesCurrentPage = currentPage;
+
     tableContainer.innerHTML = `
       <div class="table-responsive">
         <table class="app-table">
@@ -170,7 +176,7 @@ async function loadExpensesList(container) {
             </tr>
           </thead>
           <tbody>
-            ${expenses
+            ${pageItems
               .map(
                 (e) => `
               <tr>
@@ -197,7 +203,25 @@ async function loadExpensesList(container) {
           </tbody>
         </table>
       </div>
+      ${renderPaginationHtml({
+        currentPage: expensesCurrentPage,
+        totalPages,
+        totalItems,
+        pageSize: 15,
+        itemName: 'gastos',
+        paginationId: 'expensesPagination',
+      })}
     `;
+
+    attachPaginationEvents(
+      tableContainer,
+      'expensesPagination',
+      (newPage) => {
+        expensesCurrentPage = newPage;
+        loadExpensesList(container);
+      },
+      tableContainer
+    );
 
     tableContainer.querySelectorAll('.btn-delete-expense').forEach((btn) => {
       btn.addEventListener('click', async (e) => {

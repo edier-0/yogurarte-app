@@ -362,6 +362,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         pendingAmount: number;
         ordersCount: number;
         customers: Array<{
+          id: number;
           orderNumber: string;
           customerName: string;
           customerPhone: string;
@@ -371,6 +372,8 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           totalAmount: number;
           paidAmount: number;
           pendingAmount: number;
+          paymentStatus?: string;
+          paymentMethod?: string;
           deliveryStatus: string;
           orderDate: Date;
           deliveryDate: Date | null;
@@ -419,6 +422,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           : `${o.quantityBottles}x ${o.bottleSize} (${o.flavor})`;
 
         g.customers.push({
+          id: o.id,
           orderNumber: o.orderNumber,
           customerName: o.customer?.fullName || 'Cliente',
           customerPhone: o.customer?.phone || '',
@@ -428,6 +432,8 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           totalAmount: o.totalAmount,
           paidAmount: o.paidAmount,
           pendingAmount: o.pendingAmount,
+          paymentStatus: o.paymentStatus,
+          paymentMethod: o.paymentMethod || 'EFECTIVO',
           deliveryStatus: o.deliveryStatus,
           orderDate: o.orderDate,
           deliveryDate: o.deliveryDate,
@@ -515,6 +521,9 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         inProcessPendingToCollect,
         inProcessPaidAmount,
         inProcessTotalSales,
+        inProcessPaidCount: inProcessOrders.filter((o) => o.paymentStatus === 'PAID').length,
+        inProcessPartialCount: inProcessOrders.filter((o) => o.paymentStatus === 'PARTIAL').length,
+        inProcessPendingCount: inProcessOrders.filter((o) => o.paymentStatus === 'PENDING').length,
       },
       paymentBreakdown: {
         paid: ordersPaidCount,

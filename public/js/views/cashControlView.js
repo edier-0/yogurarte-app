@@ -2,6 +2,9 @@ import { api } from '../api.js';
 import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store } from '../store.js';
 import { openExpenseModal, openCashMovementModal } from './expensesView.js';
 import { openPaymentModal } from './ordersView.js';
+import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
+
+let cashCurrentPage = 1;
 
 let cashFilters = {
   period: 'all',
@@ -302,6 +305,7 @@ async function loadCashData(container) {
         mainContent.querySelectorAll('[data-mtab]').forEach((b) => b.classList.remove('active'));
         e.currentTarget.classList.add('active');
         activeMovementTab = e.currentTarget.dataset.mtab;
+        cashCurrentPage = 1;
         updateViewWithFilters(mainContent, allMovements, container);
       });
     });
@@ -310,6 +314,7 @@ async function loadCashData(container) {
     const searchInput = mainContent.querySelector('#cashSearchInput');
     searchInput?.addEventListener('input', (e) => {
       searchFilter = e.target.value.toLowerCase().trim();
+      cashCurrentPage = 1;
       updateViewWithFilters(mainContent, allMovements, container);
     });
 
@@ -1237,6 +1242,9 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
     return;
   }
 
+  const { pageItems, totalPages, totalItems, currentPage } = paginateArray(filtered, cashCurrentPage, 15);
+  cashCurrentPage = currentPage;
+
   tableWrapper.innerHTML = `
     <div class="table-responsive">
       <table class="app-table" style="font-size: 0.85rem;">
@@ -1252,7 +1260,7 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
           </tr>
         </thead>
         <tbody>
-          ${filtered
+          ${pageItems
             .map((m) => {
               const isPositive = m.flowType === 'INFLOW';
               const isTransfer = m.flowType === 'TRANSFER';
@@ -1347,7 +1355,25 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
         </tbody>
       </table>
     </div>
+    ${renderPaginationHtml({
+      currentPage: cashCurrentPage,
+      totalPages,
+      totalItems,
+      pageSize: 15,
+      itemName: 'movimientos',
+      paginationId: 'cashPagination',
+    })}
   `;
+
+  attachPaginationEvents(
+    tableWrapper,
+    'cashPagination',
+    (newPage) => {
+      cashCurrentPage = newPage;
+      renderCashMovementTable(data, mainContainer);
+    },
+    tableWrapper
+  );
 
   // Listeners para gestionar abonos de pedidos desde el Libro de Caja
   tableWrapper.querySelectorAll('.btn-manage-sale-payment').forEach((btn) => {
@@ -1549,8 +1575,10 @@ export function openCashKpiDetailModal({
 
   const isPositive = totalAmount >= 0;
 
+  let kpiDetailPage = 1;
+
   // Renderizar modal inicial
-  const renderContent = (filterText = '') => {
+  const renderContent = (filterText = '', page = 1) => {
     const normalizedFilter = filterText.toLowerCase().trim();
     const filteredItems = items
       .filter((item) => {
@@ -1563,6 +1591,9 @@ export function openCashKpiDetailModal({
         return desc.includes(normalizedFilter) || person.includes(normalizedFilter) || notes.includes(normalizedFilter) || method.includes(normalizedFilter) || cat.includes(normalizedFilter);
       })
       .sort((a, b) => new Date(b.date || b.paymentDate || b.movementDate || 0).getTime() - new Date(a.date || a.paymentDate || a.movementDate || 0).getTime());
+
+    const { pageItems, totalPages, totalItems, currentPage } = paginateArray(filteredItems, page, 15);
+    kpiDetailPage = currentPage;
 
     const listHtml =
       filteredItems.length === 0
@@ -1587,7 +1618,7 @@ export function openCashKpiDetailModal({
               </tr>
             </thead>
             <tbody>
-              ${filteredItems
+              ${pageItems
                 .map((item) => {
                   const isTransfer = item.flowType === 'TRANSFER' || item.type?.startsWith('TRASLADO_');
                   const itemIsPos = item.flowType === 'INFLOW' || (!isTransfer && (item.displayAmount !== undefined ? item.displayAmount > 0 : item.amount > 0));
@@ -1681,9 +1712,29 @@ export function openCashKpiDetailModal({
             </tbody>
           </table>
         </div>
+        ${renderPaginationHtml({
+          currentPage: kpiDetailPage,
+          totalPages,
+          totalItems,
+          pageSize: 15,
+          itemName: 'movimientos del desglose',
+          paginationId: 'modalCashKpiPagination',
+        })}
       `;
 
     return listHtml;
+  };
+
+  const updateContainer = () => {
+    const container = document.getElementById('kpiDetailListContainer');
+    const searchInput = document.getElementById('kpiDetailSearchInput');
+    if (container) {
+      container.innerHTML = renderContent(searchInput ? searchInput.value : '', kpiDetailPage);
+      attachPaginationEvents(container, 'modalCashKpiPagination', (newPage) => {
+        kpiDetailPage = newPage;
+        updateContainer();
+      });
+    }
   };
 
   modalOverlay.innerHTML = `
@@ -1726,7 +1777,7 @@ export function openCashKpiDetailModal({
 
           <!-- Contenedor de la Tabla -->
           <div id="kpiDetailListContainer">
-            ${renderContent()}
+            ${renderContent('', 1)}
           </div>
 
         </div>
@@ -1745,10 +1796,16 @@ export function openCashKpiDetailModal({
   const searchInput = document.getElementById('kpiDetailSearchInput');
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
-      const container = document.getElementById('kpiDetailListContainer');
-      if (container) {
-        container.innerHTML = renderContent(e.target.value);
-      }
+      kpiDetailPage = 1;
+      updateContainer();
+    });
+  }
+
+  const container = document.getElementById('kpiDetailListContainer');
+  if (container) {
+    attachPaginationEvents(container, 'modalCashKpiPagination', (newPage) => {
+      kpiDetailPage = newPage;
+      updateContainer();
     });
   }
 }

@@ -1,5 +1,8 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
+
+let ordersCurrentPage = 1;
 
 let currentFilters = {
   search: '',
@@ -106,6 +109,10 @@ export async function renderOrders(container) {
               📅 Calendario
             </button>
           </div>
+
+          <button class="btn btn-outline" id="btnRescheduleOverdueOrders" style="border-color: #F59E0B; color: #B45309; background: #FEF3C7; font-weight: 700; font-size: 0.85rem;" title="Reprogramar todos los pedidos de días anteriores para entregarse hoy">
+            📅 Reprogramar Atrasados a Hoy
+          </button>
 
           <button class="btn btn-accent" id="btnOpenNewOrderModal">
             <span>+</span> Nuevo Pedido
@@ -232,6 +239,7 @@ export async function renderOrders(container) {
   searchInput?.addEventListener('input', (e) => {
     clearTimeout(debounceTimeout);
     debounceTimeout = setTimeout(() => {
+      ordersCurrentPage = 1;
       currentFilters.search = e.target.value;
       loadOrdersList(container);
     }, 250);
@@ -242,6 +250,7 @@ export async function renderOrders(container) {
     btn.addEventListener('click', (e) => {
       container.querySelectorAll('[data-debt-cat]').forEach((b) => b.classList.remove('active'));
       e.currentTarget.classList.add('active');
+      ordersCurrentPage = 1;
       currentFilters.debtCategory = e.currentTarget.dataset.debtCat;
       loadOrdersList(container);
     });
@@ -250,6 +259,7 @@ export async function renderOrders(container) {
   const specificDateInput = container.querySelector('#selectSpecificDateFilter');
   specificDateInput?.addEventListener('change', (e) => {
     const val = e.target.value;
+    ordersCurrentPage = 1;
     currentFilters.specificDate = val;
     currentFilters.dateRange = val ? 'CUSTOM' : 'ALL';
     currentFilters.month = '';
@@ -258,6 +268,7 @@ export async function renderOrders(container) {
   });
 
   container.querySelector('#btnClearSpecificDate')?.addEventListener('click', () => {
+    ordersCurrentPage = 1;
     currentFilters.specificDate = '';
     currentFilters.dateRange = 'ALL';
     renderOrders(container);
@@ -265,6 +276,7 @@ export async function renderOrders(container) {
 
   const monthSelect = container.querySelector('#selectMonthFilter');
   monthSelect?.addEventListener('change', (e) => {
+    ordersCurrentPage = 1;
     currentFilters.month = e.target.value;
     if (currentFilters.month) {
       currentFilters.dateRange = 'CUSTOM';
@@ -278,6 +290,7 @@ export async function renderOrders(container) {
     btn.addEventListener('click', (e) => {
       container.querySelectorAll('[data-date]').forEach((b) => b.classList.remove('active'));
       e.target.classList.add('active');
+      ordersCurrentPage = 1;
       currentFilters.dateRange = e.target.dataset.date;
       currentFilters.specificDate = '';
       currentFilters.month = '';
@@ -289,30 +302,35 @@ export async function renderOrders(container) {
 
   const driverSelect = container.querySelector('#selectDriverFilter');
   driverSelect?.addEventListener('change', (e) => {
+    ordersCurrentPage = 1;
     currentFilters.driverFilter = e.target.value;
     loadOrdersList(container);
   });
 
   const batchSelect = container.querySelector('#selectBatchFilter');
   batchSelect?.addEventListener('change', (e) => {
+    ordersCurrentPage = 1;
     currentFilters.batchId = e.target.value;
     loadOrdersList(container);
   });
 
   const paymentSelect = container.querySelector('#selectPaymentFilter');
   paymentSelect?.addEventListener('change', (e) => {
+    ordersCurrentPage = 1;
     currentFilters.paymentStatus = e.target.value;
     loadOrdersList(container);
   });
 
   const deliverySelect = container.querySelector('#selectDeliveryFilter');
   deliverySelect?.addEventListener('change', (e) => {
+    ordersCurrentPage = 1;
     currentFilters.deliveryStatus = e.target.value;
     loadOrdersList(container);
   });
 
   const sortSelect = container.querySelector('#selectOrderSort');
   sortSelect?.addEventListener('change', (e) => {
+    ordersCurrentPage = 1;
     currentFilters.sortBy = e.target.value;
     const quickBtn = container.querySelector('#btnQuickSortUpdated');
     if (quickBtn) {
@@ -330,6 +348,7 @@ export async function renderOrders(container) {
   });
 
   container.querySelector('#btnQuickSortUpdated')?.addEventListener('click', () => {
+    ordersCurrentPage = 1;
     if (currentFilters.sortBy === 'UPDATED_DESC') {
       currentFilters.sortBy = 'PRIORITY_DEBT';
     } else {
@@ -348,6 +367,23 @@ export async function renderOrders(container) {
   container.querySelector('#btnToggleCalendarView')?.addEventListener('click', () => {
     currentFilters.viewMode = 'calendar';
     renderOrders(container);
+  });
+
+  container.querySelector('#btnRescheduleOverdueOrders')?.addEventListener('click', async () => {
+    const todayStr = getTodayLocalDateStr();
+    if (confirm(`¿Deseas reprogramar todos los pedidos atrasados de días anteriores para ser entregados hoy (${formatDate(todayStr)})?`)) {
+      try {
+        const res = await api.rescheduleOverdueOrders();
+        if (res.updatedCount === 0) {
+          showToast('No hay pedidos atrasados pendientes de reprogramar 🚀', 'info');
+        } else {
+          showToast(`¡Se reprogramaron ${res.updatedCount} pedidos atrasados para hoy con éxito! 🛵📅`, 'success');
+        }
+        await loadOrdersList(container);
+      } catch (err) {
+        showToast(err.message || 'Error al reprogramar pedidos', 'danger');
+      }
+    }
   });
 
   container.querySelector('#btnOpenNewOrderModal')?.addEventListener('click', () => {
@@ -466,14 +502,34 @@ async function loadOrdersList(container) {
       return;
     }
 
+    const { pageItems, totalPages, totalItems, currentPage } = paginateArray(orders, ordersCurrentPage, 15);
+    ordersCurrentPage = currentPage;
+
     listContainer.innerHTML = `
       <div class="orders-grid">
-        ${orders.map((o) => createOrderCardHtml(o)).join('')}
+        ${pageItems.map((o) => createOrderCardHtml(o)).join('')}
       </div>
+      ${renderPaginationHtml({
+        currentPage: ordersCurrentPage,
+        totalPages,
+        totalItems,
+        pageSize: 15,
+        itemName: 'pedidos',
+        paginationId: 'ordersPagination',
+      })}
     `;
 
     // Asignar eventos a las tarjetas de pedidos
     attachOrderCardEvents(listContainer);
+    attachPaginationEvents(
+      listContainer,
+      'ordersPagination',
+      (newPage) => {
+        ordersCurrentPage = newPage;
+        loadOrdersList(container);
+      },
+      listContainer
+    );
   } catch (error) {
     console.error('Error loading orders:', error);
     listContainer.innerHTML = `

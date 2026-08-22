@@ -119,6 +119,12 @@ export const api = {
     });
   },
 
+  async rescheduleOverdueOrders() {
+    return apiFetch('/orders/reschedule-overdue', {
+      method: 'POST',
+    });
+  },
+
   async deleteOrder(id) {
     return apiFetch(`/orders/${id}`, {
       method: 'DELETE',
@@ -220,10 +226,33 @@ export const api = {
     });
   },
 
-  async adjustStock(id, newStock, reason) {
+  async adjustStock(id, newStock, reason, type = 'CONTEO_FISICO', registeredBy = '', adjustmentDate = '') {
     return apiFetch(`/inventory/materials/${id}/adjust`, {
       method: 'PUT',
-      body: JSON.stringify({ newStock, reason }),
+      body: JSON.stringify({ newStock, reason, type, registeredBy, adjustmentDate }),
+    });
+  },
+
+  async createInventoryAdjustment(data) {
+    return apiFetch('/inventory/adjustments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getInventoryAdjustments(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        query.append(key, val);
+      }
+    });
+    return apiFetch(`/inventory/adjustments?${query.toString()}`);
+  },
+
+  async deleteInventoryAdjustment(id) {
+    return apiFetch(`/inventory/adjustments/${id}`, {
+      method: 'DELETE',
     });
   },
 

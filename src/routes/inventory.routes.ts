@@ -8,6 +8,8 @@ import {
   updatePurchase,
   deletePurchase,
   adjustStock,
+  getAdjustmentsHistory,
+  deleteAdjustment,
   getPurchasesHistory,
 } from '../controllers/inventory.controller.js';
 import { validateBody, validateParams } from '../middlewares/validate.middleware.js';
@@ -27,6 +29,11 @@ router.post('/materials', validateBody(createMaterialSchema), createMaterial);
 router.put('/materials/:id', validateParams(idParamSchema), validateBody(updateMaterialSchema), updateMaterial);
 router.delete('/materials/:id', validateParams(idParamSchema), deleteMaterial);
 router.put('/materials/:id/adjust', validateParams(idParamSchema), validateBody(adjustStockSchema), adjustStock);
+
+router.get('/adjustments', getAdjustmentsHistory);
+router.post('/adjustments', validateBody(adjustStockSchema), adjustStock);
+router.delete('/adjustments/:id', validateParams(idParamSchema), deleteAdjustment);
+
 router.get('/purchases', getPurchasesHistory);
 router.post('/purchases', validateBody(createPurchaseSchema), createPurchase);
 router.put('/purchases/:id', validateParams(idParamSchema), validateBody(updatePurchaseSchema), updatePurchase);

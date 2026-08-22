@@ -1,7 +1,9 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, showToast } from '../store.js';
 import { openOrderModal } from './ordersView.js';
+import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
+let customersCurrentPage = 1;
 let searchQuery = '';
 let currentDebtFilter = 'ALL'; // 'ALL', 'DELIVERED_DEBT', 'IN_PROCESS', 'PAID'
 let currentBatchFilter = 'ALL';
@@ -104,6 +106,7 @@ export async function renderCustomers(container) {
   searchInput?.addEventListener('input', (e) => {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
+      customersCurrentPage = 1;
       searchQuery = e.target.value;
       loadCustomersList(container);
     }, 250);
@@ -112,6 +115,7 @@ export async function renderCustomers(container) {
   // Listener para filtro de lote
   const batchFilterSelect = container.querySelector('#custBatchFilterSelect');
   batchFilterSelect?.addEventListener('change', (e) => {
+    customersCurrentPage = 1;
     currentBatchFilter = e.target.value;
     loadCustomersList(container);
   });
@@ -121,6 +125,7 @@ export async function renderCustomers(container) {
     btn.addEventListener('click', (e) => {
       container.querySelectorAll('#custDebtFilterGroup button').forEach((b) => b.classList.remove('active'));
       e.currentTarget.classList.add('active');
+      customersCurrentPage = 1;
       currentDebtFilter = e.currentTarget.dataset.debt;
       loadCustomersList(container);
     });
@@ -282,10 +287,13 @@ async function loadCustomersList(container) {
       `;
     }
 
+    const { pageItems, totalPages, totalItems, currentPage } = paginateArray(filteredCustomers, customersCurrentPage, 15);
+    customersCurrentPage = currentPage;
+
     gridContainer.innerHTML = `
       ${summaryBanner}
       <div class="orders-grid">
-        ${filteredCustomers
+        ${pageItems
           .map((c) => {
             const rawPhone = (c.phone || '').trim();
             const isUsername = rawPhone.startsWith('@') || /[a-zA-Z]/.test(rawPhone);
@@ -449,7 +457,25 @@ async function loadCustomersList(container) {
           })
           .join('')}
       </div>
+      ${renderPaginationHtml({
+        currentPage: customersCurrentPage,
+        totalPages,
+        totalItems,
+        pageSize: 15,
+        itemName: 'clientes',
+        paginationId: 'customersPagination',
+      })}
     `;
+
+    attachPaginationEvents(
+      gridContainer,
+      'customersPagination',
+      (newPage) => {
+        customersCurrentPage = newPage;
+        loadCustomersData(container);
+      },
+      gridContainer
+    );
 
     // Asignar eventos
     gridContainer.querySelectorAll('.btn-create-order-for-cust').forEach((btn) => {
@@ -611,84 +637,109 @@ async function openCustomerHistoryModal(customerId) {
 
   try {
     const customer = await api.getCustomerById(customerId);
+    const orders = customer.orders || [];
+    let historyPage = 1;
 
-    modalOverlay.innerHTML = `
-      <div class="modal-overlay active">
-        <div class="modal-card" style="max-width: 580px;">
-          <div class="modal-header">
-            <h3 class="modal-title">📋 Historial: ${customer.fullName}</h3>
-            <button class="modal-close-btn" id="btnCloseHistoryModal">✕</button>
-          </div>
-          <div class="modal-body">
-            <div style="background: var(--bg-app); padding: 12px; border-radius: var(--radius-md); margin-bottom: 16px;">
-              <p style="margin-bottom: 4px;"><strong>📞 Teléfono:</strong> ${customer.phone}</p>
-              <p style="margin-bottom: 0;"><strong>📍 Dirección:</strong> ${customer.address || 'Fonseca'}</p>
+    function renderHistoryModal() {
+      const { pageItems, totalPages, totalItems, currentPage } = paginateArray(orders, historyPage, 15);
+      historyPage = currentPage;
+
+      modalOverlay.innerHTML = `
+        <div class="modal-overlay active">
+          <div class="modal-card" style="max-width: 620px;">
+            <div class="modal-header">
+              <h3 class="modal-title">📋 Historial: ${customer.fullName}</h3>
+              <button class="modal-close-btn" id="btnCloseHistoryModal">✕</button>
             </div>
-
-            <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 10px;">Pedidos Anteriores</h4>
-            
-            ${
-              customer.orders && customer.orders.length > 0
-                ? `
-              <div class="table-responsive">
-                <table class="app-table">
-                  <thead>
-                    <tr>
-                      <th>Pedido</th>
-                      <th>Litros</th>
-                      <th>Total</th>
-                      <th>Estado</th>
-                      <th>Fecha</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${customer.orders
-                      .map(
-                        (o) => `
-                      <tr>
-                        <td><strong>${o.orderNumber}</strong></td>
-                        <td>${o.totalLiters} L</td>
-                        <td><strong>${formatCOP(o.totalAmount)}</strong></td>
-                        <td><span class="badge ${o.paymentStatus === 'PAID' ? 'badge-paid' : 'badge-pending'}">${o.paymentStatus}</span></td>
-                        <td>${formatDate(o.orderDate)}</td>
-                      </tr>
-                    `
-                      )
-                      .join('')}
-                  </tbody>
-                </table>
+            <div class="modal-body">
+              <div style="background: var(--bg-app); padding: 12px; border-radius: var(--radius-md); margin-bottom: 16px;">
+                <p style="margin-bottom: 4px;"><strong>📞 Teléfono:</strong> ${customer.phone}</p>
+                <p style="margin-bottom: 0;"><strong>📍 Dirección:</strong> ${customer.address || 'Fonseca'}</p>
               </div>
-            `
-                : `<p style="color: var(--text-muted); font-size: 0.88rem;">Sin pedidos registrados aún.</p>`
-            }
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-accent" id="btnHistoryNewOrder" style="margin-right: auto;">
-              + Crear Pedido para ${customer.fullName}
-            </button>
-            <button type="button" class="btn btn-primary" id="btnCloseHistoryModalBtn">Cerrar</button>
+
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <span>Pedidos Anteriores</span>
+                <span class="badge" style="font-size: 0.72rem;">${orders.length} pedido(s)</span>
+              </h4>
+              
+              ${
+                orders.length > 0
+                  ? `
+                <div class="table-responsive">
+                  <table class="app-table" style="font-size: 0.82rem;">
+                    <thead>
+                      <tr>
+                        <th>Pedido</th>
+                        <th>Litros</th>
+                        <th>Total</th>
+                        <th>Estado</th>
+                        <th>Fecha</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${pageItems
+                        .map(
+                          (o) => `
+                        <tr>
+                          <td><strong>${o.orderNumber}</strong></td>
+                          <td>${o.totalLiters} L</td>
+                          <td><strong>${formatCOP(o.totalAmount)}</strong></td>
+                          <td><span class="badge ${o.paymentStatus === 'PAID' ? 'badge-paid' : 'badge-pending'}">${o.paymentStatus}</span></td>
+                          <td>${formatDate(o.orderDate)}</td>
+                        </tr>
+                      `
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ${renderPaginationHtml({
+                  currentPage: historyPage,
+                  totalPages,
+                  totalItems,
+                  pageSize: 15,
+                  itemName: 'pedidos históricos',
+                  paginationId: 'modalCustomerHistoryPagination',
+                })}
+              `
+                  : `<p style="color: var(--text-muted); font-size: 0.88rem;">Sin pedidos registrados aún.</p>`
+              }
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-accent" id="btnHistoryNewOrder" style="margin-right: auto;">
+                + Crear Pedido para ${customer.fullName}
+              </button>
+              <button type="button" class="btn btn-primary" id="btnCloseHistoryModalBtn">Cerrar</button>
+            </div>
           </div>
         </div>
-      </div>
-    `;
+      `;
 
-    const closeModal = () => (modalOverlay.innerHTML = '');
-    document.getElementById('btnCloseHistoryModal')?.addEventListener('click', closeModal);
-    document.getElementById('btnCloseHistoryModalBtn')?.addEventListener('click', closeModal);
+      const closeModal = () => (modalOverlay.innerHTML = '');
+      document.getElementById('btnCloseHistoryModal')?.addEventListener('click', closeModal);
+      document.getElementById('btnCloseHistoryModalBtn')?.addEventListener('click', closeModal);
 
-    document.getElementById('btnHistoryNewOrder')?.addEventListener('click', () => {
-      closeModal();
-      openOrderModal({
-        customer: {
-          fullName: customer.fullName,
-          phone: customer.phone,
-          address: customer.address,
-        },
-        customerId: customer.id,
-        deliveryAddress: customer.address,
-        isNewForCustomer: true,
+      document.getElementById('btnHistoryNewOrder')?.addEventListener('click', () => {
+        closeModal();
+        openOrderModal({
+          customer: {
+            fullName: customer.fullName,
+            phone: customer.phone,
+            address: customer.address,
+          },
+          customerId: customer.id,
+          deliveryAddress: customer.address,
+          isNewForCustomer: true,
+        });
       });
-    });
+
+      attachPaginationEvents(modalOverlay, 'modalCustomerHistoryPagination', (newPage) => {
+        historyPage = newPage;
+        renderHistoryModal();
+      });
+    }
+
+    renderHistoryModal();
   } catch (err) {
     showToast('Error al cargar historial del cliente', 'danger');
   }

@@ -1,6 +1,8 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
+let deliveryCurrentPage = 1;
 let deliveryStatusFilter = 'PENDING'; // 'PENDING' | 'IN_ROUTE' | 'DELIVERED' | 'ALL'
 let deliveryTypeFilter = 'PROPIO'; // 'PROPIO' | 'DOMICILIARIO' | 'LOCAL' | 'ALL'
 let deliveryDateScope = 'ALL_PENDING'; // 'ALL_PENDING' | 'TODAY' | 'SPECIFIC_DATE' | 'ALL'
@@ -29,6 +31,12 @@ export async function renderDelivery(container) {
 
     cachedDeliveryOrders = (await api.getOrders(params)) || [];
 
+    const overdueOrdersCount = cachedDeliveryOrders.filter(
+      (o) =>
+        o.deliveryStatus !== 'DELIVERED' &&
+        (o.deliveryDate ? o.deliveryDate.split('T')[0] < todayStr : o.orderDate && o.orderDate.split('T')[0] < todayStr)
+    ).length;
+
     // Renderizar la estructura principal (toolbar, filtros, KPIs y contenedor de lista)
     container.innerHTML = `
       <!-- Barra de Herramientas de Entregas -->
@@ -56,6 +64,10 @@ export async function renderDelivery(container) {
             `
                 : ''
             }
+
+            <button class="btn btn-outline" id="btnRescheduleOverdue" style="font-weight: 700; font-size: 0.85rem; padding: 6px 12px; border-color: ${overdueOrdersCount > 0 ? '#F59E0B' : 'var(--border-color)'}; color: ${overdueOrdersCount > 0 ? '#B45309' : 'var(--text-muted)'}; background: ${overdueOrdersCount > 0 ? '#FEF3C7' : 'transparent'};" title="Reprogramar todos los pedidos de días anteriores para entregarse hoy">
+              📅 Reprogramar Atrasados a Hoy ${overdueOrdersCount > 0 ? `<span class="badge" style="background: #F59E0B; color: #FFFFFF; margin-left: 4px; padding: 2px 6px; font-size: 0.72rem; border-radius: 999px;">${overdueOrdersCount}</span>` : ''}
+            </button>
 
             <button class="btn btn-outline" id="btnRefreshDeliveries" style="font-weight: 700; font-size: 0.85rem; padding: 6px 12px;">
               🔄 Actualizar
@@ -238,6 +250,7 @@ function filterAndRenderDelivery(container) {
     chipsContainer.querySelectorAll('[data-deliv-filter]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         deliveryStatusFilter = e.currentTarget.dataset.delivFilter;
+        deliveryCurrentPage = 1;
         filterAndRenderDelivery(container);
       });
     });
@@ -305,11 +318,33 @@ function filterAndRenderDelivery(container) {
     return dateA.localeCompare(dateB);
   });
 
-  // 8. Renderizar lista de tarjetas
+  // 8. Renderizar lista de tarjetas con paginación
   const listContainer = document.getElementById('deliveryOrdersList');
   if (listContainer) {
-    listContainer.innerHTML = renderDeliveryOrdersListHtml(displayOrders, todayStr, isAdmin);
+    const { pageItems, totalPages, totalItems, currentPage } = paginateArray(displayOrders, deliveryCurrentPage, 15);
+    deliveryCurrentPage = currentPage;
+
+    listContainer.innerHTML = `
+      ${renderDeliveryOrdersListHtml(pageItems, todayStr, isAdmin)}
+      ${renderPaginationHtml({
+        currentPage: deliveryCurrentPage,
+        totalPages,
+        totalItems,
+        pageSize: 15,
+        itemName: 'entregas',
+        paginationId: 'deliveryPagination',
+      })}
+    `;
     attachCardActionEvents(listContainer, container);
+    attachPaginationEvents(
+      listContainer,
+      'deliveryPagination',
+      (newPage) => {
+        deliveryCurrentPage = newPage;
+        filterAndRenderDelivery(container);
+      },
+      listContainer
+    );
   }
 }
 
@@ -499,17 +534,20 @@ function attachDeliveryEvents(container) {
 
   searchInput?.addEventListener('input', (e) => {
     deliverySearchQuery = e.target.value;
+    deliveryCurrentPage = 1;
     filterAndRenderDelivery(container);
   });
 
   clearBtn?.addEventListener('click', () => {
     deliverySearchQuery = '';
+    deliveryCurrentPage = 1;
     if (searchInput) searchInput.value = '';
     filterAndRenderDelivery(container);
   });
 
   document.getElementById('selectDeliveryTypeFilter')?.addEventListener('change', (e) => {
     deliveryTypeFilter = e.target.value;
+    deliveryCurrentPage = 1;
     filterAndRenderDelivery(container);
   });
 
@@ -518,6 +556,7 @@ function attachDeliveryEvents(container) {
 
   scopeSelect?.addEventListener('change', (e) => {
     deliveryDateScope = e.target.value;
+    deliveryCurrentPage = 1;
     if (dateInput) {
       dateInput.style.display = deliveryDateScope === 'SPECIFIC_DATE' ? 'inline-block' : 'none';
     }
@@ -526,11 +565,36 @@ function attachDeliveryEvents(container) {
 
   dateInput?.addEventListener('change', (e) => {
     deliverySpecificDate = e.target.value;
+    deliveryCurrentPage = 1;
     filterAndRenderDelivery(container);
   });
 
   document.getElementById('btnRefreshDeliveries')?.addEventListener('click', () => {
     renderDelivery(container);
+  });
+
+  document.getElementById('btnRescheduleOverdue')?.addEventListener('click', async () => {
+    const todayStr = getTodayLocalDateStr();
+    const overdueCount = cachedDeliveryOrders.filter(
+      (o) =>
+        o.deliveryStatus !== 'DELIVERED' &&
+        (o.deliveryDate ? o.deliveryDate.split('T')[0] < todayStr : o.orderDate && o.orderDate.split('T')[0] < todayStr)
+    ).length;
+
+    if (overdueCount === 0) {
+      showToast('No hay pedidos atrasados pendientes de reprogramar 🚀', 'info');
+      return;
+    }
+
+    if (confirm(`¿Deseas reprogramar ${overdueCount} pedido(s) atrasados para ser entregados hoy (${formatDate(todayStr)})?`)) {
+      try {
+        const res = await api.rescheduleOverdueOrders();
+        showToast(`¡Se reprogramaron ${res.updatedCount} pedidos atrasados para hoy con éxito! 🛵📅`, 'success');
+        renderDelivery(container);
+      } catch (err) {
+        showToast(err.message || 'Error al reprogramar pedidos atrasados', 'danger');
+      }
+    }
   });
 }
 

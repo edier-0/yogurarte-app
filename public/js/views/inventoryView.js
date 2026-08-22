@@ -1,11 +1,18 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, formatPaymentBadge, formatStock, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
+
+let materialsCurrentPage = 1;
+let preparationsCurrentPage = 1;
+let purchasesCurrentPage = 1;
+let adjustmentsCurrentPage = 1;
 
 let selectedCategory = 'ALL';
 let purchaseDateFilter = '';
+let adjustmentDateFilter = '';
 
 export async function renderInventory(container) {
-  // Generar meses para filtrar compras
+  // Generar meses para filtrar compras y ajustes
   const monthOptions = [];
   const currDate = new Date();
   for (let i = 0; i < 12; i++) {
@@ -23,12 +30,15 @@ export async function renderInventory(container) {
           <h3 class="inventory-toolbar-title">
             📦 Materia Prima e Insumos
           </h3>
-          <span class="inventory-toolbar-subtitle">Control de existencias, insumos, elaboraciones y compras</span>
+          <span class="inventory-toolbar-subtitle">Control de existencias, insumos, elaboraciones, compras y mermas</span>
         </div>
 
         <div class="inventory-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button class="btn btn-outline" id="btnOpenNewMaterialModal">
             <span>+</span> Crear Insumo
+          </button>
+          <button class="btn btn-outline" id="btnOpenAdjustStockTopModal" style="border-color: #f59e0b; color: #b45309; font-weight: 700;">
+            <span>⚖️</span> Ajustar Stock / Merma
           </button>
           <button class="btn btn-accent" id="btnOpenPreparationModal" style="background: linear-gradient(135deg, #1b4332, #2d6a4f); color: #fff; font-weight: 700;">
             <span>🥣</span> Elaborar Insumo / Mermelada
@@ -82,9 +92,14 @@ export async function renderInventory(container) {
     <!-- Historial de Compras con Filtro por Fechas -->
     <div class="table-container" style="padding: 20px; margin-top: 24px;">
       <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
-        <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary);">
-          🧾 Historial de Compras de Insumos
-        </h3>
+        <div>
+          <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-bottom: 2px;">
+            🧾 Historial de Compras de Insumos
+          </h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">
+            Adquisiciones de materias primas con impacto directo en caja y costo promedio.
+          </span>
+        </div>
 
         <div style="display: flex; align-items: center; gap: 10px;">
           <select id="selectPurchaseMonth" class="form-select" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">
@@ -102,6 +117,43 @@ export async function renderInventory(container) {
         </div>
       </div>
     </div>
+
+    <!-- Historial de Ajustes de Inventario y Control de Mermas -->
+    <div class="table-container" style="padding: 20px; margin-top: 24px;">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-bottom: 2px;">
+            ⚖️ Historial de Ajustes de Inventario y Control de Mermas
+          </h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">
+            Auditoría física, mermas por daño, vencimientos, consumos de prueba y sobrantes con cálculo de impacto económico.
+          </span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <select id="selectAdjustmentMonth" class="form-select" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">
+            <option value="">📅 Todas las fechas</option>
+            ${monthOptions
+              .map((m) => `<option value="${m.val}" ${adjustmentDateFilter === m.val ? 'selected' : ''}>📅 ${m.label}</option>`)
+              .join('')}
+          </select>
+          <button class="btn btn-primary btn-sm" id="btnOpenAdjustStockSecModal" style="background: #D97706; border-color: #B45309; font-weight: 700;">
+            + Nuevo Ajuste / Merma
+          </button>
+        </div>
+      </div>
+
+      <!-- Tarjetas KPIs de Mermas y Ajustes -->
+      <div id="adjustmentsKpisContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
+        <!-- Inyectado dinámicamente -->
+      </div>
+
+      <div id="adjustmentsTableContainer">
+        <div style="text-align: center; padding: 20px; color: var(--text-muted);">
+          Cargando ajustes de inventario... ⚖️
+        </div>
+      </div>
+    </div>
   `;
 
   container.querySelectorAll('[data-cat]').forEach((btn) => {
@@ -109,12 +161,20 @@ export async function renderInventory(container) {
       container.querySelectorAll('[data-cat]').forEach((b) => b.classList.remove('active'));
       e.target.classList.add('active');
       selectedCategory = e.target.dataset.cat;
+      materialsCurrentPage = 1;
       loadInventoryData(container);
     });
   });
 
   container.querySelector('#selectPurchaseMonth')?.addEventListener('change', (e) => {
     purchaseDateFilter = e.target.value;
+    purchasesCurrentPage = 1;
+    loadInventoryData(container);
+  });
+
+  container.querySelector('#selectAdjustmentMonth')?.addEventListener('change', (e) => {
+    adjustmentDateFilter = e.target.value;
+    adjustmentsCurrentPage = 1;
     loadInventoryData(container);
   });
 
@@ -125,6 +185,14 @@ export async function renderInventory(container) {
   container.querySelector('#btnOpenNewMaterialModal')?.addEventListener('click', () => {
     openNewMaterialModal();
   });
+
+  const handleOpenAdjust = async () => {
+    const materials = await api.getMaterials();
+    openAdjustStockModal(null, '', 0, '', 0, materials);
+  };
+
+  container.querySelector('#btnOpenAdjustStockTopModal')?.addEventListener('click', handleOpenAdjust);
+  container.querySelector('#btnOpenAdjustStockSecModal')?.addEventListener('click', handleOpenAdjust);
 
   const handleOpenPrep = async () => {
     const materials = await api.getMaterials();
@@ -172,60 +240,85 @@ async function loadInventoryData(container) {
           </div>
         `;
       } else {
-        gridContainer.innerHTML = materials
-          .map((m) => {
-            const isLow = m.currentStock <= m.minStockAlert;
-            const unitLower = (m.unit || '').toLowerCase();
-            const isKg = unitLower.includes('k');
-            const formattedStock = formatStock(m.currentStock, 2);
-            
-            let stockDisplay = `${formattedStock} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">${m.unit}</span>`;
-            if (isKg) {
-              const gramsVal = Math.round(m.currentStock * 1000);
-              stockDisplay = `${formattedStock} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">kg</span> <small style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted);">(${formatStock(gramsVal, 0)} g)</small>`;
-            }
+        const { pageItems: pageMaterials, totalPages: matPages, totalItems: matTotal, currentPage: matCurr } = paginateArray(materials, materialsCurrentPage, 15);
+        materialsCurrentPage = matCurr;
 
-            let costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}</strong>`;
-            if (isKg) {
-              costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}/kg</strong> <small style="color: var(--text-muted);">(${formatCOP(Math.round(m.avgCost / 1000))}/g)</small>`;
-            }
+        gridContainer.innerHTML = `
+          ${pageMaterials
+            .map((m) => {
+              const isLow = m.currentStock <= m.minStockAlert;
+              const unitLower = (m.unit || '').toLowerCase();
+              const isKg = unitLower.includes('k');
+              const formattedStock = formatStock(m.currentStock, 2);
+              
+              let stockDisplay = `${formattedStock} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">${m.unit}</span>`;
+              if (isKg) {
+                const gramsVal = Math.round(m.currentStock * 1000);
+                stockDisplay = `${formattedStock} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">kg</span> <small style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted);">(${formatStock(gramsVal, 0)} g)</small>`;
+              }
 
-            return `
-            <div class="inventory-card ${isLow ? 'low-stock' : ''}">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;">
-                <span class="badge" style="background: var(--bg-subtle); color: var(--text-muted); font-size: 0.72rem;">${m.category}</span>
-                ${isLow ? '<span class="badge badge-pending" style="font-size: 0.72rem;">⚠️ Stock Bajo</span>' : '<span class="badge badge-paid" style="font-size: 0.72rem;">Stock Óptimo</span>'}
-              </div>
+              let costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}</strong>`;
+              if (isKg) {
+                costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}/kg</strong> <small style="color: var(--text-muted);">(${formatCOP(Math.round(m.avgCost / 1000))}/g)</small>`;
+              }
 
-              <div class="inventory-card-title">${m.name}</div>
-
-              <div>
-                <div class="inventory-card-stock ${isLow ? 'warning' : ''}">
-                  ${stockDisplay}
+              return `
+              <div class="inventory-card ${isLow ? 'low-stock' : ''}">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;">
+                  <span class="badge" style="background: var(--bg-subtle); color: var(--text-muted); font-size: 0.72rem;">${m.category}</span>
+                  ${isLow ? '<span class="badge badge-pending" style="font-size: 0.72rem;">⚠️ Stock Bajo</span>' : '<span class="badge badge-paid" style="font-size: 0.72rem;">Stock Óptimo</span>'}
                 </div>
-                <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
-                  Mínimo sugerido: ${formatStock(m.minStockAlert, 2)} ${m.unit}
-                </div>
-              </div>
 
-              <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 10px; margin-top: auto; gap: 6px; flex-wrap: wrap;">
-                <span style="font-size: 0.78rem; color: var(--text-muted);">${costDisplay}</span>
-                <div style="display: flex; gap: 4px;">
-                  <button class="btn btn-outline btn-sm btn-edit-material" data-id="${m.id}" title="Editar campos del insumo">
-                    ✏️
-                  </button>
-                  <button class="btn btn-outline btn-sm btn-adjust-stock" data-id="${m.id}" data-name="${m.name}" data-stock="${m.currentStock}" data-unit="${m.unit}" title="Ajustar cantidad de stock">
-                    Stock
-                  </button>
-                  <button class="btn btn-outline btn-sm btn-delete-material" data-id="${m.id}" data-name="${m.name}" style="color: var(--danger);" title="Eliminar insumo">
-                    🗑️
-                  </button>
+                <div class="inventory-card-title">${m.name}</div>
+
+                <div>
+                  <div class="inventory-card-stock ${isLow ? 'warning' : ''}">
+                    ${stockDisplay}
+                  </div>
+                  <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
+                    Mínimo sugerido: ${formatStock(m.minStockAlert, 2)} ${m.unit}
+                  </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 10px; margin-top: auto; gap: 6px; flex-wrap: wrap;">
+                  <span style="font-size: 0.78rem; color: var(--text-muted);">${costDisplay}</span>
+                  <div style="display: flex; gap: 4px;">
+                    <button class="btn btn-outline btn-sm btn-edit-material" data-id="${m.id}" title="Editar campos del insumo">
+                      ✏️
+                    </button>
+                    <button class="btn btn-outline btn-sm btn-adjust-stock" data-id="${m.id}" data-name="${m.name}" data-stock="${m.currentStock}" data-unit="${m.unit}" data-cost="${m.avgCost}" style="border-color: #F59E0B; color: #B45309; font-weight: 700;" title="Ajuste de inventario / Merma">
+                      ⚖️ Ajustar
+                    </button>
+                    <button class="btn btn-outline btn-sm btn-delete-material" data-id="${m.id}" data-name="${m.name}" style="color: var(--danger);" title="Eliminar insumo">
+                      🗑️
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          `;
-          })
-          .join('');
+            `;
+            })
+            .join('')}
+          <div style="grid-column: 1 / -1; margin-top: 16px;">
+            ${renderPaginationHtml({
+              currentPage: materialsCurrentPage,
+              totalPages: matPages,
+              totalItems: matTotal,
+              pageSize: 15,
+              itemName: 'insumos',
+              paginationId: 'materialsPagination',
+            })}
+          </div>
+        `;
+
+        attachPaginationEvents(
+          gridContainer,
+          'materialsPagination',
+          (newPage) => {
+            materialsCurrentPage = newPage;
+            loadInventoryData(container);
+          },
+          gridContainer
+        );
 
         // Eventos de edición de insumo
         gridContainer.querySelectorAll('.btn-edit-material').forEach((btn) => {
@@ -239,8 +332,8 @@ async function loadInventoryData(container) {
         // Eventos de ajuste manual de stock
         gridContainer.querySelectorAll('.btn-adjust-stock').forEach((btn) => {
           btn.addEventListener('click', (e) => {
-            const { id, name, stock, unit } = e.currentTarget.dataset;
-            openAdjustStockModal(Number(id), name, Number(stock), unit);
+            const { id, name, stock, unit, cost } = e.currentTarget.dataset;
+            openAdjustStockModal(Number(id), name, Number(stock), unit, Number(cost), materials);
           });
         });
 
@@ -273,26 +366,30 @@ async function loadInventoryData(container) {
           </div>
         `;
       } else {
-        preparationsContainer.innerHTML = `
-          <table class="app-table">
-            <thead>
-              <tr>
-                <th>Código / Fecha</th>
-                <th>Insumo Elaborado</th>
-                <th>Ingredientes Consumidos</th>
-                <th>Costo Total Transferido</th>
-                <th>Costo por Kilo</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${preparations
-                .map((p) => {
-                  const unitLower = (p.unit || '').toLowerCase();
-                  const isKg = unitLower.includes('k');
-                  const costPerG = p.costPerUnit > 0 ? (p.costPerUnit / 1000).toFixed(1) : '0';
+        const { pageItems: pagePreps, totalPages: prepPages, totalItems: prepTotal, currentPage: prepCurr } = paginateArray(preparations, preparationsCurrentPage, 15);
+        preparationsCurrentPage = prepCurr;
 
-                  return `
+        preparationsContainer.innerHTML = `
+          <div class="table-responsive">
+            <table class="app-table">
+              <thead>
+                <tr>
+                  <th>Código / Fecha</th>
+                  <th>Insumo Elaborado</th>
+                  <th>Ingredientes Consumidos</th>
+                  <th>Costo Total Transferido</th>
+                  <th>Costo por Kilo</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${pagePreps
+                  .map((p) => {
+                    const unitLower = (p.unit || '').toLowerCase();
+                    const isKg = unitLower.includes('k');
+                    const costPerG = p.costPerUnit > 0 ? (p.costPerUnit / 1000).toFixed(1) : '0';
+
+                    return `
                 <tr>
                   <td>
                     <strong>${p.code}</strong>
@@ -341,11 +438,30 @@ async function loadInventoryData(container) {
                   </td>
                 </tr>
               `;
-                })
-                .join('')}
-            </tbody>
-          </table>
+                  })
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+          ${renderPaginationHtml({
+            currentPage: preparationsCurrentPage,
+            totalPages: prepPages,
+            totalItems: prepTotal,
+            pageSize: 15,
+            itemName: 'elaboraciones',
+            paginationId: 'preparationsPagination',
+          })}
         `;
+
+        attachPaginationEvents(
+          preparationsContainer,
+          'preparationsPagination',
+          (newPage) => {
+            preparationsCurrentPage = newPage;
+            loadInventoryData(container);
+          },
+          preparationsContainer
+        );
 
         preparationsContainer.querySelectorAll('.btn-view-prep').forEach((btn) => {
           btn.addEventListener('click', (e) => {
@@ -380,49 +496,72 @@ async function loadInventoryData(container) {
           </div>
         `;
       } else {
+        const { pageItems: pagePurchases, totalPages: purchPages, totalItems: purchTotal, currentPage: purchCurr } = paginateArray(purchases, purchasesCurrentPage, 15);
+        purchasesCurrentPage = purchCurr;
+
         purchasesContainer.innerHTML = `
-          <table class="app-table">
-            <thead>
-              <tr>
-                <th>Insumo</th>
-                <th>Cantidad</th>
-                <th>Costo Unitario</th>
-                <th>Total Invertido</th>
-                <th>Medio de Pago</th>
-                <th>Proveedor</th>
-                <th>Fecha</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${purchases
-                .map(
-                  (p) => `
+          <div class="table-responsive">
+            <table class="app-table">
+              <thead>
                 <tr>
-                  <td><strong>${p.rawMaterial?.name || 'Insumo'}</strong></td>
-                  <td><strong>${p.quantity} ${p.rawMaterial?.unit || ''}</strong></td>
-                  <td>${formatCOP(p.unitCost)}</td>
-                  <td><strong style="color: var(--primary); font-size: 0.95rem;">${formatCOP(p.totalCost)}</strong></td>
-                  <td>${formatPaymentBadge(p.paymentMethod)}</td>
-                  <td>${p.supplier || 'N/A'}</td>
-                  <td>${formatDate(p.purchaseDate)}</td>
-                  <td>
-                    <div style="display: flex; gap: 6px;">
-                      <button class="btn btn-outline btn-sm btn-edit-purchase" data-id="${p.id}" title="Editar compra y proveedor">
-                        ✏️
-                      </button>
-                      <button class="btn btn-outline btn-sm btn-delete-purchase" data-id="${p.id}" style="color: var(--danger);" title="Eliminar compra y revertir stock">
-                        🗑️
-                      </button>
-                    </div>
-                  </td>
+                  <th>Insumo</th>
+                  <th>Cantidad</th>
+                  <th>Costo Unitario</th>
+                  <th>Total Invertido</th>
+                  <th>Medio de Pago</th>
+                  <th>Proveedor</th>
+                  <th>Fecha</th>
+                  <th>Acción</th>
                 </tr>
-              `
-                )
-                .join('')}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                ${pagePurchases
+                  .map(
+                    (p) => `
+                  <tr>
+                    <td><strong>${p.rawMaterial?.name || 'Insumo'}</strong></td>
+                    <td><strong>${p.quantity} ${p.rawMaterial?.unit || ''}</strong></td>
+                    <td>${formatCOP(p.unitCost)}</td>
+                    <td><strong style="color: var(--primary); font-size: 0.95rem;">${formatCOP(p.totalCost)}</strong></td>
+                    <td>${formatPaymentBadge(p.paymentMethod)}</td>
+                    <td>${p.supplier || 'N/A'}</td>
+                    <td>${formatDate(p.purchaseDate)}</td>
+                    <td>
+                      <div style="display: flex; gap: 6px;">
+                        <button class="btn btn-outline btn-sm btn-edit-purchase" data-id="${p.id}" title="Editar compra y proveedor">
+                          ✏️
+                        </button>
+                        <button class="btn btn-outline btn-sm btn-delete-purchase" data-id="${p.id}" style="color: var(--danger);" title="Eliminar compra y revertir stock">
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+          ${renderPaginationHtml({
+            currentPage: purchasesCurrentPage,
+            totalPages: purchPages,
+            totalItems: purchTotal,
+            pageSize: 15,
+            itemName: 'compras',
+            paginationId: 'purchasesPagination',
+          })}
         `;
+
+        attachPaginationEvents(
+          purchasesContainer,
+          'purchasesPagination',
+          (newPage) => {
+            purchasesCurrentPage = newPage;
+            loadInventoryData(container);
+          },
+          purchasesContainer
+        );
 
         purchasesContainer.querySelectorAll('.btn-edit-purchase').forEach((btn) => {
           btn.addEventListener('click', (e) => {
@@ -442,6 +581,174 @@ async function loadInventoryData(container) {
                 renderInventory(container);
               } catch (err) {
                 showToast('Error al eliminar compra', 'danger');
+              }
+            }
+          });
+        });
+      }
+    }
+
+    // 4. Renderizar historial de ajustes de inventario y mermas
+    const adjustmentsKpisContainer = container.querySelector('#adjustmentsKpisContainer');
+    const adjustmentsContainer = container.querySelector('#adjustmentsTableContainer');
+
+    const adjParams = {};
+    if (adjustmentDateFilter) {
+      const [year, month] = adjustmentDateFilter.split('-').map(Number);
+      adjParams.startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      adjParams.endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+    }
+
+    const adjustments = await api.getInventoryAdjustments(adjParams);
+
+    // Calcular métricas de ajustes
+    const totalAdjustmentsCount = (adjustments || []).length;
+    const lossAdjustments = (adjustments || []).filter((a) => a.totalCostImpact < 0);
+    const totalLossAmount = Math.abs(lossAdjustments.reduce((sum, a) => sum + a.totalCostImpact, 0));
+    const netCostImpact = (adjustments || []).reduce((sum, a) => sum + a.totalCostImpact, 0);
+
+    if (adjustmentsKpisContainer) {
+      adjustmentsKpisContainer.innerHTML = `
+        <div style="background: #FFFBEB; border: 1.5px solid #FDE68A; border-radius: var(--radius-md); padding: 14px;">
+          <div style="font-size: 0.76rem; font-weight: 800; color: #B45309; text-transform: uppercase;">⚖️ Total Ajustes</div>
+          <div style="font-size: 1.4rem; font-weight: 900; color: #D97706; margin: 4px 0;">${totalAdjustmentsCount}</div>
+          <div style="font-size: 0.72rem; color: #B45309;">Auditorías y conteos físicos</div>
+        </div>
+
+        <div style="background: #FEF2F2; border: 1.5px solid #FECACA; border-radius: var(--radius-md); padding: 14px;">
+          <div style="font-size: 0.76rem; font-weight: 800; color: #991B1B; text-transform: uppercase;">🥀 Pérdidas por Mermas / Daños</div>
+          <div style="font-size: 1.4rem; font-weight: 900; color: #DC2626; margin: 4px 0;">-${formatCOP(totalLossAmount)}</div>
+          <div style="font-size: 0.72rem; color: #991B1B;">${lossAdjustments.length} mermas registradas</div>
+        </div>
+
+        <div style="background: ${netCostImpact >= 0 ? '#F0FDF4' : '#FEF2F2'}; border: 1.5px solid ${netCostImpact >= 0 ? '#BBF7D0' : '#FECACA'}; border-radius: var(--radius-md); padding: 14px;">
+          <div style="font-size: 0.76rem; font-weight: 800; color: ${netCostImpact >= 0 ? '#166534' : '#991B1B'}; text-transform: uppercase;">📦 Impacto Neto en Inventario</div>
+          <div style="font-size: 1.4rem; font-weight: 900; color: ${netCostImpact >= 0 ? '#15803D' : '#DC2626'}; margin: 4px 0;">
+            ${netCostImpact >= 0 ? '+' : '-'}${formatCOP(Math.abs(netCostImpact))}
+          </div>
+          <div style="font-size: 0.72rem; color: ${netCostImpact >= 0 ? '#166534' : '#991B1B'};">Valoración contable neta</div>
+        </div>
+      `;
+    }
+
+    if (adjustmentsContainer) {
+      if (!adjustments || adjustments.length === 0) {
+        adjustmentsContainer.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">⚖️</div>
+            <div class="empty-state-title">No hay ajustes ni mermas en este período</div>
+            <div class="empty-state-text">Realiza conteos físicos o registra mermas de insumos para mantener la bodega al día.</div>
+          </div>
+        `;
+      } else {
+        const { pageItems: pageAdjustments, totalPages: adjPages, totalItems: adjTotal, currentPage: adjCurr } = paginateArray(adjustments, adjustmentsCurrentPage, 15);
+        adjustmentsCurrentPage = adjCurr;
+
+        const getAdjustmentBadge = (t) => {
+          if (t === 'MERMA_DANO') return '<span class="badge" style="background: #FEE2E2; color: #DC2626; font-weight: 800; font-size: 0.72rem;">🥀 Merma / Daño</span>';
+          if (t === 'CONSUMO_PRUEBA') return '<span class="badge" style="background: #EDE9FE; color: #7C3AED; font-weight: 800; font-size: 0.72rem;">🧪 Consumo / Prueba</span>';
+          if (t === 'SOBRANTE') return '<span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.72rem;">📦 Sobrante</span>';
+          if (t === 'CORRECCION') return '<span class="badge" style="background: #FEF3C7; color: #D97706; font-weight: 800; font-size: 0.72rem;">✏️ Corrección</span>';
+          return '<span class="badge" style="background: #E0F2FE; color: #0369A1; font-weight: 800; font-size: 0.72rem;">🔍 Conteo Físico</span>';
+        };
+
+        adjustmentsContainer.innerHTML = `
+          <div class="table-responsive">
+            <table class="app-table" style="font-size: 0.85rem;">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Insumo</th>
+                  <th>Motivo / Tipo</th>
+                  <th>Stock Anterior ➔ Nuevo</th>
+                  <th style="text-align: right;">Diferencia (Δ)</th>
+                  <th style="text-align: right;">Impacto Económico</th>
+                  <th>Responsable / Justificación</th>
+                  <th style="text-align: right;">Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${pageAdjustments
+                  .map((a) => {
+                    const isNeg = a.deltaQuantity < 0;
+                    const isZero = a.deltaQuantity === 0;
+                    const deltaColor = isZero ? 'var(--text-muted)' : isNeg ? '#DC2626' : '#16A34A';
+                    const costColor = isZero ? 'var(--text-muted)' : isNeg ? '#DC2626' : '#16A34A';
+
+                    return `
+                    <tr>
+                      <td><small style="color: var(--text-muted); font-weight: 600;">${formatDate(a.adjustmentDate)}</small></td>
+                      <td>
+                        <strong>${a.rawMaterial?.name || 'Insumo'}</strong>
+                        <div style="font-size: 0.72rem; color: var(--text-muted);">${a.rawMaterial?.category || 'INSUMO'} • Costo base: ${formatCOP(a.unitCost)}/${a.unit}</div>
+                      </td>
+                      <td>${getAdjustmentBadge(a.type)}</td>
+                      <td>
+                        <span style="color: var(--text-muted);">${formatStock(a.previousStock)} ${a.unit}</span>
+                        <span style="font-weight: 700; margin: 0 4px;">➔</span>
+                        <strong>${formatStock(a.newStock)} ${a.unit}</strong>
+                      </td>
+                      <td style="text-align: right;">
+                        <strong style="color: ${deltaColor}; font-size: 0.95rem;">
+                          ${a.deltaQuantity > 0 ? '+' : ''}${formatStock(a.deltaQuantity)} ${a.unit}
+                        </strong>
+                      </td>
+                      <td style="text-align: right;">
+                        <strong style="color: ${costColor}; font-size: 0.95rem;">
+                          ${a.totalCostImpact > 0 ? '+' : ''}${formatCOP(a.totalCostImpact)}
+                        </strong>
+                      </td>
+                      <td>
+                        <span style="font-weight: 700;">${a.registeredBy || 'Edier'}</span>
+                        ${a.reason ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📝 ${a.reason}</div>` : ''}
+                      </td>
+                      <td style="text-align: right;">
+                        <button class="btn btn-outline btn-sm btn-delete-adjustment" data-id="${a.id}" data-name="${a.rawMaterial?.name || 'Insumo'}" data-delta="${a.deltaQuantity}" data-unit="${a.unit}" style="color: var(--danger); padding: 4px 8px;" title="Revertir este ajuste y restaurar el stock">
+                          🗑️ Revertir
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+                  })
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+          ${renderPaginationHtml({
+            currentPage: adjustmentsCurrentPage,
+            totalPages: adjPages,
+            totalItems: adjTotal,
+            pageSize: 15,
+            itemName: 'ajustes',
+            paginationId: 'adjustmentsPagination',
+          })}
+        `;
+
+        attachPaginationEvents(
+          adjustmentsContainer,
+          'adjustmentsPagination',
+          (newPage) => {
+            adjustmentsCurrentPage = newPage;
+            loadInventoryData(container);
+          },
+          adjustmentsContainer
+        );
+
+        adjustmentsContainer.querySelectorAll('.btn-delete-adjustment').forEach((btn) => {
+          btn.addEventListener('click', async (e) => {
+            const id = e.currentTarget.dataset.id;
+            const name = e.currentTarget.dataset.name;
+            const delta = Number(e.currentTarget.dataset.delta);
+            const unit = e.currentTarget.dataset.unit;
+
+            if (confirm(`¿Estás seguro de revertir este ajuste de ${name} (${delta > 0 ? '+' : ''}${delta} ${unit})?\nSe restaurará el stock a su valor anterior.`)) {
+              try {
+                await api.deleteInventoryAdjustment(id);
+                showToast(`¡Ajuste revertido y stock de ${name} restaurado! 🔄`);
+                loadInventoryData(container);
+              } catch (err) {
+                showToast(err.message || 'Error al revertir ajuste', 'danger');
               }
             }
           });
@@ -786,35 +1093,141 @@ function openEditMaterialModal(material) {
   });
 }
 
-// Modal para ajustar stock manual
-function openAdjustStockModal(materialId, materialName, currentStock, unit) {
+// Modal inteligente para ajuste de inventario y registro de mermas
+async function openAdjustStockModal(materialId = null, materialName = '', currentStock = 0, unit = '', avgCost = 0, allMaterials = null) {
   const modalOverlay = document.getElementById('modalContainer');
   if (!modalOverlay) return;
 
+  let materialsList = allMaterials;
+  if (!materialsList || materialsList.length === 0) {
+    try {
+      materialsList = await api.getMaterials();
+    } catch (e) {
+      materialsList = [];
+    }
+  }
+
+  let activeMaterial = materialId ? materialsList.find((m) => m.id === Number(materialId)) : materialsList[0];
+  if (!activeMaterial && materialsList.length > 0) {
+    activeMaterial = materialsList[0];
+  }
+
+  let selectedMatId = activeMaterial ? activeMaterial.id : (materialId || null);
+  let selectedMatStock = activeMaterial ? activeMaterial.currentStock : currentStock;
+  let selectedMatUnit = activeMaterial ? activeMaterial.unit : unit;
+  let selectedMatCost = activeMaterial ? activeMaterial.avgCost : avgCost;
+  let selectedMatName = activeMaterial ? activeMaterial.name : materialName;
+
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-card" style="max-width: 520px;">
         <div class="modal-header">
-          <h3 class="modal-title">🔧 Ajuste Manual de Stock</h3>
+          <h3 class="modal-title">⚖️ Ajuste de Inventario / Control de Mermas</h3>
           <button class="modal-close-btn" id="btnCloseAdjustModal">✕</button>
         </div>
         <form id="adjustForm">
-          <div class="modal-body">
-            <p style="font-size: 0.9rem; margin-bottom: 12px;">
-              Insumo: <strong>${materialName}</strong>
-            </p>
-            <div class="form-group">
-              <label class="form-label">Nuevo Stock Real (${unit}) *</label>
-              <input type="number" id="newStockInput" class="form-input" min="0" step="0.001" value="${currentStock}" required />
+          <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+            
+            ${
+              !materialId
+                ? `
+              <div class="form-group">
+                <label class="form-label">Seleccionar Insumo o Materia Prima *</label>
+                <select id="adjustMaterialSelect" class="form-select" required>
+                  ${materialsList
+                    .map(
+                      (m) => `
+                    <option value="${m.id}" ${m.id === selectedMatId ? 'selected' : ''}>
+                      ${m.name} (${formatStock(m.currentStock, 2)} ${m.unit}) - ${m.category}
+                    </option>
+                  `
+                    )
+                    .join('')}
+                </select>
+              </div>
+            `
+                : `
+              <input type="hidden" id="adjustMaterialSelect" value="${selectedMatId}" />
+              <div style="background: var(--bg-subtle); border-radius: var(--radius-md); padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Insumo Seleccionado</div>
+                  <div style="font-size: 1.05rem; font-weight: 800; color: var(--primary);">${selectedMatName}</div>
+                </div>
+                <span class="badge badge-paid" style="font-size: 0.76rem;">${activeMaterial?.category || 'INSUMO'}</span>
+              </div>
+            `
+            }
+
+            <!-- Indicador de Stock Actual y Costo -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px;">
+              <div>
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Stock en Sistema:</span>
+                <div id="displayCurrentStock" style="font-size: 1.1rem; font-weight: 800; color: var(--text-main);">
+                  ${formatStock(selectedMatStock, 2)} <small style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">${selectedMatUnit}</small>
+                </div>
+              </div>
+              <div>
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Costo Promedio:</span>
+                <div id="displayAvgCost" style="font-size: 1.1rem; font-weight: 800; color: #b45309;">
+                  ${formatCOP(selectedMatCost)} <small style="font-size: 0.75rem; color: var(--text-muted);">/${selectedMatUnit}</small>
+                </div>
+              </div>
             </div>
-            <div class="form-group">
-              <label class="form-label">Motivo del Ajuste</label>
-              <input type="text" id="adjustReason" class="form-input" placeholder="Ej: Conteo físico, pesado en báscula, merma..." />
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" id="labelNewStock">Nuevo Stock Real (${selectedMatUnit}) *</label>
+                <input type="number" id="newStockInput" class="form-input" min="0" step="0.001" value="${selectedMatStock}" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Tipo de Movimiento / Motivo *</label>
+                <select id="adjustTypeSelect" class="form-select" required>
+                  <option value="CONTEO_FISICO">🔍 Conteo Físico / Arqueo</option>
+                  <option value="MERMA_DANO">🥀 Merma, Daño o Vencimiento</option>
+                  <option value="CONSUMO_PRUEBA">🧪 Consumo Interno / Pruebas</option>
+                  <option value="SOBRANTE">📦 Sobrante / Insumo Extra</option>
+                  <option value="CORRECCION">✏️ Corrección de Digitación</option>
+                </select>
+              </div>
             </div>
+
+            <!-- Calculadora en Vivo del Impacto -->
+            <div id="adjustCalculationBox" style="background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: var(--radius-md); padding: 12px 14px;">
+              <div style="font-size: 0.74rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">
+                📊 Cálculo en tiempo real del impacto
+              </div>
+              <div id="calcDeltaDisplay" style="font-size: 0.92rem; font-weight: 700; color: var(--text-muted);">
+                ⚪ Sin variación en el stock físico
+              </div>
+              <div id="calcCostDisplay" style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">
+                Impacto económico: $0 COP
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Fecha del Ajuste</label>
+                <input type="date" id="adjustDateInput" class="form-input" value="${getTodayLocalDateStr()}" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Registrado Por</label>
+                <input type="text" id="adjustRegisteredBy" class="form-input" value="${store?.user?.name || 'Edier'}" required />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Notas / Justificación del Ajuste (Opcional)</label>
+              <input type="text" id="adjustReason" class="form-input" placeholder="Ej: Se dañaron 2 litros por falla de frío, o ajuste de conteo fin de mes..." />
+            </div>
+
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline" id="btnCancelAdjustModal">Cancelar</button>
-            <button type="submit" class="btn btn-primary">Guardar Ajuste</button>
+            <button type="submit" class="btn btn-primary" style="background: #D97706; border-color: #B45309; font-weight: 700;">
+              💾 Registrar Ajuste
+            </button>
           </div>
         </form>
       </div>
@@ -825,18 +1238,97 @@ function openAdjustStockModal(materialId, materialName, currentStock, unit) {
   document.getElementById('btnCloseAdjustModal')?.addEventListener('click', closeModal);
   document.getElementById('btnCancelAdjustModal')?.addEventListener('click', closeModal);
 
+  const matSelectEl = document.getElementById('adjustMaterialSelect');
+  const newStockEl = document.getElementById('newStockInput');
+  const typeSelectEl = document.getElementById('adjustTypeSelect');
+  const labelNewStockEl = document.getElementById('labelNewStock');
+  const displayStockEl = document.getElementById('displayCurrentStock');
+  const displayCostEl = document.getElementById('displayAvgCost');
+  const calcBoxEl = document.getElementById('adjustCalculationBox');
+  const calcDeltaEl = document.getElementById('calcDeltaDisplay');
+  const calcCostEl = document.getElementById('calcCostDisplay');
+
+  const updateCalculation = () => {
+    const curMatId = Number(matSelectEl.value);
+    const mat = materialsList.find((m) => m.id === curMatId);
+    if (!mat) return;
+
+    const baseStock = mat.currentStock;
+    const baseUnit = mat.unit;
+    const baseCost = mat.avgCost;
+    const enteredStock = Number(newStockEl.value) || 0;
+    const delta = Math.round((enteredStock - baseStock) * 1000) / 1000;
+    const costImpact = Math.round(delta * baseCost);
+
+    if (displayStockEl) displayStockEl.innerHTML = `${formatStock(baseStock, 2)} <small style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">${baseUnit}</small>`;
+    if (displayCostEl) displayCostEl.innerHTML = `${formatCOP(baseCost)} <small style="font-size: 0.75rem; color: var(--text-muted);">/${baseUnit}</small>`;
+    if (labelNewStockEl) labelNewStockEl.innerText = `Nuevo Stock Real (${baseUnit}) *`;
+
+    if (delta < 0) {
+      calcBoxEl.style.background = '#FEF2F2';
+      calcBoxEl.style.borderColor = '#FECACA';
+      calcDeltaEl.style.color = '#DC2626';
+      calcDeltaEl.innerHTML = `🥀 <strong>Merma / Faltante:</strong> ${formatStock(delta, 2)} ${baseUnit}`;
+      calcCostEl.style.color = '#991B1B';
+      calcCostEl.innerHTML = `Pérdida en dinero estimada: <strong>-${formatCOP(Math.abs(costImpact))}</strong>`;
+      if (typeSelectEl.value === 'CONTEO_FISICO' || typeSelectEl.value === 'SOBRANTE') {
+        typeSelectEl.value = 'MERMA_DANO';
+      }
+    } else if (delta > 0) {
+      calcBoxEl.style.background = '#F0FDF4';
+      calcBoxEl.style.borderColor = '#BBF7D0';
+      calcDeltaEl.style.color = '#15803D';
+      calcDeltaEl.innerHTML = `📦 <strong>Sobrante / Entrada:</strong> +${formatStock(delta, 2)} ${baseUnit}`;
+      calcCostEl.style.color = '#166534';
+      calcCostEl.innerHTML = `Valoración adicional estimada: <strong>+${formatCOP(costImpact)}</strong>`;
+      if (typeSelectEl.value === 'MERMA_DANO') {
+        typeSelectEl.value = 'SOBRANTE';
+      }
+    } else {
+      calcBoxEl.style.background = '#F8FAFC';
+      calcBoxEl.style.borderColor = '#CBD5E1';
+      calcDeltaEl.style.color = 'var(--text-muted)';
+      calcDeltaEl.innerHTML = `⚪ Sin variación en el stock físico (${formatStock(baseStock, 2)} ${baseUnit})`;
+      calcCostEl.style.color = 'var(--text-muted)';
+      calcCostEl.innerHTML = `Impacto económico: $0 COP`;
+    }
+  };
+
+  matSelectEl?.addEventListener('change', () => {
+    const curMatId = Number(matSelectEl.value);
+    const mat = materialsList.find((m) => m.id === curMatId);
+    if (mat) {
+      newStockEl.value = mat.currentStock;
+      updateCalculation();
+    }
+  });
+
+  newStockEl?.addEventListener('input', updateCalculation);
+
   document.getElementById('adjustForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const newStock = Number(document.getElementById('newStockInput').value);
-    const reason = document.getElementById('adjustReason').value;
+    const finalMatId = Number(matSelectEl.value);
+    const newStockVal = Number(newStockEl.value);
+    const typeVal = typeSelectEl.value;
+    const reasonVal = document.getElementById('adjustReason').value;
+    const regByVal = document.getElementById('adjustRegisteredBy').value;
+    const dateVal = document.getElementById('adjustDateInput').value;
 
     try {
-      await api.adjustStock(materialId, newStock, reason);
-      showToast('Stock ajustado correctamente');
+      await api.createInventoryAdjustment({
+        rawMaterialId: finalMatId,
+        newStock: newStockVal,
+        type: typeVal,
+        reason: reasonVal,
+        registeredBy: regByVal,
+        adjustmentDate: dateVal,
+      });
+
+      showToast('¡Ajuste de inventario registrado con éxito! ⚖️📦');
       closeModal();
       renderInventory(document.getElementById('contentContainer'));
     } catch (err) {
-      showToast('Error al ajustar stock', 'danger');
+      showToast(err.message || 'Error al registrar ajuste de inventario', 'danger');
     }
   });
 }

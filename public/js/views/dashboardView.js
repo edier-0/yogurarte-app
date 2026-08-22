@@ -2,6 +2,10 @@ import { api } from '../api.js';
 import { formatCOP, formatDate, formatDateTime, formatStock, getTodayLocalDateStr, showToast } from '../store.js';
 import { openPaymentModal } from './ordersView.js';
 import { openCashMovementModal } from './expensesView.js';
+import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
+
+let dashOrdersCurrentPage = 1;
+let deliveredUnpaidCurrentPage = 1;
 
 const WA_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: inline-block; vertical-align: -2px; margin-right: 4px;"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>`;
 
@@ -93,6 +97,9 @@ export async function renderDashboard(container) {
     // Sección de pedidos entregados que aún no se han pagado
     let deliveredUnpaidSection = '';
     if (deliveredStats && deliveredStats.deliveredUnpaidOrders && deliveredStats.deliveredUnpaidOrders.length > 0) {
+      const { pageItems: pageDeliveredUnpaid, totalPages: unpaidPages, totalItems: unpaidTotal, currentPage: unpaidCurr } = paginateArray(deliveredStats.deliveredUnpaidOrders, deliveredUnpaidCurrentPage, 15);
+      deliveredUnpaidCurrentPage = unpaidCurr;
+
       deliveredUnpaidSection = `
         <div class="table-container" style="padding: 20px; margin-bottom: 24px; border: 1.5px solid #F87171; background: #FFFDFD; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.08);">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
@@ -126,7 +133,7 @@ export async function renderDashboard(container) {
                 </tr>
               </thead>
               <tbody>
-                ${deliveredStats.deliveredUnpaidOrders
+                ${pageDeliveredUnpaid
                   .map((o) => {
                     const isUsername = o.customerPhone && (o.customerPhone.startsWith('@') || /[a-zA-Z]/.test(o.customerPhone));
                     const contactDisplay = isUsername && !o.customerPhone.startsWith('@') ? `@${o.customerPhone}` : o.customerPhone;
@@ -161,6 +168,14 @@ export async function renderDashboard(container) {
               </tbody>
             </table>
           </div>
+          ${renderPaginationHtml({
+            currentPage: deliveredUnpaidCurrentPage,
+            totalPages: unpaidPages,
+            totalItems: unpaidTotal,
+            pageSize: 15,
+            itemName: 'pedidos pendientes',
+            paginationId: 'deliveredUnpaidPagination',
+          })}
         </div>
       `;
     } else {
@@ -313,15 +328,18 @@ export async function renderDashboard(container) {
         </div>
 
         <!-- KPI 3: Por Cobrar de Pedidos en Proceso (Clicable para ver clientes y lotes) -->
-        <div class="kpi-card kpi-warning kpi-clickable" id="kpiInProcessPendingCard" style="cursor: pointer; position: relative; transition: all 0.2s ease;" title="🔍 Haz clic para ver los clientes y saldos pendientes por lote/sabor">
+        <div class="kpi-card kpi-warning kpi-clickable" id="kpiInProcessPendingCard" style="cursor: pointer; position: relative; transition: all 0.2s ease;" title="🔍 Haz clic para ver los clientes, pedidos pagados y saldos pendientes por entregar">
           <div class="kpi-header">
             <span class="kpi-title">Por Cobrar (En Proceso) 🔍</span>
             <div class="kpi-icon" style="background: var(--warning-light); color: var(--warning);">🥣</div>
           </div>
           <div class="kpi-value" style="color: var(--accent);">${formatCOP(inProcessStats.inProcessPendingToCollect)}</div>
-          <div class="kpi-subtitle" style="display: flex; justify-content: space-between; align-items: center;">
-            <span>${inProcessStats.inProcessOrdersCount} pedidos por entregar</span>
-            <span style="font-size: 0.72rem; color: var(--accent); font-weight: 800;">Ver clientes ↗</span>
+          <div class="kpi-subtitle" style="display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: wrap;">
+            <span>
+              ${inProcessStats.inProcessOrdersCount} por entregar 
+              ${(inProcessStats.inProcessPaidCount || 0) > 0 ? `• <strong style="color: #15803D;">${inProcessStats.inProcessPaidCount} ya pago(s)</strong>` : ''}
+            </span>
+            <span style="font-size: 0.72rem; color: var(--accent); font-weight: 800;">Ver detalle ↗</span>
           </div>
         </div>
 
@@ -399,8 +417,12 @@ export async function renderDashboard(container) {
               <strong style="font-size: 1rem; color: var(--accent);">${deliveryBreakdown.pendingDelivery} pedido(s) • ${kpis.inProcessLiters || 0} L (${formatCOP(inProcessStats.inProcessTotalSales)})</strong>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; padding-left: 14px; font-size: 0.85rem;">
-              <span style="color: var(--text-muted); font-weight: 700;">• Saldo que se cobrará al entregar:</span>
-              <strong style="color: var(--accent);">${formatCOP(inProcessStats.inProcessPendingToCollect)}</strong>
+              <span style="color: #15803D; font-weight: 700;">• Ya pagado por adelantado:</span>
+              <strong style="color: #15803D;">${formatCOP(inProcessStats.inProcessPaidAmount)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-left: 14px; font-size: 0.85rem;">
+              <span style="color: var(--danger); font-weight: 700;">• Saldo pendiente por cobrar al entregar:</span>
+              <strong style="color: var(--danger);">${formatCOP(inProcessStats.inProcessPendingToCollect)}</strong>
             </div>
           </div>
         </div>
@@ -452,92 +474,104 @@ export async function renderDashboard(container) {
 
         ${
           ordersList && ordersList.length > 0
-            ? `
-          <div style="overflow-x: auto;">
-            <table class="app-table">
-              <thead>
-                <tr>
-                  <th>Pedido #</th>
-                  <th>Cliente & Teléfono</th>
-                  <th>Lote / Sabor</th>
-                  <th>Litros / Envases</th>
-                  <th>Total Venta</th>
-                  <th>Pago & Cobro</th>
-                  <th>Entrega</th>
-                  <th>Fecha</th>
-                  <th style="text-align: right;">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${ordersList
-                  .map((o) => {
-                    let payBadge = '<span class="badge badge-pending">🔴 Pendiente</span>';
-                    if (o.paymentStatus === 'PAID') payBadge = '<span class="badge badge-paid">🟢 Pagado</span>';
-                    if (o.paymentStatus === 'PARTIAL')
-                      payBadge = `<span class="badge badge-partial">🟡 Abono: ${formatCOP(o.paidAmount)}</span>`;
-
-                    const isUsername = o.customer?.phone && (o.customer.phone.startsWith('@') || /[a-zA-Z]/.test(o.customer.phone));
-                    const contactDisplay = isUsername && !o.customer.phone.startsWith('@') ? `@${o.customer.phone}` : (o.customer?.phone || '');
-
-                    return `
+            ? (() => {
+                const { pageItems: pageOrders, totalPages: orderPages, totalItems: orderTotal, currentPage: orderCurr } = paginateArray(ordersList, dashOrdersCurrentPage, 15);
+                dashOrdersCurrentPage = orderCurr;
+                return `
+              <div style="overflow-x: auto;">
+                <table class="app-table">
+                  <thead>
                     <tr>
-                      <td>
-                        <strong style="color: var(--primary);">${o.orderNumber}</strong>
-                      </td>
-                      <td>
-                        <div><strong>${o.customer?.fullName || 'Cliente'}</strong></div>
-                        <small style="color: var(--text-muted);">${contactDisplay ? `📞 ${contactDisplay}` : ''}</small>
-                      </td>
-                      <td>
-                        ${
-                          o.batch
-                            ? `<span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-weight: 800; font-size: 0.72rem;">🍶 ${o.batch.batchCode}</span>
-                               <div style="font-size: 0.75rem; color: var(--accent); font-weight: 700;">${o.batch.flavor}</div>`
-                            : `<small style="color: var(--text-muted);">${o.flavor || 'Estándar'}</small>`
-                        }
-                      </td>
-                      <td>
-                        <strong>${o.totalLiters} L</strong>
-                        <div style="font-size: 0.72rem; color: var(--text-muted);">${o.bottleSize || '1L'} • ${o.quantityBottles || 1} bot</div>
-                      </td>
-                      <td>
-                        <strong style="color: var(--primary); font-size: 0.95rem;">${formatCOP(o.totalAmount)}</strong>
-                      </td>
-                      <td>
-                        <div>${payBadge}</div>
-                        ${o.pendingAmount > 0 ? `<div style="font-size: 0.73rem; color: var(--danger); font-weight: 700; margin-top: 2px;">Debe: ${formatCOP(o.pendingAmount)}</div>` : ''}
-                      </td>
-                      <td>
-                        <span class="badge ${o.deliveryStatus === 'DELIVERED' ? 'badge-delivered' : 'badge-preparing'}">
-                          ${o.deliveryStatus === 'DELIVERED' ? '✅ Entregado' : (o.deliveryStatus === 'IN_ROUTE' ? '🛵 En Ruta' : '🕒 Pendiente')}
-                        </span>
-                      </td>
-                      <td>
-                        <div style="font-size: 0.8rem; font-weight: 600;">${formatDate(o.orderDate)}</div>
-                        ${o.deliveryDate ? `<div style="font-size: 0.72rem; color: var(--primary); font-weight: 700;">🛵 ${formatDate(o.deliveryDate)}</div>` : ''}
-                      </td>
-                      <td style="text-align: right;">
-                        <div style="display: inline-flex; gap: 4px;">
-                          <button class="btn btn-whatsapp btn-sm btn-dash-whatsapp" data-id="${o.id}" style="padding: 3px 6px; font-size: 0.75rem;" title="Enviar WhatsApp">
-                            ${WA_ICON_SVG}
-                          </button>
-                          ${
-                            o.pendingAmount > 0
-                              ? `<button class="btn btn-primary btn-sm btn-dash-pay" data-id="${o.id}" data-total="${o.totalAmount}" data-paid="${o.paidAmount}" data-pending="${o.pendingAmount}" style="padding: 3px 8px; font-size: 0.75rem;" title="Registrar Cobro">
-                                  💵 Cobrar
-                                 </button>`
-                              : ''
-                          }
-                        </div>
-                      </td>
+                      <th>Pedido #</th>
+                      <th>Cliente & Teléfono</th>
+                      <th>Lote / Sabor</th>
+                      <th>Litros / Envases</th>
+                      <th>Total Venta</th>
+                      <th>Pago & Cobro</th>
+                      <th>Entrega</th>
+                      <th>Fecha</th>
+                      <th style="text-align: right;">Acciones</th>
                     </tr>
-                  `;
-                  })
-                  .join('')}
-              </tbody>
-            </table>
-          </div>
-        `
+                  </thead>
+                  <tbody>
+                    ${pageOrders
+                      .map((o) => {
+                        let payBadge = '<span class="badge badge-pending">🔴 Pendiente</span>';
+                        if (o.paymentStatus === 'PAID') payBadge = '<span class="badge badge-paid">🟢 Pagado</span>';
+                        if (o.paymentStatus === 'PARTIAL')
+                          payBadge = `<span class="badge badge-partial">🟡 Abono: ${formatCOP(o.paidAmount)}</span>`;
+
+                        const isUsername = o.customer?.phone && (o.customer.phone.startsWith('@') || /[a-zA-Z]/.test(o.customer.phone));
+                        const contactDisplay = isUsername && !o.customer.phone.startsWith('@') ? `@${o.customer.phone}` : (o.customer?.phone || '');
+
+                        return `
+                        <tr>
+                          <td>
+                            <strong style="color: var(--primary);">${o.orderNumber}</strong>
+                          </td>
+                          <td>
+                            <div><strong>${o.customer?.fullName || 'Cliente'}</strong></div>
+                            <small style="color: var(--text-muted);">${contactDisplay ? `📞 ${contactDisplay}` : ''}</small>
+                          </td>
+                          <td>
+                            ${
+                              o.batch
+                                ? `<span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-weight: 800; font-size: 0.72rem;">🍶 ${o.batch.batchCode}</span>
+                                   <div style="font-size: 0.75rem; color: var(--accent); font-weight: 700;">${o.batch.flavor}</div>`
+                                : `<small style="color: var(--text-muted);">${o.flavor || 'Estándar'}</small>`
+                            }
+                          </td>
+                          <td>
+                            <strong>${o.totalLiters} L</strong>
+                            <div style="font-size: 0.72rem; color: var(--text-muted);">${o.bottleSize || '1L'} • ${o.quantityBottles || 1} bot</div>
+                          </td>
+                          <td>
+                            <strong style="color: var(--primary); font-size: 0.95rem;">${formatCOP(o.totalAmount)}</strong>
+                          </td>
+                          <td>
+                            <div>${payBadge}</div>
+                            ${o.pendingAmount > 0 ? `<div style="font-size: 0.73rem; color: var(--danger); font-weight: 700; margin-top: 2px;">Debe: ${formatCOP(o.pendingAmount)}</div>` : ''}
+                          </td>
+                          <td>
+                            <span class="badge ${o.deliveryStatus === 'DELIVERED' ? 'badge-delivered' : 'badge-preparing'}">
+                              ${o.deliveryStatus === 'DELIVERED' ? '✅ Entregado' : (o.deliveryStatus === 'IN_ROUTE' ? '🛵 En Ruta' : '🕒 Pendiente')}
+                            </span>
+                          </td>
+                          <td>
+                            <div style="font-size: 0.8rem; font-weight: 600;">${formatDate(o.orderDate)}</div>
+                            ${o.deliveryDate ? `<div style="font-size: 0.72rem; color: var(--primary); font-weight: 700;">🛵 ${formatDate(o.deliveryDate)}</div>` : ''}
+                          </td>
+                          <td style="text-align: right;">
+                            <div style="display: inline-flex; gap: 4px;">
+                              <button class="btn btn-whatsapp btn-sm btn-dash-whatsapp" data-id="${o.id}" style="padding: 3px 6px; font-size: 0.75rem;" title="Enviar WhatsApp">
+                                ${WA_ICON_SVG}
+                              </button>
+                              ${
+                                o.pendingAmount > 0
+                                  ? `<button class="btn btn-primary btn-sm btn-dash-pay" data-id="${o.id}" data-total="${o.totalAmount}" data-paid="${o.paidAmount}" data-pending="${o.pendingAmount}" style="padding: 3px 8px; font-size: 0.75rem;" title="Registrar Cobro">
+                                      💵 Cobrar
+                                     </button>`
+                                  : ''
+                              }
+                            </div>
+                          </td>
+                        </tr>
+                      `;
+                      })
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+              ${renderPaginationHtml({
+                currentPage: dashOrdersCurrentPage,
+                totalPages: orderPages,
+                totalItems: orderTotal,
+                pageSize: 15,
+                itemName: 'ventas',
+                paginationId: 'dashOrdersPagination',
+              })}
+            `;
+              })()
             : `
           <div class="empty-state" style="padding: 30px 20px;">
             <div class="empty-state-icon">📅</div>
@@ -558,6 +592,8 @@ export async function renderDashboard(container) {
         dashboardFilters.startDate = '';
         dashboardFilters.endDate = '';
         dashboardFilters.month = '';
+        dashOrdersCurrentPage = 1;
+        deliveredUnpaidCurrentPage = 1;
         renderDashboard(container);
       });
     });
@@ -570,6 +606,8 @@ export async function renderDashboard(container) {
       dashboardFilters.endDate = '';
       dashboardFilters.period = 'custom';
       dashboardFilters.month = '';
+      dashOrdersCurrentPage = 1;
+      deliveredUnpaidCurrentPage = 1;
       renderDashboard(container);
     });
 
@@ -578,6 +616,8 @@ export async function renderDashboard(container) {
       dashboardFilters.startDate = '';
       dashboardFilters.endDate = '';
       dashboardFilters.period = 'all';
+      dashOrdersCurrentPage = 1;
+      deliveredUnpaidCurrentPage = 1;
       renderDashboard(container);
     });
 
@@ -594,6 +634,8 @@ export async function renderDashboard(container) {
       dashboardFilters.specificDate = '';
       dashboardFilters.month = '';
       dashboardFilters.period = 'custom';
+      dashOrdersCurrentPage = 1;
+      deliveredUnpaidCurrentPage = 1;
       renderDashboard(container);
     });
 
@@ -605,8 +647,29 @@ export async function renderDashboard(container) {
       dashboardFilters.startDate = '';
       dashboardFilters.endDate = '';
       dashboardFilters.period = 'custom';
+      dashOrdersCurrentPage = 1;
+      deliveredUnpaidCurrentPage = 1;
       renderDashboard(container);
     });
+
+    // Eventos de paginación
+    attachPaginationEvents(
+      container,
+      'deliveredUnpaidPagination',
+      (newPage) => {
+        deliveredUnpaidCurrentPage = newPage;
+        renderDashboard(container);
+      }
+    );
+
+    attachPaginationEvents(
+      container,
+      'dashOrdersPagination',
+      (newPage) => {
+        dashOrdersCurrentPage = newPage;
+        renderDashboard(container);
+      }
+    );
 
     // Clics en KPIs para abrir Modales Interactivos
     const detailedData = data.detailedBreakdowns || {};
@@ -711,220 +774,293 @@ function openExpensesBreakdownModal(expensesData, kpis, periodLabel) {
   const payroll = expensesData.payroll || [];
   const ownerDraws = expensesData.ownerDraws || [];
 
-  modalOverlay.innerHTML = `
-    <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 720px;">
-        <div class="modal-header">
-          <div>
-            <h3 class="modal-title">🧾 Desglose Detallado de Gastos</h3>
-            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
-              Periodo: <strong>${periodLabel}</strong> • Total Egresos: <strong style="color: var(--danger);">${formatCOP(kpis.totalExpenses)}</strong>
-            </span>
+  let rawPage = 1;
+  let payrollPage = 1;
+  let genExpPage = 1;
+  let ownerPage = 1;
+
+  function renderModal() {
+    const { pageItems: pageRaw, totalPages: rawTotalPages, totalItems: rawTotalItems, currentPage: currentRawPage } = paginateArray(rawMaterials, rawPage, 15);
+    rawPage = currentRawPage;
+
+    const { pageItems: pagePayroll, totalPages: payrollTotalPages, totalItems: payrollTotalItems, currentPage: currentPayrollPage } = paginateArray(payroll, payrollPage, 15);
+    payrollPage = currentPayrollPage;
+
+    const { pageItems: pageGen, totalPages: genTotalPages, totalItems: genTotalItems, currentPage: currentGenPage } = paginateArray(generalExpenses, genExpPage, 15);
+    genExpPage = currentGenPage;
+
+    const { pageItems: pageOwner, totalPages: ownerTotalPages, totalItems: ownerTotalItems, currentPage: currentOwnerPage } = paginateArray(ownerDraws, ownerPage, 15);
+    ownerPage = currentOwnerPage;
+
+    modalOverlay.innerHTML = `
+      <div class="modal-overlay active">
+        <div class="modal-card" style="max-width: 760px;">
+          <div class="modal-header">
+            <div>
+              <h3 class="modal-title">🧾 Desglose Detallado de Gastos</h3>
+              <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+                Periodo: <strong>${periodLabel}</strong> • Total Egresos: <strong style="color: var(--danger);">${formatCOP(kpis.totalExpenses)}</strong>
+              </span>
+            </div>
+            <button class="modal-close-btn" id="btnCloseExpModal">✕</button>
           </div>
-          <button class="modal-close-btn" id="btnCloseExpModal">✕</button>
-        </div>
-        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+          <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
 
-          <!-- Tarjetas Resumen de Categorías -->
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 16px;">
-            <div style="background: #FFF7ED; padding: 10px; border-radius: var(--radius-md); border: 1px solid #FFEDD5; text-align: center;">
-              <span style="font-size: 0.72rem; font-weight: 700; color: #C2410C;">🥛 Insumos</span>
-              <div style="font-size: 0.95rem; font-weight: 900; color: #EA580C;">${formatCOP(kpis.totalRawMaterialPurchases)}</div>
-            </div>
-
-            <div style="background: #F0FDF4; padding: 10px; border-radius: var(--radius-md); border: 1px solid #DCFCE7; text-align: center;">
-              <span style="font-size: 0.72rem; font-weight: 700; color: #15803D;">👥 Nómina</span>
-              <div style="font-size: 0.95rem; font-weight: 900; color: #16A34A;">${formatCOP(kpis.totalPayrollExpenses || 0)}</div>
-            </div>
-
-            <div style="background: #F8FAFC; padding: 10px; border-radius: var(--radius-md); border: 1px solid #E2E8F0; text-align: center;">
-              <span style="font-size: 0.72rem; font-weight: 700; color: #475569;">⚙️ Otros Gastos</span>
-              <div style="font-size: 0.95rem; font-weight: 900; color: #334155;">${formatCOP(kpis.totalGeneralExpenses)}</div>
-            </div>
-
-            <div style="background: #FAF5FF; padding: 10px; border-radius: var(--radius-md); border: 1px solid #DDD6FE; text-align: center;">
-              <span style="font-size: 0.72rem; font-weight: 700; color: #6D28D9;">👑 Retiros Socios</span>
-              <div style="font-size: 0.95rem; font-weight: 900; color: #7C3AED;">${formatCOP(kpis.totalOwnerDraws || 0)}</div>
-            </div>
-          </div>
-
-          <!-- 1. Compras de Insumos -->
-          <div style="margin-bottom: 18px;">
-            <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-              <span>🥛 Compras de Materia Prima e Insumos</span>
-              <span class="badge" style="font-size: 0.72rem;">${rawMaterials.length}</span>
-            </h4>
-            ${
-              rawMaterials.length > 0
-                ? `
-              <div class="table-responsive">
-                <table class="app-table" style="font-size: 0.82rem;">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Insumo</th>
-                      <th>Cantidad</th>
-                      <th>Proveedor</th>
-                      <th style="text-align: right;">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${rawMaterials
-                      .map(
-                        (r) => `
-                      <tr>
-                        <td>${formatDate(r.date)}</td>
-                        <td><strong>${r.name}</strong></td>
-                        <td>${r.quantity} ${r.unit}</td>
-                        <td><small>${r.supplier}</small></td>
-                        <td style="text-align: right; font-weight: 800; color: var(--danger);">${formatCOP(r.totalCost)}</td>
-                      </tr>
-                    `
-                      )
-                      .join('')}
-                  </tbody>
-                </table>
+            <!-- Tarjetas Resumen de Categorías -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 16px;">
+              <div style="background: #FFF7ED; padding: 10px; border-radius: var(--radius-md); border: 1px solid #FFEDD5; text-align: center;">
+                <span style="font-size: 0.72rem; font-weight: 700; color: #C2410C;">🥛 Insumos</span>
+                <div style="font-size: 0.95rem; font-weight: 900; color: #EA580C;">${formatCOP(kpis.totalRawMaterialPurchases)}</div>
               </div>
-            `
-                : `<p style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-left: 8px;">No hay compras de insumos en este periodo.</p>`
-            }
-          </div>
 
-          <!-- 2. Pagos de Nómina -->
-          <div style="margin-bottom: 18px;">
-            <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-              <span>👥 Pagos de Nómina y Mano de Obra</span>
-              <span class="badge" style="font-size: 0.72rem;">${payroll.length}</span>
-            </h4>
-            ${
-              payroll.length > 0
-                ? `
-              <div class="table-responsive">
-                <table class="app-table" style="font-size: 0.82rem;">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Colaborador</th>
-                      <th>Concepto</th>
-                      <th>Método</th>
-                      <th style="text-align: right;">Neto Pagado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${payroll
-                      .map(
-                        (p) => `
-                      <tr>
-                        <td>${formatDate(p.date)}</td>
-                        <td><strong>${p.staffName}</strong> <small style="color: var(--text-muted);">(${p.role})</small></td>
-                        <td><small>${p.calculationDetails}</small></td>
-                        <td><span class="badge" style="font-size: 0.7rem;">${p.paymentMethod}</span></td>
-                        <td style="text-align: right; font-weight: 800; color: #16A34A;">${formatCOP(p.netAmount)}</td>
-                      </tr>
-                    `
-                      )
-                      .join('')}
-                  </tbody>
-                </table>
+              <div style="background: #F0FDF4; padding: 10px; border-radius: var(--radius-md); border: 1px solid #DCFCE7; text-align: center;">
+                <span style="font-size: 0.72rem; font-weight: 700; color: #15803D;">👥 Nómina</span>
+                <div style="font-size: 0.95rem; font-weight: 900; color: #16A34A;">${formatCOP(kpis.totalPayrollExpenses || 0)}</div>
               </div>
-            `
-                : `<p style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-left: 8px;">No hay pagos de nómina en este periodo.</p>`
-            }
-          </div>
 
-          <!-- 3. Gastos Generales / Infraestructura -->
-          <div style="margin-bottom: 18px;">
-            <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-              <span>⚙️ Infraestructura y Gastos Generales</span>
-              <span class="badge" style="font-size: 0.72rem;">${generalExpenses.length}</span>
-            </h4>
-            ${
-              generalExpenses.length > 0
-                ? `
-              <div class="table-responsive">
-                <table class="app-table" style="font-size: 0.82rem;">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Categoría</th>
-                      <th>Descripción</th>
-                      <th style="text-align: right;">Monto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${generalExpenses
-                      .map(
-                        (g) => `
-                      <tr>
-                        <td>${formatDate(g.date)}</td>
-                        <td><span class="badge" style="font-size: 0.7rem;">${g.category}</span></td>
-                        <td>${g.description}</td>
-                        <td style="text-align: right; font-weight: 800; color: var(--danger);">${formatCOP(g.amount)}</td>
-                      </tr>
-                    `
-                      )
-                      .join('')}
-                  </tbody>
-                </table>
+              <div style="background: #F8FAFC; padding: 10px; border-radius: var(--radius-md); border: 1px solid #E2E8F0; text-align: center;">
+                <span style="font-size: 0.72rem; font-weight: 700; color: #475569;">⚙️ Otros Gastos</span>
+                <div style="font-size: 0.95rem; font-weight: 900; color: #334155;">${formatCOP(kpis.totalGeneralExpenses)}</div>
               </div>
-            `
-                : `<p style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-left: 8px;">No hay gastos generales en este periodo.</p>`
-            }
-          </div>
 
-          <!-- 4. Retiros de Socios -->
-          ${
-            ownerDraws.length > 0
-              ? `
-            <div style="margin-bottom: 10px;">
-              <h4 style="font-size: 0.95rem; font-weight: 800; color: #6D28D9; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                <span>👑 Retiros de Socios / Anticipos de Ganancia</span>
-                <span class="badge" style="background: #EDE9FE; color: #6D28D9; font-size: 0.72rem;">${ownerDraws.length}</span>
+              <div style="background: #FAF5FF; padding: 10px; border-radius: var(--radius-md); border: 1px solid #DDD6FE; text-align: center;">
+                <span style="font-size: 0.72rem; font-weight: 700; color: #6D28D9;">👑 Retiros Socios</span>
+                <div style="font-size: 0.95rem; font-weight: 900; color: #7C3AED;">${formatCOP(kpis.totalOwnerDraws || 0)}</div>
+              </div>
+            </div>
+
+            <!-- 1. Compras de Insumos -->
+            <div style="margin-bottom: 18px;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>🥛 Compras de Materia Prima e Insumos</span>
+                <span class="badge" style="font-size: 0.72rem;">${rawMaterials.length}</span>
               </h4>
-              <div class="table-responsive">
-                <table class="app-table" style="font-size: 0.82rem;">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Socio</th>
-                      <th>Concepto / Liquidación</th>
-                      <th>Método</th>
-                      <th style="text-align: right;">Neto Retirado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${ownerDraws
-                      .map(
-                        (od) => `
+              ${
+                rawMaterials.length > 0
+                  ? `
+                <div class="table-responsive">
+                  <table class="app-table" style="font-size: 0.82rem;">
+                    <thead>
                       <tr>
-                        <td>${formatDate(od.date)}</td>
-                        <td><strong>${od.staffName}</strong></td>
-                        <td><small>${od.calculationDetails}</small></td>
-                        <td><span class="badge" style="font-size: 0.7rem;">${od.paymentMethod}</span></td>
-                        <td style="text-align: right; font-weight: 800; color: #7C3AED;">${formatCOP(od.netAmount)}</td>
+                        <th>Fecha</th>
+                        <th>Insumo</th>
+                        <th>Cantidad</th>
+                        <th>Proveedor</th>
+                        <th style="text-align: right;">Total</th>
                       </tr>
-                    `
-                      )
-                      .join('')}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      ${pageRaw
+                        .map(
+                          (r) => `
+                        <tr>
+                          <td>${formatDate(r.date)}</td>
+                          <td><strong>${r.name}</strong></td>
+                          <td>${r.quantity} ${r.unit}</td>
+                          <td><small>${r.supplier}</small></td>
+                          <td style="text-align: right; font-weight: 800; color: var(--danger);">${formatCOP(r.totalCost)}</td>
+                        </tr>
+                      `
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ${renderPaginationHtml({
+                  currentPage: rawPage,
+                  totalPages: rawTotalPages,
+                  totalItems: rawTotalItems,
+                  pageSize: 15,
+                  itemName: 'compras de insumos',
+                  paginationId: 'modalRawPagination',
+                })}
+              `
+                  : `<p style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-left: 8px;">No hay compras de insumos en este periodo.</p>`
+              }
             </div>
-          `
-              : ''
-          }
 
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" id="btnOkExpModal">Cerrar</button>
+            <!-- 2. Pagos de Nómina -->
+            <div style="margin-bottom: 18px;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>👥 Pagos de Nómina y Mano de Obra</span>
+                <span class="badge" style="font-size: 0.72rem;">${payroll.length}</span>
+              </h4>
+              ${
+                payroll.length > 0
+                  ? `
+                <div class="table-responsive">
+                  <table class="app-table" style="font-size: 0.82rem;">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Colaborador</th>
+                        <th>Concepto</th>
+                        <th>Método</th>
+                        <th style="text-align: right;">Neto Pagado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${pagePayroll
+                        .map(
+                          (p) => `
+                        <tr>
+                          <td>${formatDate(p.date)}</td>
+                          <td><strong>${p.staffName}</strong> <small style="color: var(--text-muted);">(${p.role})</small></td>
+                          <td><small>${p.calculationDetails}</small></td>
+                          <td><span class="badge" style="font-size: 0.7rem;">${p.paymentMethod}</span></td>
+                          <td style="text-align: right; font-weight: 800; color: #16A34A;">${formatCOP(p.netAmount)}</td>
+                        </tr>
+                      `
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ${renderPaginationHtml({
+                  currentPage: payrollPage,
+                  totalPages: payrollTotalPages,
+                  totalItems: payrollTotalItems,
+                  pageSize: 15,
+                  itemName: 'pagos de nómina',
+                  paginationId: 'modalPayrollPagination',
+                })}
+              `
+                  : `<p style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-left: 8px;">No hay pagos de nómina en este periodo.</p>`
+              }
+            </div>
+
+            <!-- 3. Gastos Generales / Infraestructura -->
+            <div style="margin-bottom: 18px;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>⚙️ Infraestructura y Gastos Generales</span>
+                <span class="badge" style="font-size: 0.72rem;">${generalExpenses.length}</span>
+              </h4>
+              ${
+                generalExpenses.length > 0
+                  ? `
+                <div class="table-responsive">
+                  <table class="app-table" style="font-size: 0.82rem;">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Categoría</th>
+                        <th>Descripción</th>
+                        <th style="text-align: right;">Monto</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${pageGen
+                        .map(
+                          (g) => `
+                        <tr>
+                          <td>${formatDate(g.date)}</td>
+                          <td><span class="badge" style="font-size: 0.7rem;">${g.category}</span></td>
+                          <td>${g.description}</td>
+                          <td style="text-align: right; font-weight: 800; color: var(--danger);">${formatCOP(g.amount)}</td>
+                        </tr>
+                      `
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ${renderPaginationHtml({
+                  currentPage: genExpPage,
+                  totalPages: genTotalPages,
+                  totalItems: genTotalItems,
+                  pageSize: 15,
+                  itemName: 'gastos generales',
+                  paginationId: 'modalGenExpPagination',
+                })}
+              `
+                  : `<p style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-left: 8px;">No hay gastos generales en este periodo.</p>`
+              }
+            </div>
+
+            <!-- 4. Retiros de Socios -->
+            ${
+              ownerDraws.length > 0
+                ? `
+              <div style="margin-bottom: 10px;">
+                <h4 style="font-size: 0.95rem; font-weight: 800; color: #6D28D9; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                  <span>👑 Retiros de Socios / Anticipos de Ganancia</span>
+                  <span class="badge" style="background: #EDE9FE; color: #6D28D9; font-size: 0.72rem;">${ownerDraws.length}</span>
+                </h4>
+                <div class="table-responsive">
+                  <table class="app-table" style="font-size: 0.82rem;">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Socio</th>
+                        <th>Concepto / Liquidación</th>
+                        <th>Método</th>
+                        <th style="text-align: right;">Neto Retirado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${pageOwner
+                        .map(
+                          (od) => `
+                        <tr>
+                          <td>${formatDate(od.date)}</td>
+                          <td><strong>${od.staffName}</strong></td>
+                          <td><small>${od.calculationDetails}</small></td>
+                          <td><span class="badge" style="font-size: 0.7rem;">${od.paymentMethod}</span></td>
+                          <td style="text-align: right; font-weight: 800; color: #7C3AED;">${formatCOP(od.netAmount)}</td>
+                        </tr>
+                      `
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ${renderPaginationHtml({
+                  currentPage: ownerPage,
+                  totalPages: ownerTotalPages,
+                  totalItems: ownerTotalItems,
+                  pageSize: 15,
+                  itemName: 'retiros de socios',
+                  paginationId: 'modalOwnerPagination',
+                })}
+              </div>
+            `
+                : ''
+            }
+
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btnOkExpModal">Cerrar</button>
+          </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
-  const closeModal = () => (modalOverlay.innerHTML = '');
-  document.getElementById('btnCloseExpModal')?.addEventListener('click', closeModal);
-  document.getElementById('btnOkExpModal')?.addEventListener('click', closeModal);
+    const closeModal = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnCloseExpModal')?.addEventListener('click', closeModal);
+    document.getElementById('btnOkExpModal')?.addEventListener('click', closeModal);
+
+    attachPaginationEvents(modalOverlay, 'modalRawPagination', (newPage) => {
+      rawPage = newPage;
+      renderModal();
+    });
+
+    attachPaginationEvents(modalOverlay, 'modalPayrollPagination', (newPage) => {
+      payrollPage = newPage;
+      renderModal();
+    });
+
+    attachPaginationEvents(modalOverlay, 'modalGenExpPagination', (newPage) => {
+      genExpPage = newPage;
+      renderModal();
+    });
+
+    attachPaginationEvents(modalOverlay, 'modalOwnerPagination', (newPage) => {
+      ownerPage = newPage;
+      renderModal();
+    });
+  }
+
+  renderModal();
 }
 
 // 2. Modal de Desglose de Recaudo por Sabor y Lote
@@ -947,184 +1083,240 @@ function openSalesBreakdownModal(salesData, kpis, periodLabel) {
     });
   });
 
-  modalOverlay.innerHTML = `
-    <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 740px;">
-        <div class="modal-header">
-          <div>
-            <h3 class="modal-title">💰 Desglose de Recaudo por Lote y Sabor</h3>
-            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
-              Periodo: <strong>${periodLabel}</strong> • Total Recaudado (Cobrado): <strong style="color: var(--success);">${formatCOP(kpis.totalCashCollected)}</strong>
-            </span>
-          </div>
-          <button class="modal-close-btn" id="btnCloseSalesModal">✕</button>
-        </div>
-        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
-          
-          <!-- TABLA 1: Resumen de Recaudo por Lote y Sabor -->
-          <div style="margin-bottom: 20px;">
-            <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-              <span>✅ 1. Resumen de Ventas Entregadas y Cobradas</span>
-              <span style="font-size: 0.85rem; color: var(--success); font-weight: 800;">${formatCOP(kpis.deliveredPaidAmount)} (${kpis.deliveredLiters} L)</span>
-            </h4>
+  let delivSummaryPage = 1;
+  let delivCustPage = 1;
+  let inProcSummaryPage = 1;
 
-            ${
-              delivered.length > 0
-                ? `
-              <div class="table-responsive">
-                <table class="app-table" style="font-size: 0.82rem;">
-                  <thead>
-                    <tr>
-                      <th>Lote</th>
-                      <th>Sabor</th>
-                      <th>Litros</th>
-                      <th>Envases</th>
-                      <th>Pedidos</th>
-                      <th style="text-align: right;">Total Cobrado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${delivered
-                      .map(
-                        (g) => `
-                      <tr>
-                        <td><span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.74rem;">🍶 ${g.batchCode}</span></td>
-                        <td><strong>${g.flavor}</strong></td>
-                        <td><strong>${g.totalLiters} L</strong></td>
-                        <td><small>${g.totalBottles1L} de 1L • ${g.totalBottles2L} de 2L</small></td>
-                        <td>${g.ordersCount}</td>
-                        <td style="text-align: right; font-weight: 800; color: var(--success);">${formatCOP(g.paidAmount)}</td>
-                      </tr>
-                    `
-                      )
-                      .join('')}
-                  </tbody>
-                  <tfoot>
-                    <tr style="background: var(--bg-subtle); font-weight: 800;">
-                      <td colspan="2">TOTAL RECAUDADO</td>
-                      <td>${kpis.deliveredLiters || 0} L</td>
-                      <td>-</td>
-                      <td>${delivered.reduce((s, g) => s + g.ordersCount, 0)}</td>
-                      <td style="text-align: right; color: var(--success); font-size: 0.95rem;">${formatCOP(kpis.deliveredPaidAmount)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            `
-                : `<p style="font-size: 0.82rem; color: var(--text-muted); font-style: italic;">No hay ventas entregadas en este periodo.</p>`
-            }
-          </div>
+  function renderModal() {
+    const { pageItems: pageDelivSummary, totalPages: delivSummaryTotalPages, totalItems: delivSummaryTotalItems, currentPage: currentDelivSummaryPage } = paginateArray(delivered, delivSummaryPage, 15);
+    delivSummaryPage = currentDelivSummaryPage;
 
-          <!-- TABLA 2: Detalle de Clientes que Compraron -->
-          ${
-            allDeliveredCustomers.length > 0
-              ? `
-            <div style="margin-bottom: 20px;">
-              <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                <span>👥 2. Clientes y Pagos Recibidos</span>
-                <span class="badge" style="font-size: 0.72rem;">${allDeliveredCustomers.length} cliente(s)</span>
-              </h4>
-              <div class="table-responsive">
-                <table class="app-table" style="font-size: 0.82rem;">
-                  <thead>
-                    <tr>
-                      <th>Cliente</th>
-                      <th>Lote / Sabor</th>
-                      <th>Litros / Envases</th>
-                      <th style="text-align: right;">Monto Pagado</th>
-                      <th>Fecha Entrega</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${allDeliveredCustomers
-                      .map(
-                        (c) => `
-                      <tr>
-                        <td>
-                          <strong>${c.customerName}</strong>
-                          <div style="font-size: 0.72rem; color: var(--text-muted);">📞 ${c.customerPhone || 'Sin teléfono'}</div>
-                        </td>
-                        <td><small>🍶 ${c.batchCode} • ${c.flavor}</small></td>
-                        <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
-                        <td style="text-align: right; font-weight: 800; color: var(--success);">${formatCOP(c.paidAmount)}</td>
-                        <td><small>${formatDate(c.deliveryDate || c.orderDate)}</small></td>
-                      </tr>
-                    `
-                      )
-                      .join('')}
-                  </tbody>
-                </table>
-              </div>
+    const { pageItems: pageDelivCust, totalPages: delivCustTotalPages, totalItems: delivCustTotalItems, currentPage: currentDelivCustPage } = paginateArray(allDeliveredCustomers, delivCustPage, 15);
+    delivCustPage = currentDelivCustPage;
+
+    const { pageItems: pageInProcSummary, totalPages: inProcSummaryTotalPages, totalItems: inProcSummaryTotalItems, currentPage: currentInProcSummaryPage } = paginateArray(inProcess, inProcSummaryPage, 15);
+    inProcSummaryPage = currentInProcSummaryPage;
+
+    modalOverlay.innerHTML = `
+      <div class="modal-overlay active">
+        <div class="modal-card" style="max-width: 760px;">
+          <div class="modal-header">
+            <div>
+              <h3 class="modal-title">💰 Desglose de Recaudo por Lote y Sabor</h3>
+              <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+                Periodo: <strong>${periodLabel}</strong> • Total Recaudado (Cobrado): <strong style="color: var(--success);">${formatCOP(kpis.totalCashCollected)}</strong>
+              </span>
             </div>
-          `
-              : ''
-          }
+            <button class="modal-close-btn" id="btnCloseSalesModal">✕</button>
+          </div>
+          <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+            
+            <!-- TABLA 1: Resumen de Recaudo por Lote y Sabor -->
+            <div style="margin-bottom: 20px;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                <span>✅ 1. Resumen de Ventas Entregadas y Cobradas</span>
+                <span style="font-size: 0.85rem; color: var(--success); font-weight: 800;">${formatCOP(kpis.deliveredPaidAmount)} (${kpis.deliveredLiters} L)</span>
+              </h4>
 
-          <!-- TABLA 3: Proyección de Recaudo Pendiente de Pedidos en Proceso -->
-          <div style="background: #FFFBEB; border: 1.5px solid #FDE68A; border-radius: var(--radius-md); padding: 14px;">
-            <h4 style="font-size: 0.95rem; font-weight: 800; color: #B45309; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-              <span>🥣 3. Saldo por Recaudar (Pedidos Encargados en Proceso)</span>
-              <strong style="font-size: 1rem; color: #D97706;">${formatCOP(kpis.inProcessPendingToCollect)}</strong>
-            </h4>
-            <p style="font-size: 0.78rem; color: #92400E; margin-bottom: 10px;">
-              Dinero que se cobrará directamente al cliente al momento de entregar su pedido:
-            </p>
-
-            ${
-              inProcess.length > 0
-                ? `
-              <div class="table-responsive">
-                <table class="app-table" style="font-size: 0.82rem; background: #FFFFFF;">
-                  <thead>
-                    <tr>
-                      <th>Lote</th>
-                      <th>Sabor</th>
-                      <th>Litros</th>
-                      <th>Pedidos</th>
-                      <th style="text-align: right;">Por Cobrar al Entregar</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${inProcess
-                      .map(
-                        (g) => `
+              ${
+                delivered.length > 0
+                  ? `
+                <div class="table-responsive">
+                  <table class="app-table" style="font-size: 0.82rem;">
+                    <thead>
                       <tr>
-                        <td><span class="badge" style="font-size: 0.74rem;">🍶 ${g.batchCode}</span></td>
-                        <td><strong>${g.flavor}</strong></td>
-                        <td><strong>${g.totalLiters} L</strong></td>
-                        <td>${g.ordersCount} pedidos</td>
-                        <td style="text-align: right; font-weight: 800; color: #D97706;">${formatCOP(g.pendingAmount)}</td>
+                        <th>Lote</th>
+                        <th>Sabor</th>
+                        <th>Litros</th>
+                        <th>Envases</th>
+                        <th>Pedidos</th>
+                        <th style="text-align: right;">Total Cobrado</th>
                       </tr>
-                    `
-                      )
-                      .join('')}
-                  </tbody>
-                  <tfoot>
-                    <tr style="background: #FEF3C7; font-weight: 800;">
-                      <td colspan="2">TOTAL POR RECAUDAR</td>
-                      <td>${kpis.inProcessLiters || 0} L</td>
-                      <td>${inProcess.reduce((s, g) => s + g.ordersCount, 0)}</td>
-                      <td style="text-align: right; color: #D97706; font-size: 0.95rem;">${formatCOP(kpis.inProcessPendingToCollect)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    </thead>
+                    <tbody>
+                      ${pageDelivSummary
+                        .map(
+                          (g) => `
+                        <tr>
+                          <td><span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.74rem;">🍶 ${g.batchCode}</span></td>
+                          <td><strong>${g.flavor}</strong></td>
+                          <td><strong>${g.totalLiters} L</strong></td>
+                          <td><small>${g.totalBottles1L} de 1L • ${g.totalBottles2L} de 2L</small></td>
+                          <td>${g.ordersCount}</td>
+                          <td style="text-align: right; font-weight: 800; color: var(--success);">${formatCOP(g.paidAmount)}</td>
+                        </tr>
+                      `
+                        )
+                        .join('')}
+                    </tbody>
+                    <tfoot>
+                      <tr style="background: var(--bg-subtle); font-weight: 800;">
+                        <td colspan="2">TOTAL RECAUDADO</td>
+                        <td>${kpis.deliveredLiters || 0} L</td>
+                        <td>-</td>
+                        <td>${delivered.reduce((s, g) => s + g.ordersCount, 0)}</td>
+                        <td style="text-align: right; color: var(--success); font-size: 0.95rem;">${formatCOP(kpis.deliveredPaidAmount)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                ${renderPaginationHtml({
+                  currentPage: delivSummaryPage,
+                  totalPages: delivSummaryTotalPages,
+                  totalItems: delivSummaryTotalItems,
+                  pageSize: 15,
+                  itemName: 'lotes entregados',
+                  paginationId: 'modalDelivSummaryPagination',
+                })}
+              `
+                  : `<p style="font-size: 0.82rem; color: var(--text-muted); font-style: italic;">No hay ventas entregadas en este periodo.</p>`
+              }
+            </div>
+
+            <!-- TABLA 2: Detalle de Clientes que Compraron -->
+            ${
+              allDeliveredCustomers.length > 0
+                ? `
+              <div style="margin-bottom: 20px;">
+                <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>👥 2. Clientes y Pagos Recibidos</span>
+                  <span class="badge" style="font-size: 0.72rem;">${allDeliveredCustomers.length} cliente(s)</span>
+                </h4>
+                <div class="table-responsive">
+                  <table class="app-table" style="font-size: 0.82rem;">
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th>Lote / Sabor</th>
+                        <th>Litros / Envases</th>
+                        <th style="text-align: right;">Monto Pagado</th>
+                        <th>Fecha Entrega</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${pageDelivCust
+                        .map(
+                          (c) => `
+                        <tr>
+                          <td>
+                            <strong>${c.customerName}</strong>
+                            <div style="font-size: 0.72rem; color: var(--text-muted);">📞 ${c.customerPhone || 'Sin teléfono'}</div>
+                          </td>
+                          <td><small>🍶 ${c.batchCode} • ${c.flavor}</small></td>
+                          <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
+                          <td style="text-align: right; font-weight: 800; color: var(--success);">${formatCOP(c.paidAmount)}</td>
+                          <td><small>${formatDate(c.deliveryDate || c.orderDate)}</small></td>
+                        </tr>
+                      `
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ${renderPaginationHtml({
+                  currentPage: delivCustPage,
+                  totalPages: delivCustTotalPages,
+                  totalItems: delivCustTotalItems,
+                  pageSize: 15,
+                  itemName: 'clientes que compraron',
+                  paginationId: 'modalDelivCustPagination',
+                })}
               </div>
             `
-                : `<span style="font-size: 0.8rem; color: #92400E; font-style: italic;">No hay pedidos en proceso pendientes de cobro.</span>`
+                : ''
             }
-          </div>
 
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" id="btnOkSalesModal">Cerrar</button>
+            <!-- TABLA 3: Proyección de Recaudo Pendiente de Pedidos en Proceso -->
+            <div style="background: #FFFBEB; border: 1.5px solid #FDE68A; border-radius: var(--radius-md); padding: 14px;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: #B45309; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                <span>🥣 3. Saldo por Recaudar (Pedidos Encargados en Proceso)</span>
+                <strong style="font-size: 1rem; color: #D97706;">${formatCOP(kpis.inProcessPendingToCollect)}</strong>
+              </h4>
+              <p style="font-size: 0.78rem; color: #92400E; margin-bottom: 10px;">
+                Dinero que se cobrará directamente al cliente al momento de entregar su pedido:
+              </p>
+
+              ${
+                inProcess.length > 0
+                  ? `
+                <div class="table-responsive">
+                  <table class="app-table" style="font-size: 0.82rem; background: #FFFFFF;">
+                    <thead>
+                      <tr>
+                        <th>Lote</th>
+                        <th>Sabor</th>
+                        <th>Litros</th>
+                        <th>Pedidos</th>
+                        <th style="text-align: right;">Por Cobrar al Entregar</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${pageInProcSummary
+                        .map(
+                          (g) => `
+                        <tr>
+                          <td><span class="badge" style="font-size: 0.74rem;">🍶 ${g.batchCode}</span></td>
+                          <td><strong>${g.flavor}</strong></td>
+                          <td><strong>${g.totalLiters} L</strong></td>
+                          <td>${g.ordersCount} pedidos</td>
+                          <td style="text-align: right; font-weight: 800; color: #D97706;">${formatCOP(g.pendingAmount)}</td>
+                        </tr>
+                      `
+                        )
+                        .join('')}
+                    </tbody>
+                    <tfoot>
+                      <tr style="background: #FEF3C7; font-weight: 800;">
+                        <td colspan="2">TOTAL POR RECAUDAR</td>
+                        <td>${kpis.inProcessLiters || 0} L</td>
+                        <td>${inProcess.reduce((s, g) => s + g.ordersCount, 0)}</td>
+                        <td style="text-align: right; color: #D97706; font-size: 0.95rem;">${formatCOP(kpis.inProcessPendingToCollect)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                ${renderPaginationHtml({
+                  currentPage: inProcSummaryPage,
+                  totalPages: inProcSummaryTotalPages,
+                  totalItems: inProcSummaryTotalItems,
+                  pageSize: 15,
+                  itemName: 'lotes por recaudar',
+                  paginationId: 'modalInProcSummaryPagination',
+                })}
+              `
+                  : `<span style="font-size: 0.8rem; color: #92400E; font-style: italic;">No hay pedidos en proceso pendientes de cobro.</span>`
+              }
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btnOkSalesModal">Cerrar</button>
+          </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
-  const closeModal = () => (modalOverlay.innerHTML = '');
-  document.getElementById('btnCloseSalesModal')?.addEventListener('click', closeModal);
-  document.getElementById('btnOkSalesModal')?.addEventListener('click', closeModal);
+    const closeModal = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnCloseSalesModal')?.addEventListener('click', closeModal);
+    document.getElementById('btnOkSalesModal')?.addEventListener('click', closeModal);
+
+    attachPaginationEvents(modalOverlay, 'modalDelivSummaryPagination', (newPage) => {
+      delivSummaryPage = newPage;
+      renderModal();
+    });
+
+    attachPaginationEvents(modalOverlay, 'modalDelivCustPagination', (newPage) => {
+      delivCustPage = newPage;
+      renderModal();
+    });
+
+    attachPaginationEvents(modalOverlay, 'modalInProcSummaryPagination', (newPage) => {
+      inProcSummaryPage = newPage;
+      renderModal();
+    });
+  }
+
+  renderModal();
 }
 
 // 3. Modal de Saldos Por Cobrar (En Proceso) con Lista de Personas
@@ -1134,96 +1326,149 @@ function openInProcessPendingModal(salesData, inProcessStats, periodLabel) {
 
   const inProcess = salesData.inProcess || [];
 
-  modalOverlay.innerHTML = `
-    <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 720px;">
-        <div class="modal-header">
-          <div>
-            <h3 class="modal-title">🥣 Saldos por Cobrar (Pedidos en Proceso)</h3>
-            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
-              Periodo: <strong>${periodLabel}</strong> • Total a Recaudar: <strong style="color: var(--accent);">${formatCOP(inProcessStats.inProcessPendingToCollect)}</strong>
-            </span>
-          </div>
-          <button class="modal-close-btn" id="btnClosePendingModal">✕</button>
-        </div>
-        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
-          
-          ${
-            inProcess.length > 0
-              ? `
-            <div style="display: flex; flex-direction: column; gap: 16px;">
-              ${inProcess
-                .map(
-                  (g) => `
-                <div style="background: #FFFDF9; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
-                    <div>
-                      <span class="badge" style="background: var(--primary-light); color: var(--primary); font-weight: 800; font-size: 0.78rem;">🍶 ${g.batchCode}</span>
-                      <strong style="color: var(--text-main); font-size: 1rem; margin-left: 6px;">${g.flavor}</strong>
-                      <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 8px;">(${g.totalLiters} Litros • ${g.ordersCount} pedidos)</span>
-                    </div>
-                    <div style="background: #FEF3C7; color: #B45309; padding: 4px 10px; border-radius: var(--radius-sm); font-weight: 800; font-size: 0.95rem;">
-                      Falta cobrar: ${formatCOP(g.pendingAmount)}
-                    </div>
-                  </div>
+  // Extraer todos los clientes con pedidos en proceso
+  const allInProcessCustomers = [];
+  inProcess.forEach((g) => {
+    (g.customers || []).forEach((c) => {
+      allInProcessCustomers.push({
+        ...c,
+        batchCode: g.batchCode,
+        flavor: g.flavor,
+      });
+    });
+  });
 
-                  <div class="table-responsive">
-                    <table class="app-table" style="font-size: 0.82rem;">
-                      <thead>
-                        <tr>
-                          <th>Cliente</th>
-                          <th>Contacto</th>
-                          <th>Envases</th>
-                          <th style="text-align: right;">Saldo a Cobrar</th>
-                          <th>Fecha Entrega</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${g.customers
-                          .map(
-                            (c) => `
+  let inProcPage = 1;
+
+  function renderModal() {
+    const { pageItems: pageCust, totalPages, totalItems, currentPage } = paginateArray(allInProcessCustomers, inProcPage, 15);
+    inProcPage = currentPage;
+
+    modalOverlay.innerHTML = `
+      <div class="modal-overlay active">
+        <div class="modal-card" style="max-width: 780px;">
+          <div class="modal-header">
+            <div>
+              <h3 class="modal-title">🥣 Pedidos en Proceso (Pendientes de Entrega)</h3>
+              <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+                Periodo: <strong>${periodLabel}</strong> • Total por cobrar: <strong style="color: var(--accent);">${formatCOP(inProcessStats.inProcessPendingToCollect)}</strong> • Ya pagado: <strong style="color: #15803D;">${formatCOP(inProcessStats.inProcessPaidAmount)}</strong>
+              </span>
+            </div>
+            <button class="modal-close-btn" id="btnClosePendingModal">✕</button>
+          </div>
+          <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+            
+            <!-- Resumen por Lotes -->
+            ${
+              inProcess.length > 0
+                ? `
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+                ${inProcess
+                  .map(
+                    (g) => `
+                  <div style="background: #FFFBEB; border: 1px solid #FDE68A; padding: 6px 12px; border-radius: var(--radius-sm); font-size: 0.78rem;">
+                    <span class="badge" style="font-size: 0.7rem; font-weight: 800;">🍶 ${g.batchCode}</span>
+                    <strong style="color: #92400E; margin-left: 4px;">${g.flavor}</strong>: ${g.totalLiters}L (${g.ordersCount} ped)
+                  </div>
+                `
+                  )
+                  .join('')}
+              </div>
+            `
+                : ''
+            }
+
+            ${
+              allInProcessCustomers.length > 0
+                ? `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Lote / Sabor</th>
+                      <th>Envases / Litros</th>
+                      <th>Estado Pago</th>
+                      <th style="text-align: right;">Saldo por Cobrar</th>
+                      <th>Fecha Entrega</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${pageCust
+                      .map((c) => {
+                        const isPaid = c.pendingAmount === 0 || c.paymentStatus === 'PAID';
+                        const isPartial = !isPaid && c.paidAmount > 0;
+
+                        let paymentBadge = '';
+                        let pendingCell = '';
+
+                        if (isPaid) {
+                          paymentBadge = `<span class="badge badge-paid" style="font-size: 0.72rem; font-weight: 800;">✅ PAGADO (${c.paymentMethod || 'EFECTIVO'})</span>`;
+                          pendingCell = `<div style="text-align: right;"><strong style="color: #15803D; font-size: 0.88rem;">$0</strong><div style="font-size: 0.7rem; color: #15803D; font-weight: 700;">Pagado por entregar</div></div>`;
+                        } else if (isPartial) {
+                          paymentBadge = `<span class="badge badge-partial" style="font-size: 0.72rem; font-weight: 800;">⚠️ ABONO (${formatCOP(c.paidAmount)})</span>`;
+                          pendingCell = `<div style="text-align: right;"><strong style="color: #B45309; font-size: 0.88rem;">${formatCOP(c.pendingAmount)}</strong><div style="font-size: 0.7rem; color: var(--text-muted);">Pendiente al entregar</div></div>`;
+                        } else {
+                          paymentBadge = `<span class="badge badge-pending" style="font-size: 0.72rem; font-weight: 800;">⏳ PENDIENTE</span>`;
+                          pendingCell = `<div style="text-align: right;"><strong style="color: var(--danger); font-size: 0.88rem;">${formatCOP(c.pendingAmount)}</strong><div style="font-size: 0.7rem; color: var(--text-muted);">Pendiente al entregar</div></div>`;
+                        }
+
+                        return `
                           <tr>
                             <td>
                               <strong>${c.customerName}</strong>
-                              <div style="font-size: 0.72rem; color: var(--text-muted);">📍 ${c.address}</div>
+                              <div style="font-size: 0.72rem; color: var(--text-muted);">📍 ${c.address || 'Sin dirección'}</div>
+                              ${c.customerPhone ? `<div style="font-size: 0.7rem; color: var(--text-muted);">📞 ${c.customerPhone}</div>` : ''}
                             </td>
-                            <td><small>📞 ${c.customerPhone || 'Sin teléfono'}</small></td>
+                            <td><small>🍶 ${c.batchCode}<br><strong>${c.flavor}</strong></small></td>
                             <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
-                            <td style="text-align: right;"><strong style="color: var(--danger); font-size: 0.9rem;">${formatCOP(c.pendingAmount)}</strong></td>
+                            <td>${paymentBadge}</td>
+                            <td>${pendingCell}</td>
                             <td><small style="color: var(--primary); font-weight: 700;">🛵 ${c.deliveryDate ? formatDate(c.deliveryDate) : 'Programada'}</small></td>
                           </tr>
-                        `
-                          )
-                          .join('')}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              `
-                )
-                .join('')}
-            </div>
-          `
-              : `
-            <div class="empty-state" style="padding: 30px;">
-              <div class="empty-state-icon">✨</div>
-              <div class="empty-state-title">No hay saldos pendientes en proceso</div>
-              <div class="empty-state-text">Todos los pedidos en preparación o ruta ya están pagos o no hay pedidos en curso.</div>
-            </div>
-          `
-          }
+                        `;
+                      })
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+              ${renderPaginationHtml({
+                currentPage: inProcPage,
+                totalPages,
+                totalItems,
+                pageSize: 15,
+                itemName: 'pedidos en proceso',
+                paginationId: 'modalInProcCustPagination',
+              })}
+            `
+                : `
+              <div class="empty-state" style="padding: 30px;">
+                <div class="empty-state-icon">✨</div>
+                <div class="empty-state-title">No hay pedidos en proceso pendientes</div>
+                <div class="empty-state-text">No hay pedidos en preparación o en ruta para este período.</div>
+              </div>
+            `
+            }
 
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" id="btnOkPendingModal">Cerrar</button>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btnOkPendingModal">Cerrar</button>
+          </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
-  const closeModal = () => (modalOverlay.innerHTML = '');
-  document.getElementById('btnClosePendingModal')?.addEventListener('click', closeModal);
-  document.getElementById('btnOkPendingModal')?.addEventListener('click', closeModal);
+    const closeModal = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnClosePendingModal')?.addEventListener('click', closeModal);
+    document.getElementById('btnOkPendingModal')?.addEventListener('click', closeModal);
+
+    attachPaginationEvents(modalOverlay, 'modalInProcCustPagination', (newPage) => {
+      inProcPage = newPage;
+      renderModal();
+    });
+  }
+
+  renderModal();
 }
 
 // 4. Modal de Litros Vendidos y Entregados
@@ -1233,91 +1478,128 @@ function openDeliveredLitersModal(salesData, kpis, periodLabel) {
 
   const delivered = salesData.delivered || [];
 
-  modalOverlay.innerHTML = `
-    <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 720px;">
-        <div class="modal-header">
-          <div>
-            <h3 class="modal-title">🥛 Detalle de Litros Vendidos y Entregados</h3>
-            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
-              Periodo: <strong>${periodLabel}</strong> • Total Entregado: <strong style="color: var(--accent);">${kpis.deliveredLiters} Litros</strong>
-            </span>
+  const allDeliveredCustomers = [];
+  delivered.forEach((g) => {
+    (g.customers || []).forEach((c) => {
+      allDeliveredCustomers.push({
+        ...c,
+        batchCode: g.batchCode,
+        flavor: g.flavor,
+      });
+    });
+  });
+
+  let delivLitersPage = 1;
+
+  function renderModal() {
+    const { pageItems: pageDeliv, totalPages, totalItems, currentPage } = paginateArray(allDeliveredCustomers, delivLitersPage, 15);
+    delivLitersPage = currentPage;
+
+    modalOverlay.innerHTML = `
+      <div class="modal-overlay active">
+        <div class="modal-card" style="max-width: 760px;">
+          <div class="modal-header">
+            <div>
+              <h3 class="modal-title">🥛 Detalle de Litros Vendidos y Entregados</h3>
+              <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+                Periodo: <strong>${periodLabel}</strong> • Total Entregado: <strong style="color: var(--accent);">${kpis.deliveredLiters} Litros</strong>
+              </span>
+            </div>
+            <button class="modal-close-btn" id="btnCloseDelModal">✕</button>
           </div>
-          <button class="modal-close-btn" id="btnCloseDelModal">✕</button>
-        </div>
-        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
-          
-          ${
-            delivered.length > 0
-              ? `
-            <div style="display: flex; flex-direction: column; gap: 14px;">
-              ${delivered
-                .map(
-                  (g) => `
-                <div style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 14px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
-                    <div>
-                      <span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.78rem;">🍶 ${g.batchCode}</span>
-                      <strong style="color: var(--text-main); font-size: 1rem; margin-left: 6px;">${g.flavor}</strong>
-                    </div>
-                    <strong style="color: #15803D; font-size: 1.05rem;">${g.totalLiters} L Entregados</strong>
+          <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+            
+            <!-- Resumen por Lotes -->
+            ${
+              delivered.length > 0
+                ? `
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+                ${delivered
+                  .map(
+                    (g) => `
+                  <div style="background: #F0FDF4; border: 1px solid #BBF7D0; padding: 6px 12px; border-radius: var(--radius-sm); font-size: 0.78rem;">
+                    <span class="badge" style="background: #DCFCE7; color: #15803D; font-size: 0.7rem; font-weight: 800;">🍶 ${g.batchCode}</span>
+                    <strong style="color: #166534; margin-left: 4px;">${g.flavor}</strong>: ${g.totalLiters}L (${formatCOP(g.paidAmount)})
                   </div>
+                `
+                  )
+                  .join('')}
+              </div>
+            `
+                : ''
+            }
 
-                  <div class="table-responsive">
-                    <table class="app-table" style="font-size: 0.82rem;">
-                      <thead>
-                        <tr>
-                          <th>Cliente</th>
-                          <th>Envases</th>
-                          <th style="text-align: right;">Monto Pagado</th>
-                          <th>Fecha Entrega</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${g.customers
-                          .map(
-                            (c) => `
-                          <tr>
-                            <td>
-                              <strong>${c.customerName}</strong>
-                              <div style="font-size: 0.72rem; color: var(--text-muted);">📞 ${c.customerPhone || ''}</div>
-                            </td>
-                            <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
-                            <td style="text-align: right; color: var(--success); font-weight: 700;">${formatCOP(c.paidAmount)}</td>
-                            <td><small>${formatDate(c.deliveryDate || c.orderDate)}</small></td>
-                          </tr>
-                        `
-                          )
-                          .join('')}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              `
-                )
-                .join('')}
-            </div>
-          `
-              : `
-            <div class="empty-state" style="padding: 30px;">
-              <div class="empty-state-icon">🥛</div>
-              <div class="empty-state-title">No hay litros entregados en este periodo</div>
-              <div class="empty-state-text">Selecciona otro rango o fecha en el panel superior.</div>
-            </div>
-          `
-          }
+            ${
+              allDeliveredCustomers.length > 0
+                ? `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Lote / Sabor</th>
+                      <th>Envases / Litros</th>
+                      <th style="text-align: right;">Monto Pagado</th>
+                      <th>Fecha Entrega</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${pageDeliv
+                      .map(
+                        (c) => `
+                      <tr>
+                        <td>
+                          <strong>${c.customerName}</strong>
+                          ${c.customerPhone ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📞 ${c.customerPhone}</div>` : ''}
+                        </td>
+                        <td><small>🍶 ${c.batchCode}<br><strong>${c.flavor}</strong></small></td>
+                        <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
+                        <td style="text-align: right; color: var(--success); font-weight: 700;">${formatCOP(c.paidAmount)}</td>
+                        <td><small>${formatDate(c.deliveryDate || c.orderDate)}</small></td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+              ${renderPaginationHtml({
+                currentPage: delivLitersPage,
+                totalPages,
+                totalItems,
+                pageSize: 15,
+                itemName: 'entregas de litros',
+                paginationId: 'modalDelivLitersPagination',
+              })}
+            `
+                : `
+              <div class="empty-state" style="padding: 30px;">
+                <div class="empty-state-icon">🥛</div>
+                <div class="empty-state-title">No hay litros entregados en este periodo</div>
+                <div class="empty-state-text">Selecciona otro rango o fecha en el panel superior.</div>
+              </div>
+            `
+            }
 
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" id="btnOkDelModal">Cerrar</button>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btnOkDelModal">Cerrar</button>
+          </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
-  const closeModal = () => (modalOverlay.innerHTML = '');
-  document.getElementById('btnCloseDelModal')?.addEventListener('click', closeModal);
-  document.getElementById('btnOkDelModal')?.addEventListener('click', closeModal);
+    const closeModal = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnCloseDelModal')?.addEventListener('click', closeModal);
+    document.getElementById('btnOkDelModal')?.addEventListener('click', closeModal);
+
+    attachPaginationEvents(modalOverlay, 'modalDelivLitersPagination', (newPage) => {
+      delivLitersPage = newPage;
+      renderModal();
+    });
+  }
+
+  renderModal();
 }
 
 // 5. Modal de Litros Encargados en Proceso (Demanda en Cola)
@@ -1327,98 +1609,135 @@ function openInProcessLitersModal(salesData, kpis, periodLabel) {
 
   const inProcess = salesData.inProcess || [];
 
-  modalOverlay.innerHTML = `
-    <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 720px;">
-        <div class="modal-header">
-          <div>
-            <h3 class="modal-title">⏳ Detalle de Litros Encargados (En Proceso)</h3>
-            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
-              Periodo: <strong>${periodLabel}</strong> • Demanda en Preparación/Ruta: <strong style="color: var(--primary);">${kpis.inProcessLiters} Litros</strong>
-            </span>
+  const allQueueCustomers = [];
+  inProcess.forEach((g) => {
+    (g.customers || []).forEach((c) => {
+      allQueueCustomers.push({
+        ...c,
+        batchCode: g.batchCode,
+        flavor: g.flavor,
+      });
+    });
+  });
+
+  let queuePage = 1;
+
+  function renderModal() {
+    const { pageItems: pageQueue, totalPages, totalItems, currentPage } = paginateArray(allQueueCustomers, queuePage, 15);
+    queuePage = currentPage;
+
+    modalOverlay.innerHTML = `
+      <div class="modal-overlay active">
+        <div class="modal-card" style="max-width: 760px;">
+          <div class="modal-header">
+            <div>
+              <h3 class="modal-title">⏳ Detalle de Litros Encargados (En Proceso)</h3>
+              <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+                Periodo: <strong>${periodLabel}</strong> • Demanda en Preparación/Ruta: <strong style="color: var(--primary);">${kpis.inProcessLiters} Litros</strong>
+              </span>
+            </div>
+            <button class="modal-close-btn" id="btnCloseQueueModal">✕</button>
           </div>
-          <button class="modal-close-btn" id="btnCloseQueueModal">✕</button>
-        </div>
-        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
-          
-          ${
-            inProcess.length > 0
-              ? `
-            <div style="display: flex; flex-direction: column; gap: 14px;">
-              ${inProcess
-                .map(
-                  (g) => `
-                <div style="background: #FAF7FC; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
-                    <div>
-                      <span class="badge" style="background: var(--primary-light); color: var(--primary); font-weight: 800; font-size: 0.78rem;">🍶 ${g.batchCode}</span>
-                      <strong style="color: var(--text-main); font-size: 1rem; margin-left: 6px;">${g.flavor}</strong>
-                    </div>
-                    <strong style="color: var(--primary); font-size: 1.05rem;">${g.totalLiters} L Encargados</strong>
+          <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+            
+            <!-- Resumen por Lotes -->
+            ${
+              inProcess.length > 0
+                ? `
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+                ${inProcess
+                  .map(
+                    (g) => `
+                  <div style="background: #FAF7FC; border: 1px solid var(--border-color); padding: 6px 12px; border-radius: var(--radius-sm); font-size: 0.78rem;">
+                    <span class="badge" style="background: var(--primary-light); color: var(--primary); font-size: 0.7rem; font-weight: 800;">🍶 ${g.batchCode}</span>
+                    <strong style="color: var(--text-main); margin-left: 4px;">${g.flavor}</strong>: ${g.totalLiters}L (${g.ordersCount} ped)
                   </div>
+                `
+                  )
+                  .join('')}
+              </div>
+            `
+                : ''
+            }
 
-                  <div class="table-responsive">
-                    <table class="app-table" style="font-size: 0.82rem;">
-                      <thead>
-                        <tr>
-                          <th>Cliente</th>
-                          <th>Envases</th>
-                          <th>Fecha Entrega</th>
-                          <th>Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${g.customers
-                          .map(
-                            (c) => `
-                          <tr>
-                            <td>
-                              <strong>${c.customerName}</strong>
-                              <div style="font-size: 0.72rem; color: var(--text-muted);">📞 ${c.customerPhone || ''} • 📍 ${c.address}</div>
-                            </td>
-                            <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
-                            <td><strong style="color: var(--primary);">${c.deliveryDate ? formatDate(c.deliveryDate) : 'Programada'}</strong></td>
-                            <td>
-                              <span class="badge ${c.deliveryStatus === 'IN_ROUTE' ? 'badge-partial' : 'badge-pending'}">
-                                ${c.deliveryStatus === 'IN_ROUTE' ? '🛵 En Ruta' : '🥣 En Preparación'}
-                              </span>
-                            </td>
-                          </tr>
-                        `
-                          )
-                          .join('')}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              `
-                )
-                .join('')}
-            </div>
-          `
-              : `
-            <div class="empty-state" style="padding: 30px;">
-              <div class="empty-state-icon">✨</div>
-              <div class="empty-state-title">No hay pedidos encargados en cola</div>
-              <div class="empty-state-text">Todos los pedidos han sido entregados o no hay pedidos pendientes.</div>
-            </div>
-          `
-          }
+            ${
+              allQueueCustomers.length > 0
+                ? `
+              <div class="table-responsive">
+                <table class="app-table" style="font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Lote / Sabor</th>
+                      <th>Envases / Litros</th>
+                      <th>Fecha Entrega</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${pageQueue
+                      .map(
+                        (c) => `
+                      <tr>
+                        <td>
+                          <strong>${c.customerName}</strong>
+                          <div style="font-size: 0.72rem; color: var(--text-muted);">📍 ${c.address || 'Sin dirección'}</div>
+                          ${c.customerPhone ? `<div style="font-size: 0.7rem; color: var(--text-muted);">📞 ${c.customerPhone}</div>` : ''}
+                        </td>
+                        <td><small>🍶 ${c.batchCode}<br><strong>${c.flavor}</strong></small></td>
+                        <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
+                        <td><strong style="color: var(--primary);">${c.deliveryDate ? formatDate(c.deliveryDate) : 'Programada'}</strong></td>
+                        <td>
+                          <span class="badge ${c.deliveryStatus === 'IN_ROUTE' ? 'badge-partial' : 'badge-pending'}">
+                            ${c.deliveryStatus === 'IN_ROUTE' ? '🛵 En Ruta' : '🥣 En Preparación'}
+                          </span>
+                        </td>
+                      </tr>
+                    `
+                      )
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+              ${renderPaginationHtml({
+                currentPage: queuePage,
+                totalPages,
+                totalItems,
+                pageSize: 15,
+                itemName: 'pedidos en cola',
+                paginationId: 'modalQueuePagination',
+              })}
+            `
+                : `
+              <div class="empty-state" style="padding: 30px;">
+                <div class="empty-state-icon">✨</div>
+                <div class="empty-state-title">No hay pedidos encargados en cola</div>
+                <div class="empty-state-text">Todos los pedidos han sido entregados o no hay pedidos pendientes.</div>
+              </div>
+            `
+            }
 
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" id="btnOkQueueModal">Cerrar</button>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btnOkQueueModal">Cerrar</button>
+          </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
-  const closeModal = () => (modalOverlay.innerHTML = '');
-  document.getElementById('btnCloseQueueModal')?.addEventListener('click', closeModal);
-  document.getElementById('btnOkQueueModal')?.addEventListener('click', closeModal);
+    const closeModal = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnCloseQueueModal')?.addEventListener('click', closeModal);
+    document.getElementById('btnOkQueueModal')?.addEventListener('click', closeModal);
+
+    attachPaginationEvents(modalOverlay, 'modalQueuePagination', (newPage) => {
+      queuePage = newPage;
+      renderModal();
+    });
+  }
+
+  renderModal();
 }
 
-// 6. Modal de Arqueo y Dinero en Caja
 // 6. Modal de Arqueo y Dinero en Caja
 function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
   const modalOverlay = document.getElementById('modalContainer');
@@ -1436,251 +1755,298 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
   const baseMovements = inflows.filter((i) => i.isCashMovement);
   const salesMovements = inflows.filter((i) => !i.isCashMovement);
 
-  modalOverlay.innerHTML = `
-    <div class="modal-overlay active">
-      <div class="modal-card" style="max-width: 820px;">
-        <div class="modal-header">
-          <div>
-            <h3 class="modal-title">💵 Arqueo y Dinero en Caja</h3>
-            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
-              Periodo: <strong>${periodLabel}</strong> • Flujo Real de Dinero en Mano
-            </span>
-          </div>
-          <button class="modal-close-btn" id="btnCloseCashModal">✕</button>
-        </div>
-        <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+  let cashTab = 'ALL'; // 'ALL', 'BASE', 'SALES', 'OUTFLOWS'
+  let inflowsPage = 1;
+  let outflowsPage = 1;
 
-          <!-- Botones de Acción Rápida para Base / Aportes -->
-          <div style="display: flex; justify-content: space-between; align-items: center; background: #F8FAFC; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+  function renderModal() {
+    // Filtrar inflows y outflows según la pestaña
+    let displayInflows = [];
+    let displayOutflows = [];
+
+    if (cashTab === 'ALL') {
+      displayInflows = inflows;
+      displayOutflows = outflows;
+    } else if (cashTab === 'BASE') {
+      displayInflows = baseMovements;
+      displayOutflows = [];
+    } else if (cashTab === 'SALES') {
+      displayInflows = salesMovements;
+      displayOutflows = [];
+    } else if (cashTab === 'OUTFLOWS') {
+      displayInflows = [];
+      displayOutflows = outflows;
+    }
+
+    const { pageItems: pageInflows, totalPages: inTotalPages, totalItems: inTotalItems, currentPage: currentInPage } = paginateArray(displayInflows, inflowsPage, 15);
+    inflowsPage = currentInPage;
+
+    const { pageItems: pageOutflows, totalPages: outTotalPages, totalItems: outTotalItems, currentPage: currentOutPage } = paginateArray(displayOutflows, outflowsPage, 15);
+    outflowsPage = currentOutPage;
+
+    modalOverlay.innerHTML = `
+      <div class="modal-overlay active">
+        <div class="modal-card" style="max-width: 820px;">
+          <div class="modal-header">
             <div>
-              <strong style="color: var(--primary); font-size: 0.92rem;">🏦 Gestión de Base en Caja</strong>
-              <div style="font-size: 0.76rem; color: var(--text-muted);">Registra sencillo para dar cambio o dinero de tu bolsillo para compras</div>
+              <h3 class="modal-title">💵 Arqueo y Dinero en Caja</h3>
+              <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+                Periodo: <strong>${periodLabel}</strong> • Flujo Real de Dinero en Mano
+              </span>
             </div>
-            <div style="display: flex; gap: 8px;">
-              <button type="button" class="btn btn-primary btn-sm" id="btnDashAddBase">
-                ➕ Ingresar Base / Aporte
-              </button>
-              <button type="button" class="btn btn-outline btn-sm" id="btnDashWithdrawBase" style="color: #DC2626; border-color: #FECACA;">
-                ➖ Retirar Base
-              </button>
-            </div>
+            <button class="modal-close-btn" id="btnCloseCashModal">✕</button>
           </div>
+          <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
 
-          <!-- Tarjetas Resumen de Caja -->
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 18px;">
-            
-            <div style="background: #F0FDF4; padding: 12px; border-radius: var(--radius-md); border: 1.5px solid #BBF7D0; text-align: center;">
-              <span style="font-size: 0.72rem; font-weight: 800; color: #166534;">🏦 Base y Aportes</span>
-              <div style="font-size: 1.15rem; font-weight: 900; color: #15803D; margin-top: 2px;">+${formatCOP(totalInjections)}</div>
-              <small style="font-size: 0.7rem; color: #166534; font-weight: 600;">${baseMovements.length} inyección(es) de capital</small>
+            <!-- Botones de Acción Rápida para Base / Aportes -->
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #F8FAFC; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <strong style="color: var(--primary); font-size: 0.92rem;">🏦 Gestión de Base en Caja</strong>
+                <div style="font-size: 0.76rem; color: var(--text-muted);">Registra sencillo para dar cambio o dinero de tu bolsillo para compras</div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-primary btn-sm" id="btnDashAddBase">
+                  ➕ Ingresar Base / Aporte
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" id="btnDashWithdrawBase" style="color: #DC2626; border-color: #FECACA;">
+                  ➖ Retirar Base
+                </button>
+              </div>
             </div>
 
-            <div style="background: #F0FDF4; padding: 12px; border-radius: var(--radius-md); border: 1.5px solid #BBF7D0; text-align: center;">
-              <span style="font-size: 0.72rem; font-weight: 800; color: #166534;">📥 Ventas Cobradas</span>
-              <div style="font-size: 1.15rem; font-weight: 900; color: #15803D; margin-top: 2px;">+${formatCOP(totalSalesCollected)}</div>
-              <small style="font-size: 0.7rem; color: #166534; font-weight: 600;">${salesMovements.length} cobro(s) de pedidos</small>
+            <!-- Tarjetas Resumen de Caja -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 18px;">
+              
+              <div style="background: #F0FDF4; padding: 12px; border-radius: var(--radius-md); border: 1.5px solid #BBF7D0; text-align: center;">
+                <span style="font-size: 0.72rem; font-weight: 800; color: #166534;">🏦 Base y Aportes</span>
+                <div style="font-size: 1.15rem; font-weight: 900; color: #15803D; margin-top: 2px;">+${formatCOP(totalInjections)}</div>
+                <small style="font-size: 0.7rem; color: #166534; font-weight: 600;">${baseMovements.length} inyección(es) de capital</small>
+              </div>
+
+              <div style="background: #F0FDF4; padding: 12px; border-radius: var(--radius-md); border: 1.5px solid #BBF7D0; text-align: center;">
+                <span style="font-size: 0.72rem; font-weight: 800; color: #166534;">📥 Ventas Cobradas</span>
+                <div style="font-size: 1.15rem; font-weight: 900; color: #15803D; margin-top: 2px;">+${formatCOP(totalSalesCollected)}</div>
+                <small style="font-size: 0.7rem; color: #166534; font-weight: 600;">${salesMovements.length} cobro(s) de pedidos</small>
+              </div>
+
+              <div style="background: #FEF2F2; padding: 12px; border-radius: var(--radius-md); border: 1.5px solid #FECACA; text-align: center;">
+                <span style="font-size: 0.72rem; font-weight: 800; color: #991B1B;">📤 Egresos Pagados</span>
+                <div style="font-size: 1.15rem; font-weight: 900; color: #DC2626; margin-top: 2px;">-${formatCOP(totalOutflow)}</div>
+                <small style="font-size: 0.7rem; color: #991B1B; font-weight: 600;">${outflows.length} compras / gastos / nómina</small>
+              </div>
+
+              <div style="background: ${cashBalance >= 0 ? '#ECFDF5' : '#FFFBEB'}; padding: 12px; border-radius: var(--radius-md); border: 2px solid ${cashBalance >= 0 ? '#10B981' : '#F59E0B'}; text-align: center;">
+                <span style="font-size: 0.72rem; font-weight: 800; color: ${cashBalance >= 0 ? '#065F46' : '#92400E'};">💰 Dinero en Caja Disponible</span>
+                <div style="font-size: 1.25rem; font-weight: 900; color: ${cashBalance >= 0 ? '#047857' : '#D97706'}; margin-top: 2px;">${formatCOP(cashBalance)}</div>
+                <small style="font-size: 0.7rem; color: ${cashBalance >= 0 ? '#065F46' : '#92400E'}; font-weight: 700;">${cashBalance >= 0 ? '✅ Saldo a favor en caja' : '⚠️ Inversión supera lo recaudado'}</small>
+              </div>
             </div>
 
-            <div style="background: #FEF2F2; padding: 12px; border-radius: var(--radius-md); border: 1.5px solid #FECACA; text-align: center;">
-              <span style="font-size: 0.72rem; font-weight: 800; color: #991B1B;">📤 Egresos Pagados</span>
-              <div style="font-size: 1.15rem; font-weight: 900; color: #DC2626; margin-top: 2px;">-${formatCOP(totalOutflow)}</div>
-              <small style="font-size: 0.7rem; color: #991B1B; font-weight: 600;">${outflows.length} compras / gastos / nómina</small>
+            <!-- Pestañas de Filtrado de Movimientos -->
+            <div style="display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-sm ${cashTab === 'ALL' ? 'btn-primary' : 'btn-outline'}" id="btnTabAllCash">📊 Todos (${inflows.length + outflows.length})</button>
+              <button type="button" class="btn btn-sm ${cashTab === 'BASE' ? 'btn-primary' : 'btn-outline'}" id="btnTabBaseCash" style="${cashTab !== 'BASE' ? 'color: #0369A1; border-color: #BAE6FD;' : ''}">🏦 Base / Aportes (${baseMovements.length})</button>
+              <button type="button" class="btn btn-sm ${cashTab === 'SALES' ? 'btn-primary' : 'btn-outline'}" id="btnTabInflows" style="${cashTab !== 'SALES' ? 'color: #15803D; border-color: #BBF7D0;' : ''}">📥 Ventas Cobradas (${salesMovements.length})</button>
+              <button type="button" class="btn btn-sm ${cashTab === 'OUTFLOWS' ? 'btn-primary' : 'btn-outline'}" id="btnTabOutflows" style="${cashTab !== 'OUTFLOWS' ? 'color: #DC2626; border-color: #FECACA;' : ''}">📤 Salidas (-${formatCOP(totalOutflow)})</button>
             </div>
 
-            <div style="background: ${cashBalance >= 0 ? '#ECFDF5' : '#FFFBEB'}; padding: 12px; border-radius: var(--radius-md); border: 2px solid ${cashBalance >= 0 ? '#10B981' : '#F59E0B'}; text-align: center;">
-              <span style="font-size: 0.72rem; font-weight: 800; color: ${cashBalance >= 0 ? '#065F46' : '#92400E'};">💰 Dinero en Caja Disponible</span>
-              <div style="font-size: 1.25rem; font-weight: 900; color: ${cashBalance >= 0 ? '#047857' : '#D97706'}; margin-top: 2px;">${formatCOP(cashBalance)}</div>
-              <small style="font-size: 0.7rem; color: ${cashBalance >= 0 ? '#065F46' : '#92400E'}; font-weight: 700;">${cashBalance >= 0 ? '✅ Saldo a favor en caja' : '⚠️ Inversión supera lo recaudado'}</small>
-            </div>
-          </div>
-
-          <!-- Pestañas de Filtrado de Movimientos -->
-          <div style="display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-sm btn-primary" id="btnTabAllCash">📊 Todos (${inflows.length + outflows.length})</button>
-            <button type="button" class="btn btn-sm btn-outline" id="btnTabBaseCash" style="color: #0369A1; border-color: #BAE6FD;">🏦 Base / Aportes (${baseMovements.length})</button>
-            <button type="button" class="btn btn-sm btn-outline" id="btnTabInflows" style="color: #15803D; border-color: #BBF7D0;">📥 Ventas Cobradas (${salesMovements.length})</button>
-            <button type="button" class="btn btn-sm btn-outline" id="btnTabOutflows" style="color: #DC2626; border-color: #FECACA;">📤 Salidas (-${formatCOP(totalOutflow)})</button>
-          </div>
-
-          <!-- Tablas de Movimientos -->
-          <div id="cashInflowsSection" style="margin-bottom: 18px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <strong style="color: #15803D; font-size: 0.88rem;">📥 Entradas de Dinero (Bases, Aportes y Ventas)</strong>
-              <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">Total: +${formatCOP(totalInflow)}</span>
-            </div>
+            <!-- Tablas de Movimientos -->
             ${
-              inflows.length > 0
+              (cashTab === 'ALL' || cashTab === 'BASE' || cashTab === 'SALES')
                 ? `
-              <div class="table-responsive">
-                <table class="app-table" style="font-size: 0.82rem;">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Tipo / N°</th>
-                      <th>Origen / Cliente</th>
-                      <th>Detalle / Concepto</th>
-                      <th style="text-align: right;">Ingreso a Caja</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${inflows
-                      .map(
-                        (i) => `
-                      <tr class="cash-row ${i.isCashMovement ? 'row-base' : 'row-sale'}">
-                        <td><small>${formatDate(i.date)}</small></td>
-                        <td>
-                          <span class="badge" style="background: ${i.isCashMovement ? '#E0F2FE' : '#DCFCE7'}; color: ${i.isCashMovement ? '#0369A1' : '#15803D'}; font-weight: 800; font-size: 0.72rem;">
-                            ${i.orderNumber}
-                          </span>
-                        </td>
-                        <td><strong>${i.customerName}</strong></td>
-                        <td>${i.isCashMovement ? `<strong>${i.flavor}</strong>` : `${i.liters}L (${i.flavor})`}</td>
-                        <td style="text-align: right; color: #15803D; font-weight: 800;">+${formatCOP(i.amount)}</td>
-                      </tr>
-                    `
-                      )
-                      .join('')}
-                  </tbody>
-                </table>
+              <div id="cashInflowsSection" style="margin-bottom: 18px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <strong style="color: #15803D; font-size: 0.88rem;">📥 Entradas de Dinero (Bases, Aportes y Ventas)</strong>
+                  <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">Total: +${formatCOP(totalInflow)}</span>
+                </div>
+                ${
+                  displayInflows.length > 0
+                    ? `
+                  <div class="table-responsive">
+                    <table class="app-table" style="font-size: 0.82rem;">
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Tipo / N°</th>
+                          <th>Origen / Cliente</th>
+                          <th>Detalle / Concepto</th>
+                          <th style="text-align: right;">Ingreso a Caja</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${pageInflows
+                          .map(
+                            (i) => `
+                          <tr class="cash-row ${i.isCashMovement ? 'row-base' : 'row-sale'}">
+                            <td><small>${formatDate(i.date)}</small></td>
+                            <td>
+                              <span class="badge" style="background: ${i.isCashMovement ? '#E0F2FE' : '#DCFCE7'}; color: ${i.isCashMovement ? '#0369A1' : '#15803D'}; font-weight: 800; font-size: 0.72rem;">
+                                ${i.orderNumber}
+                              </span>
+                            </td>
+                            <td><strong>${i.customerName}</strong></td>
+                            <td>${i.isCashMovement ? `<strong>${i.flavor}</strong>` : `${i.liters}L (${i.flavor})`}</td>
+                            <td style="text-align: right; color: #15803D; font-weight: 800;">+${formatCOP(i.amount)}</td>
+                          </tr>
+                        `
+                          )
+                          .join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ${renderPaginationHtml({
+                    currentPage: inflowsPage,
+                    totalPages: inTotalPages,
+                    totalItems: inTotalItems,
+                    pageSize: 15,
+                    itemName: 'ingresos a caja',
+                    paginationId: 'modalCashInflowsPagination',
+                  })}
+                `
+                    : `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 10px; text-align: center; background: #F8FAFC; border-radius: var(--radius-sm);">No hay ingresos registrados en esta categoría</div>`
+                }
               </div>
             `
-                : `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 10px; text-align: center; background: #F8FAFC; border-radius: var(--radius-sm);">No hay ingresos registrados en este periodo</div>`
+                : ''
             }
-          </div>
 
-          <div id="cashOutflowsSection" style="margin-bottom: 18px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <strong style="color: #DC2626; font-size: 0.88rem;">📤 Salidas de Dinero (Compras, Nómina y Gastos)</strong>
-              <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">Total: -${formatCOP(totalOutflow)}</span>
-            </div>
             ${
-              outflows.length > 0
+              (cashTab === 'ALL' || cashTab === 'OUTFLOWS')
                 ? `
-              <div class="table-responsive">
-                <table class="app-table" style="font-size: 0.82rem;">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Tipo</th>
-                      <th>Descripción / Proveedor</th>
-                      <th style="text-align: right;">Pagado de Caja</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${outflows
-                      .map(
-                        (o) => `
-                      <tr>
-                        <td><small>${formatDate(o.date)}</small></td>
-                        <td><span class="badge" style="background: var(--bg-subtle); color: var(--text-main); font-size: 0.72rem;">${o.categoryLabel || o.category}</span></td>
-                        <td>
-                          <strong>${o.description}</strong>
-                          ${o.supplier ? `<div style="font-size: 0.72rem; color: var(--text-muted);">🏢 ${o.supplier}</div>` : ''}
-                          ${o.notes ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📝 ${o.notes}</div>` : ''}
-                        </td>
-                        <td style="text-align: right; color: #DC2626; font-weight: 800;">-${formatCOP(o.amount)}</td>
-                      </tr>
-                    `
-                      )
-                      .join('')}
-                  </tbody>
-                </table>
+              <div id="cashOutflowsSection" style="margin-bottom: 18px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <strong style="color: #DC2626; font-size: 0.88rem;">📤 Salidas de Dinero (Compras, Nómina y Gastos)</strong>
+                  <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">Total: -${formatCOP(totalOutflow)}</span>
+                </div>
+                ${
+                  displayOutflows.length > 0
+                    ? `
+                  <div class="table-responsive">
+                    <table class="app-table" style="font-size: 0.82rem;">
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Tipo</th>
+                          <th>Descripción / Proveedor</th>
+                          <th style="text-align: right;">Pagado de Caja</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${pageOutflows
+                          .map(
+                            (o) => `
+                          <tr>
+                            <td><small>${formatDate(o.date)}</small></td>
+                            <td><span class="badge" style="background: var(--bg-subtle); color: var(--text-main); font-size: 0.72rem;">${o.categoryLabel || o.category}</span></td>
+                            <td>
+                              <strong>${o.description}</strong>
+                              ${o.supplier ? `<div style="font-size: 0.72rem; color: var(--text-muted);">🏢 ${o.supplier}</div>` : ''}
+                              ${o.notes ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📝 ${o.notes}</div>` : ''}
+                            </td>
+                            <td style="text-align: right; color: #DC2626; font-weight: 800;">-${formatCOP(o.amount)}</td>
+                          </tr>
+                        `
+                          )
+                          .join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ${renderPaginationHtml({
+                    currentPage: outflowsPage,
+                    totalPages: outTotalPages,
+                    totalItems: outTotalItems,
+                    pageSize: 15,
+                    itemName: 'salidas de caja',
+                    paginationId: 'modalCashOutflowsPagination',
+                  })}
+                `
+                    : `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 10px; text-align: center; background: #F8FAFC; border-radius: var(--radius-sm);">No hay salidas de dinero registradas en esta categoría</div>`
+                }
               </div>
             `
-                : `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 10px; text-align: center; background: #F8FAFC; border-radius: var(--radius-sm);">No hay salidas de dinero registradas en este periodo</div>`
+                : ''
             }
-          </div>
 
-          <div style="background: #F0F9FF; border: 1px solid #BAE6FD; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 0.76rem; color: #0369A1;">
-            💡 <strong>¿Cómo funciona el Dinero en Caja?</strong> Suma la Base Inicial y Aportes propios + Todo el dinero cobrado de ventas - Todas las compras, gastos y nómina pagados en el período.
-          </div>
+            <div style="background: #F0F9FF; border: 1px solid #BAE6FD; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 0.76rem; color: #0369A1;">
+              💡 <strong>¿Cómo funciona el Dinero en Caja?</strong> Suma la Base Inicial y Aportes propios + Todo el dinero cobrado de ventas - Todas las compras, gastos y nómina pagados en el período.
+            </div>
 
-        </div>
-        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-          <button type="button" class="btn btn-primary" id="btnGoToCashControl" style="font-weight: 800;">
-            💵 Ir a Control de Caja Completo ↗
-          </button>
-          <button type="button" class="btn btn-outline" id="btnOkCashModal">Cerrar</button>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+            <button type="button" class="btn btn-primary" id="btnGoToCashControl" style="font-weight: 800;">
+              💵 Ir a Control de Caja Completo ↗
+            </button>
+            <button type="button" class="btn btn-outline" id="btnOkCashModal">Cerrar</button>
+          </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
-  const closeModal = () => (modalOverlay.innerHTML = '');
-  document.getElementById('btnCloseCashModal')?.addEventListener('click', closeModal);
-  document.getElementById('btnOkCashModal')?.addEventListener('click', closeModal);
-  document.getElementById('btnGoToCashControl')?.addEventListener('click', () => {
-    closeModal();
-    document.querySelector('.sidebar .nav-item[data-tab="cashControl"]')?.click();
-  });
-
-  // Acciones rápidas de Base
-  document.getElementById('btnDashAddBase')?.addEventListener('click', () => {
-    openCashMovementModal(() => {
+    const closeModal = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnCloseCashModal')?.addEventListener('click', closeModal);
+    document.getElementById('btnOkCashModal')?.addEventListener('click', closeModal);
+    document.getElementById('btnGoToCashControl')?.addEventListener('click', () => {
       closeModal();
-      renderDashboard(document.getElementById('contentContainer'));
-    }, 'BASE_INICIAL');
-  });
-
-  document.getElementById('btnDashWithdrawBase')?.addEventListener('click', () => {
-    openCashMovementModal(() => {
-      closeModal();
-      renderDashboard(document.getElementById('contentContainer'));
-    }, 'RETIRO_BASE');
-  });
-
-  // Filtros de pestañas
-  const tabAll = document.getElementById('btnTabAllCash');
-  const tabBase = document.getElementById('btnTabBaseCash');
-  const tabIn = document.getElementById('btnTabInflows');
-  const tabOut = document.getElementById('btnTabOutflows');
-  const secIn = document.getElementById('cashInflowsSection');
-  const secOut = document.getElementById('cashOutflowsSection');
-
-  const rows = modalOverlay.querySelectorAll('.cash-row');
-
-  tabAll?.addEventListener('click', () => {
-    tabAll.className = 'btn btn-sm btn-primary';
-    tabBase.className = 'btn btn-sm btn-outline';
-    tabIn.className = 'btn btn-sm btn-outline';
-    tabOut.className = 'btn btn-sm btn-outline';
-    if (secIn) secIn.style.display = 'block';
-    if (secOut) secOut.style.display = 'block';
-    rows.forEach((r) => (r.style.display = ''));
-  });
-
-  tabBase?.addEventListener('click', () => {
-    tabBase.className = 'btn btn-sm btn-primary';
-    tabAll.className = 'btn btn-sm btn-outline';
-    tabIn.className = 'btn btn-sm btn-outline';
-    tabOut.className = 'btn btn-sm btn-outline';
-    if (secIn) secIn.style.display = 'block';
-    if (secOut) secOut.style.display = 'none';
-    rows.forEach((r) => {
-      r.style.display = r.classList.contains('row-base') ? '' : 'none';
+      document.querySelector('.sidebar .nav-item[data-tab="cashControl"]')?.click();
     });
-  });
 
-  tabIn?.addEventListener('click', () => {
-    tabIn.className = 'btn btn-sm btn-primary';
-    tabAll.className = 'btn btn-sm btn-outline';
-    tabBase.className = 'btn btn-sm btn-outline';
-    tabOut.className = 'btn btn-sm btn-outline';
-    if (secIn) secIn.style.display = 'block';
-    if (secOut) secOut.style.display = 'none';
-    rows.forEach((r) => {
-      r.style.display = r.classList.contains('row-sale') ? '' : 'none';
+    // Acciones rápidas de Base
+    document.getElementById('btnDashAddBase')?.addEventListener('click', () => {
+      openCashMovementModal(() => {
+        closeModal();
+        renderDashboard(document.getElementById('contentContainer'));
+      }, 'BASE_INICIAL');
     });
-  });
 
-  tabOut?.addEventListener('click', () => {
-    tabOut.className = 'btn btn-sm btn-primary';
-    tabAll.className = 'btn btn-sm btn-outline';
-    tabBase.className = 'btn btn-sm btn-outline';
-    tabIn.className = 'btn btn-sm btn-outline';
-    if (secIn) secIn.style.display = 'none';
-    if (secOut) secOut.style.display = 'block';
-  });
+    document.getElementById('btnDashWithdrawBase')?.addEventListener('click', () => {
+      openCashMovementModal(() => {
+        closeModal();
+        renderDashboard(document.getElementById('contentContainer'));
+      }, 'RETIRO_BASE');
+    });
+
+    // Filtros de pestañas
+    document.getElementById('btnTabAllCash')?.addEventListener('click', () => {
+      cashTab = 'ALL';
+      inflowsPage = 1;
+      outflowsPage = 1;
+      renderModal();
+    });
+
+    document.getElementById('btnTabBaseCash')?.addEventListener('click', () => {
+      cashTab = 'BASE';
+      inflowsPage = 1;
+      outflowsPage = 1;
+      renderModal();
+    });
+
+    document.getElementById('btnTabInflows')?.addEventListener('click', () => {
+      cashTab = 'SALES';
+      inflowsPage = 1;
+      outflowsPage = 1;
+      renderModal();
+    });
+
+    document.getElementById('btnTabOutflows')?.addEventListener('click', () => {
+      cashTab = 'OUTFLOWS';
+      inflowsPage = 1;
+      outflowsPage = 1;
+      renderModal();
+    });
+
+    attachPaginationEvents(modalOverlay, 'modalCashInflowsPagination', (newPage) => {
+      inflowsPage = newPage;
+      renderModal();
+    });
+
+    attachPaginationEvents(modalOverlay, 'modalCashOutflowsPagination', (newPage) => {
+      outflowsPage = newPage;
+      renderModal();
+    });
+  }
+
+  renderModal();
 }
+
 
 

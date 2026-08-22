@@ -1,6 +1,8 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, formatStock, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
+let batchesCurrentPage = 1;
 let includeInactive = false;
 let batchStatusFilter = 'ALL';
 
@@ -60,6 +62,7 @@ export async function renderBatches(container) {
   container.querySelectorAll('#batchStatusChips .filter-chip').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       batchStatusFilter = e.currentTarget.dataset.status;
+      batchesCurrentPage = 1;
       container.querySelectorAll('#batchStatusChips .filter-chip').forEach((b) => b.classList.remove('active'));
       e.currentTarget.classList.add('active');
       loadBatchesList(container);
@@ -68,6 +71,7 @@ export async function renderBatches(container) {
 
   container.querySelector('#chkIncludeInactive')?.addEventListener('change', (e) => {
     includeInactive = e.target.checked;
+    batchesCurrentPage = 1;
     loadBatchesList(container);
   });
 
@@ -101,135 +105,163 @@ async function loadBatchesList(container) {
       return;
     }
 
+    const { pageItems, totalPages, totalItems, currentPage } = paginateArray(batches, batchesCurrentPage, 15);
+    batchesCurrentPage = currentPage;
+
     tableContainer.innerHTML = `
-      <table class="app-table">
-        <thead>
-          <tr>
-            <th>Código Lote</th>
-            <th>Fecha</th>
-            <th>🥛 Leche Invertida</th>
-            <th>🍶 Yogur Salido</th>
-            <th>🍾 Botellas & Ventas</th>
-            <th>💲 Precios Venta</th>
-            <th>📈 Rendimiento</th>
-            <th>💰 Costo / L</th>
-            <th>Estado</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${batches
-            .map((b) => {
-              let yieldColor = 'var(--success)';
-              if (b.yieldPercentage < 85) yieldColor = 'var(--warning)';
-              if (b.yieldPercentage < 70) yieldColor = 'var(--danger)';
+      <div class="table-responsive">
+        <table class="app-table">
+          <thead>
+            <tr>
+              <th>Código Lote</th>
+              <th>Fecha</th>
+              <th>🥛 Leche Invertida</th>
+              <th>🍶 Yogur Salido</th>
+              <th>🍾 Botellas & Ventas</th>
+              <th>💲 Precios Venta</th>
+              <th>📈 Rendimiento</th>
+              <th>💰 Costo / L</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${pageItems
+              .map((b) => {
+                let yieldColor = 'var(--success)';
+                if (b.yieldPercentage < 85) yieldColor = 'var(--warning)';
+                if (b.yieldPercentage < 70) yieldColor = 'var(--danger)';
 
-              const isInactive = !b.isActive;
-              const hasExtraYield = b.totalLitersProduced > b.milkUsedLiters;
-              const p1 = b.price1L || 10000;
-              const p2 = b.price2L || 20000;
+                const isInactive = !b.isActive;
+                const hasExtraYield = b.totalLitersProduced > b.milkUsedLiters;
+                const p1 = b.price1L || 10000;
+                const p2 = b.price2L || 20000;
 
-              let statusBadge = '<span class="badge badge-paid">✅ Disponible</span>';
-              if (isInactive) {
-                statusBadge = `<span class="badge badge-pending" title="${b.deactivationReason || ''}">🚫 Desactivado</span>`;
-              } else if (b.status === 'AGOTADO') {
-                statusBadge = '<span class="badge" style="background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; font-weight: 800;">📦 Agotado</span>';
-              } else if (b.status === 'DESCARTADO') {
-                statusBadge = '<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FCA5A5; font-weight: 800;">🚫 Baja</span>';
-              }
+                let statusBadge = '<span class="badge badge-paid">✅ Disponible</span>';
+                if (isInactive) {
+                  statusBadge = `<span class="badge badge-pending" title="${b.deactivationReason || ''}">🚫 Desactivado</span>`;
+                } else if (b.status === 'AGOTADO') {
+                  statusBadge = '<span class="badge" style="background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; font-weight: 800;">📦 Agotado</span>';
+                } else if (b.status === 'DESCARTADO') {
+                  statusBadge = '<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FCA5A5; font-weight: 800;">🚫 Baja</span>';
+                }
 
-              const soldLiters = b.totalSoldLiters || 0;
-              const soldPct = b.totalLitersProduced > 0 ? Math.min(100, Math.round((soldLiters / b.totalLitersProduced) * 100)) : 0;
+                const soldLiters = b.totalSoldLiters || 0;
+                const soldPct = b.totalLitersProduced > 0 ? Math.min(100, Math.round((soldLiters / b.totalLitersProduced) * 100)) : 0;
 
-              return `
-              <tr style="${isInactive ? 'opacity: 0.55; background: var(--bg-subtle);' : (b.status === 'AGOTADO' ? 'background: #FFFDF7;' : '')}">
-                <td>
-                  <strong>${b.batchCode}</strong>
-                  <div><small style="color: var(--accent); font-weight: 800;">${b.flavor}</small></div>
-                  ${
-                    b.itemsUsed && b.itemsUsed.length > 0
-                      ? `<div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; max-width: 250px;">
-                          ${b.itemsUsed
-                            .map((item) => {
-                              const icon = getBatchItemIcon(item.rawMaterial?.name, item.rawMaterial?.code);
-                              const unitLower = (item.rawMaterial?.unit || '').toLowerCase();
-                              let shortQty = `${item.quantityUsed} ${item.rawMaterial?.unit || ''}`;
-                              if (unitLower.includes('k')) {
-                                shortQty = `${item.quantityUsed} kg`;
-                              } else if (unitLower.includes('litro')) {
-                                shortQty = `${item.quantityUsed}L`;
-                              } else {
-                                shortQty = `${item.quantityUsed} und`;
-                              }
-                              const shortName = (item.rawMaterial?.name || 'Insumo').split(' ')[0];
-                              return `<span style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 4px; padding: 1px 5px; font-size: 0.7rem; color: var(--text-main); font-weight: 700; white-space: nowrap;" title="${item.rawMaterial?.name || ''}: ${item.quantityUsed} ${item.rawMaterial?.unit || ''}">${icon} ${shortName}: ${shortQty}</span>`;
-                            })
-                            .join('')}
-                        </div>`
-                      : ''
-                  }
-                </td>
-                <td>${formatDate(b.preparationDate)}</td>
-                <td><strong style="color: #0369A1;">${b.milkUsedLiters} L</strong></td>
-                <td><strong style="color: var(--primary); font-size: 1.05rem;">${b.totalLitersProduced} L</strong></td>
-                <td>
-                  <span style="font-size: 0.85rem;">
-                    ${b.bottles1LProduced > 0 ? `<strong>${b.bottles1LProduced}</strong> de 1L` : ''}
-                    ${b.bottles1LProduced > 0 && b.bottles2LProduced > 0 ? ' • ' : ''}
-                    ${b.bottles2LProduced > 0 ? `<strong>${b.bottles2LProduced}</strong> de 2L` : ''}
-                    ${b.bottles1LProduced === 0 && b.bottles2LProduced === 0 ? '<span style="color: var(--text-muted);">A granel</span>' : ''}
-                  </span>
-                  <div style="font-size: 0.74rem; margin-top: 3px;">
+                return `
+                <tr style="${isInactive ? 'opacity: 0.55; background: var(--bg-subtle);' : (b.status === 'AGOTADO' ? 'background: #FFFDF7;' : '')}">
+                  <td>
+                    <strong>${b.batchCode}</strong>
+                    <div><small style="color: var(--accent); font-weight: 800;">${b.flavor}</small></div>
                     ${
-                      soldLiters > 0
-                        ? `<span style="color: var(--primary); font-weight: 700;">🛒 ${soldLiters}L vendidos (${soldPct}%)</span>`
-                        : '<span style="color: var(--text-muted);">Sin ventas aún</span>'
-                    }
-                    <span style="color: #059669; font-weight: 800; margin-left: 4px;">• 🟢 ${b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters)}L libres</span>
-                  </div>
-                  ${
-                    b.isActive && b.unassignedOrdersCount > 0
-                      ? `<button class="btn btn-sm btn-link-pending-batch" data-id="${b.id}" data-code="${b.batchCode}" data-flavor="${b.flavor}" style="background: #FEF3C7; color: #92400E; border: 1.5px solid #FCD34D; font-size: 0.72rem; padding: 2px 7px; font-weight: 800; border-radius: 4px; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="Vincular ${b.unassignedOrdersCount} encargos pendientes de este sabor">
-                          ⚡ ${b.unassignedOrdersCount} encargo(s) (${b.unassignedLiters}L) sin lote 🔗
-                        </button>`
-                      : ''
-                  }
-                </td>
-                <td>
-                  <div style="font-size: 0.82rem;">
-                    <div><span style="color: var(--text-muted);">1L:</span> <strong style="color: var(--primary);">${formatCOP(p1)}</strong></div>
-                    <div><span style="color: var(--text-muted);">2L:</span> <strong style="color: var(--primary);">${formatCOP(p2)}</strong></div>
-                  </div>
-                </td>
-                <td>
-                  <strong style="color: ${yieldColor}; font-size: 0.95rem;">${b.yieldPercentage}%</strong>
-                  ${hasExtraYield ? `<div style="font-size: 0.7rem; color: var(--success); font-weight: 700;">+${(b.totalLitersProduced - b.milkUsedLiters).toFixed(1)} L extra</div>` : ''}
-                </td>
-                <td><strong style="color: #b78103;">${b.costPerLiter > 0 ? formatCOP(b.costPerLiter) : 'N/D'}</strong></td>
-                <td>${statusBadge}</td>
-                <td>
-                  <div style="display: flex; gap: 6px; align-items: center;">
-                    <button class="btn btn-outline btn-sm btn-view-batch" data-id="${b.id}" title="Ver resumen completo">
-                      👁️ Resumen
-                    </button>
-                    ${
-                      b.isActive
-                        ? `
-                        <button class="btn btn-outline btn-sm btn-quick-toggle-status" data-id="${b.id}" data-current="${b.status}" title="${b.status === 'AGOTADO' ? 'Reactivar lote (Marcar como disponible)' : 'Marcar lote como agotado'}" style="font-size: 0.76rem; font-weight: 700; padding: 4px 8px; ${b.status === 'AGOTADO' ? 'color: var(--primary); border-color: var(--primary); background: #FAF5FF;' : 'color: #92400E; border-color: #FCD34D; background: #FFFBEB;'}">
-                          ${b.status === 'AGOTADO' ? '🔄 Reactivar' : '📦 Agotar'}
-                        </button>
-                        <button class="btn btn-outline btn-sm btn-edit-batch" data-id="${b.id}" title="Editar lote">
-                          ✏️
-                        </button>
-                        <button class="btn btn-outline btn-sm btn-deactivate-batch" data-id="${b.id}" data-code="${b.batchCode}" style="color: var(--danger);" title="Desactivar lote">
-                          🚫
-                        </button>`
+                      b.itemsUsed && b.itemsUsed.length > 0
+                        ? `<div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; max-width: 250px;">
+                            ${b.itemsUsed
+                              .map((item) => {
+                                const icon = getBatchItemIcon(item.rawMaterial?.name, item.rawMaterial?.code);
+                                const unitLower = (item.rawMaterial?.unit || '').toLowerCase();
+                                let shortQty = `${item.quantityUsed} ${item.rawMaterial?.unit || ''}`;
+                                if (unitLower.includes('k')) {
+                                  shortQty = `${item.quantityUsed} kg`;
+                                } else if (unitLower.includes('litro')) {
+                                  shortQty = `${item.quantityUsed}L`;
+                                } else {
+                                  shortQty = `${item.quantityUsed} und`;
+                                }
+                                const shortName = (item.rawMaterial?.name || 'Insumo').split(' ')[0];
+                                return `<span style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 4px; padding: 1px 5px; font-size: 0.7rem; color: var(--text-main); font-weight: 700; white-space: nowrap;" title="${item.rawMaterial?.name || ''}: ${item.quantityUsed} ${item.rawMaterial?.unit || ''}">${icon} ${shortName}: ${shortQty}</span>`;
+                              })
+                              .join('')}
+                          </div>`
                         : ''
                     }
-                  </div>
-                </td>
-              </tr>
-            `;
+                  </td>
+                  <td>${formatDate(b.preparationDate)}</td>
+                  <td><strong style="color: #0369A1;">${b.milkUsedLiters} L</strong></td>
+                  <td><strong style="color: var(--primary); font-size: 1.05rem;">${b.totalLitersProduced} L</strong></td>
+                  <td>
+                    <span style="font-size: 0.85rem;">
+                      ${b.bottles1LProduced > 0 ? `<strong>${b.bottles1LProduced}</strong> de 1L` : ''}
+                      ${b.bottles1LProduced > 0 && b.bottles2LProduced > 0 ? ' • ' : ''}
+                      ${b.bottles2LProduced > 0 ? `<strong>${b.bottles2LProduced}</strong> de 2L` : ''}
+                      ${b.bottles1LProduced === 0 && b.bottles2LProduced === 0 ? '<span style="color: var(--text-muted);">A granel</span>' : ''}
+                    </span>
+                    <div style="font-size: 0.74rem; margin-top: 3px;">
+                      ${
+                        soldLiters > 0
+                          ? `<span style="color: var(--primary); font-weight: 700;">🛒 ${soldLiters}L vendidos (${soldPct}%)</span>`
+                          : '<span style="color: var(--text-muted);">Sin ventas aún</span>'
+                      }
+                      <span style="color: #059669; font-weight: 800; margin-left: 4px;">• 🟢 ${b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters)}L libres</span>
+                    </div>
+                    ${
+                      b.isActive && b.unassignedOrdersCount > 0
+                        ? `<button class="btn btn-sm btn-link-pending-batch" data-id="${b.id}" data-code="${b.batchCode}" data-flavor="${b.flavor}" style="background: #FEF3C7; color: #92400E; border: 1.5px solid #FCD34D; font-size: 0.72rem; padding: 2px 7px; font-weight: 800; border-radius: 4px; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="Vincular ${b.unassignedOrdersCount} encargos pendientes de este sabor">
+                            ⚡ ${b.unassignedOrdersCount} encargo(s) (${b.unassignedLiters}L) sin lote 🔗
+                          </button>`
+                        : ''
+                    }
+                  </td>
+                  <td>
+                    <div style="font-size: 0.82rem;">
+                      <div><span style="color: var(--text-muted);">1L:</span> <strong style="color: var(--primary);">${formatCOP(p1)}</strong></div>
+                      <div><span style="color: var(--text-muted);">2L:</span> <strong style="color: var(--primary);">${formatCOP(p2)}</strong></div>
+                    </div>
+                  </td>
+                  <td>
+                    <strong style="color: ${yieldColor}; font-size: 0.95rem;">${b.yieldPercentage}%</strong>
+                    ${hasExtraYield ? `<div style="font-size: 0.7rem; color: var(--success); font-weight: 700;">+${(b.totalLitersProduced - b.milkUsedLiters).toFixed(1)} L extra</div>` : ''}
+                  </td>
+                  <td><strong style="color: #b78103;">${b.costPerLiter > 0 ? formatCOP(b.costPerLiter) : 'N/D'}</strong></td>
+                  <td>${statusBadge}</td>
+                  <td>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                      <button class="btn btn-outline btn-sm btn-view-batch" data-id="${b.id}" title="Ver resumen completo">
+                        👁️ Resumen
+                      </button>
+                      ${
+                        b.isActive
+                          ? `
+                          <button class="btn btn-outline btn-sm btn-quick-toggle-status" data-id="${b.id}" data-current="${b.status}" title="${b.status === 'AGOTADO' ? 'Reactivar lote (Marcar como disponible)' : 'Marcar lote como agotado'}" style="font-size: 0.76rem; font-weight: 700; padding: 4px 8px; ${b.status === 'AGOTADO' ? 'color: var(--primary); border-color: var(--primary); background: #FAF5FF;' : 'color: #92400E; border-color: #FCD34D; background: #FFFBEB;'}">
+                            ${b.status === 'AGOTADO' ? '🔄 Reactivar' : '📦 Agotar'}
+                          </button>
+                          <button class="btn btn-outline btn-sm btn-edit-batch" data-id="${b.id}" title="Editar lote">
+                            ✏️
+                          </button>
+                          <button class="btn btn-outline btn-sm btn-deactivate-batch" data-id="${b.id}" data-code="${b.batchCode}" style="color: var(--danger);" title="Desactivar lote">
+                            🚫
+                          </button>`
+                          : ''
+                      }
+                    </div>
+                  </td>
+                </tr>
+              `;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+      ${renderPaginationHtml({
+        currentPage: batchesCurrentPage,
+        totalPages,
+        totalItems,
+        pageSize: 15,
+        itemName: 'lotes',
+        paginationId: 'batchesPagination',
+      })}
+    `;
+
+    attachPaginationEvents(
+      tableContainer,
+      'batchesPagination',
+      (newPage) => {
+        batchesCurrentPage = newPage;
+        loadBatchesList(container);
+      },
+      tableContainer
+    );       `;
             })
             .join('')}
         </tbody>
@@ -1085,8 +1117,8 @@ async function openBatchModal() {
       }
     });
 
-    const checkedOrderCheckboxes = pendingContainer.querySelectorAll('.chk-batch-order:checked');
-    const linkOrderIds = Array.from(checkedOrderCheckboxes).map((chk) => Number(chk.value));
+    const checkedOrderCheckboxes = modalOverlay.querySelectorAll('.chk-batch-order:checked');
+    const linkOrderIds = Array.from(checkedOrderCheckboxes).map((chk) => Number(chk.value)).filter((id) => !isNaN(id) && id > 0);
 
     const payload = {
       milkUsedLiters: milkUsed,
@@ -1111,7 +1143,8 @@ async function openBatchModal() {
 
     try {
       const res = await api.createBatch(payload);
-      showToast(`¡Lote ${res.batchCode} registrado con éxito! Salieron ${res.totalLitersProduced}L (Rendimiento: ${res.yieldPercentage}%) 🍶`);
+      const linkedMsg = linkOrderIds.length > 0 ? ` • ${linkOrderIds.length} pedidos vinculados` : '';
+      showToast(`¡Lote ${res.batchCode} registrado con éxito! Salieron ${res.totalLitersProduced}L (Rendimiento: ${res.yieldPercentage}%)${linkedMsg} 🍶`);
       closeModal();
       renderBatches(document.getElementById('contentContainer'));
     } catch (err) {

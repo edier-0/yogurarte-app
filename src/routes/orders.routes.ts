@@ -8,6 +8,7 @@ import {
   getWhatsAppLink,
   assignDriver,
   updateDeliveryStatus,
+  rescheduleOverdueOrders,
   addOrderPayment,
   updateOrderPayment,
   deleteOrderPayment,
@@ -26,6 +27,7 @@ const router = Router();
 router.get('/', getOrders);
 router.get('/:id', validateParams(idParamSchema), getOrderById);
 router.get('/:id/whatsapp', validateParams(idParamSchema), getWhatsAppLink);
+router.post('/reschedule-overdue', rescheduleOverdueOrders);
 router.post('/', validateBody(createOrderSchema), createOrder);
 router.post('/:id/payments', validateParams(idParamSchema), addOrderPayment);
 router.put('/:id/payments/:paymentId', validateParams(idParamSchema), updateOrderPayment);

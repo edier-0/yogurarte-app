@@ -1,7 +1,16 @@
 import { z } from 'zod';
 
 export const createCashMovementSchema = z.object({
-  type: z.enum(['BASE_INICIAL', 'APORTE_SOCIO', 'RETIRO_BASE', 'AJUSTE_CAJA']).default('BASE_INICIAL'),
+  type: z
+    .enum([
+      'BASE_INICIAL',
+      'APORTE_SOCIO',
+      'RETIRO_BASE',
+      'AJUSTE_CAJA',
+      'TRASLADO_EFECTIVO_A_BANCO',
+      'TRASLADO_BANCO_A_EFECTIVO',
+    ])
+    .default('BASE_INICIAL'),
   amount: z.coerce.number().positive('El monto debe ser mayor a 0'),
   movementDate: z.string().optional(),
   concept: z.string().min(1, 'El concepto es obligatorio'),
@@ -11,7 +20,16 @@ export const createCashMovementSchema = z.object({
 });
 
 export const updateCashMovementSchema = z.object({
-  type: z.enum(['BASE_INICIAL', 'APORTE_SOCIO', 'RETIRO_BASE', 'AJUSTE_CAJA']).optional(),
+  type: z
+    .enum([
+      'BASE_INICIAL',
+      'APORTE_SOCIO',
+      'RETIRO_BASE',
+      'AJUSTE_CAJA',
+      'TRASLADO_EFECTIVO_A_BANCO',
+      'TRASLADO_BANCO_A_EFECTIVO',
+    ])
+    .optional(),
   amount: z.coerce.number().positive().optional(),
   movementDate: z.string().optional(),
   concept: z.string().min(1).optional(),

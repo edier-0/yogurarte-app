@@ -2,6 +2,15 @@ import { Request, Response } from 'express';
 import prisma from '../prisma.js';
 import { getAllSettingsMap } from './settings.controller.js';
 
+const getColombiaDateStr = (d = new Date()) => {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+};
+
 export const getOrders = async (req: Request, res: Response) => {
   try {
     const {
@@ -580,6 +589,14 @@ export const updateOrder = async (req: Request, res: Response) => {
       }
     }
 
+    let finalDeliveryDate = currentOrder.deliveryDate;
+    if (deliveryDate) {
+      finalDeliveryDate = new Date(`${String(deliveryDate).split('T')[0]}T12:00:00.000Z`);
+    } else if (deliveryStatus === 'DELIVERED' && currentOrder.deliveryStatus !== 'DELIVERED') {
+      const todayStr = getColombiaDateStr();
+      finalDeliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
+    }
+
     const updated = await prisma.order.update({
       where: { id: Number(id) },
       data: {
@@ -599,7 +616,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         deliveryDriverId: deliveryDriverId !== undefined ? (deliveryDriverId ? Number(deliveryDriverId) : null) : currentOrder.deliveryDriverId,
         deliveryDriverName: deliveryDriverName !== undefined ? deliveryDriverName : currentOrder.deliveryDriverName,
         orderDate: orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : currentOrder.orderDate,
-        deliveryDate: deliveryDate ? new Date(`${String(deliveryDate).split('T')[0]}T12:00:00.000Z`) : currentOrder.deliveryDate,
+        deliveryDate: finalDeliveryDate,
         deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : (customerAddress ? customerAddress.trim() : currentOrder.deliveryAddress),
         notes: notes !== undefined ? notes : currentOrder.notes,
       },
@@ -683,7 +700,10 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
     const updateData: any = {};
     if (deliveryStatus) {
       updateData.deliveryStatus = deliveryStatus;
-      if (deliveryStatus === 'IN_ROUTE' && !existing.dispatchedAt) {
+      if (deliveryStatus === 'DELIVERED') {
+        const todayStr = getColombiaDateStr();
+        updateData.deliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
+      } else if (deliveryStatus === 'IN_ROUTE' && !existing.dispatchedAt) {
         updateData.dispatchedAt = new Date();
       } else if (deliveryStatus === 'PENDING' || deliveryStatus === 'PREPARING') {
         updateData.dispatchedAt = null;
@@ -705,11 +725,12 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
       // Si el monto pagado aumentó, registrar el abono delta en OrderPayment
       const delta = finalPaid - existing.paidAmount;
       if (delta > 0) {
+        const todayStr = getColombiaDateStr();
         await prisma.orderPayment.create({
           data: {
             orderId,
             amount: delta,
-            paymentDate: new Date(),
+            paymentDate: new Date(`${todayStr}T12:00:00.000Z`),
             paymentMethod: paymentMethod ? String(paymentMethod).trim() : (existing.paymentMethod || 'EFECTIVO'),
             notes: 'Pago recibido al entregar domicilio',
             registeredBy: existing.deliveryDriverName || 'Domiciliario',
@@ -743,6 +764,38 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error updating delivery status:', error);
     res.status(500).json({ error: 'Error al actualizar estado de entrega' });
+  }
+};
+
+// Reprogramar en lote todos los pedidos atrasados para entregar el día de hoy
+export const rescheduleOverdueOrders = async (req: Request, res: Response) => {
+  try {
+    const todayStr = getColombiaDateStr();
+    const todayStart = new Date(`${todayStr}T00:00:00.000Z`);
+    const newDeliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
+
+    // Buscar pedidos pendientes por entregar cuya fecha de entrega (o de pedido) sea anterior a hoy
+    const result = await prisma.order.updateMany({
+      where: {
+        deliveryStatus: { not: 'DELIVERED' },
+        OR: [
+          { deliveryDate: { lt: todayStart } },
+          { deliveryDate: null, orderDate: { lt: todayStart } },
+        ],
+      },
+      data: {
+        deliveryDate: newDeliveryDate,
+      },
+    });
+
+    res.json({
+      message: `Se reprogramaron ${result.count} pedido(s) atrasados para hoy (${todayStr}) exitosamente`,
+      updatedCount: result.count,
+      newDeliveryDate: todayStr,
+    });
+  } catch (error) {
+    console.error('Error rescheduling overdue orders:', error);
+    res.status(500).json({ error: 'Error al reprogramar pedidos atrasados' });
   }
 };
 

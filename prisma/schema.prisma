@@ -52,6 +52,7 @@ model RawMaterial {
   batchUsages                BatchItemUsage[]
   supplyPreparationsOutput   SupplyPreparation[]     @relation("OutputMaterial")
   supplyPreparationsUsed     SupplyPreparationItem[] @relation("IngredientMaterial")
+  adjustments                InventoryAdjustment[]
 }
 
 model SupplyPreparation {
@@ -99,6 +100,23 @@ model Purchase {
   notes         String?
   registeredBy  String?
   createdAt     DateTime     @default(now())
+}
+
+model InventoryAdjustment {
+  id              Int          @id @default(autoincrement())
+  rawMaterialId   Int
+  rawMaterial     RawMaterial  @relation(fields: [rawMaterialId], references: [id])
+  type            String       // CONTEO_FISICO, MERMA_DANO, CONSUMO_PRUEBA, SOBRANTE, CORRECCION
+  previousStock   Float
+  newStock        Float
+  deltaQuantity   Float        // newStock - previousStock
+  unit            String
+  unitCost        Float        // Costo promedio unitario al momento del ajuste
+  totalCostImpact Float        // deltaQuantity * unitCost ($ COP)
+  reason          String?
+  registeredBy    String?
+  adjustmentDate  DateTime     @default(now())
+  createdAt       DateTime     @default(now())
 }
 
 model ProductionBatch {

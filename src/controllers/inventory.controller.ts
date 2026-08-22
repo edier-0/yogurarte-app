@@ -276,24 +276,154 @@ export const deletePurchase = async (req: Request, res: Response) => {
 export const adjustStock = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { newStock, reason } = req.body;
+    const { newStock, type, reason, registeredBy, adjustmentDate } = req.body;
+
+    const materialId = Number(id || req.body.rawMaterialId);
+    if (!materialId || isNaN(materialId)) {
+      return res.status(400).json({ error: 'ID de insumo no válido' });
+    }
 
     const parsedStock = Number(newStock);
     if (isNaN(parsedStock) || parsedStock < 0) {
       return res.status(400).json({ error: 'El stock debe ser un número válido mayor o igual a 0' });
     }
 
-    const updated = await prisma.rawMaterial.update({
-      where: { id: Number(id) },
-      data: {
-        currentStock: parsedStock,
-      },
+    const material = await prisma.rawMaterial.findUnique({
+      where: { id: materialId },
     });
 
-    res.json({ message: 'Stock actualizado correctamente', material: updated, reason });
+    if (!material) {
+      return res.status(404).json({ error: 'Insumo no encontrado' });
+    }
+
+    const previousStock = material.currentStock;
+    const deltaQuantity = Math.round((parsedStock - previousStock) * 1000) / 1000;
+    const unitCost = material.avgCost || 0;
+    const totalCostImpact = Math.round(deltaQuantity * unitCost);
+    const dateObj = adjustmentDate ? new Date(`${String(adjustmentDate).split('T')[0]}T12:00:00.000Z`) : new Date();
+
+    const [adjustment, updatedMaterial] = await prisma.$transaction([
+      prisma.inventoryAdjustment.create({
+        data: {
+          rawMaterialId: materialId,
+          type: type ? String(type).trim() : (deltaQuantity < 0 ? 'MERMA_DANO' : 'CONTEO_FISICO'),
+          previousStock,
+          newStock: parsedStock,
+          deltaQuantity,
+          unit: material.unit,
+          unitCost,
+          totalCostImpact,
+          reason: reason ? String(reason).trim() : null,
+          registeredBy: registeredBy ? String(registeredBy).trim() : 'Edier',
+          adjustmentDate: dateObj,
+        },
+        include: {
+          rawMaterial: true,
+        },
+      }),
+      prisma.rawMaterial.update({
+        where: { id: materialId },
+        data: {
+          currentStock: parsedStock,
+        },
+      }),
+    ]);
+
+    res.status(201).json({
+      message: 'Ajuste de inventario registrado correctamente',
+      adjustment,
+      material: updatedMaterial,
+    });
   } catch (error) {
     console.error('Error adjusting stock:', error);
-    res.status(500).json({ error: 'Error al ajustar stock' });
+    res.status(500).json({ error: 'Error al registrar ajuste de inventario' });
+  }
+};
+
+export const getAdjustmentsHistory = async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate, rawMaterialId, type } = req.query;
+
+    const whereClause: any = {};
+
+    if (rawMaterialId) {
+      whereClause.rawMaterialId = Number(rawMaterialId);
+    }
+
+    if (type) {
+      whereClause.type = String(type).trim();
+    }
+
+    if (startDate || endDate) {
+      whereClause.adjustmentDate = {};
+      if (startDate && typeof startDate === 'string') {
+        whereClause.adjustmentDate.gte = new Date(`${startDate.split('T')[0]}T00:00:00.000Z`);
+      }
+      if (endDate && typeof endDate === 'string') {
+        whereClause.adjustmentDate.lte = new Date(`${endDate.split('T')[0]}T23:59:59.999Z`);
+      }
+    }
+
+    const adjustments = await prisma.inventoryAdjustment.findMany({
+      where: whereClause,
+      include: {
+        rawMaterial: {
+          select: {
+            name: true,
+            unit: true,
+            category: true,
+            code: true,
+          },
+        },
+      },
+      orderBy: { adjustmentDate: 'desc' },
+      take: 150,
+    });
+
+    res.json(adjustments);
+  } catch (error) {
+    console.error('Error fetching adjustments history:', error);
+    res.status(500).json({ error: 'Error al obtener historial de ajustes' });
+  }
+};
+
+export const deleteAdjustment = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const adjId = Number(id);
+
+    const adjustment = await prisma.inventoryAdjustment.findUnique({
+      where: { id: adjId },
+      include: { rawMaterial: true },
+    });
+
+    if (!adjustment) {
+      return res.status(404).json({ error: 'Ajuste de inventario no encontrado' });
+    }
+
+    // Revertir el stock al valor previo
+    const restoredStock = Math.max(0, Math.round((adjustment.rawMaterial.currentStock - adjustment.deltaQuantity) * 1000) / 1000);
+
+    await prisma.$transaction([
+      prisma.rawMaterial.update({
+        where: { id: adjustment.rawMaterialId },
+        data: {
+          currentStock: restoredStock,
+        },
+      }),
+      prisma.inventoryAdjustment.delete({
+        where: { id: adjId },
+      }),
+    ]);
+
+    res.json({
+      message: 'Ajuste eliminado y stock restaurado exitosamente',
+      restoredStock,
+      materialId: adjustment.rawMaterialId,
+    });
+  } catch (error) {
+    console.error('Error deleting adjustment:', error);
+    res.status(500).json({ error: 'Error al eliminar / revertir ajuste de inventario' });
   }
 };
 

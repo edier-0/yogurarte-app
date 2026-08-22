@@ -25,6 +25,8 @@ export const createBatchSchema = z.object({
   price1L: z.coerce.number().optional(),
   price2L: z.coerce.number().optional(),
   status: z.string().optional(),
+  linkOrderIds: z.array(z.coerce.number().int().positive()).optional(),
+  autoLinkPendingOrders: z.boolean().optional(),
 });
 
 export const updateBatchSchema = z.object({
