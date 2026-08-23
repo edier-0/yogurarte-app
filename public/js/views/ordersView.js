@@ -755,6 +755,11 @@ function createOrderCardHtml(o) {
     deliveryBadge = `<span class="badge" style="background: #EDE9FE; color: #6D28D9; border: 1px solid #DDD6FE; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">👤 Entrega Propia (Socios)</span>`;
   }
 
+  let deliveryFeeBadge = '';
+  if (o.deliveryFee && Number(o.deliveryFee) > 0) {
+    deliveryFeeBadge = `<span class="badge" style="background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">🛵 Domicilio: ${formatCOP(o.deliveryFee)}</span>`;
+  }
+
   return `
     <div class="order-card" data-id="${o.id}" style="${cardBorder}">
       <div class="order-card-header">
@@ -791,6 +796,7 @@ function createOrderCardHtml(o) {
                  </span>`
           }
           ${deliveryBadge}
+          ${deliveryFeeBadge}
         </div>
       </div>
 
@@ -805,6 +811,7 @@ function createOrderCardHtml(o) {
         <div>
           <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Total:</span>
           <div class="order-total-price">${formatCOP(o.totalAmount)}</div>
+          ${o.deliveryFee && Number(o.deliveryFee) > 0 ? `<div style="font-size: 0.72rem; color: #0284C7; font-weight: 700;">Incluye ${formatCOP(o.deliveryFee)} de domicilio</div>` : ''}
         </div>
         <div class="order-debt-info">
           ${
@@ -1015,6 +1022,7 @@ export async function openOrderModal(orderData = null) {
 
   const defaultDeliveryType = isEditing ? (orderData.deliveryType || 'PROPIO') : 'PROPIO';
   const defaultDeliveryDriverId = isEditing ? (orderData.deliveryDriverId || '') : '';
+  const defaultDeliveryFee = isEditing ? (orderData.deliveryFee || 0) : 0;
 
   const initialBatchId = orderData?.batchId || (orderData?.batch?.id) || '';
   const initialBatchObj = availableBatches.find((b) => b.id === Number(initialBatchId));
@@ -1089,31 +1097,51 @@ export async function openOrderModal(orderData = null) {
               <input type="text" id="custAddress" class="form-input" placeholder="Ej: Calle 12 # 15-40, Barrio San Agustín" value="${defaultAddress}" required />
             </div>
 
-            <!-- Modalidad de Entrega y Asignación de Repartidor -->
-            <div class="form-row" style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 14px;">
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.84rem; font-weight: 800; color: #15803D;">Modalidad de Entrega *</label>
-                <select id="orderDeliveryType" class="form-select" style="font-weight: 700; font-size: 0.85rem;">
-                  <option value="PROPIO" ${defaultDeliveryType === 'PROPIO' ? 'selected' : ''}>👤 Entrega Propia (Socios Edier / Yeilin)</option>
-                  <option value="DOMICILIARIO" ${defaultDeliveryType === 'DOMICILIARIO' ? 'selected' : ''}>🛵 Domicilio con Repartidor</option>
-                  <option value="LOCAL" ${defaultDeliveryType === 'LOCAL' ? 'selected' : ''}>🏪 Recoge en Local / Tienda</option>
-                </select>
+            <!-- Modalidad de Entrega, Asignación de Repartidor y Valor del Domicilio -->
+            <div style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px;">
+              <div class="form-row" style="margin-bottom: 8px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.84rem; font-weight: 800; color: #15803D;">Modalidad de Entrega *</label>
+                  <select id="orderDeliveryType" class="form-select" style="font-weight: 700; font-size: 0.85rem;">
+                    <option value="PROPIO" ${defaultDeliveryType === 'PROPIO' ? 'selected' : ''}>👤 Entrega Propia (Socios)</option>
+                    <option value="DOMICILIARIO" ${defaultDeliveryType === 'DOMICILIARIO' ? 'selected' : ''}>🛵 Domicilio con Repartidor</option>
+                    <option value="LOCAL" ${defaultDeliveryType === 'LOCAL' ? 'selected' : ''}>🏪 Recoge en Local / Tienda</option>
+                  </select>
+                </div>
+
+                <div class="form-group" id="driverSelectGroup" style="margin-bottom: 0; ${defaultDeliveryType === 'DOMICILIARIO' ? '' : 'display: none;'}">
+                  <label class="form-label" style="font-size: 0.84rem; font-weight: 800; color: #0369A1;">Repartidor Asignado</label>
+                  <select id="orderDeliveryDriver" class="form-select" style="font-weight: 700; font-size: 0.85rem;">
+                    <option value="">-- Sin asignar aún --</option>
+                    ${modalDrivers
+                      .map(
+                        (d) => `
+                      <option value="${d.id}" data-name="${d.name}" ${String(defaultDeliveryDriverId) === String(d.id) ? 'selected' : ''}>
+                        🛵 ${d.name}
+                      </option>
+                    `
+                      )
+                      .join('')}
+                  </select>
+                </div>
               </div>
 
-              <div class="form-group" id="driverSelectGroup" style="margin-bottom: 0; ${defaultDeliveryType === 'DOMICILIARIO' ? '' : 'display: none;'}">
-                <label class="form-label" style="font-size: 0.84rem; font-weight: 800; color: #0369A1;">Repartidor Asignado</label>
-                <select id="orderDeliveryDriver" class="form-select" style="font-weight: 700; font-size: 0.85rem;">
-                  <option value="">-- Sin asignar aún --</option>
-                  ${modalDrivers
-                    .map(
-                      (d) => `
-                    <option value="${d.id}" data-name="${d.name}" ${String(defaultDeliveryDriverId) === String(d.id) ? 'selected' : ''}>
-                      🛵 ${d.name}
-                    </option>
-                  `
-                    )
-                    .join('')}
-                </select>
+              <!-- Campo para el valor del servicio de domicilio -->
+              <div class="form-group" id="deliveryFeeGroup" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.84rem; font-weight: 800; color: #0369A1; display: flex; justify-content: space-between; align-items: center;">
+                  <span>🛵 Valor del Domicilio ($ COP)</span>
+                  <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">(Si aplica, se suma al total a cobrar)</span>
+                </label>
+                <input 
+                  type="number" 
+                  id="orderDeliveryFee" 
+                  class="form-input" 
+                  min="0" 
+                  step="500" 
+                  value="${defaultDeliveryFee}" 
+                  placeholder="0 si es gratis o entrega en local" 
+                  style="font-weight: 800; font-size: 0.95rem; color: #0369A1;" 
+                />
               </div>
             </div>
 
@@ -1162,8 +1190,11 @@ export async function openOrderModal(orderData = null) {
               </div>
 
               <div class="form-group">
-                <label class="form-label">Total a Cobrar ($ COP) *</label>
-                <input type="number" id="orderTotalAmount" class="form-input" value="${initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) || 10000}" required style="font-weight: 800; color: var(--primary);" />
+                <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>Total a Cobrar ($ COP) *</span>
+                  <span id="orderSubtotalBreakdown" style="font-size: 0.73rem; color: var(--primary); font-weight: 700;"></span>
+                </label>
+                <input type="number" id="orderTotalAmount" class="form-input" value="${(initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) + defaultDeliveryFee) || 10000}" required style="font-weight: 800; color: var(--primary); font-size: 1.05rem;" />
               </div>
             </div>
 
@@ -1238,6 +1269,8 @@ export async function openOrderModal(orderData = null) {
   const deliveryTypeSelect = document.getElementById('orderDeliveryType');
   const driverSelectGroup = document.getElementById('driverSelectGroup');
   const driverSelect = document.getElementById('orderDeliveryDriver');
+  const deliveryFeeInput = document.getElementById('orderDeliveryFee');
+  const subtotalBreakdownDisplay = document.getElementById('orderSubtotalBreakdown');
   const modalBody = modalOverlay.querySelector('.modal-body');
 
   deliveryTypeSelect?.addEventListener('change', (e) => {
@@ -1247,6 +1280,10 @@ export async function openOrderModal(orderData = null) {
       if (driverSelectGroup) driverSelectGroup.style.display = 'none';
       if (driverSelect) driverSelect.value = '';
     }
+  });
+
+  deliveryFeeInput?.addEventListener('input', () => {
+    recalculateOrderTotals();
   });
 
   // Función para renderizar una fila de producto
@@ -1307,10 +1344,10 @@ export async function openOrderModal(orderData = null) {
     recalculateOrderTotals();
   }
 
-  // Recalcular todos los productos
+  // Recalcular todos los productos y costo de domicilio
   function recalculateOrderTotals() {
     let sumLiters = 0;
-    let sumTotal = 0;
+    let sumProductsTotal = 0;
 
     itemsContainer.querySelectorAll('.order-item-row').forEach((row) => {
       const size = row.querySelector('.item-size').value;
@@ -1320,17 +1357,28 @@ export async function openOrderModal(orderData = null) {
       const rowLiters = size === '2L' ? qty * 2 : qty * 1;
 
       sumLiters += rowLiters;
-      sumTotal += rowTotal;
+      sumProductsTotal += rowTotal;
 
       const subDisplay = row.querySelector('.item-subtotal-display');
       if (subDisplay) subDisplay.textContent = formatCOP(rowTotal);
     });
 
+    const fee = Number(deliveryFeeInput?.value) || 0;
+    const grandTotal = sumProductsTotal + fee;
+
     totalLitersDisplay.value = `${sumLiters} Litro(s)`;
-    totalInput.value = sumTotal;
+    totalInput.value = grandTotal;
+
+    if (subtotalBreakdownDisplay) {
+      if (fee > 0) {
+        subtotalBreakdownDisplay.textContent = `(Prod: ${formatCOP(sumProductsTotal)} + Dom: ${formatCOP(fee)})`;
+      } else {
+        subtotalBreakdownDisplay.textContent = `(Solo productos)`;
+      }
+    }
 
     const paid = Number(paidInput.value) || 0;
-    const pending = Math.max(0, sumTotal - paid);
+    const pending = Math.max(0, grandTotal - paid);
     pendingDisplay.value = formatCOP(pending);
   }
 
@@ -1631,6 +1679,7 @@ export async function openOrderModal(orderData = null) {
       deliveryType,
       deliveryDriverId: deliveryType === 'DOMICILIARIO' ? driverIdVal : null,
       deliveryDriverName: deliveryType === 'DOMICILIARIO' ? driverNameVal : null,
+      deliveryFee: Number(document.getElementById('orderDeliveryFee')?.value) || 0,
       deliveryStatus: document.getElementById('orderDeliveryStatus').value,
       orderDate: document.getElementById('orderDateInput').value,
       deliveryDate: document.getElementById('orderDeliveryDateInput').value || null,
@@ -1917,39 +1966,24 @@ export async function openPaymentModal(orderId, totalAmount, currentPaid, curren
     });
   });
 
-  // Listener para Editar Abono
+  // Listener para Editar Abono con Modal Completo
   modalOverlay.querySelectorAll('.btn-edit-order-payment').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
+    btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const pId = e.currentTarget.dataset.paymentId;
-      const currAmount = e.currentTarget.dataset.amount;
-      const currMethod = e.currentTarget.dataset.method;
-      const currNotes = e.currentTarget.dataset.notes;
+      const pId = Number(e.currentTarget.dataset.paymentId);
+      const currAmount = Number(e.currentTarget.dataset.amount) || 0;
+      const currMethod = e.currentTarget.dataset.method || 'EFECTIVO';
+      const currDate = e.currentTarget.dataset.date || '';
+      const currNotes = e.currentTarget.dataset.notes || '';
 
-      const newAmountStr = prompt('Nuevo monto del abono ($ COP):', currAmount);
-      if (newAmountStr === null) return;
-      const newAmount = Number(newAmountStr);
-      if (isNaN(newAmount) || newAmount <= 0) {
-        showToast('El monto debe ser un número válido mayor a 0', 'danger');
-        return;
-      }
-
-      const methodPrompt = prompt('Método de pago (EFECTIVO, NEQUI, BANCOLOMBIA, TRANSFERENCIA):', currMethod);
-      if (methodPrompt === null) return;
-      const newMethod = methodPrompt.trim().toUpperCase() || 'EFECTIVO';
-
-      try {
-        await api.updateOrderPayment(orderId, pId, {
-          amount: newAmount,
-          paymentMethod: newMethod,
-          notes: currNotes,
-        });
-        showToast('¡Abono actualizado correctamente! ✏️✨');
-        openPaymentModal(orderId, totalAmount, currentPaid, currentPending, onSuccess);
-        if (onSuccess) onSuccess();
-      } catch (err) {
-        showToast(err.message || 'Error al actualizar abono', 'danger');
-      }
+      openEditOrderPaymentModal(
+        orderId,
+        { id: pId, amount: currAmount, paymentMethod: currMethod, paymentDate: currDate, notes: currNotes },
+        () => {
+          openPaymentModal(orderId, totalAmount, currentPaid, currentPending, onSuccess);
+          if (onSuccess) onSuccess();
+        }
+      );
     });
   });
 
@@ -1990,4 +2024,108 @@ export async function openPaymentModal(orderId, totalAmount, currentPaid, curren
     }
   });
 }
+
+// Modal dedicado para editar un pago / abono individual de venta (Monto, Medio, Fecha, Notas)
+export function openEditOrderPaymentModal(orderId, payment, onDone = null) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  const currentAmount = payment.amount || '';
+  const currentMethod = payment.paymentMethod || 'EFECTIVO';
+  const currentDate = payment.paymentDate
+    ? String(payment.paymentDate).slice(0, 10)
+    : getTodayLocalDateStr();
+  const currentNotes = payment.notes || '';
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 440px;">
+        <div class="modal-header">
+          <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <span>✏️</span> Editar Pago / Abono de Venta
+          </h3>
+          <button class="modal-close-btn" id="btnCloseEditPaymentModal">✕</button>
+        </div>
+        <form id="editPaymentForm">
+          <div class="modal-body">
+            
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 700;">Monto del Pago ($ COP) *</label>
+              <input type="number" id="editPaymentAmount" class="form-input" min="1" step="any" value="${currentAmount}" required style="font-weight: 800; font-size: 1.1rem;" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 700;">Medio / Modalidad de Pago *</label>
+              <select id="editPaymentMethod" class="form-select" required style="font-weight: 700;">
+                <option value="EFECTIVO" ${currentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo (Caja Física)</option>
+                <option value="NEQUI" ${currentMethod === 'NEQUI' ? 'selected' : ''}>🟣 Transferencia Nequi</option>
+                <option value="BANCOLOMBIA" ${currentMethod === 'BANCOLOMBIA' ? 'selected' : ''}>🟡 Transferencia Bancolombia</option>
+                <option value="TRANSFERENCIA" ${currentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>💳 Otra Transferencia</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 700;">Fecha del Pago *</label>
+              <input type="date" id="editPaymentDate" class="form-input" value="${currentDate}" required />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 700;">Notas / Observación</label>
+              <input type="text" id="editPaymentNotes" class="form-input" placeholder="Ej: Pago total contraentrega / Abono inicial..." value="${currentNotes}" />
+            </div>
+
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+            <button type="button" class="btn btn-outline" id="btnCancelEditPaymentModal">Cancelar</button>
+            <button type="submit" class="btn btn-primary" id="btnSubmitEditPayment" style="font-weight: 800;">
+              💾 Guardar Cambios
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => (modalOverlay.innerHTML = '');
+  document.getElementById('btnCloseEditPaymentModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnCancelEditPaymentModal')?.addEventListener('click', closeModal);
+
+  document.getElementById('editPaymentForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const newAmount = Number(document.getElementById('editPaymentAmount').value);
+    const newMethod = document.getElementById('editPaymentMethod').value;
+    const newDate = document.getElementById('editPaymentDate').value;
+    const newNotes = document.getElementById('editPaymentNotes').value;
+
+    if (isNaN(newAmount) || newAmount <= 0) {
+      showToast('Ingresa un monto válido mayor a 0', 'danger');
+      return;
+    }
+
+    const submitBtn = document.getElementById('btnSubmitEditPayment');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Guardando... ⏳';
+    }
+
+    try {
+      await api.updateOrderPayment(orderId, payment.id, {
+        amount: newAmount,
+        paymentMethod: newMethod,
+        paymentDate: newDate,
+        notes: newNotes,
+      });
+      showToast('¡Pago actualizado correctamente! ✏️✨');
+      closeModal();
+      if (typeof onDone === 'function') onDone();
+    } catch (err) {
+      showToast(err.message || 'Error al actualizar pago', 'danger');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '💾 Guardar Cambios';
+      }
+    }
+  });
+}
+
 

@@ -4,7 +4,7 @@ import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE 
 
 let deliveryCurrentPage = 1;
 let deliveryStatusFilter = 'PENDING'; // 'PENDING' | 'IN_ROUTE' | 'DELIVERED' | 'ALL'
-let deliveryTypeFilter = 'PROPIO'; // 'PROPIO' | 'DOMICILIARIO' | 'LOCAL' | 'ALL'
+let deliveryTypeFilter = 'DELIVERY_ALL'; // 'DELIVERY_ALL' | 'PROPIO' | 'DOMICILIARIO' | 'LOCAL' | 'ALL'
 let deliveryDateScope = 'ALL_PENDING'; // 'ALL_PENDING' | 'TODAY' | 'SPECIFIC_DATE' | 'ALL'
 let deliverySpecificDate = getTodayLocalDateStr();
 let deliverySearchQuery = '';
@@ -56,10 +56,11 @@ export async function renderDelivery(container) {
               isAdmin
                 ? `
               <select id="selectDeliveryTypeFilter" class="form-select" style="width: auto; padding: 6px 12px; font-weight: 700; font-size: 0.84rem;">
-                <option value="PROPIO" ${deliveryTypeFilter === 'PROPIO' ? 'selected' : ''}>👤 Entregas de Socios (Propias)</option>
-                <option value="DOMICILIARIO" ${deliveryTypeFilter === 'DOMICILIARIO' ? 'selected' : ''}>🛵 Domicilios con Repartidor</option>
-                <option value="LOCAL" ${deliveryTypeFilter === 'LOCAL' ? 'selected' : ''}>🏪 Recoge en Local</option>
-                <option value="ALL" ${deliveryTypeFilter === 'ALL' ? 'selected' : ''}>📋 Todas las Modalidades</option>
+                <option value="DELIVERY_ALL" ${deliveryTypeFilter === 'DELIVERY_ALL' ? 'selected' : ''}>🛵 Todos los Domicilios (Socios y Repartidor)</option>
+                <option value="PROPIO" ${deliveryTypeFilter === 'PROPIO' ? 'selected' : ''}>👤 Solo Entregas de Socios</option>
+                <option value="DOMICILIARIO" ${deliveryTypeFilter === 'DOMICILIARIO' ? 'selected' : ''}>🛵 Solo Domicilios con Repartidor</option>
+                <option value="LOCAL" ${deliveryTypeFilter === 'LOCAL' ? 'selected' : ''}>🏪 Solo Recoge en Local</option>
+                <option value="ALL" ${deliveryTypeFilter === 'ALL' ? 'selected' : ''}>📋 Todas las Modalidades (Incluye Local)</option>
               </select>
             `
                 : ''
@@ -155,13 +156,20 @@ function filterAndRenderDelivery(container) {
   const currentUserId = store.authUser?.id;
   const isAdmin = store.isAdmin();
 
-  // 1. Filtrar por rol y modalidad
+  // 1. Filtrar por rol y modalidad de entrega
   let scopedOrders = cachedDeliveryOrders;
   if (store.isDelivery() && currentUserId) {
-    scopedOrders = scopedOrders.filter((o) => o.deliveryDriverId === currentUserId);
-  } else if (isAdmin) {
-    if (deliveryTypeFilter !== 'ALL') {
-      scopedOrders = scopedOrders.filter((o) => (o.deliveryType || 'PROPIO') === deliveryTypeFilter);
+    scopedOrders = scopedOrders.filter((o) => o.deliveryDriverId === currentUserId && (o.deliveryType || 'PROPIO') !== 'LOCAL');
+  } else {
+    if (deliveryTypeFilter === 'DELIVERY_ALL') {
+      // Excluir recoger en el local para que solo queden domicilios reales (socios + repartidor)
+      scopedOrders = scopedOrders.filter((o) => (o.deliveryType || 'PROPIO') !== 'LOCAL');
+    } else if (deliveryTypeFilter === 'PROPIO') {
+      scopedOrders = scopedOrders.filter((o) => (o.deliveryType || 'PROPIO') === 'PROPIO');
+    } else if (deliveryTypeFilter === 'DOMICILIARIO') {
+      scopedOrders = scopedOrders.filter((o) => o.deliveryType === 'DOMICILIARIO');
+    } else if (deliveryTypeFilter === 'LOCAL') {
+      scopedOrders = scopedOrders.filter((o) => o.deliveryType === 'LOCAL');
     }
   }
 
@@ -469,6 +477,7 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
                   <span style="color: var(--text-muted); font-weight: 600;">Llevas:</span> ${itemsText}
                   <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700; margin-top: 2px;">
                     Total: ${order.totalLiters} L • Valor: ${formatCOP(order.totalAmount)}
+                    ${order.deliveryFee && Number(order.deliveryFee) > 0 ? `<span style="color: #0284C7; font-weight: 800; margin-left: 6px;">(🛵 Domicilio: ${formatCOP(order.deliveryFee)})</span>` : ''}
                   </div>
                 </div>
               </div>
@@ -492,17 +501,22 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
                 ${
                   isPending
                     ? `
-                  <button class="btn btn-primary btn-start-route" data-order-id="${order.id}" style="width: 100%; font-weight: 800; padding: 10px;">
-                    🛵 Salir a Reparto (En Camino)
-                  </button>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-primary btn-start-route" data-order-id="${order.id}" style="flex: 1; font-weight: 800; padding: 10px; font-size: 0.84rem;">
+                      🛵 Salir a Reparto
+                    </button>
+                    <button class="btn btn-accent btn-deliver-modal" data-order-id="${order.id}" data-pending="${order.pendingAmount}" data-total="${order.totalAmount}" style="flex: 1; font-weight: 800; padding: 10px; font-size: 0.84rem;">
+                      ✅ Entregar y Cobrar
+                    </button>
+                  </div>
                 `
                     : isInRoute
                     ? `
                   <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-accent btn-deliver-modal" data-order-id="${order.id}" data-pending="${order.pendingAmount}" data-total="${order.totalAmount}" style="flex: 2; font-weight: 800; padding: 10px;">
+                    <button class="btn btn-accent btn-deliver-modal" data-order-id="${order.id}" data-pending="${order.pendingAmount}" data-total="${order.totalAmount}" style="flex: 2; font-weight: 800; padding: 10px; font-size: 0.84rem;">
                       ✅ Entregar y Cobrar
                     </button>
-                    <button class="btn btn-outline btn-revert-to-pending" data-order-id="${order.id}" style="flex: 1; font-weight: 700; padding: 8px 10px; font-size: 0.8rem; color: #EA580C; border-color: #FED7AA; background: #FFF7ED;" title="Pasar pedido de en camino otra vez a por entregar">
+                    <button class="btn btn-outline btn-revert-to-pending" data-order-id="${order.id}" style="flex: 1; font-weight: 700; padding: 8px 10px; font-size: 0.78rem; color: #EA580C; border-color: #FED7AA; background: #FFF7ED;" title="Pasar pedido de en camino otra vez a por entregar">
                       ↩️ Por Entregar
                     </button>
                   </div>
@@ -670,6 +684,13 @@ function openDeliveryConfirmModal(orderId, order, parentContainer) {
                 <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted);">PEDIDO #${orderNumber}</span>
                 <span style="font-size: 0.82rem; font-weight: 700; color: var(--primary);">Total: ${formatCOP(totalAmount)}</span>
               </div>
+              ${
+                currentOrder.deliveryFee && Number(currentOrder.deliveryFee) > 0
+                  ? `<div style="font-size: 0.76rem; color: #0284C7; font-weight: 700; margin-bottom: 4px;">
+                       🛵 Incluye ${formatCOP(currentOrder.deliveryFee)} de servicio de domicilio
+                     </div>`
+                  : ''
+              }
               <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-main); margin-bottom: 4px;">
                 👤 ${customerName}
               </div>

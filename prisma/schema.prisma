@@ -34,6 +34,10 @@ model Customer {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @default(now()) @updatedAt
   orders       Order[]
+
+  @@index([fullName])
+  @@index([phone])
+  @@index([isActive])
 }
 
 model RawMaterial {
@@ -53,6 +57,9 @@ model RawMaterial {
   supplyPreparationsOutput   SupplyPreparation[]     @relation("OutputMaterial")
   supplyPreparationsUsed     SupplyPreparationItem[] @relation("IngredientMaterial")
   adjustments                InventoryAdjustment[]
+
+  @@index([category])
+  @@index([isActive])
 }
 
 model SupplyPreparation {
@@ -72,6 +79,10 @@ model SupplyPreparation {
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @default(now()) @updatedAt
   ingredients      SupplyPreparationItem[]
+
+  @@index([preparationDate])
+  @@index([outputMaterialId])
+  @@index([isActive])
 }
 
 model SupplyPreparationItem {
@@ -85,6 +96,9 @@ model SupplyPreparationItem {
   unitCost      Float             // Costo unitario al momento de preparar
   totalCost     Float             // Costo total del insumo en la receta
   createdAt     DateTime          @default(now())
+
+  @@index([preparationId])
+  @@index([rawMaterialId])
 }
 
 model Purchase {
@@ -100,6 +114,10 @@ model Purchase {
   notes         String?
   registeredBy  String?
   createdAt     DateTime     @default(now())
+
+  @@index([purchaseDate])
+  @@index([rawMaterialId])
+  @@index([paymentMethod])
 }
 
 model InventoryAdjustment {
@@ -117,6 +135,10 @@ model InventoryAdjustment {
   registeredBy    String?
   adjustmentDate  DateTime     @default(now())
   createdAt       DateTime     @default(now())
+
+  @@index([adjustmentDate])
+  @@index([rawMaterialId])
+  @@index([type])
 }
 
 model ProductionBatch {
@@ -144,6 +166,11 @@ model ProductionBatch {
   itemsUsed           BatchItemUsage[]
   orders              Order[]
   orderItems          OrderItem[]
+
+  @@index([preparationDate])
+  @@index([flavor])
+  @@index([status])
+  @@index([isActive])
 }
 
 model BatchItemUsage {
@@ -156,6 +183,9 @@ model BatchItemUsage {
   unitCost      Float           @default(0)
   totalCost     Float           @default(0)
   createdAt     DateTime        @default(now())
+
+  @@index([batchId])
+  @@index([rawMaterialId])
 }
 
 model Order {
@@ -179,6 +209,7 @@ model Order {
   deliveryType    String           @default("PROPIO")  // PROPIO, DOMICILIARIO, LOCAL
   deliveryDriverId Int?
   deliveryDriverName String?
+  deliveryFee     Float            @default(0) // Valor/costo del servicio de domicilio ($ COP)
   dispatchedAt    DateTime?
   orderDate       DateTime         @default(now())
   deliveryDate    DateTime?
@@ -189,6 +220,15 @@ model Order {
   updatedAt       DateTime         @default(now()) @updatedAt
   items           OrderItem[]
   payments        OrderPayment[]
+
+  @@index([orderDate])
+  @@index([deliveryDate])
+  @@index([customerId])
+  @@index([batchId])
+  @@index([paymentStatus])
+  @@index([deliveryStatus])
+  @@index([deliveryDate, deliveryStatus])
+  @@index([createdAt])
 }
 
 model OrderPayment {
@@ -202,6 +242,10 @@ model OrderPayment {
   registeredBy  String?  @default("Edier")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @default(now()) @updatedAt
+
+  @@index([paymentDate])
+  @@index([orderId])
+  @@index([paymentMethod])
 }
 
 model OrderItem {
@@ -218,6 +262,9 @@ model OrderItem {
   unitPrice     Float            @default(10000)
   totalPrice    Float            @default(10000)
   createdAt     DateTime         @default(now())
+
+  @@index([orderId])
+  @@index([batchId])
 }
 
 model Expense {
@@ -230,6 +277,10 @@ model Expense {
   notes         String?
   registeredBy  String?
   createdAt     DateTime @default(now())
+
+  @@index([expenseDate])
+  @@index([category])
+  @@index([paymentMethod])
 }
 
 model StaffMember {
@@ -245,6 +296,10 @@ model StaffMember {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @default(now()) @updatedAt
   payments      StaffPayment[]
+
+  @@index([role])
+  @@index([type])
+  @@index([isActive])
 }
 
 model StaffPayment {
@@ -264,6 +319,10 @@ model StaffPayment {
   registeredBy       String?
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @default(now()) @updatedAt
+
+  @@index([paymentDate])
+  @@index([staffId])
+  @@index([paymentType])
 }
 
 model CashMovement {
@@ -277,6 +336,10 @@ model CashMovement {
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @default(now()) @updatedAt
+
+  @@index([movementDate])
+  @@index([type])
+  @@index([paymentMethod])
 }
 
 model CreditObligation {
@@ -302,6 +365,10 @@ model CreditObligation {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @default(now()) @updatedAt
   payments          CreditPayment[]
+
+  @@index([status])
+  @@index([startDate])
+  @@index([nextDueDate])
 }
 
 model CreditPayment {
@@ -318,6 +385,10 @@ model CreditPayment {
   registeredBy      String?          @default("Edier")
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @default(now()) @updatedAt
+
+  @@index([paymentDate])
+  @@index([creditId])
+  @@index([actionType])
 }
 
 model SystemSetting {

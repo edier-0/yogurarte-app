@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -41,12 +42,15 @@ app.use(
   })
 );
 
-// 2. Middlewares de análisis de cuerpo y CORS
+// 2. Compresión HTTP (Gzip/Deflate) para acelerar transferencia de red en 70-85%
+app.use(compression());
+
+// 3. Middlewares de análisis de cuerpo y CORS
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 3. Logger de Peticiones HTTP en Tiempo Real para la API
+// 4. Logger de Peticiones HTTP en Tiempo Real para la API
 app.use((req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
   const { method, originalUrl } = req;
@@ -68,12 +72,17 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// 4. Limitador de peticiones general para la API
+// 5. Limitador de peticiones general para la API
 app.use('/api', apiLimiter);
 
-// 5. Servir archivos estáticos del frontend
+// 6. Servir archivos estáticos del frontend con caché controlada
 const publicPath = path.join(__dirname, '../public');
-app.use(express.static(publicPath));
+app.use(
+  express.static(publicPath, {
+    maxAge: process.env.NODE_ENV === 'production' ? '1h' : '0',
+    etag: true,
+  })
+);
 
 // 6. Rutas Públicas de la API
 app.get('/api/health', (req: Request, res: Response) => {

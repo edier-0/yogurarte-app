@@ -192,3 +192,14 @@ export const formatPaymentBadge = (method) => {
   return `<span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.76rem; border: 1px solid #86EFAC;">💵 Efectivo</span>`;
 };
 
+// Utilidad de Debounce para optimizar inputs de búsqueda en tiempo real
+export const debounce = (fn, delay = 250) => {
+  let timeoutId;
+  return function (...args) {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      fn.apply(this, args);
+    }, delay);
+  };
+};
+

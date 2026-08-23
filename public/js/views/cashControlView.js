@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store } from '../store.js';
 import { openExpenseModal, openCashMovementModal } from './expensesView.js';
-import { openPaymentModal } from './ordersView.js';
+import { openPaymentModal, openEditOrderPaymentModal } from './ordersView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
 let cashCurrentPage = 1;
@@ -310,12 +310,16 @@ async function loadCashData(container) {
       });
     });
 
-    // Buscador en vivo
+    // Buscador en vivo con debounce de 250ms
     const searchInput = mainContent.querySelector('#cashSearchInput');
+    let cashDebounceTimer;
     searchInput?.addEventListener('input', (e) => {
-      searchFilter = e.target.value.toLowerCase().trim();
-      cashCurrentPage = 1;
-      updateViewWithFilters(mainContent, allMovements, container);
+      clearTimeout(cashDebounceTimer);
+      cashDebounceTimer = setTimeout(() => {
+        searchFilter = e.target.value.toLowerCase().trim();
+        cashCurrentPage = 1;
+        updateViewWithFilters(mainContent, allMovements, container);
+      }, 250);
     });
 
     updateViewWithFilters(mainContent, allMovements, container);
@@ -1317,6 +1321,7 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
                 </td>
                 <td>
                   <strong>${description}</strong>
+                  ${m.deliveryFee && Number(m.deliveryFee) > 0 ? `<div style="font-size: 0.72rem; color: #0284C7; font-weight: 700;">🛵 Incluye ${formatCOP(m.deliveryFee)} de domicilio</div>` : ''}
                   ${m.supplier ? `<div style="font-size: 0.72rem; color: var(--text-muted);">🏢 ${m.supplier}</div>` : ''}
                   ${m.notes ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📝 ${m.notes}</div>` : ''}
                 </td>
@@ -1340,7 +1345,7 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
                       `
                       : m.flowType === 'INFLOW' && !m.isCashMovement
                       ? `
-                        <button class="btn btn-outline btn-sm btn-manage-sale-payment" data-order-id="${m.rawId}" data-total="${m.totalAmount}" data-paid="${m.amount}" data-pending="${m.pendingAmount}" style="color: var(--primary); margin-right: 4px; padding: 4px 8px;" title="Gestionar / Editar abonos de este pedido">💵</button>
+                        <button class="btn btn-outline btn-sm btn-manage-sale-payment" data-order-id="${m.rawId}" data-payment-id="${m.paymentId || ''}" data-total="${m.totalAmount}" data-paid="${m.amount}" data-pending="${m.pendingAmount}" data-method="${m.paymentMethod || 'EFECTIVO'}" data-date="${m.date}" data-notes="${m.notes || ''}" style="color: var(--primary); margin-right: 4px; padding: 4px 8px; font-weight: 700;" title="Editar monto, medio de pago o fecha de esta venta">✏️</button>
                         <button class="btn btn-outline btn-sm btn-del-sale-payment" data-order-id="${m.rawId}" data-payment-id="${m.paymentId || ''}" data-amount="${m.amount}" data-cust="${m.customerName || 'Cliente'}" style="color: var(--danger); padding: 4px 8px;" title="Eliminar este abono o cobro duplicado">🗑️</button>
                       `
                       : m.category && m.category !== 'COMPRA_INSUMO' && m.category !== 'NOMINA' && m.category !== 'RETIRO_SOCIO'
@@ -1375,16 +1380,29 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
     tableWrapper
   );
 
-  // Listeners para gestionar abonos de pedidos desde el Libro de Caja
+  // Listeners para editar o gestionar abonos de pedidos desde el Libro de Caja
   tableWrapper.querySelectorAll('.btn-manage-sale-payment').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const orderId = Number(e.currentTarget.dataset.orderId);
+      const paymentId = e.currentTarget.dataset.paymentId ? Number(e.currentTarget.dataset.paymentId) : null;
       const total = Number(e.currentTarget.dataset.total);
       const paid = Number(e.currentTarget.dataset.paid);
       const pending = Number(e.currentTarget.dataset.pending);
-      openPaymentModal(orderId, total, paid, pending, () => {
-        loadCashData(mainContainer);
-      });
+      const method = e.currentTarget.dataset.method || 'EFECTIVO';
+      const date = e.currentTarget.dataset.date || '';
+      const notes = e.currentTarget.dataset.notes || '';
+
+      if (paymentId) {
+        openEditOrderPaymentModal(
+          orderId,
+          { id: paymentId, amount: paid, paymentMethod: method, paymentDate: date, notes },
+          () => loadCashData(mainContainer)
+        );
+      } else {
+        openPaymentModal(orderId, total, paid, pending, () => {
+          loadCashData(mainContainer);
+        });
+      }
     });
   });
 
@@ -1694,6 +1712,7 @@ export function openCashKpiDetailModal({
                       </td>
                       <td>
                         <strong>${desc}</strong>
+                        ${item.deliveryFee && Number(item.deliveryFee) > 0 ? `<div style="font-size: 0.72rem; color: #0284C7; font-weight: 700;">🛵 Incluye ${formatCOP(item.deliveryFee)} de domicilio</div>` : ''}
                         ${item.notes ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📝 ${item.notes}</div>` : ''}
                       </td>
                       <td>${methodBadge}</td>
@@ -1794,10 +1813,14 @@ export function openCashKpiDetailModal({
   document.getElementById('btnCancelKpiDetailModal')?.addEventListener('click', closeModal);
 
   const searchInput = document.getElementById('kpiDetailSearchInput');
+  let kpiDetailDebounceTimer;
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
-      kpiDetailPage = 1;
-      updateContainer();
+      clearTimeout(kpiDetailDebounceTimer);
+      kpiDetailDebounceTimer = setTimeout(() => {
+        kpiDetailPage = 1;
+        updateContainer();
+      }, 250);
     });
   }
 

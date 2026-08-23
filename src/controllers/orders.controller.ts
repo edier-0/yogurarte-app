@@ -258,6 +258,7 @@ export const createOrder = async (req: Request, res: Response) => {
       deliveryType, // 'PROPIO' | 'DOMICILIARIO' | 'LOCAL'
       deliveryDriverId,
       deliveryDriverName,
+      deliveryFee,
       orderDate,
       deliveryDate,
       deliveryAddress,
@@ -351,9 +352,11 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     // Calcular totales acumulados
+    const parsedDeliveryFee = deliveryFee !== undefined ? Number(deliveryFee) : 0;
     const totalLitersCalculated = parsedItems.reduce((sum, i) => sum + i.totalLiters, 0);
     const totalQuantityBottles = parsedItems.reduce((sum, i) => sum + i.quantity, 0);
-    const calculatedTotalAmount = totalAmount ? Number(totalAmount) : parsedItems.reduce((sum, i) => sum + i.totalPrice, 0);
+    const itemsTotal = parsedItems.reduce((sum, i) => sum + i.totalPrice, 0);
+    const calculatedTotalAmount = totalAmount ? Number(totalAmount) : (itemsTotal + parsedDeliveryFee);
 
     const paid = Number(paidAmount || 0);
     const pending = Math.max(0, calculatedTotalAmount - paid);
@@ -419,6 +422,7 @@ export const createOrder = async (req: Request, res: Response) => {
         deliveryType: deliveryType ? String(deliveryType).toUpperCase() : 'PROPIO',
         deliveryDriverId: deliveryDriverId ? Number(deliveryDriverId) : null,
         deliveryDriverName: deliveryDriverName ? String(deliveryDriverName).trim() : null,
+        deliveryFee: parsedDeliveryFee,
         orderDate: dateObj,
         deliveryDate: deliveryDate ? new Date(`${String(deliveryDate).split('T')[0]}T12:00:00.000Z`) : null,
         deliveryAddress: deliveryAddress ? deliveryAddress.trim() : (customerAddress ? customerAddress.trim() : 'Fonseca'),
@@ -486,10 +490,12 @@ export const updateOrder = async (req: Request, res: Response) => {
       deliveryType,
       deliveryDriverId,
       deliveryDriverName,
+      deliveryFee,
       orderDate,
       deliveryDate,
       deliveryAddress,
       notes,
+      registeredBy,
     } = req.body;
 
     const currentOrder = await prisma.order.findUnique({
@@ -597,6 +603,8 @@ export const updateOrder = async (req: Request, res: Response) => {
       finalDeliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
     }
 
+    const targetPaymentMethod = paymentMethod !== undefined ? paymentMethod.trim() : currentOrder.paymentMethod;
+
     const updated = await prisma.order.update({
       where: { id: Number(id) },
       data: {
@@ -610,11 +618,12 @@ export const updateOrder = async (req: Request, res: Response) => {
         paidAmount: finalPaid,
         pendingAmount: finalPending,
         paymentStatus: finalPaymentStatus,
-        paymentMethod: paymentMethod !== undefined ? paymentMethod.trim() : currentOrder.paymentMethod,
+        paymentMethod: targetPaymentMethod,
         deliveryStatus: deliveryStatus || currentOrder.deliveryStatus,
         deliveryType: deliveryType !== undefined ? String(deliveryType).toUpperCase() : currentOrder.deliveryType,
         deliveryDriverId: deliveryDriverId !== undefined ? (deliveryDriverId ? Number(deliveryDriverId) : null) : currentOrder.deliveryDriverId,
         deliveryDriverName: deliveryDriverName !== undefined ? deliveryDriverName : currentOrder.deliveryDriverName,
+        deliveryFee: deliveryFee !== undefined ? Number(deliveryFee) : currentOrder.deliveryFee,
         orderDate: orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : currentOrder.orderDate,
         deliveryDate: finalDeliveryDate,
         deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : (customerAddress ? customerAddress.trim() : currentOrder.deliveryAddress),
@@ -629,6 +638,51 @@ export const updateOrder = async (req: Request, res: Response) => {
         },
       },
     });
+
+    // 3. Sincronizar registros en OrderPayment para que se reflejen exactamente en Caja y Dashboard
+    const existingPayments = await prisma.orderPayment.findMany({
+      where: { orderId: Number(id) },
+      orderBy: { paymentDate: 'asc' },
+    });
+
+    if (finalPaid === 0 && existingPayments.length > 0) {
+      // Si el pedido quedó en $0 pagado, eliminar abonos registrados
+      await prisma.orderPayment.deleteMany({
+        where: { orderId: Number(id) },
+      });
+    } else if (finalPaid > 0) {
+      if (existingPayments.length === 0) {
+        // No había abono previo registrado, crear el registro de abono
+        const pDate = orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : currentOrder.orderDate;
+        await prisma.orderPayment.create({
+          data: {
+            orderId: Number(id),
+            amount: finalPaid,
+            paymentDate: pDate,
+            paymentMethod: targetPaymentMethod || 'EFECTIVO',
+            notes: 'Abono registrado al actualizar pedido',
+            registeredBy: registeredBy || 'Edier',
+          },
+        });
+      } else if (existingPayments.length === 1) {
+        // Un solo pago: sincronizar su monto y su medio de pago
+        await prisma.orderPayment.update({
+          where: { id: existingPayments[0].id },
+          data: {
+            amount: finalPaid,
+            paymentMethod: targetPaymentMethod || 'EFECTIVO',
+          },
+        });
+      } else if (paymentMethod !== undefined) {
+        // Si hay varios abonos y el usuario cambió el método general, actualizar los abonos para que coincidan
+        await prisma.orderPayment.updateMany({
+          where: { orderId: Number(id) },
+          data: {
+            paymentMethod: targetPaymentMethod || 'EFECTIVO',
+          },
+        });
+      }
+    }
 
     res.json(updated);
   } catch (error) {
@@ -736,11 +790,22 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
             registeredBy: existing.deliveryDriverName || 'Domiciliario',
           },
         });
+      } else if (paymentMethod && existing.payments && existing.payments.length > 0) {
+        await prisma.orderPayment.updateMany({
+          where: { orderId },
+          data: { paymentMethod: String(paymentMethod).trim() },
+        });
       }
     }
 
     if (paymentMethod) {
       updateData.paymentMethod = String(paymentMethod).trim();
+      if (existing.payments && existing.payments.length > 0) {
+        await prisma.orderPayment.updateMany({
+          where: { orderId },
+          data: { paymentMethod: String(paymentMethod).trim() },
+        });
+      }
     }
 
     if (notes !== undefined) {
