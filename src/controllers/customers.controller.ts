@@ -3,7 +3,7 @@ import prisma from '../prisma.js';
 
 export const getCustomers = async (req: Request, res: Response) => {
   try {
-    const { search, includeInactive, batchId } = req.query;
+    const { search, includeInactive, batchId, lite } = req.query;
 
     const whereClause: any = {};
     if (includeInactive !== 'true') {
@@ -16,6 +16,22 @@ export const getCustomers = async (req: Request, res: Response) => {
         { phone: { contains: search.trim() } },
         { address: { contains: search.trim(), mode: 'insensitive' } },
       ];
+    }
+
+    if (lite === 'true') {
+      const liteCustomers = await prisma.customer.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+          address: true,
+          neighborhood: true,
+          isActive: true,
+        },
+        orderBy: { fullName: 'asc' },
+      });
+      return res.json(liteCustomers);
     }
 
     if (batchId && typeof batchId === 'string' && batchId !== 'ALL' && batchId.trim() !== '') {

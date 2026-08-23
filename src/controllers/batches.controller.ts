@@ -3,7 +3,7 @@ import prisma from '../prisma.js';
 
 export const getBatches = async (req: Request, res: Response) => {
   try {
-    const { status, includeInactive } = req.query;
+    const { status, includeInactive, lite } = req.query;
 
     const whereClause: any = {};
     if (includeInactive !== 'true') {
@@ -12,6 +12,27 @@ export const getBatches = async (req: Request, res: Response) => {
 
     if (status && typeof status === 'string' && status !== 'ALL') {
       whereClause.status = status;
+    }
+
+    if (lite === 'true') {
+      const liteBatches = await prisma.productionBatch.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          batchCode: true,
+          flavor: true,
+          price1L: true,
+          price2L: true,
+          status: true,
+          isActive: true,
+          totalLitersProduced: true,
+          bottles1LProduced: true,
+          bottles2LProduced: true,
+          preparationDate: true,
+        },
+        orderBy: { preparationDate: 'desc' },
+      });
+      return res.json(liteBatches);
     }
 
     const batches = await prisma.productionBatch.findMany({

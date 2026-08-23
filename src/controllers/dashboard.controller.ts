@@ -115,89 +115,126 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       cashMovementWhere.movementDate = { gte: startOfWeek };
     }
 
-    // 1. Consultar pedidos
-    const orders = await prisma.order.findMany({
-      where: orderWhere,
-      include: {
-        customer: true,
-        items: true,
-        payments: {
-          orderBy: { paymentDate: 'asc' },
-        },
-        batch: {
-          select: {
-            id: true,
-            batchCode: true,
-            flavor: true,
-            price1L: true,
-            price2L: true,
-          },
-        },
-      },
-      orderBy: { orderDate: 'desc' },
-    });
-
-    // 2. Consultar compras de materia prima
-    const purchases = await prisma.purchase.findMany({
-      where: purchaseWhere,
-      include: {
-        rawMaterial: {
-          select: {
-            name: true,
-            category: true,
-            unit: true,
-          },
-        },
-      },
-      orderBy: { purchaseDate: 'desc' },
-    });
-
-    // 3. Consultar gastos generales
-    const expenses = await prisma.expense.findMany({
-      where: expenseWhere,
-      orderBy: { expenseDate: 'desc' },
-    });
-
-    // 4. Consultar pagos de nómina y retiros de socios
-    const staffPayments = await prisma.staffPayment.findMany({
-      where: staffPaymentWhere,
-      include: {
-        staff: true,
-      },
-      orderBy: { paymentDate: 'desc' },
-    });
-
-    // 5. Consultar movimientos de caja (Bases iniciales, aportes y retiros)
-    const cashMovements = await prisma.cashMovement.findMany({
-      where: cashMovementWhere,
-      orderBy: { movementDate: 'desc' },
-    });
-
-    // 6. Consultar créditos y compras a cuotas activas
-    const activeCreditObligations = await prisma.creditObligation.findMany({
-      where: { status: 'ACTIVO' },
-      orderBy: { nextDueDate: 'asc' },
-    });
-
-    // 7. Consultar insumos con bajo stock
-    const rawMaterials = await prisma.rawMaterial.findMany({
-      where: { isActive: true },
-    });
-    const lowStockMaterials = rawMaterials.filter((m) => m.currentStock <= m.minStockAlert);
-
-    // 8. Consultar lotes de producción activos
+    // 1. Consultar todas las entidades en paralelo para máxima velocidad (PostgreSQL Connection Pooling)
     const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [batchesThisMonth, allActiveBatches] = await Promise.all([
+
+    const [
+      orders,
+      purchases,
+      expenses,
+      staffPayments,
+      cashMovements,
+      activeCreditObligations,
+      rawMaterials,
+      batchesThisMonth,
+      allActiveBatches,
+    ] = await Promise.all([
+      // 1. Pedidos del período
+      prisma.order.findMany({
+        where: orderWhere,
+        include: {
+          customer: true,
+          items: true,
+          payments: {
+            orderBy: { paymentDate: 'asc' },
+          },
+          batch: {
+            select: {
+              id: true,
+              batchCode: true,
+              flavor: true,
+              price1L: true,
+              price2L: true,
+            },
+          },
+        },
+        orderBy: { orderDate: 'desc' },
+      }),
+
+      // 2. Compras de materia prima
+      prisma.purchase.findMany({
+        where: purchaseWhere,
+        include: {
+          rawMaterial: {
+            select: {
+              name: true,
+              category: true,
+              unit: true,
+            },
+          },
+        },
+        orderBy: { purchaseDate: 'desc' },
+      }),
+
+      // 3. Gastos generales
+      prisma.expense.findMany({
+        where: expenseWhere,
+        orderBy: { expenseDate: 'desc' },
+      }),
+
+      // 4. Pagos de nómina y retiros de socios
+      prisma.staffPayment.findMany({
+        where: staffPaymentWhere,
+        include: {
+          staff: true,
+        },
+        orderBy: { paymentDate: 'desc' },
+      }),
+
+      // 5. Movimientos de caja (Bases iniciales, aportes y retiros)
+      prisma.cashMovement.findMany({
+        where: cashMovementWhere,
+        orderBy: { movementDate: 'desc' },
+      }),
+
+      // 6. Créditos y obligaciones activas
+      prisma.creditObligation.findMany({
+        where: { status: 'ACTIVO' },
+        orderBy: { nextDueDate: 'asc' },
+      }),
+
+      // 7. Insumos activos para alerta de bajo stock
+      prisma.rawMaterial.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          currentStock: true,
+          minStockAlert: true,
+          unit: true,
+          category: true,
+        },
+      }),
+
+      // 8. Lotes producidos este mes
       prisma.productionBatch.findMany({
         where: {
           isActive: true,
           preparationDate: { gte: startOfCurrentMonth },
         },
+        select: {
+          id: true,
+          totalLitersProduced: true,
+          yieldPercentage: true,
+          totalCost: true,
+        },
       }),
+
+      // 9. Todos los lotes activos
       prisma.productionBatch.findMany({
         where: { isActive: true },
+        select: {
+          id: true,
+          batchCode: true,
+          flavor: true,
+          status: true,
+          totalLitersProduced: true,
+        },
       }),
     ]);
+
+    const lowStockMaterials = rawMaterials.filter((m) => m.currentStock <= m.minStockAlert);
 
     // Cálculos de Nómina y Retiros
     const payrollPayments = staffPayments.filter((p) => p.paymentType !== 'RETIRO_SOCIO');

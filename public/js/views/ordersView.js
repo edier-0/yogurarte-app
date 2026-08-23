@@ -32,7 +32,7 @@ export async function renderOrders(container) {
   // Cargar lotes disponibles y repartidores para el filtro
   try {
     const [batchesRes, usersRes] = await Promise.all([
-      api.getBatches(),
+      api.getBatches({ lite: 'true' }),
       api.getUsers(),
     ]);
     availableBatches = batchesRes || [];
@@ -998,20 +998,20 @@ export async function openOrderModal(orderData = null) {
   const defaultPaymentMethod = isEditing ? (orderData.paymentMethod || 'EFECTIVO') : 'EFECTIVO';
   let selectedCustomerId = orderData?.customerId || null;
 
-  // Cargar clientes existentes para selector rápido
+  // Cargar clientes existentes en modo ultraligero para autocomplete
   let existingCustomers = [];
   try {
-    existingCustomers = await api.getCustomers();
+    existingCustomers = await api.getCustomers({ lite: 'true' });
   } catch (e) {
     console.error('Error fetching customers for modal:', e);
   }
 
-  // Cargar lotes de producción y repartidores disponibles
+  // Cargar lotes de producción y repartidores disponibles en modo ligero
   let availableBatches = [];
   let modalDrivers = [];
   try {
     const [fetchedBatches, fetchedUsers] = await Promise.all([
-      api.getBatches({ includeInactive: 'false' }),
+      api.getBatches({ includeInactive: 'false', lite: 'true' }),
       api.getUsers(),
     ]);
     availableBatches = (fetchedBatches || []).filter((b) => b.status !== 'DESCARTADO');

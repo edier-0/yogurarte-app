@@ -76,6 +76,35 @@ export const store = {
   notify() {
     this.listeners.forEach((listener) => listener(this));
   },
+
+  // Caché de catálogos en memoria para optimizar respuestas de UI
+  _catalogCache: new Map(),
+
+  getCached(key, ttlMs = 30000) {
+    const item = this._catalogCache.get(key);
+    if (!item) return null;
+    if (Date.now() - item.timestamp > ttlMs) {
+      this._catalogCache.delete(key);
+      return null;
+    }
+    return item.data;
+  },
+
+  setCached(key, data) {
+    this._catalogCache.set(key, { data, timestamp: Date.now() });
+  },
+
+  invalidateCache(prefix = null) {
+    if (!prefix) {
+      this._catalogCache.clear();
+    } else {
+      for (const key of this._catalogCache.keys()) {
+        if (key.startsWith(prefix)) {
+          this._catalogCache.delete(key);
+        }
+      }
+    }
+  },
 };
 
 // Formato de Moneda Colombiana (COP)

@@ -18,7 +18,7 @@ let cachedSettings = {
 
 export async function renderCustomers(container) {
   try {
-    const batchesRes = await api.getBatches();
+    const batchesRes = await api.getBatches({ lite: 'true' });
     availableBatches = batchesRes || [];
   } catch (err) {
     console.error('Error loading batches in customersView:', err);

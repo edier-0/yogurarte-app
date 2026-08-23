@@ -121,8 +121,16 @@ app.get('*', (req: Request, res: Response) => {
 // 10. Manejador centralizado de errores
 app.use(errorHandler);
 
+import prisma from './prisma.js';
+
 app.listen(PORT, () => {
   console.log(`🚀 Servidor YogurArte Seguro corriendo en http://localhost:${PORT}`);
   console.log(`🔒 Protección: Helmet + Rate Limiting + Bcrypt + JWT`);
   console.log(`📁 Frontend servido desde: ${publicPath}`);
+
+  // Rutina de optimización y estadísticas en PostgreSQL para índices B-Tree
+  prisma
+    .$executeRawUnsafe('ANALYZE;')
+    .then(() => console.log('⚡ Estadísticas de PostgreSQL optimizadas (ANALYZE completado)'))
+    .catch((err) => console.warn('Aviso: No se pudo ejecutar ANALYZE automático:', err.message));
 });
