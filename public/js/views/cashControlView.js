@@ -226,25 +226,32 @@ async function loadCashData(container) {
 
     // Combinar todos los movimientos cronológicamente con metadatos extendidos
     const allMovements = [
-      ...inflows.map((i) => ({
-        ...i,
-        flowType: 'INFLOW',
-        displayAmount: i.amount,
-        tabCategory: i.isCashMovement ? 'BASE' : 'SALES',
-      })),
-      ...outflows.map((o) => ({
-        ...o,
-        flowType: 'OUTFLOW',
-        displayAmount: -o.amount,
-        tabCategory:
-          o.category === 'COMPRA_INSUMO'
+      ...inflows.map((i) => {
+        const isAdj = i.movementType === 'AJUSTE_SOBRANTE' || i.movementType === 'AJUSTE_CAJA' || i.category === 'AJUSTE_SOBRANTE' || i.category === 'AJUSTE_CAJA' || (i.categoryLabel && i.categoryLabel.includes('Ajuste'));
+        return {
+          ...i,
+          flowType: 'INFLOW',
+          displayAmount: i.amount,
+          tabCategory: isAdj ? 'ADJUSTMENTS' : i.isCashMovement ? 'BASE' : 'SALES',
+        };
+      }),
+      ...outflows.map((o) => {
+        const isAdj = o.category === 'AJUSTE_FALTANTE' || o.category === 'AJUSTE_CAJA' || o.movementType === 'AJUSTE_FALTANTE' || (o.categoryLabel && o.categoryLabel.includes('Ajuste'));
+        return {
+          ...o,
+          flowType: 'OUTFLOW',
+          displayAmount: -o.amount,
+          tabCategory: isAdj
+            ? 'ADJUSTMENTS'
+            : o.category === 'COMPRA_INSUMO'
             ? 'PURCHASES'
             : o.category === 'NOMINA' || o.category === 'RETIRO_SOCIO'
             ? 'PAYROLL'
             : o.category === 'RETIRO_BASE'
             ? 'BASE'
             : 'EXPENSES',
-      })),
+        };
+      }),
       ...transfers.map((t) => ({
         ...t,
         flowType: 'TRANSFER',
@@ -256,6 +263,7 @@ async function loadCashData(container) {
     // Conteo por categorías
     const countAll = allMovements.filter((m) => m.flowType !== 'TRANSFER').length;
     const countBase = allMovements.filter((m) => m.tabCategory === 'BASE').length;
+    const countAdjustments = allMovements.filter((m) => m.tabCategory === 'ADJUSTMENTS').length;
     const countSales = allMovements.filter((m) => m.tabCategory === 'SALES').length;
     const countPurchases = allMovements.filter((m) => m.tabCategory === 'PURCHASES').length;
     const countExpenses = allMovements.filter((m) => m.tabCategory === 'EXPENSES').length;
@@ -275,6 +283,9 @@ async function loadCashData(container) {
         </button>
         <button class="expense-pill ${activeMovementTab === 'BASE' ? 'active' : ''}" data-mtab="BASE">
           🏦 Bases y Aportes (${countBase})
+        </button>
+        <button class="expense-pill ${activeMovementTab === 'ADJUSTMENTS' ? 'active' : ''}" data-mtab="ADJUSTMENTS" style="${activeMovementTab === 'ADJUSTMENTS' ? 'background: #7C3AED; border-color: #7C3AED; color: white;' : 'color: #7C3AED; font-weight: 700; border-color: #DDD6FE;'}">
+          ⚖️ Historial Ajustes y 4x1000 (${countAdjustments})
         </button>
         <button class="expense-pill ${activeMovementTab === 'SALES' ? 'active' : ''}" data-mtab="SALES">
           🥛 Cobros de Ventas (${countSales})
@@ -786,6 +797,127 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
         <span style="color: #DC2626;">Retirado: <strong>-${formatCOP(baseWithdrawals)}</strong></span>
         <span style="background: #059669; color: #FFF; padding: 4px 10px; border-radius: 20px; font-weight: 800;">
           Base Neta: ${formatCOP(netBase)}
+        </span>
+      </div>
+    `;
+  } else if (activeMovementTab === 'ADJUSTMENTS') {
+    const adjLoss = filtered.filter((m) => m.flowType === 'OUTFLOW').reduce((sum, m) => sum + m.amount, 0);
+    const adjGain = filtered.filter((m) => m.flowType === 'INFLOW').reduce((sum, m) => sum + m.amount, 0);
+    const netAdjustments = adjGain - adjLoss;
+
+    kpisGrid.innerHTML = `
+      <div class="kpi-clickable-card" id="kpiAdjNet" style="cursor: pointer; background: #FAF5FF; padding: 18px; border-radius: var(--radius-md); border: 2.5px solid #A855F7; transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver balance de ajustes">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: #6B21A8;">⚖️ IMPACTO NETO EN CAJA 🔍</span>
+          <span style="font-size: 1.2rem;">📊</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: ${netAdjustments >= 0 ? '#7E22CE' : '#DC2626'}; margin: 6px 0;">
+          ${netAdjustments >= 0 ? '+' : ''}${formatCOP(netAdjustments)}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #6B21A8; font-weight: 700;">
+          <span>${netAdjustments >= 0 ? 'Excedentes superan faltantes' : 'Disminución neta por 4x1000 / faltantes'}</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver balance ➔</span>
+        </div>
+      </div>
+
+      <div class="kpi-clickable-card" id="kpiAdjLoss" style="cursor: pointer; background: #FFF1F2; padding: 18px; border-radius: var(--radius-md); border: 1.5px solid #FECDD3; transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver faltantes y comisiones 4x1000">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: #9F1239;">📉 FALTANTES / 4x1000 (-) 🔍</span>
+          <span style="font-size: 1.2rem;">💸</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: #E11D48; margin: 6px 0;">
+          -${formatCOP(adjLoss)}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #9F1239; font-weight: 600;">
+          <span>${filtered.filter((m) => m.flowType === 'OUTFLOW').length} ajustes por descuadres o comisiones</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver detalle ➔</span>
+        </div>
+      </div>
+
+      <div class="kpi-clickable-card" id="kpiAdjGain" style="cursor: pointer; background: #F0FDF4; padding: 18px; border-radius: var(--radius-md); border: 1.5px solid #BBF7D0; transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver sobrantes de caja">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: #166534;">📈 SOBRANTES (+) 🔍</span>
+          <span style="font-size: 1.2rem;">🪙</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: #16A34A; margin: 6px 0;">
+          +${formatCOP(adjGain)}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #166534; font-weight: 600;">
+          <span>${filtered.filter((m) => m.flowType === 'INFLOW').length} excedentes registrados</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver detalle ➔</span>
+        </div>
+      </div>
+
+      <div class="kpi-clickable-card" id="kpiAdjCount" style="cursor: pointer; background: #F8FAFC; padding: 18px; border-radius: var(--radius-md); border: 1.5px solid var(--border-color); transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver todos los ajustes">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: var(--text-main);">📑 TOTAL REGISTROS 🔍</span>
+          <span style="font-size: 1.2rem;">⚖️</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: #7C3AED; margin: 6px 0;">
+          ${filtered.length}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: var(--text-muted); font-weight: 600;">
+          <span>Ajustes en el período</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver todos ➔</span>
+        </div>
+      </div>
+    `;
+
+    // Listeners interactivos para la pestaña ADJUSTMENTS
+    kpisGrid.querySelector('#kpiAdjNet')?.addEventListener('click', () => {
+      openCashKpiDetailModal({
+        title: '⚖️ Balance Neto de Ajustes de Caja y Bancos',
+        subtitle: 'Diferencias cuadradas por 4x1000, comisiones bancarias y sobrantes',
+        totalAmount: netAdjustments,
+        badgeText: 'BALANCE AJUSTES',
+        items: filtered,
+        isNet: true,
+      });
+    });
+
+    kpisGrid.querySelector('#kpiAdjLoss')?.addEventListener('click', () => {
+      openCashKpiDetailModal({
+        title: '📉 Ajustes Faltantes y Comisiones 4x1000 (-)',
+        subtitle: 'Movimientos que disminuyeron el saldo de caja o cuentas',
+        totalAmount: -adjLoss,
+        badgeText: 'FALTANTES / 4x1000',
+        items: filtered.filter((m) => m.flowType === 'OUTFLOW'),
+      });
+    });
+
+    kpisGrid.querySelector('#kpiAdjGain')?.addEventListener('click', () => {
+      openCashKpiDetailModal({
+        title: '📈 Ajustes Sobrantes de Caja (+)',
+        subtitle: 'Excedentes o correcciones que aumentaron el saldo',
+        totalAmount: adjGain,
+        badgeText: 'SOBRANTES',
+        items: filtered.filter((m) => m.flowType === 'INFLOW'),
+      });
+    });
+
+    kpisGrid.querySelector('#kpiAdjCount')?.addEventListener('click', () => {
+      openCashKpiDetailModal({
+        title: '📑 Historial Completo de Ajustes y Cuadre de Caja',
+        subtitle: 'Todos los registros de 4x1000, faltantes y sobrantes',
+        totalAmount: netAdjustments,
+        badgeText: `${filtered.length} AJUSTES`,
+        items: filtered,
+        isNet: true,
+      });
+    });
+
+    banner.style.background = '#FAF5FF';
+    banner.style.border = '1.5px solid #DDD6FE';
+    banner.style.color = '#6B21A8';
+    banner.innerHTML = `
+      <div>
+        <span>⚖️ Filtrando: <strong>Historial de Ajustes y Cuadre de Caja (4x1000 / Sobrantes / Faltantes)</strong> (${filtered.length} registros)</span>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <span style="color: #DC2626;">Faltantes / 4x1000: <strong>-${formatCOP(adjLoss)}</strong></span>
+        <span style="color: #15803D;">Sobrantes: <strong>+${formatCOP(adjGain)}</strong></span>
+        <span style="background: #7C3AED; color: #FFF; padding: 4px 10px; border-radius: 20px; font-weight: 800;">
+          Neto: ${netAdjustments >= 0 ? '+' : ''}${formatCOP(netAdjustments)}
         </span>
       </div>
     `;
@@ -1313,6 +1445,10 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
               } else if (m.tabCategory === 'PAYROLL') {
                 badgeBg = '#EDE9FE';
                 badgeColor = '#7C3AED';
+              } else if (m.tabCategory === 'ADJUSTMENTS') {
+                badgeBg = isPositive ? '#DCFCE7' : '#FEE2E2';
+                badgeColor = isPositive ? '#15803D' : '#DC2626';
+                typeLabel = isPositive ? '⚖️ Ajuste Sobrante (+)' : '⚖️ Ajuste 4x1000 / Faltante (-)';
               } else if (m.tabCategory === 'EXPENSES') {
                 badgeBg = '#FEE2E2';
                 badgeColor = '#DC2626';

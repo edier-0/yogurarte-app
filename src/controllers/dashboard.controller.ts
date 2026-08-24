@@ -608,6 +608,8 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
                 notes: m.notes,
                 isCashMovement: true,
                 movementType: m.type,
+                category: m.type,
+                categoryLabel: m.type === 'AJUSTE_SOBRANTE' ? '⚖️ Ajuste Sobrante (+)' : m.type === 'AJUSTE_CAJA' ? '⚖️ Ajuste de Caja' : '🏦 Base / Aporte',
                 rawMovement: m,
               })),
             ...orders

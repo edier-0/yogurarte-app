@@ -491,6 +491,13 @@ export const api = {
     });
   },
 
+  async updateStaffPayment(id, data) {
+    return apiFetch(`/staff/payments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   async deleteStaffPayment(id) {
     return apiFetch(`/staff/payments/${id}`, {
       method: 'DELETE',

@@ -232,3 +232,21 @@ export const debounce = (fn, delay = 250) => {
   };
 };
 
+// Generador universal y seguro de enlaces de WhatsApp con soporte total de emojis y usuarios
+export const buildWhatsAppUrl = (contact, message) => {
+  const rawContact = (contact || '').trim();
+  const digits = rawContact.replace(/\D/g, '');
+  const encodedText = encodeURIComponent(message);
+
+  if (digits.length >= 7) {
+    let cleanPhone = digits;
+    if (!cleanPhone.startsWith('57') && cleanPhone.length === 10) {
+      cleanPhone = `57${cleanPhone}`;
+    }
+    return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`;
+  }
+
+  // Si es un @usuario o no tiene número numérico válido:
+  return `https://api.whatsapp.com/send?text=${encodedText}`;
+};
+

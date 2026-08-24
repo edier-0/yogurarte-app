@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store, buildWhatsAppUrl } from '../store.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
 let deliveryCurrentPage = 1;
@@ -384,11 +384,8 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
           const isPaid = order.paymentStatus === 'PAID' || order.pendingAmount <= 0;
           const customerPhone = (order.customer?.phone || '').trim();
           const cleanPhone = customerPhone.replace(/\D/g, '');
-          const waPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
-          const waMessage = encodeURIComponent(
-            `¡Hola ${order.customer?.fullName}! 🥛✨ Te saludamos de YogurArte. Tu pedido (#${order.orderNumber}) de yogur artesanal 100% natural ya va en camino hacia tu dirección (${order.deliveryAddress || 'Fonseca'}). Atento para recibirlo. 🛵💨`
-          );
-          const waUrl = `https://api.whatsapp.com/send?phone=${waPhone}&text=${waMessage}`;
+          const waMessage = `¡Hola ${order.customer?.fullName}! 🥛✨ Te saludamos de YogurArte. Tu pedido (#${order.orderNumber}) de yogur artesanal 100% natural ya va en camino hacia tu dirección (${order.deliveryAddress || 'Fonseca'}). Atento para recibirlo. 🛵💨`;
+          const waUrl = buildWhatsAppUrl(customerPhone, waMessage);
 
           let itemsText = '';
           if (order.items && order.items.length > 0) {

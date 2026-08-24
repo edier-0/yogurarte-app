@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
+import { buildWhatsAppUrl } from '../utils/whatsapp.utils.js';
 
 export const getCustomers = async (req: Request, res: Response) => {
   try {
@@ -199,18 +200,7 @@ export const getCustomerWhatsAppLink = async (req: Request, res: Response) => {
       msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos de *YogurArte*.\n\n¿Te gustaría ordenar más de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos a tus pedidos. 🍓🍑🍇`;
     }
 
-    const encoded = encodeURIComponent(msg);
-    let whatsappUrl = '';
-    if (isUsername) {
-      const cleanUser = rawPhone.replace(/^@/, '').trim();
-      whatsappUrl = `https://api.whatsapp.com/send/?username=${cleanUser}&text=${encoded}&type=username`;
-    } else {
-      let cleanPhone = rawPhone.replace(/\D/g, '');
-      if (!cleanPhone.startsWith('57') && cleanPhone.length === 10) {
-        cleanPhone = `57${cleanPhone}`;
-      }
-      whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`;
-    }
+    const whatsappUrl = buildWhatsAppUrl(rawPhone, msg);
 
     res.json({ whatsappUrl, message: msg, deliveredPendingDebt, inProcessPendingAmount });
   } catch (error) {

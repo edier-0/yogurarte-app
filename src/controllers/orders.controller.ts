@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
 import { getAllSettingsMap } from './settings.controller.js';
+import { buildWhatsAppUrl } from '../utils/whatsapp.utils.js';
 
 const getColombiaDateStr = (d = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
@@ -1205,10 +1206,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
 
       deliveredMsg += `Estamos siempre atentos a cualquier duda o para tu próximo pedido. ¡Que lo disfrutes mucho! 🥛🍇🍓`;
 
-      const encodedMessage = encodeURIComponent(deliveredMsg);
-      const whatsappUrl = isUsername
-        ? `https://api.whatsapp.com/send/?username=${whatsappPhoneParam}&text=${encodedMessage}&type=username`
-        : `https://api.whatsapp.com/send?phone=${whatsappPhoneParam}&text=${encodedMessage}`;
+      const whatsappUrl = buildWhatsAppUrl(rawContact, deliveredMsg);
 
       return res.json({
         whatsappUrl,
@@ -1230,10 +1228,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
       paidMsg += `🥣 Tu yogur 100% natural, fresco y sin conservantes está siendo preparado con todo el amor. Te notificaremos apenas nuestro domiciliario vaya en camino hacia tu dirección (${order.deliveryAddress || order.customer.address || 'Fonseca'}). 🍓🍑🛵💨\n\n`;
       paidMsg += `¡Que tengas un día maravilloso! ✨🥛`;
 
-      const encodedMessage = encodeURIComponent(paidMsg);
-      const whatsappUrl = isUsername
-        ? `https://api.whatsapp.com/send/?username=${whatsappPhoneParam}&text=${encodedMessage}&type=username`
-        : `https://api.whatsapp.com/send?phone=${whatsappPhoneParam}&text=${encodedMessage}`;
+      const whatsappUrl = buildWhatsAppUrl(rawContact, paidMsg);
 
       return res.json({
         whatsappUrl,
@@ -1268,10 +1263,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
     message += `${paymentInfo}\n\n`;
     message += `${closingPhrase}`;
 
-    const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = isUsername
-      ? `https://api.whatsapp.com/send/?username=${whatsappPhoneParam}&text=${encodedMessage}&type=username`
-      : `https://api.whatsapp.com/send?phone=${whatsappPhoneParam}&text=${encodedMessage}`;
+    const whatsappUrl = buildWhatsAppUrl(rawContact, message);
 
     res.json({
       whatsappUrl,

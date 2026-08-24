@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
+import { buildWhatsAppUrl } from '../utils/whatsapp.utils.js';
 
 // Listar miembros del personal y socios
 export const getStaff = async (req: Request, res: Response) => {
@@ -282,6 +283,69 @@ export const createStaffPayment = async (req: Request, res: Response) => {
   }
 };
 
+// Actualizar un pago de nómina o retiro de socio existente
+export const updateStaffPayment = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      staffId,
+      paymentType,
+      amount,
+      deductions,
+      netAmount,
+      periodStart,
+      periodEnd,
+      paymentDate,
+      calculationDetails,
+      paymentMethod,
+      notes,
+      registeredBy,
+    } = req.body;
+
+    const existing = await prisma.staffPayment.findUnique({
+      where: { id: Number(id) },
+      include: { staff: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Pago no encontrado' });
+    }
+
+    const data: any = {};
+    if (staffId !== undefined) data.staffId = Number(staffId);
+    if (paymentType !== undefined) data.paymentType = paymentType;
+    if (amount !== undefined) data.amount = Number(amount);
+    if (deductions !== undefined) data.deductions = Number(deductions);
+
+    if (netAmount !== undefined) {
+      data.netAmount = Number(netAmount);
+    } else if (amount !== undefined || deductions !== undefined) {
+      const g = amount !== undefined ? Number(amount) : existing.amount;
+      const d = deductions !== undefined ? Number(deductions) : existing.deductions;
+      data.netAmount = Math.max(0, g - d);
+    }
+
+    if (periodStart !== undefined) data.periodStart = periodStart ? new Date(periodStart) : null;
+    if (periodEnd !== undefined) data.periodEnd = periodEnd ? new Date(periodEnd) : null;
+    if (paymentDate !== undefined) data.paymentDate = paymentDate ? new Date(paymentDate) : existing.paymentDate;
+    if (calculationDetails !== undefined) data.calculationDetails = calculationDetails || null;
+    if (paymentMethod !== undefined) data.paymentMethod = paymentMethod;
+    if (notes !== undefined) data.notes = notes || null;
+    if (registeredBy !== undefined) data.registeredBy = registeredBy;
+
+    const updated = await prisma.staffPayment.update({
+      where: { id: Number(id) },
+      data,
+      include: { staff: true },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error al actualizar pago de nómina:', error);
+    res.status(500).json({ error: 'Error al actualizar pago de nómina' });
+  }
+};
+
 // Eliminar un pago de nómina
 export const deleteStaffPayment = async (req: Request, res: Response) => {
   try {
@@ -309,15 +373,8 @@ export const getStaffPaymentWhatsAppLink = async (req: Request, res: Response) =
       return res.status(404).json({ error: 'Pago no encontrado' });
     }
 
-    if (!payment.staff.phone) {
-      return res.status(400).json({ error: 'El colaborador no tiene teléfono registrado' });
-    }
-
     const formatMoney = (val: number) => `$${Math.round(val).toLocaleString('es-CO')} COP`;
     const formatDateStr = (d: Date | null) => (d ? new Date(d).toLocaleDateString('es-CO') : 'N/A');
-
-    const cleanPhone = payment.staff.phone.replace(/\D/g, '');
-    const phoneWithCountry = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
 
     const isSocio = payment.paymentType === 'RETIRO_SOCIO';
     const title = isSocio ? '🤝 *COMPROBANTE DE RETIRO DE SOCIO*' : '🥛 *COMPROBANTE DE PAGO DE NÓMINA*';
@@ -349,10 +406,32 @@ export const getStaffPaymentWhatsAppLink = async (req: Request, res: Response) =
 
     message += `\n✨ _¡Gracias por formar parte del equipo de YogurArte!_ 🥛`;
 
-    const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/${phoneWithCountry}?text=${encodedMessage}`;
+    // Resolver el teléfono numérico real para abrir el chat directo
+    let targetPhone = (payment.staff.phone || '').trim();
+    let phoneDigits = targetPhone.replace(/\D/g, '');
 
-    res.json({ whatsappUrl, message });
+    // Si el campo phone es un username o no tiene al menos 7 dígitos, buscar en bankInfo
+    if (phoneDigits.length < 7 && payment.staff.bankInfo) {
+      const bankDigits = payment.staff.bankInfo.replace(/\D/g, '');
+      if (bankDigits.length >= 7) {
+        targetPhone = bankDigits;
+        phoneDigits = bankDigits;
+      }
+    }
+
+    // Si aún no tiene número, verificar nombres conocidos de socios
+    if (phoneDigits.length < 7) {
+      const searchKey = `${payment.staff.fullName || ''} ${payment.staff.phone || ''}`.toLowerCase();
+      if (searchKey.includes('edier')) {
+        targetPhone = '3024581882';
+      } else if (searchKey.includes('yeilin')) {
+        targetPhone = '3147464663';
+      }
+    }
+
+    const whatsappUrl = buildWhatsAppUrl(targetPhone, message);
+
+    res.json({ whatsappUrl, message, phone: targetPhone });
   } catch (error) {
     console.error('Error al generar enlace de WhatsApp:', error);
     res.status(500).json({ error: 'Error al generar enlace de WhatsApp' });

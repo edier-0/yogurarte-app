@@ -443,11 +443,11 @@ document.addEventListener('DOMContentLoaded', () => {
             </p>
 
             <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
-              <a href="https://wa.me/573024581882?text=${msgEdier}" target="_blank" class="btn btn-outline" style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #15803D; border-color: #86EFAC; font-weight: 800; padding: 10px;">
+              <a href="https://api.whatsapp.com/send?phone=573024581882&text=${msgEdier}" target="_blank" class="btn btn-outline" style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #15803D; border-color: #86EFAC; font-weight: 800; padding: 10px;">
                 <span>💬 Solicitar a Edier por WhatsApp</span>
               </a>
 
-              <a href="https://wa.me/573147464663?text=${msgYeilin}" target="_blank" class="btn btn-outline" style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #6D28D9; border-color: #DDD6FE; font-weight: 800; padding: 10px;">
+              <a href="https://api.whatsapp.com/send?phone=573147464663&text=${msgYeilin}" target="_blank" class="btn btn-outline" style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #6D28D9; border-color: #DDD6FE; font-weight: 800; padding: 10px;">
                 <span>💬 Solicitar a Yeilin por WhatsApp</span>
               </a>
             </div>

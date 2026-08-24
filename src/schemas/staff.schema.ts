@@ -35,3 +35,18 @@ export const createStaffPaymentSchema = z.object({
   notes: z.string().optional().nullable(),
   registeredBy: z.string().optional(),
 });
+
+export const updateStaffPaymentSchema = z.object({
+  staffId: z.coerce.number().int().positive('ID de integrante inválido').optional(),
+  paymentType: z.string().optional(),
+  amount: z.coerce.number().min(0).optional(),
+  deductions: z.coerce.number().min(0).optional(),
+  netAmount: z.coerce.number().min(0).optional(),
+  periodStart: z.string().optional().nullable(),
+  periodEnd: z.string().optional().nullable(),
+  paymentDate: z.string().optional(),
+  calculationDetails: z.string().optional().nullable(),
+  paymentMethod: z.string().optional(),
+  notes: z.string().optional().nullable(),
+  registeredBy: z.string().optional(),
+});

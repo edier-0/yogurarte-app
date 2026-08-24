@@ -7,6 +7,7 @@ import {
   deleteStaff,
   getStaffPayments,
   createStaffPayment,
+  updateStaffPayment,
   deleteStaffPayment,
   getStaffPaymentWhatsAppLink,
 } from '../controllers/staff.controller.js';
@@ -15,6 +16,7 @@ import {
   createStaffSchema,
   updateStaffSchema,
   createStaffPaymentSchema,
+  updateStaffPaymentSchema,
 } from '../schemas/staff.schema.js';
 import { idParamSchema } from '../schemas/common.schema.js';
 
@@ -30,6 +32,7 @@ router.delete('/:id', validateParams(idParamSchema), deleteStaff);
 // Rutas de Pagos de Nómina, Retiros de Socios y Anticipos
 router.get('/payments/list', getStaffPayments);
 router.post('/payments', validateBody(createStaffPaymentSchema), createStaffPayment);
+router.put('/payments/:id', validateParams(idParamSchema), validateBody(updateStaffPaymentSchema), updateStaffPayment);
 router.delete('/payments/:id', validateParams(idParamSchema), deleteStaffPayment);
 router.get('/payments/:id/whatsapp', validateParams(idParamSchema), getStaffPaymentWhatsAppLink);
 

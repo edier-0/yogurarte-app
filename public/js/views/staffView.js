@@ -403,6 +403,9 @@ function renderPaymentsHistoryTableHtml(payments) {
                       <button class="btn btn-whatsapp btn-sm btn-staff-whatsapp" data-id="${p.id}" title="Enviar comprobante por WhatsApp">
                         ${WA_ICON_SVG} Recibo
                       </button>
+                      <button class="btn btn-outline btn-sm btn-edit-payment" data-id="${p.id}" style="color: var(--primary); border-color: var(--primary-light); padding: 3px 8px; font-weight: 700;" title="Editar este pago / método / monto">
+                        ✏️ Editar
+                      </button>
                       <button class="btn btn-outline btn-sm btn-delete-payment" data-id="${p.id}" style="color: var(--danger); padding: 3px 8px;" title="Eliminar registro">
                         🗑️
                       </button>
@@ -726,6 +729,17 @@ function attachStaffEvents(container, staffList, allPayments, usersList = []) {
     });
   });
 
+  // Botón Editar Pago
+  container.querySelectorAll('.btn-edit-payment').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const id = Number(e.currentTarget.dataset.id);
+      const payment = allPayments.find((p) => p.id === id);
+      if (payment) {
+        openStaffPaymentModal(staffList, payment.staffId, payment);
+      }
+    });
+  });
+
   // Botón Eliminar Pago
   container.querySelectorAll('.btn-delete-payment').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
@@ -788,8 +802,9 @@ export function openStaffModal(memberData = null) {
             </div>
 
             <div class="form-group">
-              <label class="form-label">Teléfono o WhatsApp (Opcional)</label>
-              <input type="text" id="staffPhone" class="form-input" placeholder="Ej: 3014964250" value="${memberData?.phone || ''}" />
+              <label class="form-label" style="font-weight: 700;">📱 Celular / WhatsApp Directo (10 dígitos)</label>
+              <input type="text" id="staffPhone" class="form-input" placeholder="Ej: 3024581882" value="${memberData?.phone || ''}" />
+              <small style="color: var(--text-muted); font-size: 0.73rem; display: block; margin-top: 3px;">Ingresa el número celular de WhatsApp para que el chat se abra directamente.</small>
             </div>
 
             <div class="form-group">
@@ -879,8 +894,8 @@ export function openStaffModal(memberData = null) {
   }
 }
 
-// Modal de Liquidación de Pago / Retiro de Socio
-export function openStaffPaymentModal(staffList = [], preselectedStaffId = null) {
+// Modal de Liquidación / Edición de Pago o Retiro de Socio
+export function openStaffPaymentModal(staffList = [], preselectedStaffId = null, paymentToEdit = null) {
   const modalOverlay = document.getElementById('modalContainer');
   if (!modalOverlay) return;
 
@@ -890,14 +905,26 @@ export function openStaffPaymentModal(staffList = [], preselectedStaffId = null)
     return;
   }
 
-  const selectedMember = staffList.find((s) => s.id === preselectedStaffId) || staffList[0];
+  const isEditing = !!paymentToEdit;
+  const targetStaffId = paymentToEdit ? paymentToEdit.staffId : preselectedStaffId;
+  const selectedMember = staffList.find((s) => s.id === targetStaffId) || staffList[0];
   const isSocio = selectedMember?.type === 'SOCIO';
+
+  const defaultPaymentType = paymentToEdit ? paymentToEdit.paymentType : (isSocio ? 'RETIRO_SOCIO' : 'NOMINA');
+  const defaultMethod = paymentToEdit ? paymentToEdit.paymentMethod : 'EFECTIVO';
+  const defaultGross = paymentToEdit ? paymentToEdit.amount : 0;
+  const defaultDed = paymentToEdit ? (paymentToEdit.deductions || 0) : 0;
+  const defaultDate = paymentToEdit && paymentToEdit.paymentDate ? paymentToEdit.paymentDate.split('T')[0] : getTodayLocalDateStr();
+  const defaultStart = paymentToEdit && paymentToEdit.periodStart ? paymentToEdit.periodStart.split('T')[0] : '';
+  const defaultEnd = paymentToEdit && paymentToEdit.periodEnd ? paymentToEdit.periodEnd.split('T')[0] : '';
+  const defaultConcept = paymentToEdit ? (paymentToEdit.calculationDetails || '') : (isSocio ? 'Retiro de utilidades' : 'Pago de nómina');
+  const defaultNotes = paymentToEdit ? (paymentToEdit.notes || '') : '';
 
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
       <div class="modal-card" style="max-width: 520px;">
         <div class="modal-header">
-          <h3 class="modal-title">💵 Registrar Pago o Retiro de Socio</h3>
+          <h3 class="modal-title">${isEditing ? '✏️ Editar Pago / Retiro de Socio' : '💵 Registrar Pago o Retiro de Socio'}</h3>
           <button class="modal-close-btn" id="btnClosePayModal">✕</button>
         </div>
         <form id="paymentStaffForm">
@@ -922,20 +949,20 @@ export function openStaffPaymentModal(staffList = [], preselectedStaffId = null)
               <div class="form-group">
                 <label class="form-label">Tipo de Movimiento *</label>
                 <select id="payMovementType" class="form-select" style="font-weight: 800;">
-                  <option value="NOMINA" ${!isSocio ? 'selected' : ''}>🟢 Pago de Nómina / Honorarios</option>
-                  <option value="RETIRO_SOCIO" ${isSocio ? 'selected' : ''}>🟣 Retiro de Socio (Utilidades personales)</option>
-                  <option value="ANTICIPO">🟡 Anticipo / Adelanto de Sueldo</option>
-                  <option value="BONIFICACION">🔵 Bonificación Especial</option>
+                  <option value="NOMINA" ${defaultPaymentType === 'NOMINA' ? 'selected' : ''}>🟢 Pago de Nómina / Honorarios</option>
+                  <option value="RETIRO_SOCIO" ${defaultPaymentType === 'RETIRO_SOCIO' ? 'selected' : ''}>🟣 Retiro de Socio (Utilidades personales)</option>
+                  <option value="ANTICIPO" ${defaultPaymentType === 'ANTICIPO' ? 'selected' : ''}>🟡 Anticipo / Adelanto de Sueldo</option>
+                  <option value="BONIFICACION" ${defaultPaymentType === 'BONIFICACION' ? 'selected' : ''}>🔵 Bonificación Especial</option>
                 </select>
               </div>
 
               <div class="form-group">
                 <label class="form-label">Método de Pago *</label>
                 <select id="payMethod" class="form-select" style="font-weight: 700;">
-                  <option value="EFECTIVO">💵 Efectivo de Caja</option>
-                  <option value="NEQUI">📱 Nequi</option>
-                  <option value="BANCOLOMBIA">🏦 Bancolombia</option>
-                  <option value="TRANSFERENCIA">💳 Otra Transferencia</option>
+                  <option value="EFECTIVO" ${defaultMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo de Caja</option>
+                  <option value="NEQUI" ${defaultMethod === 'NEQUI' ? 'selected' : ''}>📱 Nequi</option>
+                  <option value="BANCOLOMBIA" ${defaultMethod === 'BANCOLOMBIA' ? 'selected' : ''}>🏦 Bancolombia</option>
+                  <option value="TRANSFERENCIA" ${defaultMethod === 'TRANSFERENCIA' ? 'selected' : ''}>💳 Otra Transferencia</option>
                 </select>
               </div>
             </div>
@@ -970,7 +997,7 @@ export function openStaffPaymentModal(staffList = [], preselectedStaffId = null)
 
               <div class="form-group" style="margin-bottom: 0;">
                 <label class="form-label" style="font-size: 0.78rem;">Detalle / Concepto del Pago</label>
-                <input type="text" id="calcConceptInput" class="form-input" placeholder="Ej: Pago quincena 1 de agosto..." value="${isSocio ? 'Retiro de utilidades' : 'Pago de nómina'}" style="font-size: 0.82rem;" />
+                <input type="text" id="calcConceptInput" class="form-input" placeholder="Ej: Pago quincena 1 de agosto..." value="${defaultConcept}" style="font-size: 0.82rem;" />
               </div>
             </div>
 
@@ -978,47 +1005,47 @@ export function openStaffPaymentModal(staffList = [], preselectedStaffId = null)
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Monto Bruto ($ COP) *</label>
-                <input type="number" id="payGrossAmount" class="form-input" value="0" min="0" required style="font-weight: 800; color: var(--primary);" />
+                <input type="number" id="payGrossAmount" class="form-input" value="${defaultGross}" min="0" required style="font-weight: 800; color: var(--primary);" />
               </div>
 
               <div class="form-group">
                 <label class="form-label">Deducciones / Anticipos ($ COP)</label>
-                <input type="number" id="payDeductions" class="form-input" value="0" min="0" placeholder="0 si no hay descuentos" />
+                <input type="number" id="payDeductions" class="form-input" value="${defaultDed}" min="0" placeholder="0 si no hay descuentos" />
               </div>
             </div>
 
             <div class="form-group" style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
               <span style="font-weight: 800; color: #15803D; font-size: 0.9rem;">Total Neto a Desembolsar:</span>
-              <strong id="payNetDisplay" style="font-size: 1.25rem; color: #16A34A; font-weight: 900;">$0 COP</strong>
+              <strong id="payNetDisplay" style="font-size: 1.25rem; color: #16A34A; font-weight: 900;">${formatCOP(Math.max(0, defaultGross - defaultDed))}</strong>
             </div>
 
             <!-- Fechas de Periodo y Pago -->
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">📅 Fecha de Pago *</label>
-                <input type="date" id="payPaymentDate" class="form-input" value="${getTodayLocalDateStr()}" required />
+                <input type="date" id="payPaymentDate" class="form-input" value="${defaultDate}" required />
               </div>
 
               <div class="form-group">
                 <label class="form-label">Periodo: Desde</label>
-                <input type="date" id="payPeriodStart" class="form-input" />
+                <input type="date" id="payPeriodStart" class="form-input" value="${defaultStart}" />
               </div>
 
               <div class="form-group">
                 <label class="form-label">Periodo: Hasta</label>
-                <input type="date" id="payPeriodEnd" class="form-input" />
+                <input type="date" id="payPeriodEnd" class="form-input" value="${defaultEnd}" />
               </div>
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
               <label class="form-label">Notas Adicionales (Opcional)</label>
-              <input type="text" id="payNotes" class="form-input" placeholder="Ej: Queda pendiente $20.000 para el viernes..." />
+              <input type="text" id="payNotes" class="form-input" placeholder="Ej: Queda pendiente $20.000 para el viernes..." value="${defaultNotes}" />
             </div>
 
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline" id="btnCancelPayModal">Cancelar</button>
-            <button type="submit" class="btn btn-accent" style="padding: 10px 22px;">Registrar Pago 💵</button>
+            <button type="submit" class="btn btn-accent" style="padding: 10px 22px;">${isEditing ? '💾 Guardar Cambios' : 'Registrar Pago 💵'}</button>
           </div>
         </form>
       </div>
@@ -1115,23 +1142,34 @@ export function openStaffPaymentModal(staffList = [], preselectedStaffId = null)
     };
 
     try {
-      const newPay = await api.createStaffPayment(payload);
-      showToast('¡Pago registrado con éxito! 💵');
+      let savedPaymentId;
+      if (isEditing) {
+        await api.updateStaffPayment(paymentToEdit.id, payload);
+        savedPaymentId = paymentToEdit.id;
+        showToast('¡Pago actualizado correctamente! ✏️');
+      } else {
+        const newPay = await api.createStaffPayment(payload);
+        savedPaymentId = newPay.id;
+        showToast('¡Pago registrado con éxito! 💵');
+      }
       closeModal();
       renderStaff(document.getElementById('contentContainer'));
 
-      // Preguntar si desea enviar comprobante por WhatsApp si el integrante tiene teléfono
+      // Preguntar si desea enviar comprobante por WhatsApp
       const staffObj = staffList.find((s) => s.id === Number(payload.staffId));
-      if (staffObj?.phone) {
-        setTimeout(async () => {
-          if (confirm(`¿Deseas enviar el comprobante de pago por WhatsApp a ${staffObj.fullName}?`)) {
-            const res = await api.getStaffPaymentWhatsAppLink(newPay.id);
+      const staffName = staffObj?.fullName || 'el colaborador';
+      setTimeout(async () => {
+        if (confirm(`¿Deseas enviar el comprobante de pago por WhatsApp a ${staffName}?`)) {
+          try {
+            const res = await api.getStaffPaymentWhatsAppLink(savedPaymentId);
             if (res.whatsappUrl) window.open(res.whatsappUrl, '_blank');
+          } catch (e) {
+            console.error('Error opening whatsapp link:', e);
           }
-        }, 300);
-      }
+        }
+      }, 300);
     } catch (err) {
-      showToast(err.message || 'Error al registrar pago', 'danger');
+      showToast(err.message || 'Error al guardar pago', 'danger');
     }
   });
 }

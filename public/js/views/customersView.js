@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, showToast } from '../store.js';
+import { formatCOP, formatDate, showToast, buildWhatsAppUrl } from '../store.js';
 import { openOrderModal } from './ordersView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
@@ -199,17 +199,7 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
           `¿Te gustaría ordenar más de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos para prepararte los mejores sabores. 🍓🍑🍇🥛`;
   }
 
-  const encoded = encodeURIComponent(msg);
-  if (isUsername) {
-    const cleanUser = rawPhone.replace(/^@/, '').trim();
-    return `https://api.whatsapp.com/send/?username=${cleanUser}&text=${encoded}&type=username`;
-  } else {
-    let cleanPhone = rawPhone.replace(/\D/g, '');
-    if (!cleanPhone.startsWith('57') && cleanPhone.length === 10) {
-      cleanPhone = `57${cleanPhone}`;
-    }
-    return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`;
-  }
+  return buildWhatsAppUrl(rawPhone, msg);
 }
 
 async function loadCustomersList(container) {
