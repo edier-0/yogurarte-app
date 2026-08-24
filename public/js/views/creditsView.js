@@ -20,10 +20,13 @@ export async function renderCredits(container) {
 
       <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
         <!-- Filtro por Estado -->
-        <div style="display: flex; gap: 4px; background: var(--bg-card); padding: 4px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+        <div style="display: flex; gap: 4px; background: var(--bg-card); padding: 4px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); align-items: center;">
           <button class="btn btn-sm ${creditFilterStatus === 'ALL' ? 'btn-primary' : 'btn-outline'}" data-cstatus="ALL">Todos</button>
           <button class="btn btn-sm ${creditFilterStatus === 'ACTIVO' ? 'btn-primary' : 'btn-outline'}" data-cstatus="ACTIVO">🟢 Activos</button>
           <button class="btn btn-sm ${creditFilterStatus === 'PAGADO_TOTAL' ? 'btn-primary' : 'btn-outline'}" data-cstatus="PAGADO_TOTAL">🎉 Pagados</button>
+          <button class="btn btn-sm btn-outline" id="btnClearCreditFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px; margin-left: 4px;" title="Restablecer filtros de créditos">
+            <span>🧹</span> Limpiar Filtros
+          </button>
         </div>
 
         <button class="btn btn-accent" id="btnOpenNewCreditModal" style="font-weight: 800;">
@@ -42,6 +45,13 @@ export async function renderCredits(container) {
       <div style="text-align: center; padding: 30px; color: var(--text-muted);">Cargando compras a crédito...</div>
     </div>
   `;
+
+  // Listener para limpiar filtros
+  container.querySelector('#btnClearCreditFilters')?.addEventListener('click', () => {
+    creditFilterStatus = 'ALL';
+    creditsCurrentPage = 1;
+    renderCredits(container);
+  });
 
   // Listeners de filtro
   container.querySelectorAll('[data-cstatus]').forEach((btn) => {

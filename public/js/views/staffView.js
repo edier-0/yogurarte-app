@@ -126,7 +126,7 @@ export async function renderStaff(container) {
             }
           </div>
 
-          <div style="display: flex; gap: 8px; align-items: center;">
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <input 
               type="text" 
               id="staffSearchInput" 
@@ -135,6 +135,9 @@ export async function renderStaff(container) {
               value="${staffFilters.searchTerm}"
               style="max-width: 250px; font-size: 0.85rem; padding: 6px 10px;"
             />
+            <button class="btn btn-sm btn-outline" id="btnClearStaffFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros de personal">
+              <span>🧹</span> Limpiar Filtros
+            </button>
           </div>
         </div>
       </div>
@@ -570,6 +573,19 @@ function attachStaffEvents(container, staffList, allPayments, usersList = []) {
   const searchInput = container.querySelector('#staffSearchInput');
   searchInput?.addEventListener('input', (e) => {
     staffFilters.searchTerm = e.target.value;
+    staffCurrentPage = 1;
+    paymentsCurrentPage = 1;
+    usersCurrentPage = 1;
+    renderStaff(container);
+  });
+
+  // Limpiar filtros
+  container.querySelector('#btnClearStaffFilters')?.addEventListener('click', () => {
+    staffFilters = {
+      tab: 'all',
+      searchTerm: '',
+      month: '',
+    };
     staffCurrentPage = 1;
     paymentsCurrentPage = 1;
     usersCurrentPage = 1;

@@ -114,6 +114,11 @@ export async function renderDelivery(container) {
               style="width: auto; padding: 6px 10px; font-size: 0.84rem; font-weight: 700; ${deliveryDateScope === 'SPECIFIC_DATE' ? '' : 'display: none;'}"
               title="Selecciona una fecha de entrega específica"
             />
+
+            <!-- Botón Limpiar Filtros -->
+            <button class="btn btn-outline" id="btnClearDeliveryFilters" style="font-weight: 700; font-size: 0.84rem; padding: 6px 12px; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros a valores por defecto">
+              <span>🧹</span> Limpiar Filtros
+            </button>
           </div>
         </div>
 
@@ -584,6 +589,16 @@ function attachDeliveryEvents(container) {
   });
 
   document.getElementById('btnRefreshDeliveries')?.addEventListener('click', () => {
+    renderDelivery(container);
+  });
+
+  document.getElementById('btnClearDeliveryFilters')?.addEventListener('click', () => {
+    deliverySearchQuery = '';
+    deliveryStatusFilter = 'PENDING';
+    deliveryTypeFilter = 'DELIVERY_ALL';
+    deliveryDateScope = 'ALL_PENDING';
+    deliverySpecificDate = getTodayLocalDateStr();
+    deliveryCurrentPage = 1;
     renderDelivery(container);
   });
 

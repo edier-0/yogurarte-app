@@ -215,6 +215,11 @@ export async function renderOrders(container) {
             <option value="PARTIAL" ${currentFilters.paymentStatus === 'PARTIAL' ? 'selected' : ''}>🟡 Con Abono Parcial</option>
             <option value="PENDING" ${currentFilters.paymentStatus === 'PENDING' ? 'selected' : ''}>🔴 Pendientes de Pago</option>
           </select>
+
+          <!-- Botón Limpiar Filtros -->
+          <button class="btn btn-sm btn-outline" id="btnClearOrderFilters" style="color: var(--text-muted); border-color: var(--border-color); font-weight: 700; display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; height: 38px; border-radius: var(--radius-sm);" title="Restablecer todos los filtros de pedidos">
+            <span>🧹</span> Limpiar Filtros
+          </button>
         </div>
       </div>
     </div>
@@ -232,6 +237,26 @@ export async function renderOrders(container) {
       </div>
     </div>
   `;
+
+  // Listener para limpiar filtros
+  container.querySelector('#btnClearOrderFilters')?.addEventListener('click', () => {
+    currentFilters = {
+      search: '',
+      debtCategory: 'ALL',
+      paymentStatus: 'ALL',
+      deliveryStatus: 'ALL',
+      driverFilter: 'ALL',
+      batchId: 'ALL',
+      sortBy: 'PRIORITY_DEBT',
+      month: '',
+      specificDate: '',
+      dateRange: 'ALL',
+      minLiters: '',
+      viewMode: 'list',
+    };
+    ordersCurrentPage = 1;
+    renderOrders(container);
+  });
 
   // Listeners de la barra de herramientas
   const searchInput = container.querySelector('#orderSearchInput');

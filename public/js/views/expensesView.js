@@ -68,7 +68,7 @@ async function renderExpensesContent(subContainer) {
     </div>
 
     <!-- Píldoras de Categoría -->
-    <div class="expenses-category-pills">
+    <div class="expenses-category-pills" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
       <button class="expense-pill ${activeCategory === 'ALL' ? 'active' : ''}" data-cat="ALL">Todos los Gastos</button>
       <button class="expense-pill ${activeCategory === 'INFRAESTRUCTURA' ? 'active' : ''}" data-cat="INFRAESTRUCTURA">🏗️ Infraestructura / Equipos</button>
       <button class="expense-pill ${activeCategory === 'SERVICIOS' ? 'active' : ''}" data-cat="SERVICIOS">💡 Gas / Energía / Agua</button>
@@ -76,6 +76,9 @@ async function renderExpensesContent(subContainer) {
       <button class="expense-pill ${activeCategory === 'PUBLICIDAD' ? 'active' : ''}" data-cat="PUBLICIDAD">📢 Publicidad y Volantes</button>
       <button class="expense-pill ${activeCategory === 'INSUMOS_EXTRA' ? 'active' : ''}" data-cat="INSUMOS_EXTRA">🍓 Insumos Extra</button>
       <button class="expense-pill ${activeCategory === 'OTRO' ? 'active' : ''}" data-cat="OTRO">📦 Otros Gastos</button>
+      <button class="btn btn-sm btn-outline" id="btnClearExpenseFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 6px 14px;" title="Restablecer filtros de gastos">
+        <span>🧹</span> Limpiar Filtros
+      </button>
     </div>
 
     <!-- Tabla de Gastos -->
@@ -96,6 +99,13 @@ async function renderExpensesContent(subContainer) {
       </div>
     </div>
   `;
+
+  // Listener para limpiar filtros
+  subContainer.querySelector('#btnClearExpenseFilters')?.addEventListener('click', () => {
+    activeCategory = 'ALL';
+    expensesCurrentPage = 1;
+    renderExpensesContent(subContainer);
+  });
 
   // Listeners de categorías
   subContainer.querySelectorAll('.expense-pill').forEach((btn) => {
@@ -341,80 +351,148 @@ export function openExpenseModal(onSaved) {
 }
 
 // -----------------------------------------------------------------
-// MODAL PARA REGISTRAR / EDITAR BASE EN CAJA, APORTE, RETIRO O TRASLADO
+// MODAL PARA REGISTRAR / EDITAR BASE EN CAJA, APORTE, RETIRO O AJUSTE DE CUADRE
 // -----------------------------------------------------------------
 export function openCashMovementModal(onSaved, defaultType = 'BASE_INICIAL', movementToEdit = null) {
   const modalOverlay = document.getElementById('modalContainer');
   if (!modalOverlay) return;
 
   const isEdit = !!movementToEdit;
-  const currentType = isEdit ? (movementToEdit.type || movementToEdit.movementType || defaultType) : defaultType;
+  let currentType = isEdit ? (movementToEdit.type || movementToEdit.movementType || defaultType) : defaultType;
+  if (currentType === 'AJUSTE_CAJA') {
+    currentType = 'AJUSTE_FALTANTE'; // Por defecto faltante (el caso más común: 4x1000 o comisiones)
+  }
+
   const currentAmount = isEdit ? (movementToEdit.amount !== undefined ? Math.abs(movementToEdit.amount) : '') : '';
   const currentConcept = isEdit ? (movementToEdit.concept || movementToEdit.flavor || movementToEdit.description || '') : '';
-  const currentMethod = isEdit ? (movementToEdit.paymentMethod || 'EFECTIVO') : 'EFECTIVO';
+  const currentMethod = isEdit ? (movementToEdit.paymentMethod || 'NEQUI') : (currentType.startsWith('AJUSTE') ? 'NEQUI' : 'EFECTIVO');
   const currentDate = isEdit
     ? (movementToEdit.movementDate ? String(movementToEdit.movementDate).slice(0, 10) : movementToEdit.date ? String(movementToEdit.date).slice(0, 10) : getTodayLocalDateStr())
     : getTodayLocalDateStr();
   const currentNotes = isEdit ? (movementToEdit.notes || '') : '';
 
+  const isAdjustment = currentType === 'AJUSTE_FALTANTE' || currentType === 'AJUSTE_SOBRANTE' || currentType === 'AJUSTE_CAJA';
+
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
-      <div class="modal-card">
+      <div class="modal-card" style="max-width: 580px;">
         <div class="modal-header">
-          <h3 class="modal-title">${isEdit ? '✏️ Editar Movimiento de Caja' : '🏦 Registrar Base / Aporte de Caja'}</h3>
+          <div>
+            <h3 class="modal-title" id="cashModalTitle">
+              ${isEdit ? '✏️ Editar Movimiento' : (isAdjustment ? '⚖️ Ajuste / Cuadre de Caja o Banco' : '🏦 Movimiento de Caja')}
+            </h3>
+            <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 600;">
+              ${isAdjustment ? 'Ajusta diferencias por 4x1000, comisiones o descuadres físicos/digitales' : 'Registra bases, aportes de bolsillo o retiros'}
+            </span>
+          </div>
           <button class="modal-close-btn" id="btnCloseCashMovModal">✕</button>
         </div>
         <form id="cashMovementForm">
           <div class="modal-body">
             
+            <!-- Selector de Operación Principal -->
             <div class="form-group">
-              <label class="form-label">Tipo de Movimiento *</label>
-              <select id="cashMovType" class="form-select" required>
+              <label class="form-label" style="font-weight: 700;">Tipo de Operación *</label>
+              <select id="cashMovType" class="form-select" required style="font-weight: 700; font-size: 0.95rem;">
+                <option value="AJUSTE_FALTANTE" ${currentType === 'AJUSTE_FALTANTE' ? 'selected' : ''}>⚖️ Ajuste Faltante / 4x1000 / Comisión (Disminuye saldo -)</option>
+                <option value="AJUSTE_SOBRANTE" ${currentType === 'AJUSTE_SOBRANTE' ? 'selected' : ''}>⚖️ Ajuste Sobrante / Excedente (Aumenta saldo +)</option>
                 <option value="BASE_INICIAL" ${currentType === 'BASE_INICIAL' ? 'selected' : ''}>🟢 Base Inicial (Sencillo para dar vueltos)</option>
-                <option value="APORTE_SOCIO" ${currentType === 'APORTE_SOCIO' ? 'selected' : ''}>💼 Aporte de Bolsillo (Plata propia para compras/insumos)</option>
+                <option value="APORTE_SOCIO" ${currentType === 'APORTE_SOCIO' ? 'selected' : ''}>💼 Aporte de Bolsillo (Plata propia para gastos/insumos)</option>
                 <option value="RETIRO_BASE" ${currentType === 'RETIRO_BASE' ? 'selected' : ''}>🔴 Retiro de Base / Devolución de Inversión</option>
-                <option value="AJUSTE_CAJA" ${currentType === 'AJUSTE_CAJA' ? 'selected' : ''}>⚖️ Ajuste de Caja (Cuadre de diferencias)</option>
                 <option value="TRASLADO_EFECTIVO_A_BANCO" ${currentType === 'TRASLADO_EFECTIVO_A_BANCO' ? 'selected' : ''}>🔄 Traslado: Efectivo ➔ Transferencia</option>
                 <option value="TRASLADO_BANCO_A_EFECTIVO" ${currentType === 'TRASLADO_BANCO_A_EFECTIVO' ? 'selected' : ''}>🔄 Traslado: Transferencia ➔ Efectivo</option>
               </select>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Monto ($ COP) *</label>
-              <input type="number" id="cashMovAmount" class="form-input" min="1" step="any" placeholder="Ej: 50000" value="${currentAmount}" required style="font-weight: 800; font-size: 1.05rem;" />
-            </div>
-
+            <!-- Fila: Medio de Pago y Fecha -->
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label">Medio de Pago</label>
+                <label class="form-label" style="font-weight: 700;">Cuenta / Medio a Afectar *</label>
                 <select id="cashMovMethod" class="form-select" style="font-weight: 700;">
-                  <option value="EFECTIVO" ${currentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo (Billetes / Monedas)</option>
                   <option value="NEQUI" ${currentMethod === 'NEQUI' ? 'selected' : ''}>🟣 Transferencia Nequi</option>
                   <option value="BANCOLOMBIA" ${currentMethod === 'BANCOLOMBIA' ? 'selected' : ''}>🟡 Transferencia Bancolombia</option>
                   <option value="TRANSFERENCIA" ${currentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>💳 Otra Transferencia</option>
+                  <option value="EFECTIVO" ${currentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo (Caja Física)</option>
                 </select>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Fecha</label>
+                <label class="form-label" style="font-weight: 700;">Fecha *</label>
                 <input type="date" id="cashMovDate" class="form-input" value="${currentDate}" required />
               </div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Concepto / Motivo *</label>
-              <input type="text" id="cashMovConcept" class="form-input" placeholder="Ej: Base para dar vuelto / Plata de mi bolsillo para comprar insumos" value="${currentConcept}" required />
+            <!-- ASISTENTE DE AJUSTE (Visible cuando es Ajuste) -->
+            <div id="adjustmentHelperCard" style="background: #FAF5FF; border: 1.5px solid #E9D5FF; border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px; ${isAdjustment ? '' : 'display: none;'}">
+              
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 0.8rem; font-weight: 800; color: #6B21A8;">💡 ¿Cómo deseas ingresar el ajuste?</span>
+                <div style="display: flex; gap: 4px;">
+                  <button type="button" class="btn btn-sm btn-primary" id="btnModeDiff" style="font-size: 0.72rem; padding: 3px 8px;">Por Diferencia</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="btnModeReal" style="font-size: 0.72rem; padding: 3px 8px; color: #6B21A8; border-color: #D8B4FE;">Calculadora Saldo Real</button>
+                </div>
+              </div>
+
+              <!-- Modo Calculadora: Saldo en Sistema vs Saldo Real -->
+              <div id="realBalanceCalculator" style="display: none; background: #FFFFFF; border: 1px solid #D8B4FE; border-radius: var(--radius-sm); padding: 10px; margin-bottom: 12px;">
+                <div class="form-row" style="margin-bottom: 0;">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.74rem; font-weight: 700; color: var(--text-muted);">Saldo registrado en sistema ($):</label>
+                    <input type="number" id="systemRegisteredBalance" class="form-input" style="font-size: 0.85rem; padding: 6px;" placeholder="Ej: 10000" />
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.74rem; font-weight: 700; color: #6B21A8;">Saldo real en tu cuenta/caja ($):</label>
+                    <input type="number" id="actualRealBalance" class="form-input" style="font-size: 0.85rem; padding: 6px; font-weight: 800; border-color: #A855F7;" placeholder="Ej: 8400" />
+                  </div>
+                </div>
+                <div id="calcDiffResult" style="font-size: 0.74rem; color: #6B21A8; font-weight: 700; margin-top: 6px; text-align: right;"></div>
+              </div>
+
+              <!-- Botones de Motivo Rápido -->
+              <div style="margin-bottom: 8px;">
+                <span style="font-size: 0.73rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Motivos frecuentes (haz clic para autollenar):</span>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-sm btn-outline btn-quick-concept" data-concept="Impuesto 4x1000 (GMF) cobrado por el banco" data-type="AJUSTE_FALTANTE" style="font-size: 0.72rem; padding: 3px 8px; border-color: #FECACA; color: #DC2626;">🏦 4x1000 (GMF)</button>
+                  <button type="button" class="btn btn-sm btn-outline btn-quick-concept" data-concept="Comisión bancaria / Cuota de manejo" data-type="AJUSTE_FALTANTE" style="font-size: 0.72rem; padding: 3px 8px; border-color: #FECACA; color: #DC2626;">💳 Comisión Bancaria</button>
+                  <button type="button" class="btn btn-sm btn-outline btn-quick-concept" data-concept="Descuadre faltante en cuenta" data-type="AJUSTE_FALTANTE" style="font-size: 0.72rem; padding: 3px 8px; border-color: #FECACA; color: #DC2626;">📉 Descuadre Faltante</button>
+                  <button type="button" class="btn btn-sm btn-outline btn-quick-concept" data-concept="Sobrante / Excedente en cuenta" data-type="AJUSTE_SOBRANTE" style="font-size: 0.72rem; padding: 3px 8px; border-color: #BBF7D0; color: #15803D;">📈 Sobrante en Cuenta</button>
+                  <button type="button" class="btn btn-sm btn-outline btn-quick-concept" data-concept="Redondeo de vueltos / Efectivo" data-type="AJUSTE_FALTANTE" style="font-size: 0.72rem; padding: 3px 8px; border-color: #FED7AA; color: #C2410C;">🪙 Redondeo / Vueltos</button>
+                </div>
+              </div>
+
             </div>
 
+            <!-- Campo del Monto -->
+            <div class="form-group">
+              <label class="form-label" id="cashMovAmountLabel" style="font-weight: 800; font-size: 0.95rem;">
+                ${currentType === 'AJUSTE_FALTANTE' ? '🔴 Monto a Descontar / Restar ($ COP) *' : currentType === 'AJUSTE_SOBRANTE' ? '🟢 Monto a Sumar / Agregar ($ COP) *' : 'Monto ($ COP) *'}
+              </label>
+              <input type="number" id="cashMovAmount" class="form-input" min="1" step="any" placeholder="Ej: 1600" value="${currentAmount}" required style="font-weight: 900; font-size: 1.2rem; color: var(--primary);" />
+            </div>
+
+            <!-- Previsualización Visual en Vivo del Efecto -->
+            <div id="cashMovPreviewBanner" style="padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 700; margin-bottom: 14px; background: #F3F4F6; color: #374151; border: 1px solid #E5E7EB;">
+              <!-- Se actualiza por JS en tiempo real -->
+            </div>
+
+            <!-- Concepto / Motivo -->
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 700;">Concepto / Motivo *</label>
+              <input type="text" id="cashMovConcept" class="form-input" placeholder="Ej: Impuesto 4x1000 cobrado por el banco / Base para vueltos" value="${currentConcept}" required />
+            </div>
+
+            <!-- Notas Adicionales -->
             <div class="form-group">
               <label class="form-label">Notas Adicionales (Opcional)</label>
-              <input type="text" id="cashMovNotes" class="form-input" placeholder="Ej: Puesto por Edier..." value="${currentNotes}" />
+              <input type="text" id="cashMovNotes" class="form-input" placeholder="Ej: Verificado en extracto de Nequi..." value="${currentNotes}" />
             </div>
 
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline" id="btnCancelCashMovModal">Cancelar</button>
-            <button type="submit" class="btn btn-primary" style="font-weight: 800;">${isEdit ? 'Guardar Cambios' : 'Guardar en Caja'}</button>
+            <button type="submit" class="btn btn-primary" id="btnSubmitCashMov" style="font-weight: 800;">
+              ${isEdit ? 'Guardar Cambios' : 'Guardar Ajuste'}
+            </button>
           </div>
         </form>
       </div>
@@ -424,6 +502,129 @@ export function openCashMovementModal(onSaved, defaultType = 'BASE_INICIAL', mov
   const closeModal = () => (modalOverlay.innerHTML = '');
   document.getElementById('btnCloseCashMovModal')?.addEventListener('click', closeModal);
   document.getElementById('btnCancelCashMovModal')?.addEventListener('click', closeModal);
+
+  const typeSelect = document.getElementById('cashMovType');
+  const methodSelect = document.getElementById('cashMovMethod');
+  const amountInput = document.getElementById('cashMovAmount');
+  const amountLabel = document.getElementById('cashMovAmountLabel');
+  const conceptInput = document.getElementById('cashMovConcept');
+  const helperCard = document.getElementById('adjustmentHelperCard');
+  const previewBanner = document.getElementById('cashMovPreviewBanner');
+  const modalTitle = document.getElementById('cashModalTitle');
+  const submitBtn = document.getElementById('btnSubmitCashMov');
+
+  // Modo de ingreso: Diferencia vs Calculadora de saldo real
+  let entryMode = 'DIFF';
+  const btnModeDiff = document.getElementById('btnModeDiff');
+  const btnModeReal = document.getElementById('btnModeReal');
+  const realBalanceCard = document.getElementById('realBalanceCalculator');
+  const sysBalInput = document.getElementById('systemRegisteredBalance');
+  const actualBalInput = document.getElementById('actualRealBalance');
+  const calcDiffResult = document.getElementById('calcDiffResult');
+
+  btnModeDiff?.addEventListener('click', () => {
+    entryMode = 'DIFF';
+    btnModeDiff.className = 'btn btn-sm btn-primary';
+    btnModeReal.className = 'btn btn-sm btn-outline';
+    realBalanceCard.style.display = 'none';
+  });
+
+  btnModeReal?.addEventListener('click', () => {
+    entryMode = 'REAL';
+    btnModeReal.className = 'btn btn-sm btn-primary';
+    btnModeDiff.className = 'btn btn-sm btn-outline';
+    realBalanceCard.style.display = 'block';
+  });
+
+  // Cálculo automático de diferencia cuando el usuario escribe el saldo real
+  const handleRealBalanceCalc = () => {
+    const sysVal = Number(sysBalInput.value) || 0;
+    const actualVal = Number(actualBalInput.value) || 0;
+    if (sysBalInput.value === '' || actualBalInput.value === '') return;
+
+    const diff = actualVal - sysVal;
+    if (diff < 0) {
+      typeSelect.value = 'AJUSTE_FALTANTE';
+      amountInput.value = Math.abs(diff);
+      calcDiffResult.innerHTML = `📉 Faltante detectado: <strong style="color: #DC2626;">-${formatCOP(Math.abs(diff))}</strong> (Se descontará de la cuenta)`;
+    } else if (diff > 0) {
+      typeSelect.value = 'AJUSTE_SOBRANTE';
+      amountInput.value = diff;
+      calcDiffResult.innerHTML = `📈 Sobrante detectado: <strong style="color: #15803D;">+${formatCOP(diff)}</strong> (Se sumará a la cuenta)`;
+    } else {
+      calcDiffResult.innerHTML = `✅ Los saldos coinciden exactamente ($0 de diferencia).`;
+    }
+    updateUI();
+  };
+
+  sysBalInput?.addEventListener('input', handleRealBalanceCalc);
+  actualBalInput?.addEventListener('input', handleRealBalanceCalc);
+
+  // Botones de motivo rápido
+  modalOverlay.querySelectorAll('.btn-quick-concept').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      conceptInput.value = btn.dataset.concept;
+      if (btn.dataset.type) {
+        typeSelect.value = btn.dataset.type;
+      }
+      updateUI();
+    });
+  });
+
+  function updateUI() {
+    const type = typeSelect.value;
+    const isAdj = type === 'AJUSTE_FALTANTE' || type === 'AJUSTE_SOBRANTE' || type === 'AJUSTE_CAJA';
+    const method = methodSelect.options[methodSelect.selectedIndex]?.text || methodSelect.value;
+    const val = Number(amountInput.value) || 0;
+
+    helperCard.style.display = isAdj ? 'block' : 'none';
+
+    if (isAdj) {
+      modalTitle.innerText = isEdit ? '✏️ Editar Ajuste de Cuadre' : '⚖️ Ajuste / Cuadre de Caja o Banco';
+      submitBtn.innerText = isEdit ? 'Guardar Cambios' : 'Guardar Ajuste';
+
+      if (type === 'AJUSTE_FALTANTE') {
+        amountLabel.innerHTML = `🔴 Monto a Descontar / Restar ($ COP) *`;
+        previewBanner.style.background = '#FEF2F2';
+        previewBanner.style.color = '#991B1B';
+        previewBanner.style.border = '1px solid #FECACA';
+        previewBanner.innerHTML = `📉 <strong>Efecto:</strong> Se RESTARÁN <strong style="color: #DC2626;">-${formatCOP(val)}</strong> de <strong>${method}</strong> (Reflejará que hay menos saldo por 4x1000, comisiones o faltante).`;
+      } else {
+        amountLabel.innerHTML = `🟢 Monto a Sumar / Agregar ($ COP) *`;
+        previewBanner.style.background = '#F0FDF4';
+        previewBanner.style.color = '#166534';
+        previewBanner.style.border = '1px solid #BBF7D0';
+        previewBanner.innerHTML = `📈 <strong>Efecto:</strong> Se SUMARÁN <strong style="color: #15803D;">+${formatCOP(val)}</strong> a <strong>${method}</strong> (Reflejará que hay más saldo en la cuenta o caja).`;
+      }
+    } else {
+      modalTitle.innerText = isEdit ? '✏️ Editar Movimiento de Caja' : '🏦 Registrar Movimiento de Caja';
+      amountLabel.innerHTML = `Monto ($ COP) *`;
+      submitBtn.innerText = isEdit ? 'Guardar Cambios' : 'Guardar en Caja';
+
+      if (type === 'BASE_INICIAL' || type === 'APORTE_SOCIO') {
+        previewBanner.style.background = '#F0F9FF';
+        previewBanner.style.color = '#075985';
+        previewBanner.style.border = '1px solid #BAE6FD';
+        previewBanner.innerHTML = `🟢 <strong>Efecto:</strong> Ingresarán <strong>+${formatCOP(val)}</strong> a la caja/cuenta como respaldo inicial.`;
+      } else if (type === 'RETIRO_BASE') {
+        previewBanner.style.background = '#FFFBEB';
+        previewBanner.style.color = '#92400E';
+        previewBanner.style.border = '1px solid #FDE68A';
+        previewBanner.innerHTML = `🔴 <strong>Efecto:</strong> Se retirarán <strong>-${formatCOP(val)}</strong> de la base de caja.`;
+      } else {
+        previewBanner.style.background = '#EFF6FF';
+        previewBanner.style.color = '#1E40AF';
+        previewBanner.style.border = '1px solid #BFDBFE';
+        previewBanner.innerHTML = `🔄 <strong>Efecto:</strong> Se trasladarán <strong>${formatCOP(val)}</strong> entre cuentas.`;
+      }
+    }
+  }
+
+  typeSelect.addEventListener('change', updateUI);
+  methodSelect.addEventListener('change', updateUI);
+  amountInput.addEventListener('input', updateUI);
+
+  updateUI();
 
   document.getElementById('cashMovementForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -444,7 +645,7 @@ export function openCashMovementModal(onSaved, defaultType = 'BASE_INICIAL', mov
         showToast('¡Movimiento de caja actualizado con éxito! ✏️');
       } else {
         await api.createCashMovement(payload);
-        showToast('¡Movimiento de caja guardado exitosamente! 🏦');
+        showToast('¡Ajuste de caja guardado exitosamente! ⚖️');
       }
       closeModal();
       if (typeof onSaved === 'function') onSaved();
@@ -453,3 +654,4 @@ export function openCashMovementModal(onSaved, defaultType = 'BASE_INICIAL', mov
     }
   });
 }
+

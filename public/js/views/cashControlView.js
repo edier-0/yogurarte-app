@@ -47,12 +47,18 @@ export async function renderCashControl(container) {
           <button class="btn btn-sm ${cashFilters.period === 'custom_date' ? 'btn-primary' : 'btn-outline'}" data-period="custom_date">Día Exacto</button>
           <button class="btn btn-sm ${cashFilters.period === 'custom_range' ? 'btn-primary' : 'btn-outline'}" data-period="custom_range">Rango Fechas</button>
           <button class="btn btn-sm ${cashFilters.period === 'custom_month' ? 'btn-primary' : 'btn-outline'}" data-period="custom_month">Por Mes</button>
+          <button class="btn btn-sm btn-outline" id="btnClearCashFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros de caja a 'Todo el Historial'">
+            <span>🧹</span> Limpiar Filtros
+          </button>
         </div>
 
         <!-- Botones de Acción Rápida -->
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button class="btn btn-primary" id="btnCashAddBase" style="font-weight: 800;">
             <span>➕</span> Base / Aporte
+          </button>
+          <button class="btn btn-outline" id="btnCashAdjust" style="color: #7C3AED; border-color: #DDD6FE; font-weight: 800;" title="Ajustar diferencias por 4x1000, comisiones o descuadres">
+            <span>⚖️</span> Ajustar / Cuadrar Caja
           </button>
           <button class="btn btn-outline" id="btnCashWithdrawBase" style="color: #DC2626; border-color: #FECACA; font-weight: 800;">
             <span>➖</span> Retirar Base
@@ -166,9 +172,27 @@ export async function renderCashControl(container) {
     loadCashData(container);
   });
 
+  container.querySelector('#btnClearCashFilters')?.addEventListener('click', () => {
+    cashFilters = {
+      period: 'all',
+      specificDate: '',
+      startDate: '',
+      endDate: '',
+      month: '',
+    };
+    activeMovementTab = 'ALL';
+    searchFilter = '';
+    cashCurrentPage = 1;
+    renderCashControl(container);
+  });
+
   // Acciones Rápidas
   container.querySelector('#btnCashAddBase')?.addEventListener('click', () => {
     openCashMovementModal(() => loadCashData(container), 'BASE_INICIAL');
+  });
+
+  container.querySelector('#btnCashAdjust')?.addEventListener('click', () => {
+    openCashMovementModal(() => loadCashData(container), 'AJUSTE_FALTANTE');
   });
 
   container.querySelector('#btnCashWithdrawBase')?.addEventListener('click', () => {
@@ -1661,10 +1685,14 @@ export function openCashKpiDetailModal({
                     typeBadgeBg = '#FEE2E2';
                     typeBadgeColor = '#DC2626';
                     typeLabel = '🔴 RETIRO BASE';
-                  } else if (item.type === 'AJUSTE_CAJA') {
-                    typeBadgeBg = '#FEF3C7';
-                    typeBadgeColor = '#D97706';
-                    typeLabel = '⚖️ AJUSTE CAJA';
+                  } else if (item.type === 'AJUSTE_SOBRANTE' || item.type === 'AJUSTE_CAJA') {
+                    typeBadgeBg = '#DCFCE7';
+                    typeBadgeColor = '#15803D';
+                    typeLabel = '⚖️ AJUSTE SOBRANTE (+)';
+                  } else if (item.type === 'AJUSTE_FALTANTE') {
+                    typeBadgeBg = '#FEE2E2';
+                    typeBadgeColor = '#DC2626';
+                    typeLabel = '⚖️ AJUSTE 4x1000 / FALTANTE (-)';
                   } else if (item.type === 'TRASLADO_EFECTIVO_A_BANCO' || item.categoryLabel?.includes('Efectivo a Banco') || item.categoryLabel?.includes('desde Efectivo')) {
                     typeBadgeBg = '#DBEAFE';
                     typeBadgeColor = '#1E40AF';

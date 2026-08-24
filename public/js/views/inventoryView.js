@@ -55,6 +55,9 @@ export async function renderInventory(container) {
           <button class="filter-chip ${selectedCategory === 'MATERIA_PRIMA' ? 'active' : ''}" data-cat="MATERIA_PRIMA">🥛 Materia Prima</button>
           <button class="filter-chip ${selectedCategory === 'EMPAQUE' ? 'active' : ''}" data-cat="EMPAQUE">🍾 Empaques y Botellas</button>
           <button class="filter-chip ${selectedCategory === 'INSUMO' ? 'active' : ''}" data-cat="INSUMO">🏷️ Otros Insumos</button>
+          <button class="btn btn-sm btn-outline" id="btnClearInventoryFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros de inventario">
+            <span>🧹</span> Limpiar Filtros
+          </button>
         </div>
       </div>
     </div>
@@ -155,6 +158,18 @@ export async function renderInventory(container) {
       </div>
     </div>
   `;
+
+  // Listener para limpiar filtros
+  container.querySelector('#btnClearInventoryFilters')?.addEventListener('click', () => {
+    selectedCategory = 'ALL';
+    purchaseDateFilter = '';
+    adjustmentDateFilter = '';
+    materialsCurrentPage = 1;
+    preparationsCurrentPage = 1;
+    purchasesCurrentPage = 1;
+    adjustmentsCurrentPage = 1;
+    renderInventory(container);
+  });
 
   container.querySelectorAll('[data-cat]').forEach((btn) => {
     btn.addEventListener('click', (e) => {

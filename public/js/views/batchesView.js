@@ -35,6 +35,9 @@ export async function renderBatches(container) {
           <button class="filter-chip ${batchStatusFilter === 'ALL' ? 'active' : ''}" data-status="ALL">Todos los Lotes</button>
           <button class="filter-chip ${batchStatusFilter === 'COMPLETADO' ? 'active' : ''}" data-status="COMPLETADO">✅ Disponibles</button>
           <button class="filter-chip ${batchStatusFilter === 'AGOTADO' ? 'active' : ''}" data-status="AGOTADO">📦 Agotados</button>
+          <button class="btn btn-sm btn-outline" id="btnClearBatchFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros de lotes">
+            <span>🧹</span> Limpiar Filtros
+          </button>
         </div>
       </div>
       <div class="toolbar-right">
@@ -54,6 +57,14 @@ export async function renderBatches(container) {
       </div>
     </div>
   `;
+
+  // Listener para limpiar filtros
+  container.querySelector('#btnClearBatchFilters')?.addEventListener('click', () => {
+    batchStatusFilter = 'ALL';
+    includeInactive = false;
+    batchesCurrentPage = 1;
+    renderBatches(container);
+  });
 
   container.querySelector('#btnOpenNewBatchModal')?.addEventListener('click', () => {
     openBatchModal();

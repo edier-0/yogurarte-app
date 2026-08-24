@@ -266,6 +266,11 @@ export async function renderDashboard(container) {
                   .map((m) => `<option value="${m.val}" ${dashboardFilters.month === m.val ? 'selected' : ''}>${m.label}</option>`)
                   .join('')}
               </select>
+
+              <!-- Botón Limpiar Filtros -->
+              <button class="btn btn-sm btn-outline" id="btnClearDashboardFilters" style="padding: 4px 10px; font-size: 0.78rem; font-weight: 700; height: 32px; white-space: nowrap; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros del Dashboard a 'Hoy'">
+                <span>🧹</span> Limpiar Filtros
+              </button>
             </div>
           </div>
 
@@ -533,8 +538,8 @@ export async function renderDashboard(container) {
                             ${o.pendingAmount > 0 ? `<div style="font-size: 0.73rem; color: var(--danger); font-weight: 700; margin-top: 2px;">Debe: ${formatCOP(o.pendingAmount)}</div>` : ''}
                           </td>
                           <td>
-                            <span class="badge ${o.deliveryStatus === 'DELIVERED' ? 'badge-delivered' : 'badge-preparing'}">
-                              ${o.deliveryStatus === 'DELIVERED' ? '✅ Entregado' : (o.deliveryStatus === 'IN_ROUTE' ? '🛵 En Ruta' : '🕒 Pendiente')}
+                            <span class="badge ${o.deliveryStatus === 'DELIVERED' ? 'badge-delivered' : o.deliveryStatus === 'IN_ROUTE' ? 'badge-partial' : o.deliveryStatus === 'PREPARING' ? 'badge-preparing' : 'badge-pending'}">
+                              ${o.deliveryStatus === 'DELIVERED' ? '✅ Entregado' : o.deliveryStatus === 'IN_ROUTE' ? '🛵 En Ruta' : o.deliveryStatus === 'PREPARING' ? '🥣 En Preparación' : '🕒 Pendiente'}
                             </span>
                           </td>
                           <td>
@@ -647,6 +652,21 @@ export async function renderDashboard(container) {
       dashboardFilters.startDate = '';
       dashboardFilters.endDate = '';
       dashboardFilters.period = 'custom';
+      dashOrdersCurrentPage = 1;
+      deliveredUnpaidCurrentPage = 1;
+      renderDashboard(container);
+    });
+
+    // Limpiar Filtros del Dashboard
+    container.querySelector('#btnClearDashboardFilters')?.addEventListener('click', () => {
+      dashboardFilters = {
+        period: 'today',
+        date: '',
+        startDate: '',
+        endDate: '',
+        month: '',
+        specificDate: '',
+      };
       dashOrdersCurrentPage = 1;
       deliveredUnpaidCurrentPage = 1;
       renderDashboard(container);
@@ -1390,6 +1410,7 @@ function openInProcessPendingModal(salesData, inProcessStats, periodLabel) {
                       <th>Envases / Litros</th>
                       <th>Estado Pago</th>
                       <th style="text-align: right;">Saldo por Cobrar</th>
+                      <th>Estado Entrega</th>
                       <th>Fecha Entrega</th>
                     </tr>
                   </thead>
@@ -1413,6 +1434,14 @@ function openInProcessPendingModal(salesData, inProcessStats, periodLabel) {
                           pendingCell = `<div style="text-align: right;"><strong style="color: var(--danger); font-size: 0.88rem;">${formatCOP(c.pendingAmount)}</strong><div style="font-size: 0.7rem; color: var(--text-muted);">Pendiente al entregar</div></div>`;
                         }
 
+                        const deliveryBadge = c.deliveryStatus === 'DELIVERED'
+                          ? `<span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.72rem;">✅ Entregado</span>`
+                          : c.deliveryStatus === 'IN_ROUTE'
+                          ? `<span class="badge" style="background: #E0F2FE; color: #0369A1; font-weight: 800; font-size: 0.72rem;">🛵 En Ruta</span>`
+                          : c.deliveryStatus === 'PREPARING'
+                          ? `<span class="badge" style="background: #EDE9FE; color: #6D28D9; font-weight: 800; font-size: 0.72rem;">🥣 En Preparación</span>`
+                          : `<span class="badge" style="background: #FEF3C7; color: #92400E; font-weight: 800; font-size: 0.72rem;">🕒 Pendiente</span>`;
+
                         return `
                           <tr>
                             <td>
@@ -1424,6 +1453,7 @@ function openInProcessPendingModal(salesData, inProcessStats, periodLabel) {
                             <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
                             <td>${paymentBadge}</td>
                             <td>${pendingCell}</td>
+                            <td>${deliveryBadge}</td>
                             <td><small style="color: var(--primary); font-weight: 700;">🛵 ${c.deliveryDate ? formatDate(c.deliveryDate) : 'Programada'}</small></td>
                           </tr>
                         `;
@@ -1633,7 +1663,7 @@ function openInProcessLitersModal(salesData, kpis, periodLabel) {
             <div>
               <h3 class="modal-title">⏳ Detalle de Litros Encargados (En Proceso)</h3>
               <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
-                Periodo: <strong>${periodLabel}</strong> • Demanda en Preparación/Ruta: <strong style="color: var(--primary);">${kpis.inProcessLiters} Litros</strong>
+                Periodo: <strong>${periodLabel}</strong> • Demanda en Cola (Pendiente / En Proceso): <strong style="color: var(--primary);">${kpis.inProcessLiters} Litros</strong>
               </span>
             </div>
             <button class="modal-close-btn" id="btnCloseQueueModal">✕</button>
@@ -1671,7 +1701,7 @@ function openInProcessLitersModal(salesData, kpis, periodLabel) {
                       <th>Lote / Sabor</th>
                       <th>Envases / Litros</th>
                       <th>Fecha Entrega</th>
-                      <th>Estado</th>
+                      <th>Estado Entrega</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1688,9 +1718,15 @@ function openInProcessLitersModal(salesData, kpis, periodLabel) {
                         <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
                         <td><strong style="color: var(--primary);">${c.deliveryDate ? formatDate(c.deliveryDate) : 'Programada'}</strong></td>
                         <td>
-                          <span class="badge ${c.deliveryStatus === 'IN_ROUTE' ? 'badge-partial' : 'badge-pending'}">
-                            ${c.deliveryStatus === 'IN_ROUTE' ? '🛵 En Ruta' : '🥣 En Preparación'}
-                          </span>
+                          ${
+                            c.deliveryStatus === 'DELIVERED'
+                              ? `<span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.72rem;">✅ Entregado</span>`
+                              : c.deliveryStatus === 'IN_ROUTE'
+                              ? `<span class="badge" style="background: #E0F2FE; color: #0369A1; font-weight: 800; font-size: 0.72rem;">🛵 En Ruta</span>`
+                              : c.deliveryStatus === 'PREPARING'
+                              ? `<span class="badge" style="background: #EDE9FE; color: #6D28D9; font-weight: 800; font-size: 0.72rem;">🥣 En Preparación</span>`
+                              : `<span class="badge" style="background: #FEF3C7; color: #92400E; font-weight: 800; font-size: 0.72rem;">🕒 Pendiente</span>`
+                          }
                         </td>
                       </tr>
                     `
@@ -1804,9 +1840,12 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
                 <strong style="color: var(--primary); font-size: 0.92rem;">🏦 Gestión de Base en Caja</strong>
                 <div style="font-size: 0.76rem; color: var(--text-muted);">Registra sencillo para dar cambio o dinero de tu bolsillo para compras</div>
               </div>
-              <div style="display: flex; gap: 8px;">
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                 <button type="button" class="btn btn-primary btn-sm" id="btnDashAddBase">
-                  ➕ Ingresar Base / Aporte
+                  ➕ Ingresar Base
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" id="btnDashAdjustCash" style="color: #7C3AED; border-color: #DDD6FE; font-weight: 700;" title="Ajustar diferencias por 4x1000, comisiones o descuadres">
+                  ⚖️ Ajustar / Cuadrar
                 </button>
                 <button type="button" class="btn btn-outline btn-sm" id="btnDashWithdrawBase" style="color: #DC2626; border-color: #FECACA;">
                   ➖ Retirar Base
@@ -1996,6 +2035,13 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
         closeModal();
         renderDashboard(document.getElementById('contentContainer'));
       }, 'BASE_INICIAL');
+    });
+
+    document.getElementById('btnDashAdjustCash')?.addEventListener('click', () => {
+      openCashMovementModal(() => {
+        closeModal();
+        renderDashboard(document.getElementById('contentContainer'));
+      }, 'AJUSTE_FALTANTE');
     });
 
     document.getElementById('btnDashWithdrawBase')?.addEventListener('click', () => {

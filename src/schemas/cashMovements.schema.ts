@@ -7,6 +7,8 @@ export const createCashMovementSchema = z.object({
       'APORTE_SOCIO',
       'RETIRO_BASE',
       'AJUSTE_CAJA',
+      'AJUSTE_SOBRANTE',
+      'AJUSTE_FALTANTE',
       'TRASLADO_EFECTIVO_A_BANCO',
       'TRASLADO_BANCO_A_EFECTIVO',
     ])
@@ -26,6 +28,8 @@ export const updateCashMovementSchema = z.object({
       'APORTE_SOCIO',
       'RETIRO_BASE',
       'AJUSTE_CAJA',
+      'AJUSTE_SOBRANTE',
+      'AJUSTE_FALTANTE',
       'TRASLADO_EFECTIVO_A_BANCO',
       'TRASLADO_BANCO_A_EFECTIVO',
     ])

@@ -65,6 +65,11 @@ export async function renderCustomers(container) {
               .join('')}
           </select>
 
+          <!-- Botón Limpiar Filtros -->
+          <button class="btn btn-outline" id="btnClearCustomerFilters" style="height: 40px; white-space: nowrap; font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Limpiar búsqueda y filtros de clientes">
+            <span>🧹</span> Limpiar Filtros
+          </button>
+
           <!-- Botón Configuración de Cuenta de Cobro (Nequi) -->
           <button class="btn btn-outline" id="btnOpenBankSettingsModal" style="height: 40px; white-space: nowrap; flex: 0 0 auto; border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: #FAF5FF;" title="Configurar número de Nequi o cuenta para recordatorios de cobro">
             ⚙️ Cuenta de Cobro (Nequi)
@@ -100,6 +105,14 @@ export async function renderCustomers(container) {
       </div>
     </div>
   `;
+
+  container.querySelector('#btnClearCustomerFilters')?.addEventListener('click', () => {
+    searchQuery = '';
+    currentDebtFilter = 'ALL';
+    currentBatchFilter = 'ALL';
+    customersCurrentPage = 1;
+    renderCustomers(container);
+  });
 
   const searchInput = container.querySelector('#customerSearchInput');
   let debounceTimer;

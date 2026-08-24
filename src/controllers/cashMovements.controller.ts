@@ -29,11 +29,11 @@ export const getCashMovements = async (req: Request, res: Response) => {
     });
 
     const totalInjections = movements
-      .filter((m) => m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA')
+      .filter((m) => m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA' || m.type === 'AJUSTE_SOBRANTE')
       .reduce((sum, m) => sum + m.amount, 0);
 
     const totalWithdrawals = movements
-      .filter((m) => m.type === 'RETIRO_BASE')
+      .filter((m) => m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE')
       .reduce((sum, m) => sum + m.amount, 0);
 
     const netCashMovement = totalInjections - totalWithdrawals;
@@ -65,6 +65,8 @@ export const createCashMovement = async (req: Request, res: Response) => {
       'APORTE_SOCIO',
       'RETIRO_BASE',
       'AJUSTE_CAJA',
+      'AJUSTE_SOBRANTE',
+      'AJUSTE_FALTANTE',
       'TRASLADO_EFECTIVO_A_BANCO',
       'TRASLADO_BANCO_A_EFECTIVO',
     ];
@@ -104,6 +106,8 @@ export const updateCashMovement = async (req: Request, res: Response) => {
       'APORTE_SOCIO',
       'RETIRO_BASE',
       'AJUSTE_CAJA',
+      'AJUSTE_SOBRANTE',
+      'AJUSTE_FALTANTE',
       'TRASLADO_EFECTIVO_A_BANCO',
       'TRASLADO_BANCO_A_EFECTIVO',
     ];

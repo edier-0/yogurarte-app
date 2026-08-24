@@ -242,13 +242,13 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const totalPayrollExpenses = payrollPayments.reduce((sum, p) => sum + p.netAmount, 0);
     const totalOwnerDraws = ownerDrawPayments.reduce((sum, p) => sum + p.netAmount, 0);
 
-    // Cálculos de Movimientos de Caja (Bases y Aportes)
+    // Cálculos de Movimientos de Caja (Bases, Aportes y Ajustes)
     const totalInjections = cashMovements
-      .filter((m) => m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA')
+      .filter((m) => m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA' || m.type === 'AJUSTE_SOBRANTE')
       .reduce((sum, m) => sum + m.amount, 0);
 
     const totalWithdrawals = cashMovements
-      .filter((m) => m.type === 'RETIRO_BASE')
+      .filter((m) => m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE')
       .reduce((sum, m) => sum + m.amount, 0);
 
     const netCashInjections = totalInjections - totalWithdrawals;
@@ -295,9 +295,9 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     let totalOutflowCash = 0;
     let totalOutflowBank = 0;
 
-    // 1. Movimientos de Caja (Bases, Aportes, Retiros y Traslados)
+    // 1. Movimientos de Caja (Bases, Aportes, Retiros, Ajustes y Traslados)
     for (const m of cashMovements) {
-      if (m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA') {
+      if (m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA' || m.type === 'AJUSTE_SOBRANTE') {
         if (isCash(m.paymentMethod)) {
           cashInHand += m.amount;
           totalInflowCash += m.amount;
@@ -305,7 +305,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           digitalBank += m.amount;
           totalInflowBank += m.amount;
         }
-      } else if (m.type === 'RETIRO_BASE') {
+      } else if (m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE') {
         if (isCash(m.paymentMethod)) {
           cashInHand -= m.amount;
           totalOutflowCash += m.amount;
@@ -589,11 +589,11 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           totalOutflowBank,
           inflows: [
             ...cashMovements
-              .filter((m) => m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA')
+              .filter((m) => m.type === 'BASE_INICIAL' || m.type === 'APORTE_SOCIO' || m.type === 'AJUSTE_CAJA' || m.type === 'AJUSTE_SOBRANTE')
               .map((m) => ({
                 id: `cash_inj_${m.id}`,
                 rawId: m.id,
-                orderNumber: m.type === 'BASE_INICIAL' ? '🏦 BASE-INICIAL' : m.type === 'AJUSTE_CAJA' ? '⚖️ AJUSTE-CAJA' : '💼 APORTE-BOLSILLO',
+                orderNumber: m.type === 'BASE_INICIAL' ? '🏦 BASE-INICIAL' : m.type === 'AJUSTE_SOBRANTE' ? '⚖️ AJUSTE-SOBRANTE (+)' : m.type === 'AJUSTE_CAJA' ? '⚖️ AJUSTE-CAJA' : '💼 APORTE-BOLSILLO',
                 date: m.movementDate,
                 customerName: m.registeredBy || 'Edier',
                 customerPhone: '',
@@ -711,13 +711,13 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
               notes: p.notes,
             })),
             ...cashMovements
-              .filter((m) => m.type === 'RETIRO_BASE')
+              .filter((m) => m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE')
               .map((m) => ({
                 id: `cash_ret_${m.id}`,
                 rawId: m.id,
                 date: m.movementDate,
-                category: 'RETIRO_BASE',
-                categoryLabel: '🏦 Retiro de Base',
+                category: m.type,
+                categoryLabel: m.type === 'AJUSTE_FALTANTE' ? '⚖️ Ajuste Faltante / 4x1000 (-)' : '🏦 Retiro de Base',
                 description: `${m.concept} (${m.registeredBy || 'Edier'})`,
                 amount: m.amount,
                 notes: m.notes,
