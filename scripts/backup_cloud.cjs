@@ -54,9 +54,13 @@ async function runBackup() {
     orders,
     orderItems,
     orderPayments,
+    expenses,
+    creditObligations,
+    creditPayments,
     cashMovements,
     staff,
     staffPayments,
+    settings,
   ] = await Promise.all([
     prisma.user.findMany(),
     prisma.customer.findMany(),
@@ -70,9 +74,13 @@ async function runBackup() {
     prisma.order.findMany(),
     prisma.orderItem.findMany(),
     prisma.orderPayment.findMany(),
+    prisma.expense.findMany(),
+    prisma.creditObligation.findMany(),
+    prisma.creditPayment.findMany(),
     prisma.cashMovement.findMany(),
     prisma.staffMember.findMany(),
     prisma.staffPayment.findMany(),
+    prisma.systemSetting.findMany(),
   ]);
 
   const escapeSql = (val) => {
@@ -89,32 +97,40 @@ async function runBackup() {
   sql += `-- ========================================================\n\n`;
 
   const tablesData = [
-    { name: 'User', rows: users },
-    { name: 'Customer', rows: customers },
-    { name: 'RawMaterial', rows: rawMaterials },
-    { name: 'SupplyPreparation', rows: preparations },
-    { name: 'SupplyPreparationItem', rows: prepItems },
-    { name: 'Purchase', rows: purchases },
-    { name: 'ProductionBatch', rows: batches },
-    { name: 'BatchItemUsage', rows: batchUsages },
-    { name: 'InventoryAdjustment', rows: adjustments },
-    { name: 'Order', rows: orders },
-    { name: 'OrderItem', rows: orderItems },
-    { name: 'OrderPayment', rows: orderPayments },
-    { name: 'CashMovement', rows: cashMovements },
-    { name: 'StaffMember', rows: staff },
-    { name: 'StaffPayment', rows: staffPayments },
+    { name: 'User', rows: users, pk: 'id' },
+    { name: 'Customer', rows: customers, pk: 'id' },
+    { name: 'RawMaterial', rows: rawMaterials, pk: 'id' },
+    { name: 'SupplyPreparation', rows: preparations, pk: 'id' },
+    { name: 'SupplyPreparationItem', rows: prepItems, pk: 'id' },
+    { name: 'Purchase', rows: purchases, pk: 'id' },
+    { name: 'ProductionBatch', rows: batches, pk: 'id' },
+    { name: 'BatchItemUsage', rows: batchUsages, pk: 'id' },
+    { name: 'InventoryAdjustment', rows: adjustments, pk: 'id' },
+    { name: 'Order', rows: orders, pk: 'id' },
+    { name: 'OrderItem', rows: orderItems, pk: 'id' },
+    { name: 'OrderPayment', rows: orderPayments, pk: 'id' },
+    { name: 'Expense', rows: expenses, pk: 'id' },
+    { name: 'CreditObligation', rows: creditObligations, pk: 'id' },
+    { name: 'CreditPayment', rows: creditPayments, pk: 'id' },
+    { name: 'CashMovement', rows: cashMovements, pk: 'id' },
+    { name: 'StaffMember', rows: staff, pk: 'id' },
+    { name: 'StaffPayment', rows: staffPayments, pk: 'id' },
+    { name: 'SystemSetting', rows: settings, pk: 'key' },
   ];
 
-  for (const { name, rows } of tablesData) {
+  for (const { name, rows, pk } of tablesData) {
     if (rows.length === 0) continue;
     const cols = Object.keys(rows[0]);
     sql += `-- Tabla: ${name} (${rows.length} registros)\n`;
     for (const row of rows) {
       const values = cols.map((c) => escapeSql(row[c])).join(', ');
-      sql += `INSERT INTO "${name}" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${values}) ON CONFLICT ("id") DO UPDATE SET ${cols.map((c) => `"${c}" = EXCLUDED."${c}"`).join(', ')};\n`;
+      sql += `INSERT INTO "${name}" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${values}) ON CONFLICT ("${pk}") DO UPDATE SET ${cols.map((c) => `"${c}" = EXCLUDED."${c}"`).join(', ')};\n`;
     }
-    sql += `SELECT setval(pg_get_serial_sequence('"${name}"', 'id'), coalesce(max(id), 1), max(id) IS NOT null) FROM "${name}";\n\n`;
+    if (pk === 'id') {
+      sql += `SELECT setval(pg_get_serial_sequence('"${name}"', 'id'), coalesce(max(id), 1), max(id) IS NOT null) FROM "${name}";\n\n`;
+    } else {
+      sql += `\n`;
+    }
   }
 
   fs.writeFileSync(filepath, sql, 'utf8');
@@ -126,6 +142,7 @@ async function runBackup() {
   console.log(`   - 📋 Pedidos: ${orders.length}`);
   console.log(`   - 🍶 Lotes: ${batches.length}`);
   console.log(`   - 🛒 Compras: ${purchases.length}`);
+  console.log(`   - 🏗️ Gastos / Infraestructura: ${expenses.length}`);
   console.log(`   - 💰 Movimientos de Caja: ${cashMovements.length}`);
   console.log(`   - 🤝 Pagos de Nómina/Retiros: ${staffPayments.length}`);
 }
