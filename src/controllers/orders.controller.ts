@@ -302,7 +302,7 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     // Procesar ítems múltiples del pedido
-    const parsedBatchId = batchId ? Number(batchId) : null;
+    let parsedBatchId = batchId ? Number(batchId) : null;
 
     let parsedItems: Array<{
       batchId?: number | null;
@@ -374,6 +374,37 @@ export const createOrder = async (req: Request, res: Response) => {
       ? parsedItems[0].bottleSize
       : 'MIXTO';
 
+    // Auto-vincular al primer lote disponible del sabor si no se especificó un lote manualmente
+    if (!parsedBatchId && parsedItems.length > 0) {
+      const primaryFlavor = (parsedItems[0]?.flavor || flavor || 'Natural').trim();
+      const activeBatchesForFlavor = await prisma.productionBatch.findMany({
+        where: {
+          flavor: { equals: primaryFlavor, mode: 'insensitive' },
+          isActive: true,
+          status: { in: ['COMPLETADO', 'EN_FERMENTACION', 'EN_PROCESO'] },
+        },
+        include: {
+          orders: { select: { totalLiters: true } },
+          orderItems: { select: { totalLiters: true } },
+        },
+        orderBy: { preparationDate: 'desc' },
+      });
+
+      for (const b of activeBatchesForFlavor) {
+        const sold = Math.max(
+          b.orders.reduce((sum, o) => sum + o.totalLiters, 0),
+          b.orderItems.reduce((sum, it) => sum + it.totalLiters, 0)
+        );
+        if (b.totalLitersProduced > sold || b.status === 'COMPLETADO') {
+          parsedBatchId = b.id;
+          parsedItems.forEach((it) => {
+            if (!it.batchId) it.batchId = b.id;
+          });
+          break;
+        }
+      }
+    }
+
     // Generar consecutivo de pedido único (PED-YYYYMMDD-001)
     const dateObj = orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : new Date();
     const dateStr = dateObj.toISOString().slice(0, 10).replace(/-/g, '');
@@ -404,6 +435,14 @@ export const createOrder = async (req: Request, res: Response) => {
       orderNumber = `PED-${dateStr}-${String(nextSeq).padStart(3, '0')}`;
     }
 
+    let initialDeliveryDate: Date | null = null;
+    if (deliveryDate) {
+      initialDeliveryDate = new Date(`${String(deliveryDate).split('T')[0]}T12:00:00.000Z`);
+    } else if (deliveryStatus === 'DELIVERED') {
+      const todayStr = getColombiaDateStr();
+      initialDeliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
+    }
+
     const order = await prisma.order.create({
       data: {
         orderNumber,
@@ -425,7 +464,7 @@ export const createOrder = async (req: Request, res: Response) => {
         deliveryDriverName: deliveryDriverName ? String(deliveryDriverName).trim() : null,
         deliveryFee: parsedDeliveryFee,
         orderDate: dateObj,
-        deliveryDate: deliveryDate ? new Date(`${String(deliveryDate).split('T')[0]}T12:00:00.000Z`) : null,
+        deliveryDate: initialDeliveryDate,
         deliveryAddress: deliveryAddress ? deliveryAddress.trim() : (customerAddress ? customerAddress.trim() : 'Fonseca'),
         notes: notes ? notes.trim() : null,
         registeredBy: registeredBy || 'Edier',
@@ -508,7 +547,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
-    const parsedBatchId = batchId !== undefined ? (batchId ? Number(batchId) : null) : currentOrder.batchId;
+    let parsedBatchId = batchId !== undefined ? (batchId ? Number(batchId) : null) : currentOrder.batchId;
 
     // 1. Actualizar cliente si se proporcionaron datos
     if (customerName || customerPhone || customerAddress) {
@@ -596,12 +635,42 @@ export const updateOrder = async (req: Request, res: Response) => {
       }
     }
 
+    // Auto-vincular al primer lote disponible si el pedido no tenía lote y no se forzó uno manualmente
+    if (parsedBatchId === null && currentOrder.batchId == null && updatedFlavor) {
+      const primaryFlavor = updatedFlavor.split(',')[0].replace(/^\d+x\s*/, '').replace(/\s*\([^)]*\)/, '').trim();
+      const activeBatchesForFlavor = await prisma.productionBatch.findMany({
+        where: {
+          flavor: { equals: primaryFlavor, mode: 'insensitive' },
+          isActive: true,
+          status: { in: ['COMPLETADO', 'EN_FERMENTACION', 'EN_PROCESO'] },
+        },
+        include: {
+          orders: { select: { totalLiters: true } },
+          orderItems: { select: { totalLiters: true } },
+        },
+        orderBy: { preparationDate: 'desc' },
+      });
+
+      for (const b of activeBatchesForFlavor) {
+        const sold = Math.max(
+          b.orders.reduce((sum, o) => sum + o.totalLiters, 0),
+          b.orderItems.reduce((sum, it) => sum + it.totalLiters, 0)
+        );
+        if (b.totalLitersProduced > sold || b.status === 'COMPLETADO') {
+          parsedBatchId = b.id;
+          break;
+        }
+      }
+    }
+
     let finalDeliveryDate = currentOrder.deliveryDate;
     if (deliveryDate) {
       finalDeliveryDate = new Date(`${String(deliveryDate).split('T')[0]}T12:00:00.000Z`);
-    } else if (deliveryStatus === 'DELIVERED' && currentOrder.deliveryStatus !== 'DELIVERED') {
+    } else if (deliveryStatus === 'DELIVERED') {
       const todayStr = getColombiaDateStr();
-      finalDeliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
+      if (currentOrder.deliveryStatus !== 'DELIVERED' || !currentOrder.deliveryDate) {
+        finalDeliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
+      }
     }
 
     const targetPaymentMethod = paymentMethod !== undefined ? paymentMethod.trim() : currentOrder.paymentMethod;

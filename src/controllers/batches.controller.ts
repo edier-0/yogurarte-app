@@ -17,22 +17,44 @@ export const getBatches = async (req: Request, res: Response) => {
     if (lite === 'true') {
       const liteBatches = await prisma.productionBatch.findMany({
         where: whereClause,
-        select: {
-          id: true,
-          batchCode: true,
-          flavor: true,
-          price1L: true,
-          price2L: true,
-          status: true,
-          isActive: true,
-          totalLitersProduced: true,
-          bottles1LProduced: true,
-          bottles2LProduced: true,
-          preparationDate: true,
+        include: {
+          orders: {
+            select: {
+              totalLiters: true,
+            },
+          },
+          orderItems: {
+            select: {
+              totalLiters: true,
+            },
+          },
         },
         orderBy: { preparationDate: 'desc' },
       });
-      return res.json(liteBatches);
+
+      const enrichedLite = liteBatches.map((b) => {
+        const soldFromOrders = b.orders.reduce((sum, o) => sum + o.totalLiters, 0);
+        const soldFromItems = b.orderItems.reduce((sum, i) => sum + i.totalLiters, 0);
+        const totalSoldLiters = Math.max(soldFromOrders, soldFromItems);
+        const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters);
+        return {
+          id: b.id,
+          batchCode: b.batchCode,
+          flavor: b.flavor,
+          price1L: b.price1L,
+          price2L: b.price2L,
+          status: b.status,
+          isActive: b.isActive,
+          totalLitersProduced: b.totalLitersProduced,
+          totalSoldLiters,
+          remainingAvailableLiters,
+          bottles1LProduced: b.bottles1LProduced,
+          bottles2LProduced: b.bottles2LProduced,
+          preparationDate: b.preparationDate,
+        };
+      });
+
+      return res.json(enrichedLite);
     }
 
     const batches = await prisma.productionBatch.findMany({

@@ -1049,8 +1049,44 @@ export async function openOrderModal(orderData = null) {
   const defaultDeliveryDriverId = isEditing ? (orderData.deliveryDriverId || '') : '';
   const defaultDeliveryFee = isEditing ? (orderData.deliveryFee || 0) : 0;
 
+  // Función para encontrar el mejor lote activo disponible para un sabor
+  const findBestBatchForFlavor = (targetFlavor) => {
+    if (!targetFlavor || !availableBatches || availableBatches.length === 0) return null;
+    const tf = targetFlavor.toLowerCase().trim();
+
+    // 1. Prioridad: Lote del mismo sabor con litros disponibles (> 0) y no agotado
+    const withLiters = availableBatches.filter(
+      (b) => (b.flavor || '').toLowerCase().trim() === tf &&
+             b.status !== 'AGOTADO' &&
+             b.status !== 'DESCARTADO' &&
+             (b.remainingAvailableLiters === undefined || b.remainingAvailableLiters > 0)
+    );
+    if (withLiters.length > 0) return withLiters[0];
+
+    // 2. Cualquier lote activo del mismo sabor
+    const anyActive = availableBatches.filter(
+      (b) => (b.flavor || '').toLowerCase().trim() === tf &&
+             b.status !== 'DESCARTADO'
+    );
+    if (anyActive.length > 0) return anyActive[0];
+
+    return null;
+  };
+
   const initialBatchId = orderData?.batchId || (orderData?.batch?.id) || '';
-  const initialBatchObj = availableBatches.find((b) => b.id === Number(initialBatchId));
+  let initialBatchObj = availableBatches.find((b) => b.id === Number(initialBatchId));
+
+  // Si no es edición y no se pasó un lote específico, auto-seleccionar el mejor lote disponible
+  if (!isEditing && !initialBatchId && availableBatches.length > 0) {
+    const firstAvailable = availableBatches.find(
+      (b) => b.status !== 'DESCARTADO' && (b.remainingAvailableLiters === undefined || b.remainingAvailableLiters > 0)
+    ) || availableBatches[0];
+    if (firstAvailable) {
+      initialBatchObj = findBestBatchForFlavor(firstAvailable.flavor) || firstAvailable;
+    }
+  }
+
+  const effectiveInitialBatchId = initialBatchObj ? String(initialBatchObj.id) : (initialBatchId ? String(initialBatchId) : '');
   let currentBatchPrice1L = initialBatchObj?.price1L || (orderData?.batch?.price1L) || 10000;
   let currentBatchPrice2L = initialBatchObj?.price2L || (orderData?.batch?.price2L) || 20000;
 
@@ -1174,22 +1210,26 @@ export async function openOrderModal(orderData = null) {
             <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 14px;">
               <label class="form-label" style="font-size: 0.85rem; font-weight: 800; color: var(--primary); margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
                 <span>🍶 Lote de Producción (Escoge de dónde vendes)</span>
-                <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">Opcional</span>
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">Auto-asignado por sabor</span>
               </label>
               <select id="orderBatchSelect" class="form-select" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">
                 <option value="" data-price1l="10000" data-price2l="20000" data-flavor="">-- 🥣 Encargo Preventa (Sin lote aún - Se vinculará al producir) --</option>
                 ${availableBatches
                   .map(
-                    (b) => `
-                  <option value="${b.id}" data-price1l="${b.price1L || 10000}" data-price2l="${b.price2L || 20000}" data-flavor="${b.flavor}" ${String(initialBatchId) === String(b.id) ? 'selected' : ''}>
-                    🍶 ${b.batchCode} • ${b.flavor} (1L: ${formatCOP(b.price1L || 10000)} • 2L: ${formatCOP(b.price2L || 20000)}) ${b.status === 'AGOTADO' ? '⚠️ Agotado' : '✅'}
+                    (b) => {
+                      const litersText = b.remainingAvailableLiters !== undefined ? ` • ${b.remainingAvailableLiters}L disp.` : '';
+                      const isSelected = String(effectiveInitialBatchId) === String(b.id);
+                      return `
+                  <option value="${b.id}" data-price1l="${b.price1L || 10000}" data-price2l="${b.price2L || 20000}" data-flavor="${b.flavor}" ${isSelected ? 'selected' : ''}>
+                    🍶 ${b.batchCode} • ${b.flavor}${litersText} (1L: ${formatCOP(b.price1L || 10000)} • 2L: ${formatCOP(b.price2L || 20000)}) ${b.status === 'AGOTADO' ? '⚠️ Agotado' : '✅'}
                   </option>
-                `
+                `;
+                    }
                   )
                   .join('')}
               </select>
-              <div id="batchHintDisplay" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
-                💡 Al seleccionar un lote, se aplicarán automáticamente sus precios de venta configurados.
+              <div id="batchHintDisplay" style="font-size: 0.75rem; color: ${effectiveInitialBatchId ? '#15803D' : 'var(--text-muted)'}; margin-top: 4px;">
+                ${effectiveInitialBatchId && initialBatchObj ? `✨ Vinculado automáticamente a: <strong>${initialBatchObj.batchCode} (${initialBatchObj.flavor}${initialBatchObj.remainingAvailableLiters !== undefined ? ` • ${initialBatchObj.remainingAvailableLiters}L disp.` : ''})</strong>` : '💡 Al seleccionar o cambiar el sabor, se vinculará automáticamente al lote activo con litros disponibles.'}
               </div>
             </div>
 
@@ -1345,6 +1385,7 @@ export async function openOrderModal(orderData = null) {
     `;
 
     const sizeSelect = row.querySelector('.item-size');
+    const flavorSelect = row.querySelector('.item-flavor');
     const qtyInput = row.querySelector('.item-qty');
     const removeBtn = row.querySelector('.btn-remove-item');
 
@@ -1354,6 +1395,49 @@ export async function openOrderModal(orderData = null) {
 
     sizeSelect.addEventListener('change', updateRow);
     qtyInput.addEventListener('input', updateRow);
+
+    // Auto-vincular lote cuando el usuario cambia el sabor del producto
+    flavorSelect.addEventListener('change', (e) => {
+      const selectedFlavor = e.target.value;
+      
+      const allRows = itemsContainer.querySelectorAll('.order-item-row');
+      const allFlavors = Array.from(allRows).map((r) => r.querySelector('.item-flavor')?.value);
+      const isSingleFlavor = allFlavors.every((f) => f === selectedFlavor);
+
+      if (isSingleFlavor || allRows.length === 1) {
+        const bestBatch = findBestBatchForFlavor(selectedFlavor);
+        if (bestBatch) {
+          batchSelect.value = String(bestBatch.id);
+          currentBatchPrice1L = Number(bestBatch.price1L) || 10000;
+          currentBatchPrice2L = Number(bestBatch.price2L) || 20000;
+
+          // Actualizar etiquetas de tamaño en todas las filas
+          itemsContainer.querySelectorAll('.order-item-row').forEach((r) => {
+            const sz = r.querySelector('.item-size');
+            if (sz) {
+              const opt1 = sz.querySelector('option[value="1L"]');
+              const opt2 = sz.querySelector('option[value="2L"]');
+              if (opt1) opt1.textContent = `1 Litro (${formatCOP(currentBatchPrice1L)})`;
+              if (opt2) opt2.textContent = `2 Litros (${formatCOP(currentBatchPrice2L)})`;
+            }
+          });
+
+          if (batchHintDisplay) {
+            const litersInfo = bestBatch.remainingAvailableLiters !== undefined ? ` • ${bestBatch.remainingAvailableLiters}L disponibles` : '';
+            batchHintDisplay.innerHTML = `✨ Lote cambiado automáticamente a: <strong>${bestBatch.batchCode} (${bestBatch.flavor}${litersInfo})</strong>. Si deseas otro lote, puedes cambiarlo arriba.`;
+            batchHintDisplay.style.color = '#15803D';
+          }
+          showToast(`🍶 Lote asignado: ${bestBatch.batchCode} (${bestBatch.flavor})`, 'info');
+        } else {
+          batchSelect.value = '';
+          if (batchHintDisplay) {
+            batchHintDisplay.innerHTML = `🥣 No hay lotes activos con litros disponibles de sabor <strong>${selectedFlavor}</strong>. Quedará registrado como encargo preventa.`;
+            batchHintDisplay.style.color = 'var(--text-muted)';
+          }
+        }
+      }
+      recalculateOrderTotals();
+    });
 
     removeBtn.addEventListener('click', () => {
       const allRows = itemsContainer.querySelectorAll('.order-item-row');
@@ -1410,7 +1494,7 @@ export async function openOrderModal(orderData = null) {
   // Listener para cambio de lote de producción
   batchSelect?.addEventListener('change', (e) => {
     const selectedOpt = e.target.selectedOptions[0];
-    if (selectedOpt) {
+    if (selectedOpt && selectedOpt.value) {
       currentBatchPrice1L = Number(selectedOpt.dataset.price1l) || 10000;
       currentBatchPrice2L = Number(selectedOpt.dataset.price2l) || 20000;
       const batchFlavor = selectedOpt.dataset.flavor;
@@ -1428,22 +1512,23 @@ export async function openOrderModal(orderData = null) {
         // Si el lote tiene un sabor específico y el ítem está en Natural, sugerir el sabor del lote
         if (batchFlavor) {
           const flavorSelect = row.querySelector('.item-flavor');
-          if (flavorSelect && flavorSelect.value === 'Natural') {
+          if (flavorSelect && (flavorSelect.value === 'Natural' || itemsContainer.querySelectorAll('.order-item-row').length === 1)) {
             flavorSelect.value = batchFlavor;
           }
         }
       });
 
       if (batchHintDisplay) {
-        if (e.target.value) {
-          batchHintDisplay.innerHTML = `✅ Lote aplicado. Precios: <strong>1L: ${formatCOP(currentBatchPrice1L)}</strong> • <strong>2L: ${formatCOP(currentBatchPrice2L)}</strong>`;
-        } else {
-          batchHintDisplay.innerHTML = `💡 Al seleccionar un lote, se aplicarán automáticamente sus precios de venta configurados.`;
-        }
+        batchHintDisplay.innerHTML = `✅ Lote seleccionado: <strong>${selectedOpt.text.replace(/^[🍶\s]*/, '')}</strong>. Precios: 1L: ${formatCOP(currentBatchPrice1L)} • 2L: ${formatCOP(currentBatchPrice2L)}`;
+        batchHintDisplay.style.color = '#15803D';
       }
-
-      recalculateOrderTotals();
+    } else {
+      if (batchHintDisplay) {
+        batchHintDisplay.innerHTML = `💡 Al seleccionar un lote, se aplicarán automáticamente sus precios de venta configurados.`;
+        batchHintDisplay.style.color = 'var(--text-muted)';
+      }
     }
+    recalculateOrderTotals();
   });
 
   // Inicializar filas existentes
@@ -1655,6 +1740,20 @@ export async function openOrderModal(orderData = null) {
     });
   }
 
+  const deliveryStatusSelect = document.getElementById('orderDeliveryStatus');
+  const deliveryDateInput = document.getElementById('orderDeliveryDateInput');
+
+  // Si se cambia a ENTREGADO, asegurar que la fecha de entrega sea la fecha de hoy
+  deliveryStatusSelect?.addEventListener('change', (e) => {
+    if (e.target.value === 'DELIVERED') {
+      const todayStr = getTodayLocalDateStr();
+      if (!deliveryDateInput.value || deliveryDateInput.value !== todayStr) {
+        deliveryDateInput.value = todayStr;
+        showToast(`📅 Fecha de entrega establecida automáticamente como hoy (${todayStr})`, 'info');
+      }
+    }
+  });
+
   const closeModal = () => {
     modalOverlay.innerHTML = '';
   };
@@ -1665,7 +1764,7 @@ export async function openOrderModal(orderData = null) {
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const selectedBatchId = batchSelect?.value || null;
+    let selectedBatchId = batchSelect?.value || null;
 
     // Recoger todos los ítems de las filas
     const items = [];
@@ -1683,6 +1782,30 @@ export async function openOrderModal(orderData = null) {
       });
     });
 
+    // Validar concordancia de sabor entre el lote seleccionado y los productos
+    if (selectedBatchId) {
+      const chosenBatch = availableBatches.find((b) => b.id === Number(selectedBatchId));
+      if (chosenBatch && chosenBatch.flavor) {
+        const batchFlavorNorm = (chosenBatch.flavor || '').toLowerCase().trim();
+        const itemFlavors = items.map((it) => (it.flavor || '').toLowerCase().trim());
+        const isMismatched = itemFlavors.length > 0 && itemFlavors.every((f) => f !== batchFlavorNorm);
+
+        if (isMismatched) {
+          const productFlavorsStr = Array.from(new Set(items.map((it) => it.flavor))).join(', ');
+          const correctBatch = findBestBatchForFlavor(items[0].flavor);
+          if (correctBatch) {
+            selectedBatchId = String(correctBatch.id);
+            if (batchSelect) batchSelect.value = selectedBatchId;
+            items.forEach((it) => { it.batchId = Number(selectedBatchId); });
+            showToast(`⚠️ El lote se ajustó a "${correctBatch.batchCode} (${correctBatch.flavor})" para coincidir con el sabor (${productFlavorsStr}).`, 'info');
+          } else {
+            showToast(`⚠️ El lote seleccionado es de sabor "${chosenBatch.flavor}", pero los productos son de sabor "${productFlavorsStr}". Selecciona un lote de "${productFlavorsStr}" o déjalo en preventa.`, 'warning');
+            return;
+          }
+        }
+      }
+    }
+
     const total = Number(totalInput.value) || 10000;
     const paid = Number(paidInput.value) || 0;
 
@@ -1690,6 +1813,12 @@ export async function openOrderModal(orderData = null) {
     const driverIdVal = driverSelect?.value ? Number(driverSelect.value) : null;
     const selectedDriverOpt = driverSelect?.selectedOptions[0];
     const driverNameVal = driverIdVal ? (selectedDriverOpt?.dataset?.name || selectedDriverOpt?.text?.replace(/^🛵\s*/, '')) : null;
+
+    const statusVal = document.getElementById('orderDeliveryStatus').value;
+    let finalDeliveryDateVal = document.getElementById('orderDeliveryDateInput').value || null;
+    if (statusVal === 'DELIVERED' && !finalDeliveryDateVal) {
+      finalDeliveryDateVal = getTodayLocalDateStr();
+    }
 
     const orderPayload = {
       customerId: selectedCustomerId || undefined,
@@ -1705,9 +1834,9 @@ export async function openOrderModal(orderData = null) {
       deliveryDriverId: deliveryType === 'DOMICILIARIO' ? driverIdVal : null,
       deliveryDriverName: deliveryType === 'DOMICILIARIO' ? driverNameVal : null,
       deliveryFee: Number(document.getElementById('orderDeliveryFee')?.value) || 0,
-      deliveryStatus: document.getElementById('orderDeliveryStatus').value,
+      deliveryStatus: statusVal,
       orderDate: document.getElementById('orderDateInput').value,
-      deliveryDate: document.getElementById('orderDeliveryDateInput').value || null,
+      deliveryDate: finalDeliveryDateVal,
       notes: document.getElementById('orderNotes').value,
       registeredBy: store.currentUser,
     };
