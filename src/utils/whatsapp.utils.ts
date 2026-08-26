@@ -5,7 +5,7 @@
 export function buildWhatsAppUrl(contact: string | null | undefined, message: string): string {
   const encodedText = encodeURIComponent(message);
   if (!contact) {
-    return `https://wa.me/?text=${encodedText}`;
+    return `https://api.whatsapp.com/send/?text=${encodedText}`;
   }
 
   // Limpiar caracteres invisibles de Unicode (LTR, RTL, isolates, non-breaking spaces)
@@ -21,14 +21,14 @@ export function buildWhatsAppUrl(contact: string | null | undefined, message: st
     if (!cleanPhone.startsWith('57') && cleanPhone.length === 10) {
       cleanPhone = `57${cleanPhone}`;
     }
-    return `https://wa.me/${cleanPhone}?text=${encodedText}`;
+    return `https://api.whatsapp.com/send/?phone=${cleanPhone}&text=${encodedText}`;
   }
 
   // Si es un nombre de usuario (@usuario o alias):
   const cleanUsername = rawContact.replace(/^@/, '').trim();
   if (cleanUsername.length > 0) {
-    return `https://wa.me/${cleanUsername}?text=${encodedText}`;
+    return `https://api.whatsapp.com/send/?username=${cleanUsername}&text=${encodedText}`;
   }
 
-  return `https://wa.me/?text=${encodedText}`;
+  return `https://api.whatsapp.com/send/?text=${encodedText}`;
 }
