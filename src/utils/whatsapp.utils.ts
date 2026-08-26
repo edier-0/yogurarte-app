@@ -3,8 +3,9 @@
  * números telefónicos, nombres de usuario (@usuario) y conservación intacta de emojis UTF-8.
  */
 export function buildWhatsAppUrl(contact: string | null | undefined, message: string): string {
+  const encodedText = encodeURIComponent(message);
   if (!contact) {
-    return `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    return `https://wa.me/?text=${encodedText}`;
   }
 
   // Limpiar caracteres invisibles de Unicode (LTR, RTL, isolates, non-breaking spaces)
@@ -13,18 +14,21 @@ export function buildWhatsAppUrl(contact: string | null | undefined, message: st
     .trim();
 
   const digits = rawContact.replace(/\D/g, '');
-  const encodedText = encodeURIComponent(message);
 
-  // Si tiene al menos 7 dígitos numéricos, es un número de teléfono válido
+  // Si tiene al menos 7 dígitos numéricos, anteponer 57 si es celular colombiano
   if (digits.length >= 7) {
     let cleanPhone = digits;
-    // Si tiene 10 dígitos (número celular colombiano clásico como 3024581882), anteponer 57
     if (!cleanPhone.startsWith('57') && cleanPhone.length === 10) {
       cleanPhone = `57${cleanPhone}`;
     }
-    return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`;
+    return `https://wa.me/${cleanPhone}?text=${encodedText}`;
   }
 
-  // Si es un nombre de usuario (ej: @edier, @yeilin) o no tiene número telefónico:
-  return `https://api.whatsapp.com/send?text=${encodedText}`;
+  // Si es un nombre de usuario (@usuario o alias):
+  const cleanUsername = rawContact.replace(/^@/, '').trim();
+  if (cleanUsername.length > 0) {
+    return `https://wa.me/${cleanUsername}?text=${encodedText}`;
+  }
+
+  return `https://wa.me/?text=${encodedText}`;
 }

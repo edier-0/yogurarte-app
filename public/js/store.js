@@ -234,8 +234,9 @@ export const debounce = (fn, delay = 250) => {
 
 // Generador universal y seguro de enlaces de WhatsApp con soporte total de emojis y usuarios
 export const buildWhatsAppUrl = (contact, message) => {
+  const encodedText = encodeURIComponent(message);
   if (!contact) {
-    return `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    return `https://wa.me/?text=${encodedText}`;
   }
 
   // Limpiar caracteres invisibles de Unicode (LTR, RTL, isolates, non-breaking spaces)
@@ -244,17 +245,21 @@ export const buildWhatsAppUrl = (contact, message) => {
     .trim();
 
   const digits = rawContact.replace(/\D/g, '');
-  const encodedText = encodeURIComponent(message);
 
   if (digits.length >= 7) {
     let cleanPhone = digits;
     if (!cleanPhone.startsWith('57') && cleanPhone.length === 10) {
       cleanPhone = `57${cleanPhone}`;
     }
-    return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`;
+    return `https://wa.me/${cleanPhone}?text=${encodedText}`;
   }
 
-  // Si es un @usuario o no tiene número numérico válido:
-  return `https://api.whatsapp.com/send?text=${encodedText}`;
+  // Si es un @usuario o alias:
+  const cleanUsername = rawContact.replace(/^@/, '').trim();
+  if (cleanUsername.length > 0) {
+    return `https://wa.me/${cleanUsername}?text=${encodedText}`;
+  }
+
+  return `https://wa.me/?text=${encodedText}`;
 };
 

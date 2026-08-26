@@ -879,7 +879,7 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
         updateData.deliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
       } else if (deliveryStatus === 'IN_ROUTE' && !existing.dispatchedAt) {
         updateData.dispatchedAt = new Date();
-      } else if (deliveryStatus === 'PENDING' || deliveryStatus === 'PREPARING') {
+      } else if (deliveryStatus === 'PENDING' || deliveryStatus === 'PREPARING' || deliveryStatus === 'READY_FOR_DISPATCH') {
         updateData.dispatchedAt = null;
       }
     }
@@ -918,18 +918,12 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
       }
     }
 
-    if (paymentMethod) {
+    if (paymentMethod && (!existing.payments || existing.payments.length === 0)) {
       updateData.paymentMethod = String(paymentMethod).trim();
-      if (existing.payments && existing.payments.length > 0) {
-        await prisma.orderPayment.updateMany({
-          where: { orderId },
-          data: { paymentMethod: String(paymentMethod).trim() },
-        });
-      }
     }
 
     if (notes !== undefined) {
-      updateData.notes = notes ? String(notes).trim() : null;
+      updateData.notes = notes;
     }
 
     const updated = await prisma.order.update({
@@ -988,84 +982,48 @@ export const rescheduleOverdueOrders = async (req: Request, res: Response) => {
 export const addOrderPayment = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { amount, paymentMethod, paymentDate, notes, registeredBy } = req.body;
+    const { amount, paymentMethod, notes, registeredBy } = req.body;
 
     const orderId = Number(id);
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: { payments: true },
-    });
-
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
     if (!order) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
     const payAmount = Number(amount);
-    if (!payAmount || payAmount <= 0) {
+    if (isNaN(payAmount) || payAmount <= 0) {
       return res.status(400).json({ error: 'El monto del abono debe ser mayor a 0' });
     }
 
-    // 🛡️ Protección anti-duplicados y sobrepago:
-    const currentPaid = (order.payments || []).reduce((sum, p) => sum + p.amount, 0);
-    const currentPending = Math.max(0, order.totalAmount - currentPaid);
+    const todayStr = getColombiaDateStr();
+    const paymentDate = new Date(`${todayStr}T12:00:00.000Z`);
 
-    if (currentPending <= 0) {
-      return res.status(400).json({
-        error: '⚠️ Este pedido ya fue pagado en su totalidad por otro usuario. Por favor recarga la vista para verificar.',
-      });
-    }
-
-    if (payAmount > currentPending) {
-      return res.status(400).json({
-        error: `⚠️ El monto a abonar ($${payAmount.toLocaleString('es-CO')}) supera el saldo pendiente real del pedido ($${currentPending.toLocaleString('es-CO')}).`,
-      });
-    }
-
-    const pDate = paymentDate ? new Date(`${String(paymentDate).split('T')[0]}T12:00:00.000Z`) : new Date();
-
-    // Crear registro de abono
-    await prisma.orderPayment.create({
+    const newPayment = await prisma.orderPayment.create({
       data: {
         orderId,
         amount: payAmount,
-        paymentDate: pDate,
-        paymentMethod: paymentMethod ? String(paymentMethod).trim() : 'EFECTIVO',
+        paymentMethod: paymentMethod ? String(paymentMethod).trim() : (order.paymentMethod || 'EFECTIVO'),
+        paymentDate,
         notes: notes ? String(notes).trim() : null,
         registeredBy: registeredBy || 'Edier',
       },
     });
 
-    // Recalcular todos los abonos del pedido
-    const allPayments = await prisma.orderPayment.findMany({
-      where: { orderId },
-      orderBy: { paymentDate: 'asc' },
-    });
-
-    const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
-    const pendingAmount = Math.max(0, order.totalAmount - totalPaid);
-
-    let paymentStatus = 'PENDING';
-    if (totalPaid >= order.totalAmount) {
-      paymentStatus = 'PAID';
-    } else if (totalPaid > 0) {
-      paymentStatus = 'PARTIAL';
-    }
-
-    const uniqueMethods = Array.from(new Set(allPayments.map((p) => p.paymentMethod)));
-    let finalMethod = order.paymentMethod;
-    if (uniqueMethods.length === 1) {
-      finalMethod = uniqueMethods[0];
-    } else if (uniqueMethods.length > 1) {
-      finalMethod = `MIXTO (${uniqueMethods.join(' + ')})`;
+    const newPaidAmount = order.paidAmount + payAmount;
+    const newPendingAmount = Math.max(0, order.totalAmount - newPaidAmount);
+    let newPaymentStatus = 'PENDING';
+    if (newPaidAmount >= order.totalAmount) {
+      newPaymentStatus = 'PAID';
+    } else if (newPaidAmount > 0) {
+      newPaymentStatus = 'PARTIAL';
     }
 
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
       data: {
-        paidAmount: totalPaid,
-        pendingAmount,
-        paymentStatus,
-        paymentMethod: finalMethod,
+        paidAmount: newPaidAmount,
+        pendingAmount: newPendingAmount,
+        paymentStatus: newPaymentStatus,
       },
       include: {
         customer: true,
@@ -1077,10 +1035,14 @@ export const addOrderPayment = async (req: Request, res: Response) => {
       },
     });
 
-    res.status(201).json(updatedOrder);
+    res.json({
+      message: 'Abono registrado exitosamente',
+      payment: newPayment,
+      order: updatedOrder,
+    });
   } catch (error) {
     console.error('Error adding order payment:', error);
-    res.status(500).json({ error: 'Error al registrar abono del pedido' });
+    res.status(500).json({ error: 'Error al registrar abono al pedido' });
   }
 };
 
@@ -1132,21 +1094,12 @@ export const updateOrderPayment = async (req: Request, res: Response) => {
       paymentStatus = 'PARTIAL';
     }
 
-    const uniqueMethods = Array.from(new Set(allPayments.map((p) => p.paymentMethod)));
-    let finalMethod = 'EFECTIVO';
-    if (uniqueMethods.length === 1) {
-      finalMethod = uniqueMethods[0];
-    } else if (uniqueMethods.length > 1) {
-      finalMethod = `MIXTO (${uniqueMethods.join(' + ')})`;
-    }
-
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
       data: {
         paidAmount: totalPaid,
         pendingAmount,
         paymentStatus,
-        paymentMethod: finalMethod,
       },
       include: {
         customer: true,
@@ -1165,50 +1118,49 @@ export const updateOrderPayment = async (req: Request, res: Response) => {
   }
 };
 
-// Eliminar un abono de un pedido
+// Eliminar un abono específico de un pedido
 export const deleteOrderPayment = async (req: Request, res: Response) => {
   try {
     const { id, paymentId } = req.params;
     const orderId = Number(id);
     const pId = Number(paymentId);
 
+    const payment = await prisma.orderPayment.findUnique({
+      where: { id: pId },
+    });
+
+    if (!payment || payment.orderId !== orderId) {
+      return res.status(404).json({ error: 'Abono no encontrado en este pedido' });
+    }
+
     await prisma.orderPayment.delete({
       where: { id: pId },
     });
 
-    const allPayments = await prisma.orderPayment.findMany({
+    const remainingPayments = await prisma.orderPayment.findMany({
       where: { orderId },
-      orderBy: { paymentDate: 'asc' },
     });
 
+    const totalPaid = remainingPayments.reduce((sum, p) => sum + p.amount, 0);
     const order = await prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
-
-    const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
-    const pendingAmount = Math.max(0, order.totalAmount - totalPaid);
-
-    let paymentStatus = 'PENDING';
-    if (totalPaid >= order.totalAmount) {
-      paymentStatus = 'PAID';
-    } else if (totalPaid > 0) {
-      paymentStatus = 'PARTIAL';
+    if (!order) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
-    const uniqueMethods = Array.from(new Set(allPayments.map((p) => p.paymentMethod)));
-    let finalMethod = 'EFECTIVO';
-    if (uniqueMethods.length === 1) {
-      finalMethod = uniqueMethods[0];
-    } else if (uniqueMethods.length > 1) {
-      finalMethod = `MIXTO (${uniqueMethods.join(' + ')})`;
+    const newPending = Math.max(0, order.totalAmount - totalPaid);
+    let newStatus = 'PENDING';
+    if (totalPaid >= order.totalAmount) {
+      newStatus = 'PAID';
+    } else if (totalPaid > 0) {
+      newStatus = 'PARTIAL';
     }
 
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
       data: {
         paidAmount: totalPaid,
-        pendingAmount,
-        paymentStatus,
-        paymentMethod: finalMethod,
+        pendingAmount: newPending,
+        paymentStatus: newStatus,
       },
       include: {
         customer: true,
@@ -1220,7 +1172,10 @@ export const deleteOrderPayment = async (req: Request, res: Response) => {
       },
     });
 
-    res.json(updatedOrder);
+    res.json({
+      message: 'Abono eliminado exitosamente',
+      order: updatedOrder,
+    });
   } catch (error) {
     console.error('Error deleting order payment:', error);
     res.status(500).json({ error: 'Error al eliminar abono' });
@@ -1257,24 +1212,13 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
     }
 
     const rawContact = (order.customer.phone || '').trim();
-    const isUsername = rawContact.startsWith('@') || /[a-zA-Z]/.test(rawContact);
-    let whatsappPhoneParam = '';
-
-    if (isUsername) {
-      whatsappPhoneParam = rawContact.replace(/^@/, '').trim();
-    } else {
-      let digits = rawContact.replace(/\D/g, '');
-      if (!digits.startsWith('57') && digits.length === 10) {
-        digits = `57${digits}`;
-      }
-      whatsappPhoneParam = digits;
-    }
-
     const formatCurrency = (val: number) => `$${new Intl.NumberFormat('es-CO').format(val)} COP`;
 
     let statusText = '🕒 Pendiente por preparar';
     if (order.deliveryStatus === 'PREPARING') {
       statusText = '🥣 En preparación (elaborando tu yogur fresco)';
+    } else if (order.deliveryStatus === 'READY_FOR_DISPATCH') {
+      statusText = '📦 Listo para despacho (empacado y refrigerado)';
     } else if (order.deliveryStatus === 'IN_ROUTE') {
       statusText = '🛵 En camino / En ruta a tu dirección';
     } else if (order.deliveryStatus === 'DELIVERED') {
@@ -1368,6 +1312,8 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
     let closingPhrase = '🥛 ¡Tu yogur artesanal 100% natural entrará en preparación muy pronto con el mayor amor! Cualquier duda estamos a tu disposición. 🥛🍇🍓';
     if (order.deliveryStatus === 'PREPARING') {
       closingPhrase = '🥣 ¡Tu yogur artesanal 100% natural está siendo preparado y empacado con el mayor amor! Cualquier duda estamos a tu disposición. 🥛🍇🍓';
+    } else if (order.deliveryStatus === 'READY_FOR_DISPATCH') {
+      closingPhrase = '📦 ¡Tu yogur artesanal ya está listo, empacado y refrigerado! Nuestro domiciliario está próximo a salir hacia tu dirección. 🥛🍇🍓';
     } else if (order.deliveryStatus === 'IN_ROUTE') {
       closingPhrase = '🛵 ¡Tu yogur artesanal 100% natural ya va en camino hacia tu dirección! Atento para recibirlo. Cualquier duda estamos a tu disposición. 🥛🍇🍓';
     }

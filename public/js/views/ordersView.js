@@ -204,6 +204,7 @@ export async function renderOrders(container) {
             <option value="ALL" ${currentFilters.deliveryStatus === 'ALL' ? 'selected' : ''}>🛵 Todas las entregas</option>
             <option value="PENDING" ${currentFilters.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Pendientes</option>
             <option value="PREPARING" ${currentFilters.deliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
+            <option value="READY_FOR_DISPATCH" ${currentFilters.deliveryStatus === 'READY_FOR_DISPATCH' ? 'selected' : ''}>📦 Listos para Despacho</option>
             <option value="IN_ROUTE" ${currentFilters.deliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Ruta</option>
             <option value="DELIVERED" ${currentFilters.deliveryStatus === 'DELIVERED' ? 'selected' : ''}>✅ Entregados</option>
           </select>
@@ -853,6 +854,7 @@ function createOrderCardHtml(o) {
         <select class="form-select select-delivery-status" data-id="${o.id}" style="width: auto; padding: 4px 10px; font-size: 0.82rem; font-weight: 700;">
           <option value="PENDING" ${o.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Por Entregar (Pendiente)</option>
           <option value="PREPARING" ${o.deliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
+          <option value="READY_FOR_DISPATCH" ${o.deliveryStatus === 'READY_FOR_DISPATCH' ? 'selected' : ''}>📦 Listo para Despacho</option>
           <option value="IN_ROUTE" ${o.deliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Camino (En Ruta)</option>
           <option value="DELIVERED" ${o.deliveryStatus === 'DELIVERED' ? 'selected' : ''}>✅ Entregado</option>
         </select>
@@ -944,12 +946,14 @@ function attachOrderCardEvents(container) {
         let statusMsg = 'Estado de entrega actualizado con éxito ✅';
         if (deliveryStatus === 'PENDING') {
           statusMsg = '¡Pedido regresado a Por Entregar (Pendiente)! 🕒';
+        } else if (deliveryStatus === 'PREPARING') {
+          statusMsg = '¡Pedido marcado En Preparación! 🥣';
+        } else if (deliveryStatus === 'READY_FOR_DISPATCH') {
+          statusMsg = '¡Pedido marcado como Listo para Despacho! 📦';
         } else if (deliveryStatus === 'IN_ROUTE') {
           statusMsg = '¡Pedido marcado En Camino a reparto! 🛵💨';
         } else if (deliveryStatus === 'DELIVERED') {
           statusMsg = '¡Pedido marcado como Entregado! ✅';
-        } else if (deliveryStatus === 'PREPARING') {
-          statusMsg = '¡Pedido marcado En Preparación! 🥣';
         }
         showToast(statusMsg);
         const mainContainer = document.getElementById('contentContainer');
@@ -1303,6 +1307,7 @@ export async function openOrderModal(orderData = null) {
               <select id="orderDeliveryStatus" class="form-select">
                 <option value="PENDING" ${defaultDeliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Pendiente</option>
                 <option value="PREPARING" ${defaultDeliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
+                <option value="READY_FOR_DISPATCH" ${defaultDeliveryStatus === 'READY_FOR_DISPATCH' ? 'selected' : ''}>📦 Listo para Despacho</option>
                 <option value="IN_ROUTE" ${defaultDeliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Ruta</option>
                 <option value="DELIVERED" ${defaultDeliveryStatus === 'DELIVERED' ? 'selected' : ''}>✅ Entregado</option>
               </select>

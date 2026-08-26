@@ -228,6 +228,7 @@ function filterAndRenderDelivery(container) {
 
   // 4. Contadores de estados
   const pendingOrders = scopedOrders.filter((o) => o.deliveryStatus === 'PENDING' || o.deliveryStatus === 'PREPARING');
+  const readyOrders = scopedOrders.filter((o) => o.deliveryStatus === 'READY_FOR_DISPATCH');
   const inRouteOrders = scopedOrders.filter((o) => o.deliveryStatus === 'IN_ROUTE');
   const deliveredOrders = scopedOrders.filter((o) => o.deliveryStatus === 'DELIVERED');
 
@@ -247,7 +248,10 @@ function filterAndRenderDelivery(container) {
   if (chipsContainer) {
     chipsContainer.innerHTML = `
       <button class="filter-chip ${deliveryStatusFilter === 'PENDING' ? 'active' : ''}" data-deliv-filter="PENDING" style="${deliveryStatusFilter === 'PENDING' ? 'background: #EA580C; color: white;' : 'color: #EA580C; border-color: #FED7AA;'}">
-        🕒 Por Entregar (${pendingOrders.length})
+        🕒 Por Preparar (${pendingOrders.length})
+      </button>
+      <button class="filter-chip ${deliveryStatusFilter === 'READY_FOR_DISPATCH' ? 'active' : ''}" data-deliv-filter="READY_FOR_DISPATCH" style="${deliveryStatusFilter === 'READY_FOR_DISPATCH' ? 'background: #D97706; color: white;' : 'color: #D97706; border-color: #FDE68A;'}">
+        📦 Listos Despacho (${readyOrders.length})
       </button>
       <button class="filter-chip ${deliveryStatusFilter === 'IN_ROUTE' ? 'active' : ''}" data-deliv-filter="IN_ROUTE" style="${deliveryStatusFilter === 'IN_ROUTE' ? 'background: var(--primary); color: white;' : 'color: var(--primary); border-color: #DDD6FE;'}">
         🛵 En Camino (${inRouteOrders.length})
@@ -273,42 +277,25 @@ function filterAndRenderDelivery(container) {
   const kpisContainer = document.getElementById('deliveryKpisContainer');
   if (kpisContainer) {
     kpisContainer.innerHTML = `
-      <div class="kpi-card" style="border: 1.5px solid var(--border-color); background: #FFFFFF; padding: 14px 16px;">
-        <div class="kpi-header">
-          <span class="kpi-title" style="color: var(--primary); font-weight: 800; font-size: 0.82rem;">🥛 Litros en Cava / Por Salir</span>
-          <div class="kpi-icon" style="background: var(--primary-light); color: var(--primary); width: 32px; height: 32px; font-size: 0.9rem;">🍶</div>
-        </div>
-        <div class="kpi-value" style="color: var(--primary); font-size: 1.6rem;">
-          ${totalLitersInRoute} <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Litros</span>
-        </div>
-        <div class="kpi-subtitle">
-          ${pendingOrders.length + inRouteOrders.length} pedido(s) por entregar
+      <div class="kpi-card" style="padding: 12px 16px; border-left: 4px solid var(--primary); background: #FFFFFF;">
+        <div class="kpi-label" style="font-size: 0.75rem;">📦 Litros en Reparto / Pendientes</div>
+        <div class="kpi-value" style="font-size: 1.35rem; color: var(--primary);">${totalLitersInRoute} L</div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 2px;">
+          ${pendingOrders.length + readyOrders.length} por despachar • ${inRouteOrders.length} en moto
         </div>
       </div>
-
-      <div class="kpi-card" style="border: 1.5px solid #FED7AA; background: #FFF7ED; padding: 14px 16px;">
-        <div class="kpi-header">
-          <span class="kpi-title" style="color: #C2410C; font-weight: 800; font-size: 0.82rem;">💵 Saldo a Recaudar Contraentrega</span>
-          <div class="kpi-icon" style="background: #FFEDD5; color: #C2410C; width: 32px; height: 32px; font-size: 0.9rem;">💰</div>
-        </div>
-        <div class="kpi-value" style="color: #EA580C; font-size: 1.6rem;">
-          ${formatCOP(totalToCollect)}
-        </div>
-        <div class="kpi-subtitle" style="color: #C2410C;">
-          En efectivo o transferencia Nequi
+      <div class="kpi-card" style="padding: 12px 16px; border-left: 4px solid #DC2626; background: #FFFFFF;">
+        <div class="kpi-label" style="font-size: 0.75rem;">🚨 Saldo Total por Cobrar</div>
+        <div class="kpi-value" style="font-size: 1.35rem; color: #DC2626;">${formatCOP(totalToCollect)}</div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 2px;">
+          Dinero pendiente en la calle
         </div>
       </div>
-
-      <div class="kpi-card" style="border: 1.5px solid #BBF7D0; background: #F0FDF4; padding: 14px 16px;">
-        <div class="kpi-header">
-          <span class="kpi-title" style="color: #15803D; font-weight: 800; font-size: 0.82rem;">✅ Total Recaudado / Pagado</span>
-          <div class="kpi-icon" style="background: #DCFCE7; color: #15803D; width: 32px; height: 32px; font-size: 0.9rem;">✨</div>
-        </div>
-        <div class="kpi-value" style="color: #16A34A; font-size: 1.6rem;">
-          ${formatCOP(totalCollectedToday)}
-        </div>
-        <div class="kpi-subtitle" style="color: #15803D;">
-          ${deliveredOrders.length} entrega(s) completadas
+      <div class="kpi-card" style="padding: 12px 16px; border-left: 4px solid #15803D; background: #FFFFFF;">
+        <div class="kpi-label" style="font-size: 0.75rem;">✅ Recaudado Hoy</div>
+        <div class="kpi-value" style="font-size: 1.35rem; color: #15803D;">${formatCOP(totalCollectedToday)}</div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 2px;">
+          ${deliveredOrders.length} entregas completadas
         </div>
       </div>
     `;
@@ -318,6 +305,8 @@ function filterAndRenderDelivery(container) {
   let displayOrders = scopedOrders;
   if (deliveryStatusFilter === 'PENDING') {
     displayOrders = pendingOrders;
+  } else if (deliveryStatusFilter === 'READY_FOR_DISPATCH') {
+    displayOrders = readyOrders;
   } else if (deliveryStatusFilter === 'IN_ROUTE') {
     displayOrders = inRouteOrders;
   } else if (deliveryStatusFilter === 'DELIVERED') {
@@ -379,7 +368,8 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
         .map((order) => {
           const isDelivered = order.deliveryStatus === 'DELIVERED';
           const isInRoute = order.deliveryStatus === 'IN_ROUTE';
-          const isPending = !isDelivered && !isInRoute;
+          const isReady = order.deliveryStatus === 'READY_FOR_DISPATCH';
+          const isPending = !isDelivered && !isInRoute && !isReady;
 
           const isPaid = order.paymentStatus === 'PAID' || order.pendingAmount <= 0;
           const customerPhone = (order.customer?.phone || '').trim();
@@ -424,8 +414,12 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
             statusBadge = `<span class="badge badge-success">✅ Entregado</span>`;
           } else if (isInRoute) {
             statusBadge = `<span class="badge" style="background: var(--primary-light); color: var(--primary); border: 1px solid var(--primary); font-weight: 800;">🛵 En Camino</span>`;
+          } else if (isReady) {
+            statusBadge = `<span class="badge" style="background: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; font-weight: 800;">📦 Listo Despacho</span>`;
+          } else if (order.deliveryStatus === 'PREPARING') {
+            statusBadge = `<span class="badge" style="background: #E0E7FF; color: #4338CA; border: 1px solid #C7D2FE; font-weight: 800;">🥣 En Preparación</span>`;
           } else {
-            statusBadge = `<span class="badge badge-warning">🕒 Por Entregar</span>`;
+            statusBadge = `<span class="badge badge-warning">🕒 Por Preparar</span>`;
           }
 
           let paymentBadge = '';
@@ -436,7 +430,7 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
           }
 
           return `
-            <div class="order-card" style="padding: 16px; border: 1.5px solid ${isInRoute ? 'var(--primary)' : 'var(--border-color)'}; background: #FFFFFF; display: flex; flex-direction: column; justify-content: space-between;">
+            <div class="order-card" style="padding: 16px; border: 1.5px solid ${isInRoute ? 'var(--primary)' : isReady ? '#D97706' : 'var(--border-color)'}; background: #FFFFFF; display: flex; flex-direction: column; justify-content: space-between;">
               <div>
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
                   <div>
@@ -503,12 +497,29 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
                 ${
                   isPending
                     ? `
-                  <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-primary btn-start-route" data-order-id="${order.id}" style="flex: 1; font-weight: 800; padding: 10px; font-size: 0.84rem;">
+                  <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button class="btn btn-outline btn-mark-ready" data-order-id="${order.id}" style="flex: 1; min-width: 120px; font-weight: 800; padding: 8px; font-size: 0.8rem; color: #D97706; border-color: #FDE68A; background: #FFFBEB;">
+                      📦 Marcar Listo
+                    </button>
+                    <button class="btn btn-primary btn-start-route" data-order-id="${order.id}" style="flex: 1; min-width: 120px; font-weight: 800; padding: 8px; font-size: 0.8rem;">
                       🛵 Salir a Reparto
                     </button>
-                    <button class="btn btn-accent btn-deliver-modal" data-order-id="${order.id}" data-pending="${order.pendingAmount}" data-total="${order.totalAmount}" style="flex: 1; font-weight: 800; padding: 10px; font-size: 0.84rem;">
+                    <button class="btn btn-accent btn-deliver-modal" data-order-id="${order.id}" data-pending="${order.pendingAmount}" data-total="${order.totalAmount}" style="width: 100%; font-weight: 800; padding: 8px; font-size: 0.82rem;">
                       ✅ Entregar y Cobrar
+                    </button>
+                  </div>
+                `
+                    : isReady
+                    ? `
+                  <div style="display: flex; gap: 6px;">
+                    <button class="btn btn-primary btn-start-route" data-order-id="${order.id}" style="flex: 2; font-weight: 800; padding: 10px; font-size: 0.84rem;">
+                      🛵 Salir a Reparto
+                    </button>
+                    <button class="btn btn-accent btn-deliver-modal" data-order-id="${order.id}" data-pending="${order.pendingAmount}" data-total="${order.totalAmount}" style="flex: 2; font-weight: 800; padding: 10px; font-size: 0.84rem;">
+                      ✅ Entregar
+                    </button>
+                    <button class="btn btn-outline btn-revert-to-pending" data-order-id="${order.id}" style="flex: 1; font-weight: 700; padding: 8px 10px; font-size: 0.78rem; color: #EA580C; border-color: #FED7AA; background: #FFF7ED;" title="Pasar pedido otra vez a por preparar">
+                      ↩️
                     </button>
                   </div>
                 `
@@ -518,8 +529,8 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
                     <button class="btn btn-accent btn-deliver-modal" data-order-id="${order.id}" data-pending="${order.pendingAmount}" data-total="${order.totalAmount}" style="flex: 2; font-weight: 800; padding: 10px; font-size: 0.84rem;">
                       ✅ Entregar y Cobrar
                     </button>
-                    <button class="btn btn-outline btn-revert-to-pending" data-order-id="${order.id}" style="flex: 1; font-weight: 700; padding: 8px 10px; font-size: 0.78rem; color: #EA580C; border-color: #FED7AA; background: #FFF7ED;" title="Pasar pedido de en camino otra vez a por entregar">
-                      ↩️ Por Entregar
+                    <button class="btn btn-outline btn-revert-to-ready" data-order-id="${order.id}" style="flex: 1; font-weight: 700; padding: 8px 10px; font-size: 0.78rem; color: #D97706; border-color: #FDE68A; background: #FFFBEB;" title="Regresar a listo para despacho">
+                      ↩️ Listo
                     </button>
                   </div>
                 `
@@ -626,6 +637,19 @@ function attachDeliveryEvents(container) {
 
 // Conectar eventos de acciones en las tarjetas de pedidos
 function attachCardActionEvents(listContainer, mainContainer) {
+  listContainer.querySelectorAll('.btn-mark-ready').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const orderId = e.currentTarget.dataset.orderId;
+      try {
+        await api.updateOrderDeliveryStatus(orderId, { deliveryStatus: 'READY_FOR_DISPATCH' });
+        showToast('¡Pedido marcado como Listo para Despacho! 📦');
+        renderDelivery(mainContainer);
+      } catch (err) {
+        showToast(err.message || 'Error al actualizar pedido', 'danger');
+      }
+    });
+  });
+
   listContainer.querySelectorAll('.btn-start-route').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const orderId = e.currentTarget.dataset.orderId;
@@ -635,6 +659,19 @@ function attachCardActionEvents(listContainer, mainContainer) {
         renderDelivery(mainContainer);
       } catch (err) {
         showToast(err.message || 'Error al actualizar pedido', 'danger');
+      }
+    });
+  });
+
+  listContainer.querySelectorAll('.btn-revert-to-ready').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const orderId = e.currentTarget.dataset.orderId;
+      try {
+        await api.updateOrderDeliveryStatus(orderId, { deliveryStatus: 'READY_FOR_DISPATCH' });
+        showToast('¡Pedido regresado a Listo para Despacho! 📦');
+        renderDelivery(mainContainer);
+      } catch (err) {
+        showToast(err.message || 'Error al actualizar estado', 'danger');
       }
     });
   });

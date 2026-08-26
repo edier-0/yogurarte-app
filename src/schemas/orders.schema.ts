@@ -26,7 +26,7 @@ export const createOrderSchema = z.object({
   deliveryDriverId: z.coerce.number().optional().nullable(),
   deliveryDriverName: z.string().optional().nullable(),
   deliveryFee: z.coerce.number().min(0).optional().default(0),
-  deliveryStatus: z.enum(['PENDING', 'PREPARING', 'IN_ROUTE', 'DELIVERED', 'CANCELLED']).optional().default('PENDING'),
+  deliveryStatus: z.enum(['PENDING', 'PREPARING', 'READY_FOR_DISPATCH', 'IN_ROUTE', 'DELIVERED', 'CANCELLED']).optional().default('PENDING'),
   orderDate: z.string().optional(),
   deliveryDate: z.string().optional().nullable().or(z.literal('')),
   deliveryAddress: z.string().optional().nullable(),
@@ -53,7 +53,7 @@ export const updateOrderSchema = z.object({
   deliveryDriverId: z.coerce.number().optional().nullable(),
   deliveryDriverName: z.string().optional().nullable(),
   deliveryFee: z.coerce.number().min(0).optional(),
-  deliveryStatus: z.enum(['PENDING', 'PREPARING', 'IN_ROUTE', 'DELIVERED', 'CANCELLED']).optional(),
+  deliveryStatus: z.enum(['PENDING', 'PREPARING', 'READY_FOR_DISPATCH', 'IN_ROUTE', 'DELIVERED', 'CANCELLED']).optional(),
   orderDate: z.string().optional(),
   deliveryDate: z.string().optional().nullable().or(z.literal('')),
   deliveryAddress: z.string().optional().nullable(),
@@ -66,7 +66,7 @@ export const assignDriverSchema = z.object({
 });
 
 export const updateDeliveryStatusSchema = z.object({
-  deliveryStatus: z.enum(['PENDING', 'PREPARING', 'IN_ROUTE', 'DELIVERED', 'CANCELLED']).optional(),
+  deliveryStatus: z.enum(['PENDING', 'PREPARING', 'READY_FOR_DISPATCH', 'IN_ROUTE', 'DELIVERED', 'CANCELLED']).optional(),
   paymentMethod: z.string().optional(),
   paidAmount: z.coerce.number().optional(),
   collectPayment: z.boolean().optional(),
