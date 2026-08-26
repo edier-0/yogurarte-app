@@ -405,6 +405,30 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
+    // Validar capacidad máxima del lote seleccionado en creación
+    if (parsedBatchId) {
+      const batchObj = await prisma.productionBatch.findUnique({
+        where: { id: parsedBatchId },
+        include: {
+          orders: { select: { totalLiters: true } },
+          orderItems: { select: { totalLiters: true } },
+        },
+      });
+
+      if (batchObj) {
+        const sold = Math.max(
+          batchObj.orders.reduce((sum, o) => sum + o.totalLiters, 0),
+          batchObj.orderItems.reduce((sum, it) => sum + it.totalLiters, 0)
+        );
+        const availableLiters = Math.max(0, batchObj.totalLitersProduced - sold);
+        if (totalLitersCalculated > availableLiters) {
+          return res.status(400).json({
+            error: `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters}L disponibles, pero este pedido requiere ${totalLitersCalculated}L. No es posible sobrepasar los ${batchObj.totalLitersProduced}L producidos del lote.`,
+          });
+        }
+      }
+    }
+
     // Generar consecutivo de pedido único (PED-YYYYMMDD-001)
     const dateObj = orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : new Date();
     const dateStr = dateObj.toISOString().slice(0, 10).replace(/-/g, '');
@@ -659,6 +683,32 @@ export const updateOrder = async (req: Request, res: Response) => {
         if (b.totalLitersProduced > sold || b.status === 'COMPLETADO') {
           parsedBatchId = b.id;
           break;
+        }
+      }
+    }
+
+    // Validar capacidad máxima del lote seleccionado en edición
+    if (parsedBatchId) {
+      const batchObj = await prisma.productionBatch.findUnique({
+        where: { id: parsedBatchId },
+        include: {
+          orders: { select: { id: true, totalLiters: true } },
+          orderItems: { select: { id: true, orderId: true, totalLiters: true } },
+        },
+      });
+
+      if (batchObj) {
+        const otherOrders = batchObj.orders.filter((o) => o.id !== Number(id));
+        const otherItems = batchObj.orderItems.filter((it) => it.orderId !== Number(id));
+        const otherSold = Math.max(
+          otherOrders.reduce((sum, o) => sum + o.totalLiters, 0),
+          otherItems.reduce((sum, it) => sum + it.totalLiters, 0)
+        );
+        const availableLiters = Math.max(0, batchObj.totalLitersProduced - otherSold);
+        if (updatedLiters > availableLiters) {
+          return res.status(400).json({
+            error: `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters}L disponibles (este pedido requiere ${updatedLiters}L). No es posible sobrepasar la capacidad máxima del lote (${batchObj.totalLitersProduced}L).`,
+          });
         }
       }
     }

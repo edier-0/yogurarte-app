@@ -15,7 +15,8 @@
     "prisma:studio": "prisma studio",
     "backup": "node scripts/backup_cloud.cjs",
     "backup:cloud": "node scripts/backup_cloud.cjs",
-    "backup:local": "scripts\\backup_db.bat"
+    "backup:local": "scripts\\backup_db.bat",
+    "sync:local": "node scripts/sync_neon_to_local.cjs"
   },
   "keywords": [
     "yogur",

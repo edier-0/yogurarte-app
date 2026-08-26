@@ -3,7 +3,15 @@
  * números telefónicos, nombres de usuario (@usuario) y conservación intacta de emojis UTF-8.
  */
 export function buildWhatsAppUrl(contact: string | null | undefined, message: string): string {
-  const rawContact = (contact || '').trim();
+  if (!contact) {
+    return `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+  }
+
+  // Limpiar caracteres invisibles de Unicode (LTR, RTL, isolates, non-breaking spaces)
+  const rawContact = String(contact)
+    .replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u202A-\u202E\u2066-\u2069\u00A0]/g, '')
+    .trim();
+
   const digits = rawContact.replace(/\D/g, '');
   const encodedText = encodeURIComponent(message);
 
@@ -18,6 +26,5 @@ export function buildWhatsAppUrl(contact: string | null | undefined, message: st
   }
 
   // Si es un nombre de usuario (ej: @edier, @yeilin) o no tiene número telefónico:
-  // api.whatsapp.com/send?text=... abre WhatsApp con el mensaje y emojis listos y permite seleccionar el chat
   return `https://api.whatsapp.com/send?text=${encodedText}`;
 }

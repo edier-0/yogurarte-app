@@ -1489,6 +1489,26 @@ export async function openOrderModal(orderData = null) {
     const paid = Number(paidInput.value) || 0;
     const pending = Math.max(0, grandTotal - paid);
     pendingDisplay.value = formatCOP(pending);
+
+    // Validar capacidad de lote en tiempo real en el hint
+    if (batchSelect && batchSelect.value && batchHintDisplay) {
+      const selectedOpt = batchSelect.selectedOptions[0];
+      const chosenBatch = availableBatches.find((b) => b.id === Number(batchSelect.value));
+      if (chosenBatch && chosenBatch.totalLitersProduced !== undefined) {
+        const isSameBatch = isEditing && String(orderData?.batchId) === String(batchSelect.value);
+        const previousOrderLiters = isSameBatch ? (orderData?.totalLiters || 0) : 0;
+        const remainingLiters = chosenBatch.remainingAvailableLiters !== undefined ? chosenBatch.remainingAvailableLiters : chosenBatch.totalLitersProduced;
+        const availableLitersForOrder = Math.max(0, remainingLiters + previousOrderLiters);
+
+        if (sumLiters > availableLitersForOrder) {
+          batchHintDisplay.innerHTML = `🚨 <strong>Capacidad excedida:</strong> El lote tiene ${availableLitersForOrder}L disponibles, pero este pedido requiere ${sumLiters}L (máximo producido: ${chosenBatch.totalLitersProduced}L).`;
+          batchHintDisplay.style.color = '#DC2626';
+        } else {
+          batchHintDisplay.innerHTML = `✅ Lote seleccionado: <strong>${selectedOpt ? selectedOpt.text.replace(/^[🍶\s]*/, '') : ''}</strong>. Precios: 1L: ${formatCOP(currentBatchPrice1L)} • 2L: ${formatCOP(currentBatchPrice2L)}`;
+          batchHintDisplay.style.color = '#15803D';
+        }
+      }
+    }
   }
 
   // Listener para cambio de lote de producción
@@ -1517,11 +1537,6 @@ export async function openOrderModal(orderData = null) {
           }
         }
       });
-
-      if (batchHintDisplay) {
-        batchHintDisplay.innerHTML = `✅ Lote seleccionado: <strong>${selectedOpt.text.replace(/^[🍶\s]*/, '')}</strong>. Precios: 1L: ${formatCOP(currentBatchPrice1L)} • 2L: ${formatCOP(currentBatchPrice2L)}`;
-        batchHintDisplay.style.color = '#15803D';
-      }
     } else {
       if (batchHintDisplay) {
         batchHintDisplay.innerHTML = `💡 Al seleccionar un lote, se aplicarán automáticamente sus precios de venta configurados.`;
@@ -1802,6 +1817,23 @@ export async function openOrderModal(orderData = null) {
             showToast(`⚠️ El lote seleccionado es de sabor "${chosenBatch.flavor}", pero los productos son de sabor "${productFlavorsStr}". Selecciona un lote de "${productFlavorsStr}" o déjalo en preventa.`, 'warning');
             return;
           }
+        }
+      }
+    }
+
+    // Validar capacidad máxima del lote seleccionado
+    if (selectedBatchId) {
+      const chosenBatch = availableBatches.find((b) => b.id === Number(selectedBatchId));
+      if (chosenBatch && chosenBatch.totalLitersProduced !== undefined) {
+        const orderLiters = items.reduce((sum, it) => sum + (it.bottleSize === '2L' ? it.quantity * 2 : it.quantity * 1), 0);
+        const isSameBatch = isEditing && String(orderData?.batchId) === String(selectedBatchId);
+        const previousOrderLiters = isSameBatch ? (orderData?.totalLiters || 0) : 0;
+        const remainingLiters = chosenBatch.remainingAvailableLiters !== undefined ? chosenBatch.remainingAvailableLiters : chosenBatch.totalLitersProduced;
+        const availableLitersForOrder = Math.max(0, remainingLiters + previousOrderLiters);
+
+        if (orderLiters > availableLitersForOrder) {
+          showToast(`⚠️ Capacidad excedida: El lote "${chosenBatch.batchCode}" solo tiene ${availableLitersForOrder}L disponibles (este pedido requiere ${orderLiters}L). No es posible sobrepasar la cantidad máxima producida (${chosenBatch.totalLitersProduced}L).`, 'warning');
+          return;
         }
       }
     }

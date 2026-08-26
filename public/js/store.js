@@ -234,7 +234,15 @@ export const debounce = (fn, delay = 250) => {
 
 // Generador universal y seguro de enlaces de WhatsApp con soporte total de emojis y usuarios
 export const buildWhatsAppUrl = (contact, message) => {
-  const rawContact = (contact || '').trim();
+  if (!contact) {
+    return `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+  }
+
+  // Limpiar caracteres invisibles de Unicode (LTR, RTL, isolates, non-breaking spaces)
+  const rawContact = String(contact)
+    .replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u202A-\u202E\u2066-\u2069\u00A0]/g, '')
+    .trim();
+
   const digits = rawContact.replace(/\D/g, '');
   const encodedText = encodeURIComponent(message);
 
