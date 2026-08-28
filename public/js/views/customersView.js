@@ -166,6 +166,8 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
   const nequiNum = cachedSettings.nequiNumber || '3024581882';
   const bankName = cachedSettings.bankName || 'Nequi / Bancolombia';
   const bankHolder = cachedSettings.bankHolder ? ` (Titular: ${cachedSettings.bankHolder})` : '';
+  const instagramUrl = cachedSettings.instagramUrl || 'https://www.instagram.com/yogurartesanalfonseca?igsi=ZXNjM2dxZ3Z1dXg4&utm_source=qr';
+  const instagramLine = `\n\n📸 *Síguenos en Instagram:*\n${instagramUrl}`;
 
   let msg = '';
   if (deliveredPendingDebt > 0) {
@@ -175,30 +177,35 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
           `Te recordamos cordialmente tu saldo pendiente:\n` +
           `🚨 *Saldo pendiente:* ${formatCOP(deliveredPendingDebt)}\n` +
           `💳 *${bankName}:* *${nequiNum}*${bankHolder}\n\n` +
-          `Si ya realizaste la transferencia, por favor compártenos el comprobante para dejar tu cuenta al día. ¡Muchas gracias por tu apoyo! 🙌✨`;
+          `Si ya realizaste la transferencia, por favor compártenos el comprobante para dejar tu cuenta al día. ¡Muchas gracias por tu apoyo! 🙌✨` +
+          instagramLine;
   } else if (isPaidInProcess && mode === 'INFO') {
     // Info del pedido pagado en proceso
     msg = `🥛 *YogurArte | Info de tu Pedido*\n\n` +
           `¡Hola *${fullName}*! Tu pedido de yogur artesanal 100% natural está siendo preparado. 🥣🍓\n\n` +
           `💰 *Estado:* Totalmente Pagado (✅ Paz y Salvo)\n` +
-          `Te avisaremos apenas nuestro domiciliario vaya en camino hacia tu dirección. ¡Muchas gracias por tu compra! 🛵💨`;
+          `Te avisaremos apenas nuestro domiciliario vaya en camino hacia tu dirección. ¡Muchas gracias por tu compra! 🛵💨` +
+          instagramLine;
   } else if (isPaidInProcess) {
     // Pedido pagado en proceso (agradecimiento y confirmación de pago YogurArte)
     msg = `🥛 *YogurArte | Pago Confirmado ✨*\n\n` +
           `¡Hola *${fullName}*! Confirmamos que recibimos con éxito el pago de tu pedido. 🥣🍓\n\n` +
           `💰 *Estado:* Totalmente Pagado (✅ Paz y Salvo)\n` +
-          `Tu yogur 100% natural está en preparación y te avisaremos apenas vaya en camino. ¡Muchas gracias por tu compra y confianza! 🙌🥛✨`;
+          `Tu yogur 100% natural está en preparación y te avisaremos apenas vaya en camino. ¡Muchas gracias por tu compra y confianza! 🙌🥛✨` +
+          instagramLine;
   } else if (inProcessPendingAmount > 0) {
     // Pedido en proceso / encargado (aún no se entrega)
     msg = `🥛 *YogurArte | Info de tu Encargo*\n\n` +
           `Hola *${fullName}*, tu encargo de yogur artesanal está en proceso. 🥣🍓\n\n` +
           `💰 *Saldo a cancelar:* ${formatCOP(inProcessPendingAmount)}\n` +
           `💳 *${bankName}:* *${nequiNum}*${bankHolder}\n\n` +
-          `Te avisaremos apenas nuestro domiciliario vaya en camino hacia tu dirección. ¡Gracias por tu encargo! 🛵💨`;
+          `Te avisaremos apenas nuestro domiciliario vaya en camino hacia tu dirección. ¡Gracias por tu encargo! 🛵💨` +
+          instagramLine;
   } else {
     // Cliente al día
     msg = `¡Hola *${fullName}*! 🥛✨ Te saludamos con mucho aprecio de *YogurArte*.\n\n` +
-          `¿Te gustaría encargar de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos para tomar tu pedido con tus sabores favoritos. 🍓🍑🍇🥛`;
+          `¿Te gustaría encargar de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos para tomar tu pedido con tus sabores favoritos. 🍓🍑🍇🥛` +
+          instagramLine;
   }
 
   return buildWhatsAppUrl(rawPhone, msg);

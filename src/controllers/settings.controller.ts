@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   paymentInstructions: 'Transferencias vía Nequi o Bancolombia a la mano',
   daviplataNumber: '',
   bancolombiaAccount: '',
+  instagramUrl: 'https://www.instagram.com/yogurartesanalfonseca?igsi=ZXNjM2dxZ3Z1dXg4&utm_source=qr',
 };
 
 export const getSettingValue = async (key: string, defaultValue: string = ''): Promise<string> => {

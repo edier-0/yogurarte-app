@@ -1237,6 +1237,8 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
     const settings = await getAllSettingsMap();
     const nequiNum = settings.nequiNumber || '3024581882';
     const bankName = settings.bankName || 'Nequi / Bancolombia';
+    const instagramUrl = settings.instagramUrl || 'https://www.instagram.com/yogurartesanalfonseca?igsi=ZXNjM2dxZ3Z1dXg4&utm_source=qr';
+    const instagramLine = `\n\n📸 *Síguenos en Instagram:*\n${instagramUrl}`;
 
     // 1. Si el pedido ya está ENTREGADO y no se forzó otro tipo: Mensaje conciso de entrega y agradecimiento
     if (order.deliveryStatus === 'DELIVERED' && type !== 'ORDER_INFO') {
@@ -1255,6 +1257,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
       }
 
       deliveredMsg += `¡Esperamos que disfrutes al máximo tu delicioso yogur artesanal 100% natural! Cualquier duda o para tu próximo pedido estamos a tu orden. 🥛🍇🍓`;
+      deliveredMsg += instagramLine;
 
       const whatsappUrl = buildWhatsAppUrl(rawContact, deliveredMsg);
 
@@ -1276,6 +1279,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
         paidMsg += `📍 *Entrega:* ${order.deliveryAddress || order.customer.address}\n`;
       }
       paidMsg += `\n🥣 ¡Muchas gracias por tu compra y confianza! Tu yogur 100% natural está siendo preparado y te avisaremos apenas vaya en camino. 🍓🛵💨`;
+      paidMsg += instagramLine;
 
       const whatsappUrl = buildWhatsAppUrl(rawContact, paidMsg);
 
@@ -1316,6 +1320,7 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
     }
 
     message += `${closingPhrase}`;
+    message += instagramLine;
 
     const whatsappUrl = buildWhatsAppUrl(rawContact, message);
 
