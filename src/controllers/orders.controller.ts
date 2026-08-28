@@ -1216,11 +1216,11 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
 
     let statusText = '🕒 Pendiente por preparar';
     if (order.deliveryStatus === 'PREPARING') {
-      statusText = '🥣 En preparación (elaborando tu yogur fresco)';
+      statusText = '🥣 En preparación';
     } else if (order.deliveryStatus === 'READY_FOR_DISPATCH') {
-      statusText = '📦 Listo para despacho (empacado y refrigerado)';
+      statusText = '📦 Listo para despacho';
     } else if (order.deliveryStatus === 'IN_ROUTE') {
-      statusText = '🛵 En camino / En ruta a tu dirección';
+      statusText = '🛵 En camino';
     } else if (order.deliveryStatus === 'DELIVERED') {
       statusText = '✅ Entregado';
     }
@@ -1234,40 +1234,27 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
       itemsBreakdown = `• ${order.quantityBottles}x Botella ${order.bottleSize} (${order.flavor}) - ${formatCurrency(order.totalAmount)}`;
     }
 
-    const formatOrderDate = (d: Date) => {
-      const date = new Date(d);
-      return date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
-    };
-
-    let dateLine = `📅 *Fecha Pedido:* ${formatOrderDate(order.orderDate)}`;
-    if (order.deliveryDate) {
-      const dDate = new Date(order.deliveryDate);
-      const deliveryFormatted = dDate.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });
-      dateLine += `\n🛵 *Entrega Programada:* ${deliveryFormatted}`;
-    }
-
     const settings = await getAllSettingsMap();
     const nequiNum = settings.nequiNumber || '3024581882';
     const bankName = settings.bankName || 'Nequi / Bancolombia';
-    const bankHolder = settings.bankHolder || 'Edier / YogurArte';
 
-    // 1. Si el pedido ya está ENTREGADO y no se forzó otro tipo: Mensaje especial de agradecimiento y disfrute
+    // 1. Si el pedido ya está ENTREGADO y no se forzó otro tipo: Mensaje conciso de entrega y agradecimiento
     if (order.deliveryStatus === 'DELIVERED' && type !== 'ORDER_INFO') {
-      let deliveredMsg = `🥛 *¡Muchas gracias por tu compra en YogurArte!* ✨\n\n`;
-      deliveredMsg += `Hola *${order.customer.fullName}*, tu pedido *#${order.orderNumber}* ha sido entregado con éxito. 🎉\n\n`;
-      deliveredMsg += `¡Esperamos que disfrutes al máximo tu delicioso yogur artesanal 100% natural! 🍇🍓🥛\n\n`;
+      let deliveredMsg = `🥛 *YogurArte | Pedido #${order.orderNumber}*\n\n`;
+      deliveredMsg += `¡Hola *${order.customer.fullName}*! Tu pedido ha sido *✅ Entregado con éxito*.\n`;
+      deliveredMsg += `${itemsBreakdown}\n\n`;
 
-      // Solo si debe se incluye el recordatorio de saldo pendiente; si no debe, no se muestra nada
       if (order.pendingAmount > 0) {
-        deliveredMsg += `⚠️ *Recordatorio de Pago:*\n`;
-        deliveredMsg += `• Saldo pendiente: *${formatCurrency(order.pendingAmount)}*\n`;
+        deliveredMsg += `🚨 *Saldo pendiente:* ${formatCurrency(order.pendingAmount)}\n`;
         if (order.paidAmount > 0) {
-          deliveredMsg += `• Ya abonado: ${formatCurrency(order.paidAmount)}\n`;
+          deliveredMsg += `💵 *Abonado:* ${formatCurrency(order.paidAmount)}\n`;
         }
         deliveredMsg += `💳 *${bankName}:* ${nequiNum}\n\n`;
+      } else {
+        deliveredMsg += `💰 *Total:* ${formatCurrency(order.totalAmount)} (✅ Paz y Salvo)\n\n`;
       }
 
-      deliveredMsg += `Estamos siempre atentos a cualquier duda o para tu próximo pedido. ¡Que lo disfrutes mucho! 🥛🍇🍓`;
+      deliveredMsg += `¡Esperamos que disfrutes al máximo tu delicioso yogur artesanal 100% natural! Cualquier duda o para tu próximo pedido estamos a tu orden. 🥛🍇🍓`;
 
       const whatsappUrl = buildWhatsAppUrl(rawContact, deliveredMsg);
 
@@ -1278,18 +1265,17 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
       });
     }
 
-    // 2. Si el pedido ya está PAGADO pero aún NO entregado y no se pidió solo ORDER_INFO (Confirmación de pago y agradecimiento al estilo YogurArte)
+    // 2. Si el pedido ya está PAGADO pero aún NO entregado y no se pidió solo ORDER_INFO
     if (type !== 'ORDER_INFO' && order.deliveryStatus !== 'DELIVERED' && (order.paymentStatus === 'PAID' || order.pendingAmount <= 0)) {
-      let paidMsg = `🥛 *¡Pago Recibido con Éxito - YogurArte!* ✨\n\n`;
-      paidMsg += `¡Hola *${order.customer.fullName}*! Te saludamos con mucho aprecio y cariño de parte del equipo de *YogurArte*.\n\n`;
-      paidMsg += `🎉 Te confirmamos que hemos recibido con éxito tu pago de *${formatCurrency(order.totalAmount)}* para tu pedido *#${order.orderNumber}*. ¡Muchísimas gracias por tu compra y por confiar en nuestro trabajo artesanal! 🙌🐄\n\n`;
-      paidMsg += `📦 *Detalle de tu pedido:*\n${itemsBreakdown}\n`;
-      paidMsg += `🥤 *Total:* ${order.totalLiters} Litro(s) • ${formatCurrency(order.totalAmount)}\n`;
-      paidMsg += `✅ *Estado del Pago:* Totalmente Pagado / Paz y Salvo ✨\n`;
-      paidMsg += `🛵 *Estado de Entrega:* ${statusText}\n`;
-      paidMsg += `${dateLine}\n\n`;
-      paidMsg += `🥣 Tu yogur 100% natural, fresco y sin conservantes está siendo preparado con todo el amor. Te notificaremos apenas nuestro domiciliario vaya en camino hacia tu dirección (${order.deliveryAddress || order.customer.address || 'Fonseca'}). 🍓🍑🛵💨\n\n`;
-      paidMsg += `¡Que tengas un día maravilloso! ✨🥛`;
+      let paidMsg = `🥛 *YogurArte | Pago Confirmado ✨*\n\n`;
+      paidMsg += `¡Hola *${order.customer.fullName}*! Confirmamos el pago de tu pedido *#${order.orderNumber}*:\n`;
+      paidMsg += `${itemsBreakdown}\n\n`;
+      paidMsg += `💰 *Total Pagado:* ${formatCurrency(order.totalAmount)} (✅ Paz y Salvo)\n`;
+      paidMsg += `📦 *Estado:* ${statusText}\n`;
+      if (order.deliveryAddress || order.customer.address) {
+        paidMsg += `📍 *Entrega:* ${order.deliveryAddress || order.customer.address}\n`;
+      }
+      paidMsg += `\n🥣 ¡Muchas gracias por tu compra y confianza! Tu yogur 100% natural está siendo preparado y te avisaremos apenas vaya en camino. 🍓🛵💨`;
 
       const whatsappUrl = buildWhatsAppUrl(rawContact, paidMsg);
 
@@ -1300,32 +1286,35 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
       });
     }
 
-    // 3. Estados previos a la entrega con pago pendiente o parcial
-    let paymentInfo = '';
+    // 3. Estados previos a la entrega con pago pendiente, abono parcial o consulta de info
+    let message = `🥛 *YogurArte | Pedido #${order.orderNumber}*\n\n`;
+    message += `Hola *${order.customer.fullName}*, el estado de tu pedido es: *${statusText}*\n`;
+    message += `${itemsBreakdown}\n\n`;
+    message += `💰 *Total:* ${formatCurrency(order.totalAmount)}`;
+
     if (order.pendingAmount > 0) {
-      paymentInfo = `💵 *Abonado:* ${formatCurrency(order.paidAmount)} | 🚨 *Saldo Pendiente:* ${formatCurrency(order.pendingAmount)}\n💳 *Transferencia ${bankName}:* ${nequiNum}`;
+      message += `\n🚨 *Saldo pendiente:* ${formatCurrency(order.pendingAmount)}`;
+      if (order.paidAmount > 0) {
+        message += ` (💵 Abonado: ${formatCurrency(order.paidAmount)})`;
+      }
+      message += `\n💳 *${bankName}:* ${nequiNum}`;
     } else {
-      paymentInfo = `✅ *Pago:* Totalmente Pagado`;
+      message += ` (✅ Pagado)`;
     }
 
-    // Frase de cierre adaptada según el estado
-    let closingPhrase = '🥛 ¡Tu yogur artesanal 100% natural entrará en preparación muy pronto con el mayor amor! Cualquier duda estamos a tu disposición. 🥛🍇🍓';
+    if (order.deliveryAddress || order.customer.address) {
+      message += `\n📍 *Entrega:* ${order.deliveryAddress || order.customer.address}`;
+    }
+
+    let closingPhrase = '\n\n🥛 ¡Tu yogur artesanal entrará en preparación muy pronto! Cualquier duda estamos a tu disposición. 🥛🍇🍓';
     if (order.deliveryStatus === 'PREPARING') {
-      closingPhrase = '🥣 ¡Tu yogur artesanal 100% natural está siendo preparado y empacado con el mayor amor! Cualquier duda estamos a tu disposición. 🥛🍇🍓';
+      closingPhrase = '\n\n🥣 ¡Tu yogur artesanal 100% natural está siendo preparado con todo el amor! Te avisaremos cuando salga a reparto. 🥛🍇🍓';
     } else if (order.deliveryStatus === 'READY_FOR_DISPATCH') {
-      closingPhrase = '📦 ¡Tu yogur artesanal ya está listo, empacado y refrigerado! Nuestro domiciliario está próximo a salir hacia tu dirección. 🥛🍇🍓';
+      closingPhrase = '\n\n📦 ¡Tu yogur artesanal ya está empacado y refrigerado! Nuestro domiciliario saldrá pronto hacia tu dirección. 🥛🍇🍓';
     } else if (order.deliveryStatus === 'IN_ROUTE') {
-      closingPhrase = '🛵 ¡Tu yogur artesanal 100% natural ya va en camino hacia tu dirección! Atento para recibirlo. Cualquier duda estamos a tu disposición. 🥛🍇🍓';
+      closingPhrase = '\n\n🛵 ¡Tu yogur artesanal ya va en camino hacia tu dirección! Atento para recibirlo. ¡Muchas gracias por tu compra! 🥛🍇🍓';
     }
 
-    let message = `🥛 *YogurArte - Pedido #${order.orderNumber}*\n`;
-    message += `👤 *Cliente:* ${order.customer.fullName}\n`;
-    message += `📍 *Dirección:* ${order.deliveryAddress || order.customer.address || 'Fonseca'}\n`;
-    message += `${dateLine}\n`;
-    message += `📦 *Estado:* ${statusText}\n\n`;
-    message += `*Detalle:*\n${itemsBreakdown}\n`;
-    message += `🥤 *Total:* ${order.totalLiters} L • ${formatCurrency(order.totalAmount)}\n`;
-    message += `${paymentInfo}\n\n`;
     message += `${closingPhrase}`;
 
     const whatsappUrl = buildWhatsAppUrl(rawContact, message);

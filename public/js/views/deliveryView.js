@@ -374,7 +374,7 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
           const isPaid = order.paymentStatus === 'PAID' || order.pendingAmount <= 0;
           const customerPhone = (order.customer?.phone || '').trim();
           const cleanPhone = customerPhone.replace(/\D/g, '');
-          const waMessage = `¡Hola ${order.customer?.fullName}! 🥛✨ Te saludamos de YogurArte. Tu pedido (#${order.orderNumber}) de yogur artesanal 100% natural ya va en camino hacia tu dirección (${order.deliveryAddress || 'Fonseca'}). Atento para recibirlo. 🛵💨`;
+          const waMessage = `¡Hola ${order.customer?.fullName}! 🥛✨ Te saludamos de *YogurArte*. Tu pedido (#${order.orderNumber}) de yogur artesanal ya va en camino hacia tu dirección (${order.deliveryAddress || 'Fonseca'}). ¡Atento para recibirlo! 🛵💨`;
           const waUrl = buildWhatsAppUrl(customerPhone, waMessage);
 
           let itemsText = '';

@@ -170,33 +170,35 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
   let msg = '';
   if (deliveredPendingDebt > 0) {
     // Pedido ya entregado y no pagado (deuda real)
-    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos cordialmente de parte del equipo de *YogurArte*.\n\n` +
-          `Esperamos que estés disfrutando de nuestros deliciosos yogures artesanales 100% naturales. 🍇🍓🥛\n\n` +
-          `Te recordamos con mucho aprecio que presentas un saldo pendiente de *${formatCOP(deliveredPendingDebt)}* de tu pedido entregado.\n\n` +
-          `💳 *Medios de Pago / Transferencia:*\n` +
-          `• *${bankName}:* *${nequiNum}*${bankHolder}\n` +
-          `• *Efectivo:* Contraentrega\n\n` +
-          `Si ya realizaste la transferencia, por favor compártenos el comprobante por este medio para dejar tu cuenta en paz y salvo. ¡Muchísimas gracias por tu preferencia y apoyo continuo! 🙌🐄✨`;
+    msg = `🥛 *YogurArte | Recordatorio de Pago*\n\n` +
+          `Hola *${fullName}*, esperamos que estés disfrutando tu yogur artesanal 100% natural. 🥛🍓\n\n` +
+          `Te recordamos cordialmente tu saldo pendiente:\n` +
+          `🚨 *Saldo pendiente:* ${formatCOP(deliveredPendingDebt)}\n` +
+          `💳 *${bankName}:* *${nequiNum}*${bankHolder}\n\n` +
+          `Si ya realizaste la transferencia, por favor compártenos el comprobante para dejar tu cuenta al día. ¡Muchas gracias por tu apoyo! 🙌✨`;
   } else if (isPaidInProcess && mode === 'INFO') {
     // Info del pedido pagado en proceso
-    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\n` +
-          `Tu pedido de yogur artesanal 100% natural está siendo preparado con todo el cuidado. 🥣🍓 Te avisaremos apenas vaya en camino para la entrega. ¡Muchas gracias por tu compra! 🛵💨`;
+    msg = `🥛 *YogurArte | Info de tu Pedido*\n\n` +
+          `¡Hola *${fullName}*! Tu pedido de yogur artesanal 100% natural está siendo preparado. 🥣🍓\n\n` +
+          `💰 *Estado:* Totalmente Pagado (✅ Paz y Salvo)\n` +
+          `Te avisaremos apenas nuestro domiciliario vaya en camino hacia tu dirección. ¡Muchas gracias por tu compra! 🛵💨`;
   } else if (isPaidInProcess) {
     // Pedido pagado en proceso (agradecimiento y confirmación de pago YogurArte)
-    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos con mucho cariño de parte del equipo de *YogurArte*.\n\n` +
-          `🎉 ¡Confirmamos que recibimos con éxito el pago de tu pedido! Muchísimas gracias por tu compra y confianza en nuestro producto 100% natural. 🥣🍓\n\n` +
-          `Tu pedido está en preparación y te avisaremos en cuanto vaya en camino para la entrega. 🛵💨 ¡Que tengas un día maravilloso! 🙌🐄✨`;
+    msg = `🥛 *YogurArte | Pago Confirmado ✨*\n\n` +
+          `¡Hola *${fullName}*! Confirmamos que recibimos con éxito el pago de tu pedido. 🥣🍓\n\n` +
+          `💰 *Estado:* Totalmente Pagado (✅ Paz y Salvo)\n` +
+          `Tu yogur 100% natural está en preparación y te avisaremos apenas vaya en camino. ¡Muchas gracias por tu compra y confianza! 🙌🥛✨`;
   } else if (inProcessPendingAmount > 0) {
     // Pedido en proceso / encargado (aún no se entrega)
-    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\n` +
-          `Tu pedido de yogur artesanal 100% natural está siendo preparado con todo el amor. 🥣🍓\n\n` +
-          `🚨 Saldo pendiente: *${formatCOP(inProcessPendingAmount)}*\n` +
-          `💳 *Transferencia ${bankName}:* *${nequiNum}*${bankHolder}\n\n` +
-          `Te avisaremos apenas esté en camino para la entrega. ¡Gracias por tu encargo! 🛵💨`;
+    msg = `🥛 *YogurArte | Info de tu Encargo*\n\n` +
+          `Hola *${fullName}*, tu encargo de yogur artesanal está en proceso. 🥣🍓\n\n` +
+          `💰 *Saldo a cancelar:* ${formatCOP(inProcessPendingAmount)}\n` +
+          `💳 *${bankName}:* *${nequiNum}*${bankHolder}\n\n` +
+          `Te avisaremos apenas nuestro domiciliario vaya en camino hacia tu dirección. ¡Gracias por tu encargo! 🛵💨`;
   } else {
     // Cliente al día
-    msg = `¡Hola ${fullName}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\n` +
-          `¿Te gustaría ordenar más de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos para prepararte los mejores sabores. 🍓🍑🍇🥛`;
+    msg = `¡Hola *${fullName}*! 🥛✨ Te saludamos con mucho aprecio de *YogurArte*.\n\n` +
+          `¿Te gustaría encargar de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos para tomar tu pedido con tus sabores favoritos. 🍓🍑🍇🥛`;
   }
 
   return buildWhatsAppUrl(rawPhone, msg);
