@@ -209,6 +209,9 @@ export const showToast = (message, type = 'success') => {
 // Formato de Insignia de Medio de Pago
 export const formatPaymentBadge = (method) => {
   const m = (method || 'EFECTIVO').toUpperCase().trim();
+  if (m === 'ESPECIE_PRODUCTO' || m.includes('ESPECIE') || m.includes('PRODUCTO')) {
+    return `<span class="badge" style="background: #E0F2FE; color: #0369A1; font-weight: 800; font-size: 0.76rem; border: 1px solid #7DD3FC;">🍶 En Especie (Yogur)</span>`;
+  }
   if (m === 'NEQUI' || m.includes('NEQUI')) {
     return `<span class="badge" style="background: #F3E8FF; color: #7E22CE; font-weight: 800; font-size: 0.76rem; border: 1px solid #D8B4FE;">🟣 Nequi</span>`;
   }

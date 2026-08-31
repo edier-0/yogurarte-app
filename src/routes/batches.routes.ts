@@ -7,6 +7,8 @@ import {
   deactivateBatch,
   getPendingOrdersByFlavor,
   linkOrdersToBatch,
+  createBatchDischarge,
+  deleteBatchDischarge,
 } from '../controllers/batches.controller.js';
 import { validateBody, validateParams } from '../middlewares/validate.middleware.js';
 import {
@@ -24,7 +26,10 @@ router.get('/pending-orders', getPendingOrdersByFlavor);
 router.get('/:id', validateParams(idParamSchema), getBatchById);
 router.post('/', validateBody(createBatchSchema), createBatch);
 router.post('/:id/link-orders', validateParams(idParamSchema), validateBody(linkOrdersToBatchSchema), linkOrdersToBatch);
+router.post('/:id/discharges', validateParams(idParamSchema), createBatchDischarge);
+router.delete('/discharges/:dischargeId', deleteBatchDischarge);
 router.put('/:id', validateParams(idParamSchema), validateBody(updateBatchSchema), updateBatch);
 router.put('/:id/deactivate', validateParams(idParamSchema), validateBody(deactivateBatchSchema), deactivateBatch);
 
 export default router;
+

@@ -181,6 +181,19 @@ export const api = {
     });
   },
 
+  async createBatchDischarge(batchId, payload) {
+    return apiFetch(`/batches/${batchId}/discharges`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteBatchDischarge(dischargeId) {
+    return apiFetch(`/batches/discharges/${dischargeId}`, {
+      method: 'DELETE',
+    });
+  },
+
   // Inventario y Materia Prima
   async getMaterials() {
     return apiFetch('/inventory/materials');

@@ -2,6 +2,16 @@ import { api } from '../api.js';
 import { formatCOP, formatDate, formatStock, getTodayLocalDateStr, showToast, store } from '../store.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 let batchesCurrentPage = 1;
 let includeInactive = false;
 let batchStatusFilter = 'ALL';
@@ -204,11 +214,16 @@ async function loadBatchesList(container) {
                           ? `<span style="color: var(--primary); font-weight: 700;">🛒 ${soldLiters}L vendidos (${soldPct}%)</span>`
                           : '<span style="color: var(--text-muted);">Sin ventas aún</span>'
                       }
-                      <span style="color: #059669; font-weight: 800; margin-left: 4px;">• 🟢 ${b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters)}L libres</span>
+                      ${
+                        (b.totalDischargedLiters || 0) > 0
+                          ? `<span style="color: #0369A1; font-weight: 700; margin-left: 4px;">• 🏷️ ${b.totalDischargedLiters}L retirados</span>`
+                          : ''
+                      }
+                      <span style="color: ${(b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters - (b.totalDischargedLiters || 0))) > 0 ? '#059669' : '#92400E'}; font-weight: 800; margin-left: 4px;">• 🟢 ${(b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters - (b.totalDischargedLiters || 0))).toFixed(1)}L libres</span>
                     </div>
                     ${
                       b.isActive && b.unassignedOrdersCount > 0
-                        ? `<button class="btn btn-sm btn-link-pending-batch" data-id="${b.id}" data-code="${b.batchCode}" data-flavor="${b.flavor}" style="background: #FEF3C7; color: #92400E; border: 1.5px solid #FCD34D; font-size: 0.72rem; padding: 2px 7px; font-weight: 800; border-radius: 4px; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="Vincular ${b.unassignedOrdersCount} encargos pendientes de este sabor">
+                        ? `<button class="btn btn-sm btn-link-pending-batch" data-id="${b.id}" data-code="${escapeHtml(b.batchCode)}" data-flavor="${escapeHtml(b.flavor)}" style="background: #FEF3C7; color: #92400E; border: 1.5px solid #FCD34D; font-size: 0.72rem; padding: 2px 7px; font-weight: 800; border-radius: 4px; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="Vincular ${b.unassignedOrdersCount} encargos pendientes de este sabor">
                             ⚡ ${b.unassignedOrdersCount} encargo(s) (${b.unassignedLiters}L) sin lote 🔗
                           </button>`
                         : ''
@@ -234,13 +249,16 @@ async function loadBatchesList(container) {
                       ${
                         b.isActive
                           ? `
+                          <button class="btn btn-outline btn-sm btn-discharge-batch" data-id="${b.id}" style="color: #0369A1; border-color: #BAE6FD; background: #F0F9FF; font-weight: 800; font-size: 0.76rem; padding: 4px 8px;" title="Retirar o descontar litros (Consumo socio, muestra, merma)">
+                            🍶 Retirar
+                          </button>
                           <button class="btn btn-outline btn-sm btn-quick-toggle-status" data-id="${b.id}" data-current="${b.status}" title="${b.status === 'AGOTADO' ? 'Reactivar lote (Marcar como disponible)' : 'Marcar lote como agotado'}" style="font-size: 0.76rem; font-weight: 700; padding: 4px 8px; ${b.status === 'AGOTADO' ? 'color: var(--primary); border-color: var(--primary); background: #FAF5FF;' : 'color: #92400E; border-color: #FCD34D; background: #FFFBEB;'}">
                             ${b.status === 'AGOTADO' ? '🔄 Reactivar' : '📦 Agotar'}
                           </button>
                           <button class="btn btn-outline btn-sm btn-edit-batch" data-id="${b.id}" title="Editar lote">
                             ✏️
                           </button>
-                          <button class="btn btn-outline btn-sm btn-deactivate-batch" data-id="${b.id}" data-code="${b.batchCode}" style="color: var(--danger);" title="Desactivar lote">
+                          <button class="btn btn-outline btn-sm btn-deactivate-batch" data-id="${b.id}" data-code="${escapeHtml(b.batchCode)}" style="color: var(--danger);" title="Desactivar lote">
                             🚫
                           </button>`
                           : ''
@@ -272,12 +290,7 @@ async function loadBatchesList(container) {
         loadBatchesList(container);
       },
       tableContainer
-    );       `;
-            })
-            .join('')}
-        </tbody>
-      </table>
-    `;
+    );
 
     tableContainer.querySelectorAll('.btn-link-pending-batch').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -286,10 +299,17 @@ async function loadBatchesList(container) {
       });
     });
 
+    tableContainer.querySelectorAll('.btn-discharge-batch').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        openBatchDischargeModal(id, container);
+      });
+    });
+
     tableContainer.querySelectorAll('.btn-view-batch').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const id = e.currentTarget.dataset.id;
-        openBatchDetailModal(id);
+        openBatchDetailModal(id, container);
       });
     });
 
@@ -1202,10 +1222,16 @@ async function openBatchDetailModal(batchId) {
     }
 
     const linkedOrders = batch.orders || [];
+    const linkedDischarges = batch.discharges || [];
+
     const totalSoldLiters = linkedOrders.reduce((sum, o) => sum + (o.totalLiters || 0), 0);
     const totalSoldBottles = linkedOrders.reduce((sum, o) => sum + (o.quantityBottles || 0), 0);
     const totalSoldAmount = linkedOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-    const remainingAvailableLiters = Math.max(0, batch.totalLitersProduced - totalSoldLiters);
+
+    const totalDischargedLiters = linkedDischarges.reduce((sum, d) => sum + (d.totalLiters || 0), 0);
+    const totalDischargedAmount = linkedDischarges.reduce((sum, d) => sum + (d.totalAmount || 0), 0);
+
+    const remainingAvailableLiters = Math.max(0, batch.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
 
     // Filtrar encargos pendientes de este sabor
     const bFlavorNorm = (batch.flavor || '').toLowerCase().trim();
@@ -1306,14 +1332,14 @@ async function openBatchDetailModal(batchId) {
                   🛒 Despacho y Ventas de este Lote (${linkedOrders.length})
                 </h4>
                 <span style="font-size: 0.8rem; font-weight: 700; color: var(--primary);">
-                  ${totalSoldLiters}L vendidos • <span style="color: #059669;">${remainingAvailableLiters}L libres</span> • Recaudado: ${formatCOP(totalSoldAmount)}
+                  ${totalSoldLiters}L vendidos • <span style="color: #059669;">${remainingAvailableLiters.toFixed(1)}L libres</span> • Recaudado: ${formatCOP(totalSoldAmount)}
                 </span>
               </div>
 
               ${
                 linkedOrders.length > 0
                   ? `
-                <div style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+                <div style="max-height: 160px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
                   <table class="app-table" style="margin: 0; font-size: 0.8rem;">
                     <thead>
                       <tr style="background: var(--bg-app);">
@@ -1330,8 +1356,8 @@ async function openBatchDetailModal(batchId) {
                         .map(
                           (o) => `
                         <tr>
-                          <td><strong>${o.orderNumber}</strong></td>
-                          <td>${o.customer?.fullName || 'Cliente'}</td>
+                          <td><strong>${escapeHtml(o.orderNumber)}</strong></td>
+                          <td>${escapeHtml(o.customer?.fullName) || 'Cliente'}</td>
                           <td>${formatDate(o.orderDate)}</td>
                           <td>${o.quantityBottles} bot (${o.totalLiters}L)</td>
                           <td style="text-align: right;"><strong>${formatCOP(o.totalAmount)}</strong></td>
@@ -1349,6 +1375,82 @@ async function openBatchDetailModal(batchId) {
                   : `
                 <div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 0.82rem;">
                   Aún no se han registrado pedidos seleccionando este lote.
+                </div>
+              `
+              }
+            </div>
+
+            <!-- Resumen de Retiros y Consumos del Lote -->
+            <div style="background: #FFFFFF; border: 1.5px solid #BAE6FD; border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                <h4 style="font-size: 0.92rem; font-weight: 800; color: #0369A1; margin: 0; display: flex; align-items: center; gap: 6px;">
+                  <span>📦</span> Retiros y Consumos de este Lote (${linkedDischarges.length})
+                </h4>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 0.8rem; font-weight: 700; color: #0369A1;">
+                    ${totalDischargedLiters.toFixed(1)}L retirados • ${formatCOP(totalDischargedAmount)}
+                  </span>
+                  ${batch.isActive ? `
+                    <button type="button" class="btn btn-sm btn-outline" id="btnDischargeFromDetail" style="color: #0369A1; border-color: #BAE6FD; background: #F0F9FF; font-weight: 800; font-size: 0.74rem; padding: 3px 8px;">
+                      + Registrar Retiro
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+
+              ${
+                linkedDischarges.length > 0
+                  ? `
+                <div style="max-height: 160px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+                  <table class="app-table" style="margin: 0; font-size: 0.8rem;">
+                    <thead>
+                      <tr style="background: #F0F9FF;">
+                        <th>Fecha</th>
+                        <th>Motivo / Beneficiario</th>
+                        <th>Cantidad</th>
+                        <th>Valor</th>
+                        <th>Notas</th>
+                        <th style="text-align: center;">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${linkedDischarges
+                        .map((d) => {
+                          const reasonLabels = {
+                            CONSUMO_SOCIO: '👤 Consumo Socio',
+                            MUESTRA_DEGUSTACION: '🍓 Muestra / Degustación',
+                            MERMA_DANO: '⚠️ Merma / Daño',
+                            CORTESIA: '🎁 Cortesía',
+                            OTRO: '📝 Otro Motivo',
+                          };
+                          const label = reasonLabels[d.reasonType] || d.reasonType;
+                          const partnerInfo = d.staffMember ? ` (${escapeHtml(d.staffMember.fullName)})` : '';
+                          return `
+                        <tr>
+                          <td>${formatDate(d.dischargeDate)}</td>
+                          <td>
+                            <strong>${label}</strong>
+                            <div style="font-size: 0.72rem; color: var(--primary); font-weight: 700;">${partnerInfo}</div>
+                          </td>
+                          <td>${d.quantityBottles}x ${d.bottleSize} (<strong>${d.totalLiters}L</strong>)</td>
+                          <td><strong>${formatCOP(d.totalAmount)}</strong></td>
+                          <td><small style="color: var(--text-muted);">${escapeHtml(d.notes) || '-'}</small></td>
+                          <td style="text-align: center;">
+                            <button class="btn btn-outline btn-sm btn-delete-discharge" data-id="${d.id}" data-batch-id="${batch.id}" style="padding: 2px 6px; color: var(--danger); font-size: 0.72rem;" title="Eliminar retiro y reintegrar litros">
+                              🗑️
+                            </button>
+                          </td>
+                        </tr>
+                      `;
+                        })
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `
+                  : `
+                <div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 0.82rem;">
+                  No hay retiros directos registrados en este lote.
                 </div>
               `
               }
@@ -1469,14 +1571,21 @@ async function openBatchDetailModal(batchId) {
               batch.notes
                 ? `
               <div style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 0.84rem;">
-                <strong style="color: var(--primary);">📝 Notas:</strong> ${batch.notes}
+                <strong style="color: var(--primary);">📝 Notas:</strong> ${escapeHtml(batch.notes)}
               </div>
             `
                 : ''
             }
 
           </div>
-          <div class="modal-footer">
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              ${batch.isActive ? `
+                <button type="button" class="btn btn-outline" id="btnDischargeFooter" style="color: #0369A1; border-color: #BAE6FD; background: #F0F9FF; font-weight: 800;">
+                  🍶 Retirar / Ajustar Litros
+                </button>
+              ` : ''}
+            </div>
             <button type="button" class="btn btn-outline" id="btnCloseDetailFooter">Cerrar</button>
           </div>
         </div>
@@ -1490,9 +1599,251 @@ async function openBatchDetailModal(batchId) {
     document.getElementById('btnLinkOrdersFromDetail')?.addEventListener('click', () => {
       openLinkOrdersModal(batch.id, batch.batchCode, batch.flavor);
     });
+
+    const triggerDischarge = () => {
+      openBatchDischargeModal(batch);
+    };
+    document.getElementById('btnDischargeFromDetail')?.addEventListener('click', triggerDischarge);
+    document.getElementById('btnDischargeFooter')?.addEventListener('click', triggerDischarge);
+
+    modalOverlay.querySelectorAll('.btn-delete-discharge').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const dischargeId = e.currentTarget.dataset.id;
+        const bId = e.currentTarget.dataset.batchId;
+        if (confirm('¿Estás seguro de anular este retiro? Los litros se reintegrarán automáticamente al lote y se revertirá el registro de socio.')) {
+          try {
+            await api.deleteBatchDischarge(dischargeId);
+            showToast('Retiro anulado y litros reintegrados al lote 🔄');
+            openBatchDetailModal(bId);
+            const mainContainer = document.getElementById('contentContainer');
+            if (mainContainer) loadBatchesList(mainContainer);
+          } catch (err) {
+            showToast(err.message || 'Error al anular retiro', 'danger');
+          }
+        }
+      });
+    });
   } catch (error) {
     console.error('Error opening batch detail modal:', error);
     showToast('Error al cargar detalle del lote', 'danger');
+  }
+}
+
+// Modal para Retirar / Ajustar Litros de Lote (Consumo Socios, Muestras, Mermas)
+async function openBatchDischargeModal(batchIdOrObj, parentContainer = null) {
+  const modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) return;
+
+  try {
+    const batch = typeof batchIdOrObj === 'object' && batchIdOrObj.batchCode ? batchIdOrObj : await api.getBatchById(batchIdOrObj);
+    const staffList = await api.getStaff({ includeInactive: false });
+    const partners = staffList.filter((s) => s.type === 'SOCIO' || s.role === 'SOCIO');
+
+    const p1 = batch.price1L || 10000;
+    const p2 = batch.price2L || 20000;
+
+    const remainingAvailable = batch.remainingAvailableLiters !== undefined
+      ? batch.remainingAvailableLiters
+      : Math.max(0, batch.totalLitersProduced - (batch.totalSoldLiters || 0) - (batch.totalDischargedLiters || 0));
+
+    modalOverlay.innerHTML = `
+      <div class="modal-overlay active">
+        <div class="modal-card" style="max-width: 520px;">
+          <div class="modal-header">
+            <h3 class="modal-title">🍶 Retirar / Descontar Litros del Lote</h3>
+            <button class="modal-close-btn" id="btnCloseDischargeModal">✕</button>
+          </div>
+          <form id="batchDischargeForm">
+            <div class="modal-body">
+              
+              <!-- Info del Lote -->
+              <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <strong style="color: var(--primary); font-size: 1.05rem;">Lote #${escapeHtml(batch.batchCode)} (${escapeHtml(batch.flavor)})</strong>
+                  <span class="badge" style="background: #DCFCE7; color: #059669; font-weight: 800; font-size: 0.8rem;">
+                    🟢 ${remainingAvailable.toFixed(1)}L libres
+                  </span>
+                </div>
+                <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
+                  Precio comercial de venta: 1L = ${formatCOP(p1)} • 2L = ${formatCOP(p2)}
+                </div>
+              </div>
+
+              <!-- Selector de Presentación y Cantidad -->
+              <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; margin-bottom: 12px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">Presentación a Retirar *</label>
+                  <select id="dischargeBottleSize" class="form-select" style="font-weight: 700;">
+                    <option value="1L" selected>🍾 Botella 1L (${formatCOP(p1)})</option>
+                    <option value="2L">🍾 Botella 2L (${formatCOP(p2)})</option>
+                    <option value="OTRA">🍶 Litros Directos / Granel</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" id="dischargeQtyLabel">Cantidad (Botellas) *</label>
+                  <input 
+                    type="number" 
+                    id="dischargeQtyBottles" 
+                    class="form-input" 
+                    min="1" 
+                    step="any" 
+                    value="1" 
+                    style="font-size: 1.1rem; font-weight: 800; text-align: center; color: var(--primary);" 
+                    required 
+                  />
+                </div>
+              </div>
+
+              <!-- Motivo del Retiro -->
+              <div class="form-group">
+                <label class="form-label">Motivo del Retiro *</label>
+                <select id="dischargeReasonType" class="form-select" style="font-weight: 700;">
+                  <option value="CONSUMO_SOCIO" selected>👤 Consumo Propio de Socio (Cargar a Utilidades)</option>
+                  <option value="MUESTRA_DEGUSTACION">🍓 Muestra Comercial / Degustación a Clientes</option>
+                  <option value="MERMA_DANO">⚠️ Merma / Daño Físico de Botella / Vencimiento</option>
+                  <option value="CORTESIA">🎁 Cortesía / Obsequio Promocional</option>
+                  <option value="OTRO">📝 Otro Motivo</option>
+                </select>
+              </div>
+
+              <!-- Selector de Socio (Visible si es CONSUMO_SOCIO) -->
+              <div class="form-group" id="dischargePartnerGroup">
+                <label class="form-label">Socio que realiza el consumo *</label>
+                <select id="dischargeStaffMemberId" class="form-select" style="font-weight: 700; color: var(--primary);">
+                  ${
+                    partners.length > 0
+                      ? partners.map((p) => `<option value="${p.id}">👤 ${escapeHtml(p.fullName)} (${p.role || 'Socio'})</option>`).join('')
+                      : '<option value="">-- No hay socios registrados en el módulo de personal --</option>'
+                  }
+                </select>
+                <small style="color: #0369A1; font-size: 0.76rem; font-weight: 600; display: block; margin-top: 4px;">
+                  ℹ️ Se registrará automáticamente un retiro en especie a precio comercial en la cuenta de utilidades del socio.
+                </small>
+              </div>
+
+              <!-- Resumen Calculado de Litros y Monto -->
+              <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Litros a Descontar:</span>
+                  <div style="font-size: 1.25rem; font-weight: 800; color: #0369A1;" id="calcDischargeLiters">1.0 L</div>
+                </div>
+                <div style="text-align: right;">
+                  <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Valor Comercial Total:</span>
+                  <div style="font-size: 1.25rem; font-weight: 800; color: var(--primary);" id="calcDischargeAmount">${formatCOP(p1)}</div>
+                </div>
+              </div>
+
+              <!-- Notas / Observaciones -->
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">Notas / Observación (Opcional)</label>
+                <input type="text" id="dischargeNotes" class="form-input" placeholder="Ej: Yogur para la casa de Yeilin, degustación restaurante..." />
+              </div>
+
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline" id="btnCloseDischargeFooter">Cancelar</button>
+              <button type="submit" class="btn btn-accent" id="btnSubmitDischarge" style="padding: 10px 22px; font-weight: 800;">
+                ✅ Confirmar Retiro
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const closeDischargeModal = () => (modalOverlay.innerHTML = '');
+    document.getElementById('btnCloseDischargeModal')?.addEventListener('click', closeDischargeModal);
+    document.getElementById('btnCloseDischargeFooter')?.addEventListener('click', closeDischargeModal);
+
+    const sizeSelect = document.getElementById('dischargeBottleSize');
+    const qtyInput = document.getElementById('dischargeQtyBottles');
+    const qtyLabel = document.getElementById('dischargeQtyLabel');
+    const reasonSelect = document.getElementById('dischargeReasonType');
+    const partnerGroup = document.getElementById('dischargePartnerGroup');
+    const partnerSelect = document.getElementById('dischargeStaffMemberId');
+    const calcLitersEl = document.getElementById('calcDischargeLiters');
+    const calcAmountEl = document.getElementById('calcDischargeAmount');
+
+    function updateCalculations() {
+      const size = sizeSelect.value;
+      const qty = Math.max(0.1, Number(qtyInput.value) || 1);
+      
+      let liters = 0;
+      let amount = 0;
+
+      if (size === '2L') {
+        liters = qty * 2;
+        amount = qty * p2;
+        if (qtyLabel) qtyLabel.innerText = 'Cantidad (Botellas 2L) *';
+      } else if (size === '1L') {
+        liters = qty * 1;
+        amount = qty * p1;
+        if (qtyLabel) qtyLabel.innerText = 'Cantidad (Botellas 1L) *';
+      } else {
+        liters = qty;
+        amount = qty * p1;
+        if (qtyLabel) qtyLabel.innerText = 'Cantidad (Litros) *';
+      }
+
+      if (calcLitersEl) calcLitersEl.innerText = `${liters.toFixed(1)} L`;
+      if (calcAmountEl) calcAmountEl.innerText = formatCOP(amount);
+    }
+
+    sizeSelect?.addEventListener('change', updateCalculations);
+    qtyInput?.addEventListener('input', updateCalculations);
+
+    reasonSelect?.addEventListener('change', (e) => {
+      const isPartner = e.target.value === 'CONSUMO_SOCIO';
+      if (partnerGroup) {
+        partnerGroup.style.display = isPartner ? 'block' : 'none';
+      }
+    });
+
+    document.getElementById('batchDischargeForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const size = sizeSelect.value;
+      const qty = Number(qtyInput.value);
+      if (!qty || qty <= 0) {
+        showToast('Ingresa una cantidad válida mayor a 0', 'danger');
+        return;
+      }
+
+      const reasonType = reasonSelect.value;
+      const staffMemberId = reasonType === 'CONSUMO_SOCIO' ? partnerSelect?.value : null;
+
+      if (reasonType === 'CONSUMO_SOCIO' && !staffMemberId) {
+        showToast('Debes seleccionar el socio beneficiario del consumo', 'danger');
+        return;
+      }
+
+      let totalLiters = size === '2L' ? qty * 2 : (size === '1L' ? qty * 1 : qty);
+      let unitPrice = size === '2L' ? p2 : p1;
+
+      const payload = {
+        bottleSize: size,
+        quantityBottles: qty,
+        totalLiters,
+        unitPrice,
+        reasonType,
+        staffMemberId: staffMemberId ? Number(staffMemberId) : undefined,
+        notes: document.getElementById('dischargeNotes')?.value || undefined,
+        registeredBy: store.authUser?.name || store.currentUser || 'Edier',
+      };
+
+      try {
+        const res = await api.createBatchDischarge(batch.id, payload);
+        showToast(res.message || `Retiro de ${totalLiters}L registrado exitosamente 🍶`);
+        closeDischargeModal();
+
+        const mainContainer = document.getElementById('contentContainer');
+        if (mainContainer) loadBatchesList(mainContainer);
+      } catch (err) {
+        showToast(err.message || 'Error al registrar retiro del lote', 'danger');
+      }
+    });
+  } catch (err) {
+    console.error('Error opening batch discharge modal:', err);
+    showToast('Error al preparar modal de retiro', 'danger');
   }
 }
 

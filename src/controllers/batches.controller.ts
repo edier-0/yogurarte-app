@@ -28,6 +28,13 @@ export const getBatches = async (req: Request, res: Response) => {
               totalLiters: true,
             },
           },
+          discharges: {
+            select: {
+              totalLiters: true,
+              reasonType: true,
+              totalAmount: true,
+            },
+          },
         },
         orderBy: { preparationDate: 'desc' },
       });
@@ -36,7 +43,8 @@ export const getBatches = async (req: Request, res: Response) => {
         const soldFromOrders = b.orders.reduce((sum, o) => sum + o.totalLiters, 0);
         const soldFromItems = b.orderItems.reduce((sum, i) => sum + i.totalLiters, 0);
         const totalSoldLiters = Math.max(soldFromOrders, soldFromItems);
-        const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters);
+        const totalDischargedLiters = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
+        const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
         return {
           id: b.id,
           batchCode: b.batchCode,
@@ -47,6 +55,7 @@ export const getBatches = async (req: Request, res: Response) => {
           isActive: b.isActive,
           totalLitersProduced: b.totalLitersProduced,
           totalSoldLiters,
+          totalDischargedLiters,
           remainingAvailableLiters,
           bottles1LProduced: b.bottles1LProduced,
           bottles2LProduced: b.bottles2LProduced,
@@ -100,6 +109,19 @@ export const getBatches = async (req: Request, res: Response) => {
             bottleSize: true,
           },
         },
+        discharges: {
+          include: {
+            staffMember: {
+              select: {
+                id: true,
+                fullName: true,
+                role: true,
+                type: true,
+              },
+            },
+          },
+          orderBy: { dischargeDate: 'desc' },
+        },
       },
       orderBy: { preparationDate: 'desc' },
     });
@@ -132,6 +154,11 @@ export const getBatches = async (req: Request, res: Response) => {
       const totalSoldBottles = b.orders.reduce((sum, o) => sum + o.quantityBottles, 0);
       const totalRevenue = b.orders.reduce((sum, o) => sum + o.totalAmount, 0);
 
+      const totalDischargedLiters = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
+      const partnerConsumptionLiters = (b.discharges || []).filter((d) => d.reasonType === 'CONSUMO_SOCIO').reduce((sum, d) => sum + d.totalLiters, 0);
+      const partnerConsumptionAmount = (b.discharges || []).filter((d) => d.reasonType === 'CONSUMO_SOCIO').reduce((sum, d) => sum + d.totalAmount, 0);
+      const otherDischargedLiters = totalDischargedLiters - partnerConsumptionLiters;
+
       // Calcular encargos pendientes sin lote para el sabor de este lote
       const bFlavorNorm = (b.flavor || '').toLowerCase().trim();
       const matchingUnassigned = unassignedOrders.filter((uo) => {
@@ -142,13 +169,17 @@ export const getBatches = async (req: Request, res: Response) => {
 
       const unassignedOrdersCount = matchingUnassigned.length;
       const unassignedLiters = matchingUnassigned.reduce((sum, uo) => sum + uo.totalLiters, 0);
-      const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters);
+      const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
 
       return {
         ...b,
         totalSoldLiters,
         totalSoldBottles,
         totalRevenue,
+        totalDischargedLiters,
+        partnerConsumptionLiters,
+        partnerConsumptionAmount,
+        otherDischargedLiters,
         unassignedOrdersCount,
         unassignedLiters,
         remainingAvailableLiters,
@@ -179,6 +210,19 @@ export const getBatchById = async (req: Request, res: Response) => {
             items: true,
           },
           orderBy: { orderDate: 'desc' },
+        },
+        discharges: {
+          include: {
+            staffMember: {
+              select: {
+                id: true,
+                fullName: true,
+                role: true,
+                type: true,
+              },
+            },
+          },
+          orderBy: { dischargeDate: 'desc' },
         },
       },
     });
@@ -976,3 +1020,190 @@ export const deactivateBatch = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Error al desactivar lote' });
   }
 };
+
+export const createBatchDischarge = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      bottleSize,
+      quantityBottles,
+      totalLiters,
+      unitPrice,
+      reasonType,
+      staffMemberId,
+      dischargeDate,
+      notes,
+      registeredBy,
+    } = req.body;
+
+    const batch = await prisma.productionBatch.findUnique({
+      where: { id: Number(id) },
+      include: {
+        orders: { select: { totalLiters: true } },
+        orderItems: { select: { totalLiters: true } },
+        discharges: true,
+      },
+    });
+
+    if (!batch) {
+      return res.status(404).json({ error: 'Lote no encontrado' });
+    }
+
+    const soldLitersFromOrders = batch.orders.reduce((sum, o) => sum + o.totalLiters, 0);
+    const soldLitersFromItems = batch.orderItems.reduce((sum, i) => sum + i.totalLiters, 0);
+    const totalSoldLiters = Math.max(soldLitersFromOrders, soldLitersFromItems);
+    const totalDischargedLiters = batch.discharges.reduce((sum, d) => sum + d.totalLiters, 0);
+    const remainingAvailableLiters = Math.max(0, batch.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
+
+    const size = (bottleSize || '1L').toUpperCase().trim();
+    const qtyBottles = Math.max(1, Number(quantityBottles) || 1);
+    let litersToDischarge = Number(totalLiters);
+    if (!litersToDischarge || litersToDischarge <= 0) {
+      litersToDischarge = size === '2L' ? qtyBottles * 2 : qtyBottles * 1;
+    }
+
+    if (litersToDischarge > remainingAvailableLiters + 0.001) {
+      return res.status(400).json({
+        error: `No hay suficientes litros disponibles en este lote. Disponibles: ${remainingAvailableLiters.toFixed(1)}L, solicitados: ${litersToDischarge.toFixed(1)}L`,
+      });
+    }
+
+    const defaultUnitPrice = size === '2L' ? (batch.price2L || 20000) : (batch.price1L || 10000);
+    const effectiveUnitPrice = Number(unitPrice) > 0 ? Number(unitPrice) : defaultUnitPrice;
+    const totalAmount = size === '2L' ? (qtyBottles * effectiveUnitPrice) : (litersToDischarge * effectiveUnitPrice);
+
+    const effectiveReason = reasonType || 'CONSUMO_SOCIO';
+    let staffMember: any = null;
+    if (effectiveReason === 'CONSUMO_SOCIO') {
+      if (!staffMemberId) {
+        return res.status(400).json({ error: 'Debes seleccionar el socio que realiza el retiro' });
+      }
+      staffMember = await prisma.staffMember.findUnique({
+        where: { id: Number(staffMemberId) },
+      });
+      if (!staffMember) {
+        return res.status(404).json({ error: 'Socio no encontrado' });
+      }
+    }
+
+    const effectiveDischargeDate = dischargeDate ? new Date(dischargeDate) : new Date();
+    const effectiveRegisteredBy = registeredBy ? String(registeredBy).trim() : 'Edier';
+
+    // Ejecutar en transacción para crear StaffPayment y BatchDischarge
+    const result = await prisma.$transaction(async (tx) => {
+      let createdPayment: any = null;
+
+      if (effectiveReason === 'CONSUMO_SOCIO' && staffMember) {
+        createdPayment = await tx.staffPayment.create({
+          data: {
+            staffId: staffMember.id,
+            paymentType: 'RETIRO_SOCIO',
+            amount: totalAmount,
+            deductions: 0,
+            netAmount: totalAmount,
+            paymentMethod: 'ESPECIE_PRODUCTO',
+            paymentDate: effectiveDischargeDate,
+            calculationDetails: `Retiro en especie: ${qtyBottles}x Botella ${size} (${batch.flavor}) Lote #${batch.batchCode}`,
+            notes: notes ? String(notes).trim() : `Consumo propio de socio a precio de venta ($${new Intl.NumberFormat('es-CO').format(effectiveUnitPrice)}/u)`,
+            registeredBy: effectiveRegisteredBy,
+          },
+        });
+      }
+
+      const createdDischarge = await tx.batchDischarge.create({
+        data: {
+          batchId: batch.id,
+          bottleSize: size,
+          quantityBottles: qtyBottles,
+          totalLiters: litersToDischarge,
+          unitPrice: effectiveUnitPrice,
+          totalAmount: totalAmount,
+          reasonType: effectiveReason,
+          staffMemberId: staffMember ? staffMember.id : null,
+          staffPaymentId: createdPayment ? createdPayment.id : null,
+          notes: notes ? String(notes).trim() : null,
+          registeredBy: effectiveRegisteredBy,
+          dischargeDate: effectiveDischargeDate,
+        },
+        include: {
+          staffMember: {
+            select: {
+              id: true,
+              fullName: true,
+              role: true,
+              type: true,
+            },
+          },
+        },
+      });
+
+      const newRemaining = Math.max(0, remainingAvailableLiters - litersToDischarge);
+      if (newRemaining <= 0.05 && batch.status === 'COMPLETADO') {
+        await tx.productionBatch.update({
+          where: { id: batch.id },
+          data: { status: 'AGOTADO' },
+        });
+      }
+
+      return {
+        discharge: createdDischarge,
+        staffPayment: createdPayment,
+        remainingAvailableLiters: newRemaining,
+      };
+    });
+
+    res.status(201).json({
+      message: `Retiro de ${litersToDischarge}L registrado exitosamente en el lote #${batch.batchCode}`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error creating batch discharge:', error);
+    res.status(500).json({ error: 'Error al registrar retiro de lote' });
+  }
+};
+
+export const deleteBatchDischarge = async (req: Request, res: Response) => {
+  try {
+    const { dischargeId } = req.params;
+    const discharge = await prisma.batchDischarge.findUnique({
+      where: { id: Number(dischargeId) },
+      include: { batch: true },
+    });
+
+    if (!discharge) {
+      return res.status(404).json({ error: 'Retiro no encontrado' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Si tenía un pago de socio asociado, eliminarlo
+      if (discharge.staffPaymentId) {
+        await tx.staffPayment.deleteMany({
+          where: { id: discharge.staffPaymentId },
+        });
+      }
+
+      // Eliminar el descargo
+      await tx.batchDischarge.delete({
+        where: { id: discharge.id },
+      });
+
+      // Si el lote estaba en AGOTADO pero ahora recupera litros, restaurar a COMPLETADO
+      if (discharge.batch.status === 'AGOTADO') {
+        await tx.productionBatch.update({
+          where: { id: discharge.batchId },
+          data: { status: 'COMPLETADO' },
+        });
+      }
+    });
+
+    res.json({
+      message: `Retiro de ${discharge.totalLiters}L revertido y reintegrado al lote #${discharge.batch.batchCode}`,
+      id: Number(dischargeId),
+      batchId: discharge.batchId,
+    });
+  } catch (error) {
+    console.error('Error deleting batch discharge:', error);
+    res.status(500).json({ error: 'Error al anular retiro de lote' });
+  }
+};
+

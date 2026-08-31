@@ -166,11 +166,37 @@ model ProductionBatch {
   itemsUsed           BatchItemUsage[]
   orders              Order[]
   orderItems          OrderItem[]
+  discharges          BatchDischarge[]
 
   @@index([preparationDate])
   @@index([flavor])
   @@index([status])
   @@index([isActive])
+}
+
+model BatchDischarge {
+  id             Int              @id @default(autoincrement())
+  batchId        Int
+  batch          ProductionBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  bottleSize     String           @default("1L") // 1L, 2L, OTRA
+  quantityBottles Int             @default(1)
+  totalLiters    Float            // ej: 1.0, 2.0
+  unitPrice      Float            @default(10000)
+  totalAmount    Float            @default(10000) // totalLiters * unitPrice
+  reasonType     String           // CONSUMO_SOCIO, MUESTRA_DEGUSTACION, MERMA_DANO, CORTESIA, OTRO
+  staffMemberId  Int?             // Socio asignado si es CONSUMO_SOCIO
+  staffMember    StaffMember?     @relation(fields: [staffMemberId], references: [id])
+  staffPaymentId Int?             // Id del pago/retiro en especie generado en StaffPayment
+  notes          String?
+  registeredBy   String?          @default("Edier")
+  dischargeDate  DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @default(now()) @updatedAt
+
+  @@index([batchId])
+  @@index([dischargeDate])
+  @@index([reasonType])
+  @@index([staffMemberId])
 }
 
 model BatchItemUsage {
@@ -295,7 +321,8 @@ model StaffMember {
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @default(now()) @updatedAt
-  payments      StaffPayment[]
+  payments        StaffPayment[]
+  batchDischarges BatchDischarge[]
 
   @@index([role])
   @@index([type])
