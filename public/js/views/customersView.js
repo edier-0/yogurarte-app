@@ -157,6 +157,16 @@ export async function renderCustomers(container) {
 
 const WA_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: inline-block; vertical-align: -2px; margin-right: 4px;"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>`;
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Función generadora del link de WhatsApp con recordatorio contextual
 function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0, inProcessPendingAmount = 0, isPaidInProcess = false, mode = 'DEFAULT') {
   if (!phone) return '#';
@@ -178,6 +188,13 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
           `🚨 *Saldo pendiente:* ${formatCOP(deliveredPendingDebt)}\n` +
           `💳 *${bankName}:* *${nequiNum}*${bankHolder}\n\n` +
           `Si ya realizaste la transferencia, por favor compártenos el comprobante para dejar tu cuenta al día. ¡Muchas gracias por tu apoyo! 🙌✨` +
+          instagramLine;
+  } else if (mode === 'THANK_DELIVERED') {
+    // Agradecimiento de pago para pedido ya entregado
+    msg = `🥛 *YogurArte | ¡Pago Recibido con Éxito! ✨*\n\n` +
+          `¡Hola *${fullName}*! Confirmamos que recibimos con éxito tu pago. Tu cuenta se encuentra al día y en paz y salvo. (✅ Paz y Salvo)\n\n` +
+          `¡Muchísimas gracias por tu compra, cumplimiento y apoyo a nuestro trabajo artesanal! Esperamos que disfrutes al máximo tu delicioso yogur 100% natural. 🥛🍇🍓\n\n` +
+          `Estamos siempre a tu orden para tu próximo pedido. ✨` +
           instagramLine;
   } else if (isPaidInProcess && mode === 'INFO') {
     // Info del pedido pagado en proceso
@@ -345,20 +362,43 @@ async function loadCustomersList(container) {
               badgeHtml = `<span class="badge badge-paid" style="font-size: 0.76rem;">🟢 Al Día</span>`;
             }
 
+            const isPaidDelivered = !hasDeliveredDebt && !isPaidInProcess && !hasInProcessOrder && (c.totalOrders || 0) > 0;
+
             return `
             <div class="order-card" data-id="${c.id}" style="${cardBorder}">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-                <div style="flex: 1;">
+                <div style="flex: 1; min-width: 0;">
                   <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px;">
-                    <h4 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin: 0;">${c.fullName}</h4>
+                    <h4 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin: 0;">${escapeHtml(c.fullName)}</h4>
                     ${badgeHtml}
                   </div>
                   <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
-                    <span>${isUsername ? '💬' : '📞'}</span> <strong>${displayContact || 'Sin contacto'}</strong>
+                    <span>${isUsername ? '💬' : '📞'}</span> <strong>${escapeHtml(displayContact) || 'Sin contacto'}</strong>
                   </div>
                   <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 2px;">
-                    <span>📍</span> ${c.address || 'Fonseca'} ${c.neighborhood ? `(${c.neighborhood})` : ''}
+                    <span>📍</span> ${escapeHtml(c.address) || 'Fonseca'} ${c.neighborhood ? `(${escapeHtml(c.neighborhood)})` : ''}
                   </div>
+
+                  ${
+                    c.latestOrderNotes
+                      ? `
+                    <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-left: 3px solid #F59E0B; padding: 5px 8px; border-radius: 4px; margin-top: 6px; font-size: 0.8rem; color: #92400E; word-break: break-word;">
+                      <span style="font-weight: 800;">📝 Última nota pedido${c.latestOrderNumber ? ` (#${escapeHtml(c.latestOrderNumber)})` : ''}:</span> ${escapeHtml(c.latestOrderNotes)}
+                    </div>
+                  `
+                      : ''
+                  }
+
+                  ${
+                    c.notes
+                      ? `
+                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
+                      <span>📌 Nota cliente:</span> <em>${escapeHtml(c.notes)}</em>
+                    </div>
+                  `
+                      : ''
+                  }
+
                   ${
                     c.batches && c.batches.length > 0
                       ? `
@@ -367,7 +407,7 @@ async function loadCustomersList(container) {
                         .map(
                           (b) => `
                         <span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-weight: 800; font-size: 0.72rem;">
-                          🍶 ${b.batchCode} (${b.flavor})
+                          🍶 ${escapeHtml(b.batchCode)} (${escapeHtml(b.flavor)})
                         </span>
                       `
                         )
@@ -399,6 +439,27 @@ async function loadCustomersList(container) {
                         title="Enviar información y estado actual del pedido"
                       >
                         ${WA_ICON_SVG} Info Pedido
+                      </a>
+                    `
+                      : isPaidDelivered
+                      ? `
+                      <a 
+                        href="${generateCustomerWhatsAppLink(rawPhone, c.fullName, 0, 0, false, 'THANK_DELIVERED')}" 
+                        target="_blank" 
+                        class="btn btn-whatsapp btn-sm" 
+                        style="padding: 4px 8px; font-weight: 700; font-size: 0.78rem; white-space: nowrap;"
+                        title="Enviar agradecimiento por pago de pedido entregado"
+                      >
+                        ${WA_ICON_SVG} Agradecer Pago
+                      </a>
+                      <a 
+                        href="${waLink}" 
+                        target="_blank" 
+                        class="btn btn-outline btn-sm" 
+                        style="padding: 3px 6px; font-weight: 700; font-size: 0.74rem; white-space: nowrap;"
+                        title="Contactar por WhatsApp"
+                      >
+                        ${WA_ICON_SVG} Saludar / Pedido
                       </a>
                     `
                       : `
@@ -685,6 +746,7 @@ async function openCustomerHistoryModal(customerId) {
                         <th>Litros</th>
                         <th>Total</th>
                         <th>Estado</th>
+                        <th>Notas</th>
                         <th>Fecha</th>
                       </tr>
                     </thead>
@@ -693,10 +755,11 @@ async function openCustomerHistoryModal(customerId) {
                         .map(
                           (o) => `
                         <tr>
-                          <td><strong>${o.orderNumber}</strong></td>
+                          <td><strong>${escapeHtml(o.orderNumber)}</strong></td>
                           <td>${o.totalLiters} L</td>
                           <td><strong>${formatCOP(o.totalAmount)}</strong></td>
                           <td><span class="badge ${o.paymentStatus === 'PAID' ? 'badge-paid' : 'badge-pending'}">${o.paymentStatus}</span></td>
+                          <td><span style="font-size: 0.78rem; color: #92400E; max-width: 140px; display: inline-block; word-break: break-word;">${escapeHtml(o.notes) || '-'}</span></td>
                           <td>${formatDate(o.orderDate)}</td>
                         </tr>
                       `
@@ -759,29 +822,38 @@ async function openCustomerHistoryModal(customerId) {
 
 // Modal para Cobrar / Abonar a Cliente
 async function openCustomerPaymentModal(customer) {
-  const modalOverlay = document.getElementById('modalContainer');
-  if (!modalOverlay) return;
+  let modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) {
+    modalOverlay = document.createElement('div');
+    modalOverlay.id = 'modalContainer';
+    document.body.appendChild(modalOverlay);
+  }
 
   try {
     const custData = await api.getCustomerById(customer.id);
-    const pendingOrders = (custData.orders || []).filter((o) => (o.pendingAmount || 0) > 0);
+    const pendingOrders = (custData.orders || [])
+      .map((o) => {
+        const realPending = o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0));
+        return { ...o, realPending };
+      })
+      .filter((o) => o.realPending > 0 || o.paymentStatus !== 'PAID');
 
     const deliveredDebt = pendingOrders
       .filter((o) => o.deliveryStatus === 'DELIVERED')
-      .reduce((sum, o) => sum + (o.pendingAmount || 0), 0);
+      .reduce((sum, o) => sum + (o.realPending || 0), 0);
 
     const inProcessAmount = pendingOrders
       .filter((o) => o.deliveryStatus !== 'DELIVERED')
-      .reduce((sum, o) => sum + (o.pendingAmount || 0), 0);
+      .reduce((sum, o) => sum + (o.realPending || 0), 0);
 
     const totalPending = deliveredDebt + inProcessAmount;
 
-    if (totalPending <= 0) {
+    if (totalPending <= 0 && pendingOrders.length === 0) {
       showToast(`¡${custData.fullName} está completamente al día! No tiene saldo pendiente. 🟢`);
       return;
     }
 
-    const defaultAmount = deliveredDebt > 0 ? deliveredDebt : totalPending;
+    const defaultAmount = deliveredDebt > 0 ? deliveredDebt : (totalPending > 0 ? totalPending : 10000);
 
     modalOverlay.innerHTML = `
       <div class="modal-overlay active">
@@ -796,10 +868,10 @@ async function openCustomerPaymentModal(customer) {
               <!-- Info del Cliente y Saldo -->
               <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 16px;">
                 <div style="font-size: 1.05rem; font-weight: 800; color: var(--primary); margin-bottom: 6px;">
-                  👤 ${custData.fullName}
+                  👤 ${escapeHtml(custData.fullName)}
                 </div>
                 <div style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 8px;">
-                  <span>📞 ${custData.phone || 'Sin teléfono'}</span> • <span>📍 ${custData.address || 'Fonseca'}</span>
+                  <span>📞 ${escapeHtml(custData.phone) || 'Sin teléfono'}</span> • <span>📍 ${escapeHtml(custData.address) || 'Fonseca'}</span>
                 </div>
 
                 <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
@@ -832,9 +904,9 @@ async function openCustomerPaymentModal(customer) {
                     .map(
                       (o) =>
                         `<option value="${o.id}">
-                          #${o.orderNumber || o.id} (${o.flavor || 'Yogur'}, ${o.totalLiters}L) • ${
+                          #${escapeHtml(o.orderNumber) || o.id} (${escapeHtml(o.flavor) || 'Yogur'}, ${o.totalLiters}L) • ${
                           o.deliveryStatus === 'DELIVERED' ? '🛵 Entregado' : '🥣 En proceso'
-                        } • Pendiente: ${formatCOP(o.pendingAmount)}
+                        } • Pendiente: ${formatCOP(o.realPending)}
                         </option>`
                     )
                     .join('')}
@@ -845,7 +917,7 @@ async function openCustomerPaymentModal(customer) {
               <div class="form-group">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                   <label class="form-label" style="margin: 0;">Monto a Abonar / Cobrar ($ COP) *</label>
-                  <span style="font-size: 0.76rem; color: var(--text-muted);">Total sugerido: ${formatCOP(defaultAmount)}</span>
+                  <span style="font-size: 0.76rem; color: var(--text-muted);">Sugerido: ${formatCOP(defaultAmount)}</span>
                 </div>
                 <input 
                   type="number" 
@@ -861,7 +933,7 @@ async function openCustomerPaymentModal(customer) {
                 <!-- Botones rápidos de monto -->
                 <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
                   <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="${deliveredDebt > 0 ? deliveredDebt : totalPending}" style="font-size: 0.74rem; padding: 3px 8px;">
-                    Pago Total (${formatCOP(deliveredDebt > 0 ? deliveredDebt : totalPending)})
+                    Total (${formatCOP(deliveredDebt > 0 ? deliveredDebt : totalPending)})
                   </button>
                   <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="10000" style="font-size: 0.74rem; padding: 3px 8px;">
                     $10.000
@@ -879,11 +951,11 @@ async function openCustomerPaymentModal(customer) {
               <div class="form-group">
                 <label class="form-label">Método de Pago Recibido *</label>
                 <select id="custPayMethod" class="form-select" style="font-weight: 700;">
-                  <option value="Efectivo" selected>💵 Efectivo</option>
-                  <option value="Transferencia Nequi">📱 Transferencia Nequi</option>
-                  <option value="Transferencia Bancolombia">🏦 Transferencia Bancolombia</option>
-                  <option value="Transferencia Daviplata">📱 Transferencia Daviplata</option>
-                  <option value="Otro">💳 Otro medio de pago</option>
+                  <option value="EFECTIVO" selected>💵 Efectivo</option>
+                  <option value="NEQUI">📱 Transferencia Nequi</option>
+                  <option value="BANCOLOMBIA">🏦 Transferencia Bancolombia</option>
+                  <option value="DAVIPLATA">📱 Transferencia Daviplata</option>
+                  <option value="OTRO">💳 Otro medio de pago</option>
                 </select>
               </div>
 
@@ -925,22 +997,79 @@ async function openCustomerPaymentModal(customer) {
         return;
       }
 
-      const orderId = document.getElementById('custPayOrderId').value;
+      const orderIdVal = document.getElementById('custPayOrderId').value;
       const paymentMethod = document.getElementById('custPayMethod').value;
       const notes = document.getElementById('custPayNotes').value;
+      const registeredBy = store.authUser?.name || store.currentUser || 'Edier';
+
+      const payload = {
+        amount,
+        paymentMethod,
+        notes: notes ? notes.trim() : undefined,
+        registeredBy,
+      };
+      if (orderIdVal && orderIdVal !== 'AUTO') {
+        payload.orderId = Number(orderIdVal);
+      } else {
+        payload.orderId = 'AUTO';
+      }
 
       try {
-        const res = await api.registerCustomerPayment(custData.id, {
-          amount,
-          orderId,
-          paymentMethod,
-          notes,
-          registeredBy: store.currentUser,
-        });
+        const res = await api.registerCustomerPayment(custData.id, payload);
 
         showToast(`¡Abono de ${formatCOP(amount)} registrado exitosamente para ${custData.fullName}! 💵`);
-        closeModal();
-        renderCustomers(document.getElementById('contentContainer'));
+        
+        // Determinar link de agradecimiento por WhatsApp
+        const isDeliveredPayment = deliveredDebt > 0;
+        const waThankLink = generateCustomerWhatsAppLink(
+          custData.phone,
+          custData.fullName,
+          0,
+          0,
+          !isDeliveredPayment,
+          isDeliveredPayment ? 'THANK_DELIVERED' : 'DEFAULT'
+        );
+
+        modalOverlay.innerHTML = `
+          <div class="modal-overlay active">
+            <div class="modal-card" style="max-width: 440px; text-align: center; padding: 24px 20px;">
+              <div style="font-size: 3rem; margin-bottom: 8px;">🎉</div>
+              <h3 style="color: var(--primary); font-size: 1.25rem; font-weight: 800; margin-bottom: 6px;">
+                ¡Pago Registrado con Éxito!
+              </h3>
+              <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 18px;">
+                Se ha registrado el pago de <strong>${formatCOP(amount)}</strong> para <strong>${escapeHtml(custData.fullName)}</strong>.
+              </p>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <a 
+                  href="${waThankLink}" 
+                  target="_blank" 
+                  class="btn btn-whatsapp" 
+                  style="padding: 10px 16px; font-weight: 800; font-size: 0.95rem; justify-content: center;"
+                  id="btnSendWaThank"
+                >
+                  ${WA_ICON_SVG} Enviar Agradecimiento por WhatsApp
+                </a>
+                <button type="button" class="btn btn-outline" id="btnFinishPaySuccess">
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('btnFinishPaySuccess')?.addEventListener('click', () => {
+          modalOverlay.innerHTML = '';
+          renderCustomers(document.getElementById('contentContainer'));
+        });
+
+        document.getElementById('btnSendWaThank')?.addEventListener('click', () => {
+          setTimeout(() => {
+            modalOverlay.innerHTML = '';
+            renderCustomers(document.getElementById('contentContainer'));
+          }, 600);
+        });
+
       } catch (err) {
         showToast(err.message || 'Error al registrar pago', 'danger');
       }

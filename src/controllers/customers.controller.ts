@@ -55,6 +55,7 @@ export const getCustomers = async (req: Request, res: Response) => {
         orders: {
           select: {
             id: true,
+            orderNumber: true,
             batchId: true,
             totalLiters: true,
             totalAmount: true,
@@ -63,6 +64,7 @@ export const getCustomers = async (req: Request, res: Response) => {
             paymentStatus: true,
             deliveryStatus: true,
             orderDate: true,
+            notes: true,
             batch: {
               select: {
                 id: true,
@@ -71,6 +73,7 @@ export const getCustomers = async (req: Request, res: Response) => {
               },
             },
           },
+          orderBy: { orderDate: 'desc' },
         },
       },
       orderBy: { fullName: 'asc' },
@@ -96,14 +99,20 @@ export const getCustomers = async (req: Request, res: Response) => {
 
       // Deuda real: solo pedidos ENTREGADOS y no pagados
       const deliveredOrders = c.orders.filter((o) => o.deliveryStatus === 'DELIVERED');
-      const deliveredPendingDebt = deliveredOrders.reduce((acc, o) => acc + o.pendingAmount, 0);
+      const deliveredPendingDebt = deliveredOrders.reduce((acc, o) => acc + (o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - o.paidAmount)), 0);
 
-      // Pedidos en proceso (no entregados aún, esto no es deuda todavía)
+      // Pedidos en proceso (no entregados aún)
       const inProcessOrders = c.orders.filter((o) => o.deliveryStatus !== 'DELIVERED');
-      const inProcessPendingAmount = inProcessOrders.reduce((acc, o) => acc + o.pendingAmount, 0);
-      const inProcessPaidCount = inProcessOrders.filter((o) => o.paymentStatus === 'PAID' || o.pendingAmount <= 0).length;
+      const inProcessPendingAmount = inProcessOrders.reduce((acc, o) => acc + (o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - o.paidAmount)), 0);
+      const inProcessPaidCount = inProcessOrders.filter((o) => o.paymentStatus === 'PAID' || (o.totalAmount - o.paidAmount) <= 0).length;
 
       const totalPendingAmount = deliveredPendingDebt + inProcessPendingAmount;
+
+      // Obtener la última nota de pedido si existe
+      const latestOrderWithNotes = c.orders.find((o) => o.notes && o.notes.trim().length > 0);
+      const latestOrderNotes = latestOrderWithNotes?.notes ? latestOrderWithNotes.notes.trim() : null;
+      const latestOrderNumber = latestOrderWithNotes ? latestOrderWithNotes.orderNumber : null;
+      const latestOrderDate = c.orders[0] ? c.orders[0].orderDate : null;
 
       return {
         id: c.id,
@@ -112,6 +121,9 @@ export const getCustomers = async (req: Request, res: Response) => {
         address: c.address,
         neighborhood: c.neighborhood,
         notes: c.notes,
+        latestOrderNotes,
+        latestOrderNumber,
+        latestOrderDate,
         isActive: c.isActive,
         totalOrders,
         totalLiters,
@@ -328,7 +340,6 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
       where: { id: Number(id) },
       include: {
         orders: {
-          where: { pendingAmount: { gt: 0 } },
           orderBy: { orderDate: 'asc' },
         },
       },
@@ -338,26 +349,55 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    if (!customer.orders || customer.orders.length === 0) {
+    // Calcular pendiente real de cada pedido
+    const pendingOrders = (customer.orders || []).filter((o) => {
+      const pending = o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0));
+      return pending > 0 || o.paymentStatus !== 'PAID';
+    });
+
+    if (pendingOrders.length === 0) {
       return res.status(400).json({ error: 'Este cliente no tiene pedidos con saldo pendiente por cobrar' });
     }
 
     let remainingToPay = paymentAmount;
     const updatedOrders: any[] = [];
+    const createdPayments: any[] = [];
+
+    const now = new Date();
+    const effectivePaymentMethod = paymentMethod ? String(paymentMethod).trim() : 'EFECTIVO';
+    const effectiveRegisteredBy = registeredBy ? String(registeredBy).trim() : 'Edier';
 
     if (orderId && orderId !== 'AUTO') {
       const targetOrder = customer.orders.find((o) => o.id === Number(orderId));
       if (!targetOrder) {
-        return res.status(404).json({ error: 'Pedido seleccionado no encontrado o ya está pagado' });
+        return res.status(404).json({ error: 'Pedido seleccionado no encontrado' });
       }
 
-      const apply = Math.min(remainingToPay, targetOrder.pendingAmount);
+      const currentPending = targetOrder.pendingAmount > 0 ? targetOrder.pendingAmount : Math.max(0, targetOrder.totalAmount - targetOrder.paidAmount);
+      if (currentPending <= 0 && targetOrder.paymentStatus === 'PAID') {
+        return res.status(400).json({ error: 'El pedido seleccionado ya está completamente pagado' });
+      }
+
+      const apply = Math.min(remainingToPay, currentPending > 0 ? currentPending : targetOrder.totalAmount);
       const newPaid = targetOrder.paidAmount + apply;
       const newPending = Math.max(0, targetOrder.totalAmount - newPaid);
       const newStatus = newPaid >= targetOrder.totalAmount ? 'PAID' : (newPaid > 0 ? 'PARTIAL' : 'PENDING');
 
-      const paymentNote = `Abono: $${new Intl.NumberFormat('es-CO').format(apply)} (${paymentMethod || 'Efectivo'}) por ${registeredBy || 'Edier'}`;
+      const paymentNote = `Abono: $${new Intl.NumberFormat('es-CO').format(apply)} (${effectivePaymentMethod}) por ${effectiveRegisteredBy}`;
       const updatedNotes = notes ? `${targetOrder.notes ? targetOrder.notes + ' | ' : ''}${notes} [${paymentNote}]` : `${targetOrder.notes ? targetOrder.notes + ' | ' : ''}${paymentNote}`;
+
+      // Crear registro de OrderPayment
+      const newPayment = await prisma.orderPayment.create({
+        data: {
+          orderId: targetOrder.id,
+          amount: apply,
+          paymentMethod: effectivePaymentMethod,
+          paymentDate: now,
+          notes: notes ? String(notes).trim() : null,
+          registeredBy: effectiveRegisteredBy,
+        },
+      });
+      createdPayments.push(newPayment);
 
       const updated = await prisma.order.update({
         where: { id: targetOrder.id },
@@ -374,7 +414,7 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
       // Ordenar pedidos pendientes:
       // 1. Pedidos ENTREGADOS primero (deuda real prioritaria)
       // 2. Por fecha más antigua a más reciente
-      const sortedOrders = [...customer.orders].sort((a, b) => {
+      const sortedOrders = [...pendingOrders].sort((a, b) => {
         if (a.deliveryStatus === 'DELIVERED' && b.deliveryStatus !== 'DELIVERED') return -1;
         if (b.deliveryStatus === 'DELIVERED' && a.deliveryStatus !== 'DELIVERED') return 1;
         return new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime();
@@ -382,13 +422,29 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
 
       for (const ord of sortedOrders) {
         if (remainingToPay <= 0) break;
-        const apply = Math.min(remainingToPay, ord.pendingAmount);
+        const ordPending = ord.pendingAmount > 0 ? ord.pendingAmount : Math.max(0, ord.totalAmount - ord.paidAmount);
+        if (ordPending <= 0) continue;
+
+        const apply = Math.min(remainingToPay, ordPending);
         const newPaid = ord.paidAmount + apply;
         const newPending = Math.max(0, ord.totalAmount - newPaid);
         const newStatus = newPaid >= ord.totalAmount ? 'PAID' : (newPaid > 0 ? 'PARTIAL' : 'PENDING');
 
-        const paymentNote = `Abono: $${new Intl.NumberFormat('es-CO').format(apply)} (${paymentMethod || 'Efectivo'}) por ${registeredBy || 'Edier'}`;
+        const paymentNote = `Abono: $${new Intl.NumberFormat('es-CO').format(apply)} (${effectivePaymentMethod}) por ${effectiveRegisteredBy}`;
         const updatedNotes = notes ? `${ord.notes ? ord.notes + ' | ' : ''}${notes} [${paymentNote}]` : `${ord.notes ? ord.notes + ' | ' : ''}${paymentNote}`;
+
+        // Crear registro de OrderPayment
+        const newPayment = await prisma.orderPayment.create({
+          data: {
+            orderId: ord.id,
+            amount: apply,
+            paymentMethod: effectivePaymentMethod,
+            paymentDate: now,
+            notes: notes ? String(notes).trim() : null,
+            registeredBy: effectiveRegisteredBy,
+          },
+        });
+        createdPayments.push(newPayment);
 
         const updated = await prisma.order.update({
           where: { id: ord.id },
@@ -409,6 +465,7 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
       totalPaid: paymentAmount,
       applied: paymentAmount - remainingToPay,
       updatedOrders,
+      payments: createdPayments,
     });
   } catch (error) {
     console.error('Error applying customer payment:', error);

@@ -1240,23 +1240,28 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
     const instagramUrl = settings.instagramUrl || 'https://www.instagram.com/yogurartesanalfonseca?igsi=ZXNjM2dxZ3Z1dXg4&utm_source=qr';
     const instagramLine = `\n\n📸 *Síguenos en Instagram:*\n${instagramUrl}`;
 
-    // 1. Si el pedido ya está ENTREGADO y no se forzó otro tipo: Mensaje conciso de entrega y agradecimiento
+    // 1. Si el pedido ya está ENTREGADO y no se forzó otro tipo
     if (order.deliveryStatus === 'DELIVERED' && type !== 'ORDER_INFO') {
-      let deliveredMsg = `🥛 *YogurArte | Pedido #${order.orderNumber}*\n\n`;
-      deliveredMsg += `¡Hola *${order.customer.fullName}*! Tu pedido ha sido *✅ Entregado con éxito*.\n`;
-      deliveredMsg += `${itemsBreakdown}\n\n`;
-
-      if (order.pendingAmount > 0) {
+      let deliveredMsg = '';
+      if (order.pendingAmount <= 0 || order.paymentStatus === 'PAID') {
+        deliveredMsg = `🥛 *YogurArte | ¡Pago Recibido con Éxito! ✨*\n\n`;
+        deliveredMsg += `¡Hola *${order.customer.fullName}*! Confirmamos el recibido de tu pago para tu pedido *#${order.orderNumber}*:\n`;
+        deliveredMsg += `${itemsBreakdown}\n\n`;
+        deliveredMsg += `💰 *Total Pagado:* ${formatCurrency(order.totalAmount)} (✅ Paz y Salvo)\n`;
+        deliveredMsg += `📦 *Estado:* ✅ Entregado\n\n`;
+        deliveredMsg += `¡Muchísimas gracias por tu compra y cumplimiento! Esperamos que disfrutes al máximo tu delicioso yogur artesanal 100% natural. 🥛🍇🍓\n\n`;
+        deliveredMsg += `Estamos siempre a tu orden para tu próximo pedido. ✨`;
+      } else {
+        deliveredMsg = `🥛 *YogurArte | Pedido #${order.orderNumber}*\n\n`;
+        deliveredMsg += `¡Hola *${order.customer.fullName}*! Tu pedido ha sido *✅ Entregado con éxito*.\n`;
+        deliveredMsg += `${itemsBreakdown}\n\n`;
         deliveredMsg += `🚨 *Saldo pendiente:* ${formatCurrency(order.pendingAmount)}\n`;
         if (order.paidAmount > 0) {
           deliveredMsg += `💵 *Abonado:* ${formatCurrency(order.paidAmount)}\n`;
         }
         deliveredMsg += `💳 *${bankName}:* ${nequiNum}\n\n`;
-      } else {
-        deliveredMsg += `💰 *Total:* ${formatCurrency(order.totalAmount)} (✅ Paz y Salvo)\n\n`;
+        deliveredMsg += `¡Esperamos que disfrutes al máximo tu delicioso yogur artesanal 100% natural! Cualquier duda o para tu próximo pago estamos a tu orden. 🥛🍇🍓`;
       }
-
-      deliveredMsg += `¡Esperamos que disfrutes al máximo tu delicioso yogur artesanal 100% natural! Cualquier duda o para tu próximo pedido estamos a tu orden. 🥛🍇🍓`;
       deliveredMsg += instagramLine;
 
       const whatsappUrl = buildWhatsAppUrl(rawContact, deliveredMsg);
