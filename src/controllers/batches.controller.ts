@@ -1090,27 +1090,8 @@ export const createBatchDischarge = async (req: Request, res: Response) => {
     const effectiveDischargeDate = dischargeDate ? new Date(dischargeDate) : new Date();
     const effectiveRegisteredBy = registeredBy ? String(registeredBy).trim() : 'Edier';
 
-    // Ejecutar en transacción para crear StaffPayment y BatchDischarge
+    // Ejecutar en transacción para crear BatchDischarge y actualizar estado de lote
     const result = await prisma.$transaction(async (tx) => {
-      let createdPayment: any = null;
-
-      if (effectiveReason === 'CONSUMO_SOCIO' && staffMember) {
-        createdPayment = await tx.staffPayment.create({
-          data: {
-            staffId: staffMember.id,
-            paymentType: 'RETIRO_SOCIO',
-            amount: totalAmount,
-            deductions: 0,
-            netAmount: totalAmount,
-            paymentMethod: 'ESPECIE_PRODUCTO',
-            paymentDate: effectiveDischargeDate,
-            calculationDetails: `Retiro en especie: ${qtyBottles}x Botella ${size} (${batch.flavor}) Lote #${batch.batchCode}`,
-            notes: notes ? String(notes).trim() : `Consumo propio de socio a precio de venta ($${new Intl.NumberFormat('es-CO').format(effectiveUnitPrice)}/u)`,
-            registeredBy: effectiveRegisteredBy,
-          },
-        });
-      }
-
       const createdDischarge = await tx.batchDischarge.create({
         data: {
           batchId: batch.id,
@@ -1121,7 +1102,7 @@ export const createBatchDischarge = async (req: Request, res: Response) => {
           totalAmount: totalAmount,
           reasonType: effectiveReason,
           staffMemberId: staffMember ? staffMember.id : null,
-          staffPaymentId: createdPayment ? createdPayment.id : null,
+          staffPaymentId: null,
           notes: notes ? String(notes).trim() : null,
           registeredBy: effectiveRegisteredBy,
           dischargeDate: effectiveDischargeDate,
@@ -1148,7 +1129,6 @@ export const createBatchDischarge = async (req: Request, res: Response) => {
 
       return {
         discharge: createdDischarge,
-        staffPayment: createdPayment,
         remainingAvailableLiters: newRemaining,
       };
     });

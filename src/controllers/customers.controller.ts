@@ -228,6 +228,19 @@ export const getCustomerById = async (req: Request, res: Response) => {
       where: { id: Number(id) },
       include: {
         orders: {
+          include: {
+            batch: {
+              select: {
+                id: true,
+                batchCode: true,
+                flavor: true,
+              },
+            },
+            payments: {
+              orderBy: { paymentDate: 'asc' },
+            },
+            items: true,
+          },
           orderBy: { orderDate: 'desc' },
         },
       },
@@ -350,13 +363,18 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
     }
 
     // Calcular pendiente real de cada pedido
-    const pendingOrders = (customer.orders || []).filter((o) => {
+    let pendingOrders = (customer.orders || []).filter((o) => {
       const pending = o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0));
       return pending > 0 || o.paymentStatus !== 'PAID';
     });
 
+    if (customer.orders.length === 0) {
+      return res.status(400).json({ error: 'Este cliente no tiene ningún pedido registrado en el sistema. Crea un pedido primero.' });
+    }
+
     if (pendingOrders.length === 0) {
-      return res.status(400).json({ error: 'Este cliente no tiene pedidos con saldo pendiente por cobrar' });
+      // Si todos están al día, usar los pedidos existentes (el más reciente) para aplicar el pago
+      pendingOrders = [customer.orders[customer.orders.length - 1]];
     }
 
     let remainingToPay = paymentAmount;

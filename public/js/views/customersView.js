@@ -572,11 +572,11 @@ async function loadCustomersList(container) {
 
     gridContainer.querySelectorAll('.btn-cust-payment').forEach((btn) => {
       btn.addEventListener('click', (e) => {
-        const id = Number(e.currentTarget.dataset.id);
-        const customer = cachedCustomers.find((c) => c.id === id);
-        if (customer) {
-          openCustomerPaymentModal(customer);
-        }
+        e.preventDefault();
+        e.stopPropagation();
+        const id = Number(e.currentTarget.dataset.id || e.currentTarget.getAttribute('data-id'));
+        const customer = cachedCustomers.find((c) => Number(c.id) === id) || { id };
+        openCustomerPaymentModal(customer);
       });
     });
 
@@ -821,7 +821,7 @@ async function openCustomerHistoryModal(customerId) {
 }
 
 // Modal para Cobrar / Abonar a Cliente
-async function openCustomerPaymentModal(customer) {
+async function openCustomerPaymentModal(customerOrId) {
   let modalOverlay = document.getElementById('modalContainer');
   if (!modalOverlay) {
     modalOverlay = document.createElement('div');
@@ -830,13 +830,19 @@ async function openCustomerPaymentModal(customer) {
   }
 
   try {
-    const custData = await api.getCustomerById(customer.id);
-    const pendingOrders = (custData.orders || [])
-      .map((o) => {
-        const realPending = o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0));
-        return { ...o, realPending };
-      })
-      .filter((o) => o.realPending > 0 || o.paymentStatus !== 'PAID');
+    const custId = typeof customerOrId === 'object' ? customerOrId.id : Number(customerOrId);
+    const custData = await api.getCustomerById(custId);
+    if (!custData) {
+      showToast('No se encontró el cliente', 'danger');
+      return;
+    }
+
+    const allOrders = (custData.orders || []).map((o) => {
+      const realPending = o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0));
+      return { ...o, realPending };
+    });
+
+    const pendingOrders = allOrders.filter((o) => o.realPending > 0 || o.paymentStatus !== 'PAID');
 
     const deliveredDebt = pendingOrders
       .filter((o) => o.deliveryStatus === 'DELIVERED')
@@ -847,12 +853,6 @@ async function openCustomerPaymentModal(customer) {
       .reduce((sum, o) => sum + (o.realPending || 0), 0);
 
     const totalPending = deliveredDebt + inProcessAmount;
-
-    if (totalPending <= 0 && pendingOrders.length === 0) {
-      showToast(`¡${custData.fullName} está completamente al día! No tiene saldo pendiente. 🟢`);
-      return;
-    }
-
     const defaultAmount = deliveredDebt > 0 ? deliveredDebt : (totalPending > 0 ? totalPending : 10000);
 
     modalOverlay.innerHTML = `
@@ -889,9 +889,15 @@ async function openCustomerPaymentModal(customer) {
                         </div>`
                       : ''
                   }
-                  <div style="background: #FFFFFF; border: 1px solid var(--border-color); color: var(--text-main); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 800;">
-                    💰 Saldo Total: ${formatCOP(totalPending)}
-                  </div>
+                  ${
+                    totalPending <= 0
+                      ? `<div style="background: #ECFDF5; border: 1px solid #A7F3D0; color: #059669; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 800;">
+                          🟢 Al Día (Sin deuda pendiente)
+                        </div>`
+                      : `<div style="background: #FFFFFF; border: 1px solid var(--border-color); color: var(--text-main); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 800;">
+                          💰 Saldo Total: ${formatCOP(totalPending)}
+                        </div>`
+                  }
                 </div>
               </div>
 
@@ -900,13 +906,13 @@ async function openCustomerPaymentModal(customer) {
                 <label class="form-label">Aplicar Abono a: *</label>
                 <select id="custPayOrderId" class="form-select" style="font-size: 0.88rem; font-weight: 600;">
                   <option value="AUTO" selected>⚡ Automático: Aplicar a la deuda más antigua / entregada</option>
-                  ${pendingOrders
+                  ${(allOrders.length > 0 ? allOrders : pendingOrders)
                     .map(
                       (o) =>
                         `<option value="${o.id}">
-                          #${escapeHtml(o.orderNumber) || o.id} (${escapeHtml(o.flavor) || 'Yogur'}, ${o.totalLiters}L) • ${
+                          #${escapeHtml(o.orderNumber) || o.id} (${escapeHtml(o.batch?.flavor || o.flavor) || 'Yogur'}, ${o.totalLiters}L) • ${
                           o.deliveryStatus === 'DELIVERED' ? '🛵 Entregado' : '🥣 En proceso'
-                        } • Pendiente: ${formatCOP(o.realPending)}
+                        } • ${o.realPending > 0 ? `Pendiente: ${formatCOP(o.realPending)}` : '✅ Pagado'}
                         </option>`
                     )
                     .join('')}

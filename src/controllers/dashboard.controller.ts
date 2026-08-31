@@ -369,8 +369,11 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       }
     }
 
-    // 5. Nómina y Retiros
+    // 5. Nómina y Retiros (solo salidas monetarias reales en Efectivo o Bancos)
     for (const sp of staffPayments) {
+      if (sp.paymentMethod === 'ESPECIE_PRODUCTO' || sp.paymentMethod === 'ESPECIE') {
+        continue;
+      }
       if (isCash(sp.paymentMethod)) {
         cashInHand -= sp.netAmount;
         totalOutflowCash += sp.netAmount;
