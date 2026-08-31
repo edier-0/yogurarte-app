@@ -208,6 +208,7 @@ export const getBatchById = async (req: Request, res: Response) => {
           include: {
             customer: true,
             items: true,
+            payments: true,
           },
           orderBy: { orderDate: 'desc' },
         },

@@ -1331,15 +1331,21 @@ async function openBatchDetailModal(batchId) {
                 <h4 style="font-size: 0.92rem; font-weight: 800; color: var(--primary); margin: 0;">
                   🛒 Despacho y Ventas de este Lote (${linkedOrders.length})
                 </h4>
-                <span style="font-size: 0.8rem; font-weight: 700; color: var(--primary);">
-                  ${totalSoldLiters}L vendidos • <span style="color: #059669;">${remainingAvailableLiters.toFixed(1)}L libres</span> • Recaudado: ${formatCOP(totalSoldAmount)}
-                </span>
+                <div style="font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span style="color: var(--primary);">${totalSoldLiters}L pedidos (${formatCOP(totalSoldAmount)})</span>
+                  <span>•</span>
+                  <span style="color: #059669;">🟢 ${totalPaidAmount > 0 ? formatCOP(totalPaidAmount) : '$0'} cobrados</span>
+                  ${totalPendingAmount > 0 ? `
+                    <span>•</span>
+                    <span style="color: #DC2626;">⏳ ${formatCOP(totalPendingAmount)} pendientes</span>
+                  ` : ''}
+                </div>
               </div>
 
               ${
                 linkedOrders.length > 0
                   ? `
-                <div style="max-height: 160px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+                <div style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
                   <table class="app-table" style="margin: 0; font-size: 0.8rem;">
                     <thead>
                       <tr style="background: var(--bg-app);">
@@ -1348,24 +1354,47 @@ async function openBatchDetailModal(batchId) {
                         <th>Fecha</th>
                         <th>Botellas / L</th>
                         <th style="text-align: right;">Total</th>
-                        <th>Pago</th>
+                        <th>Estado Pago</th>
+                        <th style="text-align: center;">Acción</th>
                       </tr>
                     </thead>
                     <tbody>
                       ${linkedOrders
                         .map(
-                          (o) => `
+                          (o) => {
+                            const isPaid = o.paymentStatus === 'PAID' || (o.paidAmount >= o.totalAmount && o.totalAmount > 0) || (o.pendingAmount !== undefined && o.pendingAmount <= 0 && (o.paidAmount || 0) > 0);
+                            const isPartial = !isPaid && ((o.paidAmount || 0) > 0 || o.paymentStatus === 'PARTIAL');
+                            const pendingBal = Math.max(0, o.totalAmount - (o.paidAmount || 0));
+
+                            let payBadge = '';
+                            if (isPaid) {
+                              payBadge = '<span class="badge badge-paid" style="font-size: 0.7rem; font-weight: 800;">✅ Pagado</span>';
+                            } else if (isPartial) {
+                              payBadge = `<span class="badge" style="background: #FEF3C7; color: #92400E; font-size: 0.7rem; font-weight: 800;" title="Abonado: ${formatCOP(o.paidAmount)} / Resta: ${formatCOP(pendingBal)}">🟡 Abono (${formatCOP(o.paidAmount)})</span>`;
+                            } else {
+                              payBadge = `<span class="badge badge-pending" style="font-size: 0.7rem; font-weight: 800;">⏳ Pendiente</span>`;
+                            }
+
+                            return `
                         <tr>
                           <td><strong>${escapeHtml(o.orderNumber)}</strong></td>
                           <td>${escapeHtml(o.customer?.fullName) || 'Cliente'}</td>
                           <td>${formatDate(o.orderDate)}</td>
                           <td>${o.quantityBottles} bot (${o.totalLiters}L)</td>
                           <td style="text-align: right;"><strong>${formatCOP(o.totalAmount)}</strong></td>
-                          <td>
-                            ${o.paymentStatus === 'PAID' ? '<span class="badge badge-paid" style="font-size: 0.7rem;">Pagado</span>' : '<span class="badge badge-pending" style="font-size: 0.7rem;">Pendiente</span>'}
+                          <td>${payBadge}</td>
+                          <td style="text-align: center;">
+                            ${!isPaid ? `
+                              <button type="button" class="btn btn-sm btn-outline btn-quick-pay-from-batch" data-order-id="${o.id}" data-order-number="${escapeHtml(o.orderNumber)}" data-customer-name="${escapeHtml(o.customer?.fullName || 'Cliente')}" data-pending="${pendingBal}" data-batch-id="${batch.id}" style="padding: 2px 8px; font-size: 0.74rem; color: #059669; border-color: #A7F3D0; background: #ECFDF5; font-weight: 800;" title="Cobrar pedido / registrar pago">
+                                💵 Cobrar
+                              </button>
+                            ` : `
+                              <span style="color: #059669; font-size: 0.76rem; font-weight: 800;">✓ Al día</span>
+                            `}
                           </td>
                         </tr>
-                      `
+                      `;
+                          }
                         )
                         .join('')}
                     </tbody>
@@ -1606,6 +1635,13 @@ async function openBatchDetailModal(batchId) {
     document.getElementById('btnDischargeFromDetail')?.addEventListener('click', triggerDischarge);
     document.getElementById('btnDischargeFooter')?.addEventListener('click', triggerDischarge);
 
+    modalOverlay.querySelectorAll('.btn-quick-pay-from-batch').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const { orderId, orderNumber, customerName, pending, batchId } = e.currentTarget.dataset;
+        openQuickPayBatchOrderModal(orderId, orderNumber, customerName, Number(pending), batchId);
+      });
+    });
+
     modalOverlay.querySelectorAll('.btn-delete-discharge').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         const dischargeId = e.currentTarget.dataset.id;
@@ -1627,6 +1663,110 @@ async function openBatchDetailModal(batchId) {
     console.error('Error opening batch detail modal:', error);
     showToast('Error al cargar detalle del lote', 'danger');
   }
+}
+
+// Modal para registrar cobro rápido de un pedido directamente desde el resumen de lote
+function openQuickPayBatchOrderModal(orderId, orderNumber, customerName, pendingAmount, batchId) {
+  let modalOverlay = document.getElementById('modalContainer');
+  if (!modalOverlay) {
+    modalOverlay = document.createElement('div');
+    modalOverlay.id = 'modalContainer';
+    document.body.appendChild(modalOverlay);
+  }
+
+  const defaultAmount = Math.max(1, pendingAmount);
+
+  modalOverlay.innerHTML = `
+    <div class="modal-overlay active">
+      <div class="modal-card" style="max-width: 440px;">
+        <div class="modal-header">
+          <h3 class="modal-title">💵 Registrar Cobro de Pedido</h3>
+          <button class="modal-close-btn" id="btnCloseQuickPayModal">✕</button>
+        </div>
+        <form id="quickPayBatchOrderForm">
+          <div class="modal-body">
+            
+            <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 14px;">
+              <strong style="color: var(--primary); font-size: 1.05rem;">Pedido #${escapeHtml(orderNumber)}</strong>
+              <div style="font-size: 0.88rem; color: var(--text-main); font-weight: 700; margin-top: 3px;">
+                👤 ${escapeHtml(customerName)}
+              </div>
+              <div style="font-size: 0.8rem; color: #DC2626; font-weight: 800; margin-top: 4px;">
+                Saldo pendiente a cobrar: ${formatCOP(pendingAmount)}
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Monto a Cobrar *</label>
+              <input 
+                type="number" 
+                id="quickPayAmount" 
+                class="form-input" 
+                min="1" 
+                step="any" 
+                value="${defaultAmount}" 
+                style="font-size: 1.25rem; font-weight: 800; color: #059669; text-align: center;" 
+                required 
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Método de Pago *</label>
+              <select id="quickPayMethod" class="form-select" style="font-weight: 700;">
+                <option value="EFECTIVO" selected>💵 Efectivo</option>
+                <option value="NEQUI">🟣 Nequi</option>
+                <option value="BANCOLOMBIA">🟡 Bancolombia</option>
+                <option value="TRANSFERENCIA">💳 Transferencia</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Notas / Observación (Opcional)</label>
+              <input type="text" id="quickPayNotes" class="form-input" placeholder="Ej: Pago total recibido por Nequi" />
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btnCancelQuickPay">Cancelar</button>
+            <button type="submit" class="btn btn-accent" id="btnSubmitQuickPay" style="padding: 10px 20px; font-weight: 800;">
+              ✅ Confirmar Cobro
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const closeQuickPay = () => openBatchDetailModal(batchId);
+  document.getElementById('btnCloseQuickPayModal')?.addEventListener('click', closeQuickPay);
+  document.getElementById('btnCancelQuickPay')?.addEventListener('click', closeQuickPay);
+
+  document.getElementById('quickPayBatchOrderForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const amount = Number(document.getElementById('quickPayAmount')?.value);
+    const paymentMethod = document.getElementById('quickPayMethod')?.value || 'EFECTIVO';
+    const notes = document.getElementById('quickPayNotes')?.value || 'Pago registrado desde resumen de lote';
+
+    if (!amount || amount <= 0) {
+      showToast('Ingresa un monto válido mayor a 0', 'danger');
+      return;
+    }
+
+    try {
+      await api.addOrderPayment(orderId, {
+        amount,
+        paymentMethod,
+        notes,
+        registeredBy: store.currentUser || 'Edier',
+      });
+      showToast(`¡Pago de ${formatCOP(amount)} registrado con éxito para ${orderNumber}! 💵`);
+      openBatchDetailModal(batchId);
+      const mainContainer = document.getElementById('contentContainer');
+      if (mainContainer) loadBatchesList(mainContainer);
+    } catch (err) {
+      showToast(err.message || 'Error al registrar pago', 'danger');
+    }
+  });
 }
 
 // Modal para Retirar / Ajustar Litros de Lote (Consumo Socios, Muestras, Mermas)
@@ -2217,9 +2357,13 @@ async function openLinkOrdersModal(batchId, batchCode, flavor, container = null)
                     <td><strong style="color: var(--primary);">${o.totalLiters} L</strong></td>
                     <td><strong>${formatCOP(o.totalAmount)}</strong></td>
                     <td>
-                      <span class="badge ${o.paymentStatus === 'PAID' ? 'badge-paid' : 'badge-pending'}" style="font-size: 0.7rem;">
-                        ${o.paymentStatus === 'PAID' ? 'Pagado' : 'Pendiente'}
-                      </span>
+                      ${(() => {
+                        const isPaid = o.paymentStatus === 'PAID' || (o.paidAmount >= o.totalAmount && o.totalAmount > 0) || (o.pendingAmount !== undefined && o.pendingAmount <= 0 && (o.paidAmount || 0) > 0);
+                        const isPartial = !isPaid && ((o.paidAmount || 0) > 0 || o.paymentStatus === 'PARTIAL');
+                        if (isPaid) return '<span class="badge badge-paid" style="font-size: 0.7rem; font-weight: 800;">✅ Pagado</span>';
+                        if (isPartial) return `<span class="badge" style="background: #FEF3C7; color: #92400E; font-size: 0.7rem; font-weight: 800;">🟡 Abono (${formatCOP(o.paidAmount)})</span>`;
+                        return '<span class="badge badge-pending" style="font-size: 0.7rem; font-weight: 800;">⏳ Pendiente</span>';
+                      })()}
                     </td>
                   </tr>
                 `;
