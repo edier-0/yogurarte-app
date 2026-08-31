@@ -1227,6 +1227,12 @@ async function openBatchDetailModal(batchId) {
     const totalSoldLiters = linkedOrders.reduce((sum, o) => sum + (o.totalLiters || 0), 0);
     const totalSoldBottles = linkedOrders.reduce((sum, o) => sum + (o.quantityBottles || 0), 0);
     const totalSoldAmount = linkedOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    const totalPaidAmount = linkedOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+    const totalPendingAmount = linkedOrders.reduce((sum, o) => {
+      const isPaid = o.paymentStatus === 'PAID' || (o.paidAmount >= o.totalAmount && o.totalAmount > 0) || (o.pendingAmount !== undefined && o.pendingAmount <= 0 && (o.paidAmount || 0) > 0);
+      if (isPaid) return sum;
+      return sum + (o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0)));
+    }, 0);
 
     const totalDischargedLiters = linkedDischarges.reduce((sum, d) => sum + (d.totalLiters || 0), 0);
     const totalDischargedAmount = linkedDischarges.reduce((sum, d) => sum + (d.totalAmount || 0), 0);
