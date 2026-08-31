@@ -545,7 +545,7 @@ async function loadCustomersList(container) {
       'customersPagination',
       (newPage) => {
         customersCurrentPage = newPage;
-        loadCustomersData(container);
+        loadCustomersList(container);
       },
       gridContainer
     );
