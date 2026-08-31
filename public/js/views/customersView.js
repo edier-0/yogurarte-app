@@ -923,8 +923,8 @@ async function openCustomerPaymentModal(customer) {
                   type="number" 
                   id="custPayAmount" 
                   class="form-input" 
-                  min="100" 
-                  step="500" 
+                  min="1" 
+                  step="any" 
                   value="${defaultAmount}" 
                   style="font-size: 1.15rem; font-weight: 800; color: var(--primary);" 
                   required 
