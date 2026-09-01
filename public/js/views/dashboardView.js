@@ -49,6 +49,7 @@ export async function renderDashboard(container) {
 
     const data = await api.getDashboardSummary(params);
     const { kpis, deliveredStats, inProcessStats, paymentBreakdown, deliveryBreakdown, lowStockAlerts, recentOrders, periodOrders, creditSummary } = data;
+    const detailedData = data.detailedBreakdowns || {};
     const ordersList = periodOrders || recentOrders || [];
 
     let creditAlertHtml = '';
@@ -707,8 +708,6 @@ export async function renderDashboard(container) {
     );
 
     // Clics en KPIs para abrir Modales Interactivos
-    const detailedData = data.detailedBreakdowns || {};
-
     // 0. Clic en Dinero en Caja (Saldo)
     container.querySelector('#kpiCashBalanceCard')?.addEventListener('click', () => {
       openCashBalanceModal(detailedData.cashFlow || {}, kpis, activeFilterLabel);
