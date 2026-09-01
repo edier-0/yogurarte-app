@@ -23,6 +23,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const staffPaymentWhere: any = {};
     const cashMovementWhere: any = {};
     const dischargeWhere: any = {};
+    const batchWhere: any = {};
 
     let activeFilterDate = '';
     let customDateRange: { gte: Date; lte: Date } | null = null;
@@ -62,6 +63,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       staffPaymentWhere.paymentDate = dayRange;
       cashMovementWhere.movementDate = dayRange;
       dischargeWhere.dischargeDate = dayRange;
+      batchWhere.preparationDate = dayRange;
     } else if (customDateRange) {
       orderWhere.OR = [
         { orderDate: customDateRange },
@@ -72,6 +74,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       staffPaymentWhere.paymentDate = customDateRange;
       cashMovementWhere.movementDate = customDateRange;
       dischargeWhere.dischargeDate = customDateRange;
+      batchWhere.preparationDate = customDateRange;
     } else if (month && typeof month === 'string') {
       const [year, m] = month.split('-').map(Number);
       if (year && m) {
@@ -87,6 +90,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         staffPaymentWhere.paymentDate = monthRange;
         cashMovementWhere.movementDate = monthRange;
         dischargeWhere.dischargeDate = monthRange;
+        batchWhere.preparationDate = monthRange;
       }
     } else if (period === 'month') {
       const [year, m] = todayStr.split('-').map(Number);
@@ -102,6 +106,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       staffPaymentWhere.paymentDate = monthRange;
       cashMovementWhere.movementDate = monthRange;
       dischargeWhere.dischargeDate = monthRange;
+      batchWhere.preparationDate = monthRange;
     } else if (period === 'week') {
       const now = new Date();
       const dayOfWeek = now.getDay();
@@ -119,10 +124,13 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       staffPaymentWhere.paymentDate = { gte: startOfWeek };
       cashMovementWhere.movementDate = { gte: startOfWeek };
       dischargeWhere.dischargeDate = { gte: startOfWeek };
+      batchWhere.preparationDate = { gte: startOfWeek };
     }
 
     // 1. Consultar todas las entidades en paralelo para máxima velocidad (PostgreSQL Connection Pooling)
-    const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [curYear, curMonthNum] = todayStr.split('-').map(Number);
+    const startOfCurrentMonth = new Date(Date.UTC(curYear, curMonthNum - 1, 1, 0, 0, 0));
+    const endOfCurrentMonth = new Date(Date.UTC(curYear, curMonthNum, 0, 23, 59, 59, 999));
 
     const [
       orders,
@@ -132,7 +140,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       cashMovements,
       activeCreditObligations,
       rawMaterials,
-      batchesThisMonth,
+      periodBatches,
       allActiveBatches,
       batchDischarges,
     ] = await Promise.all([
@@ -214,21 +222,24 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         },
       }),
 
-      // 8. Lotes producidos este mes
+      // 8. Lotes producidos en el período filtrado
       prisma.productionBatch.findMany({
         where: {
           isActive: true,
-          preparationDate: { gte: startOfCurrentMonth },
+          ...batchWhere,
         },
         select: {
           id: true,
           totalLitersProduced: true,
           yieldPercentage: true,
           totalCost: true,
+          preparationDate: true,
+          batchCode: true,
+          flavor: true,
         },
       }),
 
-      // 9. Todos los lotes activos
+      // 9. Todos los lotes activos (Histórico general)
       prisma.productionBatch.findMany({
         where: { isActive: true },
         select: {
@@ -237,6 +248,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           flavor: true,
           status: true,
           totalLitersProduced: true,
+          preparationDate: true,
         },
       }),
 
@@ -453,8 +465,17 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
 
     const cashBalance = cashInHand + digitalBank;
 
-    const totalLitersProducedThisMonth = batchesThisMonth.reduce((sum, b) => sum + b.totalLitersProduced, 0);
     const totalLitersProducedAllTime = allActiveBatches.reduce((sum, b) => sum + b.totalLitersProduced, 0);
+    const totalBatchesCountAllTime = allActiveBatches.length;
+
+    const totalLitersProducedPeriod = periodBatches.reduce((sum, b) => sum + b.totalLitersProduced, 0);
+    const totalBatchesCountPeriod = periodBatches.length;
+
+    const batchesThisMonth = allActiveBatches.filter((b) => {
+      const d = new Date(b.preparationDate);
+      return d >= startOfCurrentMonth && d <= endOfCurrentMonth;
+    });
+    const totalLitersProducedThisMonth = batchesThisMonth.reduce((sum, b) => sum + b.totalLitersProduced, 0);
     const totalBatchesCountThisMonth = batchesThisMonth.length;
 
     // Agrupación de Ventas por Lote y Sabor para Modales Interactivos
@@ -605,6 +626,9 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         totalLitersProducedThisMonth,
         totalLitersProducedAllTime,
         totalBatchesCountThisMonth,
+        totalBatchesCountAllTime,
+        totalLitersProducedPeriod,
+        totalBatchesCountPeriod,
       },
       deliveredStats: {
         deliveredOrdersCount: deliveredOrders.length,

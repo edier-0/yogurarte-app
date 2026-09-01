@@ -448,33 +448,44 @@ export async function renderDashboard(container) {
           </div>
         </div>
 
-        <!-- Producción Acumulada del Mes -->
+        <!-- Producción Histórica y Filtrada -->
         <div class="order-card" style="padding: 22px; background: linear-gradient(135deg, #FFFDF9 0%, #F5ECF9 100%);">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
             <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary);">
               🍶 Producción Artesanal
             </h3>
             <span class="badge" style="background: var(--primary-light); color: var(--primary); font-weight: 800;">
-              ${new Intl.DateTimeFormat('es-CO', { month: 'long', year: 'numeric' }).format(new Date()).toUpperCase()}
+              ${(dashboardFilters.period !== 'all' || dashboardFilters.month || dashboardFilters.specificDate || dashboardFilters.startDate) ? activeFilterLabel.toUpperCase() : 'HISTÓRICO GENERAL'}
             </span>
           </div>
           
           <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
-            Litros de yogur fermentados y envasados este mes.
+            ${(dashboardFilters.period !== 'all' || dashboardFilters.month || dashboardFilters.specificDate || dashboardFilters.startDate) 
+              ? `Litros de yogur elaborados en el periodo seleccionado (${activeFilterLabel}).` 
+              : `Litros totales de yogur fermentados y envasados desde el inicio.`}
           </p>
 
           <div style="margin-bottom: 8px;">
             <div style="font-size: 2.2rem; font-weight: 900; color: var(--primary); line-height: 1;">
-              ${kpis.totalLitersProducedThisMonth || 0} <span style="font-size: 1.2rem; font-weight: 700;">Litros este Mes</span>
+              ${(dashboardFilters.period !== 'all' || dashboardFilters.month || dashboardFilters.specificDate || dashboardFilters.startDate)
+                ? `${kpis.totalLitersProducedPeriod || 0} <span style="font-size: 1.15rem; font-weight: 700;">Litros en Periodo</span>`
+                : `${kpis.totalLitersProducedAllTime || 0} <span style="font-size: 1.15rem; font-weight: 700;">Litros Históricos</span>`}
             </div>
             <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 6px;">
-              ${kpis.totalBatchesCountThisMonth || 0} lote(s) producidos este mes • Histórico total: <strong>${kpis.totalLitersProducedAllTime || 0} L</strong>
+              ${(dashboardFilters.period !== 'all' || dashboardFilters.month || dashboardFilters.specificDate || dashboardFilters.startDate)
+                ? `${kpis.totalBatchesCountPeriod || 0} lote(s) en este periodo • Histórico acumulado: <strong>${kpis.totalLitersProducedAllTime || 0} L</strong> (${kpis.totalBatchesCountAllTime || 0} lotes)`
+                : `Total acumulado: <strong>${kpis.totalBatchesCountAllTime || 0} lote(s)</strong> producidos • Mes actual: <strong>${kpis.totalLitersProducedThisMonth || 0} L</strong>`}
             </div>
           </div>
 
-          <button class="btn btn-primary btn-sm" id="btnGoToBatches" style="margin-top: auto; align-self: flex-start;">
-            + Registrar Lote de Yogur
-          </button>
+          <div style="display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap;">
+            <button class="btn btn-primary btn-sm" id="btnGoToBatches" style="font-weight: 700;">
+              + Registrar Lote
+            </button>
+            <button class="btn btn-outline btn-sm" id="btnViewAllBatches" style="font-weight: 700; color: var(--primary); border-color: var(--primary);">
+              Ver Lotes 📋
+            </button>
+          </div>
         </div>
 
       </div>
@@ -768,6 +779,9 @@ export async function renderDashboard(container) {
       document.querySelector('[data-tab="inventory"]')?.click();
     });
     container.querySelector('#btnGoToBatches')?.addEventListener('click', () => {
+      document.querySelector('[data-tab="batches"]')?.click();
+    });
+    container.querySelector('#btnViewAllBatches')?.addEventListener('click', () => {
       document.querySelector('[data-tab="batches"]')?.click();
     });
     container.querySelector('#btnGoToOrders')?.addEventListener('click', () => {
