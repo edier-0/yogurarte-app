@@ -348,16 +348,20 @@ export async function renderDashboard(container) {
           </div>
         </div>
 
-        <!-- KPI 4: Litros Vendidos (Ya Entregados) (Clicable para ver clientes y lotes) -->
-        <div class="kpi-card kpi-accent kpi-clickable" id="kpiDeliveredLitersCard" style="cursor: pointer; position: relative; transition: all 0.2s ease;" title="🔍 Haz clic para ver los clientes y litros entregados por lote">
+        <!-- KPI 4: Litros Vendidos y Entregados a Socios (Clicable para ver detalle completo) -->
+        <div class="kpi-card kpi-accent kpi-clickable" id="kpiDeliveredLitersCard" style="cursor: pointer; position: relative; transition: all 0.2s ease;" title="🔍 Haz clic para ver el balance de litros entregados a clientes y socios">
           <div class="kpi-header">
-            <span class="kpi-title" style="color: var(--accent); font-weight: 800;">🥛 Litros Vendidos (Entregados) 🔍</span>
+            <span class="kpi-title" style="color: var(--accent); font-weight: 800;">🥛 Litros Entregados / Despacho 🔍</span>
             <div class="kpi-icon" style="background: var(--accent-light); color: var(--accent);">✅</div>
           </div>
-          <div class="kpi-value">${kpis.deliveredLiters || 0} L</div>
+          <div class="kpi-value">${(kpis.totalDispatchedLiters || kpis.deliveredLiters || 0)} L</div>
           <div class="kpi-subtitle" style="display: flex; justify-content: space-between; align-items: center;">
-            <span>${deliveryBreakdown.delivered} pedido(s) entregados</span>
-            <span style="font-size: 0.72rem; color: var(--accent); font-weight: 800;">Ver detalle ↗</span>
+            <span>
+              ${(kpis.partnerDischargedLiters || 0) > 0 
+                ? `${kpis.deliveredLiters || 0}L clientes (${deliveryBreakdown.delivered} ped.) + ${kpis.partnerDischargedLiters}L socios`
+                : `${deliveryBreakdown.delivered} pedido(s) entregados`}
+            </span>
+            <span style="font-size: 0.72rem; color: var(--accent); font-weight: 800;">Ver balance ↗</span>
           </div>
         </div>
 
@@ -392,10 +396,10 @@ export async function renderDashboard(container) {
       <!-- Sección de Cobros Pendientes de Entregados -->
       ${deliveredUnpaidSection}
 
-      <!-- Resumen Operativo y Producción -->
+      <!-- Fila 2: Resumen de Entregas & Producción del Mes -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-bottom: 24px;">
         
-        <!-- Estado de Pedidos y Entregas -->
+        <!-- Desglose de Entregas y Litros -->
         <div class="order-card" style="padding: 22px;">
           <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-bottom: 16px;">
             📊 Desglose de Entregas, Litros y Pagos
@@ -403,7 +407,7 @@ export async function renderDashboard(container) {
           
           <div style="display: flex; flex-direction: column; gap: 12px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-muted);">🛵 Pedidos Entregados:</span>
+              <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-muted);">🛵 Pedidos a Clientes (Entregados):</span>
               <strong style="font-size: 1rem; color: var(--text-main);">${deliveryBreakdown.delivered} pedido(s) • ${kpis.deliveredLiters || 0} L (${formatCOP(deliveredStats.deliveredTotalSales)})</strong>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; padding-left: 14px; font-size: 0.85rem;">
@@ -414,6 +418,17 @@ export async function renderDashboard(container) {
               <span style="color: var(--danger); font-weight: 700;">• Saldo por cobrar de entregados:</span>
               <strong style="color: var(--danger);">${formatCOP(deliveredStats.deliveredPendingToCollect)}</strong>
             </div>
+
+            ${(kpis.partnerDischargedLiters || 0) > 0 ? `
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.9rem; font-weight: 600; color: #6D28D9;">💼 Entregado a Socios (Consumo):</span>
+                <strong style="font-size: 1rem; color: #6D28D9;">${(detailedData?.salesByBatchAndFlavor?.dischargesSummary?.dischargesCount || detailedData?.salesByBatchAndFlavor?.partnerDischarges?.length || 0)} retiro(s) • ${kpis.partnerDischargedLiters} L (${formatCOP(kpis.partnerDischargedAmount || 0)})</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; background: #FAF5FF; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid #E9D5FF;">
+                <span style="font-size: 0.88rem; font-weight: 800; color: var(--primary);">🥛 Balance Total Despachado:</span>
+                <strong style="font-size: 0.98rem; color: var(--accent);">${(kpis.totalDispatchedLiters || ((kpis.deliveredLiters || 0) + (kpis.partnerDischargedLiters || 0)))} L</strong>
+              </div>
+            ` : ''}
 
             <div style="height: 1px; background: var(--border-subtle); margin: 4px 0;"></div>
 
@@ -1501,44 +1516,112 @@ function openInProcessPendingModal(salesData, inProcessStats, periodLabel) {
   renderModal();
 }
 
-// 4. Modal de Litros Vendidos y Entregados
+// 4. Modal de Litros Vendidos y Entregados (Clientes y Socios)
 function openDeliveredLitersModal(salesData, kpis, periodLabel) {
   const modalOverlay = document.getElementById('modalContainer');
   if (!modalOverlay) return;
 
   const delivered = salesData.delivered || [];
+  const partnerDischarges = salesData.partnerDischarges || [];
 
   const allDeliveredCustomers = [];
   delivered.forEach((g) => {
     (g.customers || []).forEach((c) => {
       allDeliveredCustomers.push({
         ...c,
+        itemType: 'CLIENTE',
         batchCode: g.batchCode,
         flavor: g.flavor,
       });
     });
   });
 
+  const allPartnerItems = partnerDischarges.map((d) => ({
+    id: `disch_${d.id}`,
+    customerName: d.partnerName,
+    role: d.role,
+    itemType: 'SOCIO',
+    reasonType: d.reasonType,
+    batchCode: d.batchCode,
+    flavor: d.flavor,
+    liters: d.totalLiters,
+    bottlesSummary: d.bottlesSummary,
+    paidAmount: d.totalAmount,
+    orderDate: d.dischargeDate,
+    deliveryDate: d.dischargeDate,
+    notes: d.notes,
+    registeredBy: d.registeredBy,
+  }));
+
+  const allUnifiedDeliveries = [...allDeliveredCustomers, ...allPartnerItems].sort(
+    (a, b) => new Date(b.deliveryDate || b.orderDate).getTime() - new Date(a.deliveryDate || a.orderDate).getTime()
+  );
+
+  let currentTab = 'TODOS'; // 'TODOS', 'CLIENTS', 'PARTNERS'
   let delivLitersPage = 1;
 
+  const clientLiters = kpis.deliveredLiters || 0;
+  const partnerLiters = kpis.partnerDischargedLiters || partnerDischarges.reduce((sum, d) => sum + d.totalLiters, 0);
+  const totalDeliveredLiters = kpis.totalDispatchedLiters || (clientLiters + partnerLiters);
+  const clientAmount = kpis.deliveredPaidAmount || 0;
+  const partnerAmount = kpis.partnerDischargedAmount || partnerDischarges.reduce((sum, d) => sum + d.totalAmount, 0);
+
   function renderModal() {
-    const { pageItems: pageDeliv, totalPages, totalItems, currentPage } = paginateArray(allDeliveredCustomers, delivLitersPage, 15);
+    let currentList = allUnifiedDeliveries;
+    if (currentTab === 'CLIENTS') currentList = allDeliveredCustomers;
+    if (currentTab === 'PARTNERS') currentList = allPartnerItems;
+
+    const { pageItems: pageDeliv, totalPages, totalItems, currentPage } = paginateArray(currentList, delivLitersPage, 15);
     delivLitersPage = currentPage;
 
     modalOverlay.innerHTML = `
       <div class="modal-overlay active">
-        <div class="modal-card" style="max-width: 760px;">
+        <div class="modal-card" style="max-width: 840px;">
           <div class="modal-header">
             <div>
-              <h3 class="modal-title">🥛 Detalle de Litros Vendidos y Entregados</h3>
+              <h3 class="modal-title">🥛 Balance de Litros Entregados y Despachados</h3>
               <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
-                Periodo: <strong>${periodLabel}</strong> • Total Entregado: <strong style="color: var(--accent);">${kpis.deliveredLiters} Litros</strong>
+                Periodo: <strong>${periodLabel}</strong> • Total Salidas: <strong style="color: var(--accent);">${totalDeliveredLiters} Litros</strong>
               </span>
             </div>
             <button class="modal-close-btn" id="btnCloseDelModal">✕</button>
           </div>
           <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
             
+            <!-- Resumen de Balance: Clientes vs Socios -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 16px;">
+              <div style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 10px 14px;">
+                <div style="font-size: 0.76rem; font-weight: 700; color: #15803D; margin-bottom: 2px;">🛒 VENTAS A CLIENTES</div>
+                <div style="font-size: 1.35rem; font-weight: 900; color: #166534;">${clientLiters} L</div>
+                <div style="font-size: 0.74rem; color: #15803D;">${allDeliveredCustomers.length} pedido(s) • ${formatCOP(clientAmount)} cobrado</div>
+              </div>
+
+              <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; border-radius: var(--radius-md); padding: 10px 14px;">
+                <div style="font-size: 0.76rem; font-weight: 700; color: #6D28D9; margin-bottom: 2px;">👥 ENTREGAS A SOCIOS</div>
+                <div style="font-size: 1.35rem; font-weight: 900; color: #5B21B6;">${partnerLiters} L</div>
+                <div style="font-size: 0.74rem; color: #6D28D9;">${partnerDischarges.length} retiro(s) • ${formatCOP(partnerAmount)} (valor venta)</div>
+              </div>
+
+              <div style="background: #FFFBEB; border: 1.5px solid #FDE68A; border-radius: var(--radius-md); padding: 10px 14px;">
+                <div style="font-size: 0.76rem; font-weight: 700; color: #B45309; margin-bottom: 2px;">🥛 TOTAL DESPACHADO</div>
+                <div style="font-size: 1.35rem; font-weight: 900; color: #92400E;">${totalDeliveredLiters} L</div>
+                <div style="font-size: 0.74rem; color: #B45309;">${allUnifiedDeliveries.length} salida(s) de yogur en lote</div>
+              </div>
+            </div>
+
+            <!-- Selector de Pestañas / Filtro -->
+            <div style="display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 10px;">
+              <button class="btn btn-sm ${currentTab === 'TODOS' ? 'btn-primary' : 'btn-outline'} btn-deliv-tab" data-tab="TODOS">
+                🥛 Todos (${allUnifiedDeliveries.length})
+              </button>
+              <button class="btn btn-sm ${currentTab === 'CLIENTS' ? 'btn-primary' : 'btn-outline'} btn-deliv-tab" data-tab="CLIENTS">
+                🛒 Clientes (${allDeliveredCustomers.length})
+              </button>
+              <button class="btn btn-sm ${currentTab === 'PARTNERS' ? 'btn-primary' : 'btn-outline'} btn-deliv-tab" data-tab="PARTNERS">
+                👥 Socios (${partnerDischarges.length})
+              </button>
+            </div>
+
             <!-- Resumen por Lotes -->
             ${
               delivered.length > 0
@@ -1549,7 +1632,7 @@ function openDeliveredLitersModal(salesData, kpis, periodLabel) {
                     (g) => `
                   <div style="background: #F0FDF4; border: 1px solid #BBF7D0; padding: 6px 12px; border-radius: var(--radius-sm); font-size: 0.78rem;">
                     <span class="badge" style="background: #DCFCE7; color: #15803D; font-size: 0.7rem; font-weight: 800;">🍶 ${g.batchCode}</span>
-                    <strong style="color: #166534; margin-left: 4px;">${g.flavor}</strong>: ${g.totalLiters}L (${formatCOP(g.paidAmount)})
+                    <strong style="color: #166534; margin-left: 4px;">${g.flavor}</strong>: ${g.totalLiters}L clientes (${formatCOP(g.paidAmount)})
                   </div>
                 `
                   )
@@ -1560,35 +1643,49 @@ function openDeliveredLitersModal(salesData, kpis, periodLabel) {
             }
 
             ${
-              allDeliveredCustomers.length > 0
+              currentList.length > 0
                 ? `
               <div class="table-responsive">
                 <table class="app-table" style="font-size: 0.82rem;">
                   <thead>
                     <tr>
-                      <th>Cliente</th>
+                      <th>Destinatario</th>
+                      <th>Tipo</th>
                       <th>Lote / Sabor</th>
                       <th>Envases / Litros</th>
-                      <th style="text-align: right;">Monto Pagado</th>
-                      <th>Fecha Entrega</th>
+                      <th style="text-align: right;">Monto / Valor</th>
+                      <th>Fecha</th>
                     </tr>
                   </thead>
                   <tbody>
                     ${pageDeliv
-                      .map(
-                        (c) => `
-                      <tr>
-                        <td>
-                          <strong>${c.customerName}</strong>
-                          ${c.customerPhone ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📞 ${c.customerPhone}</div>` : ''}
-                        </td>
-                        <td><small>🍶 ${c.batchCode}<br><strong>${c.flavor}</strong></small></td>
-                        <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
-                        <td style="text-align: right; color: var(--success); font-weight: 700;">${formatCOP(c.paidAmount)}</td>
-                        <td><small>${formatDate(c.deliveryDate || c.orderDate)}</small></td>
-                      </tr>
-                    `
-                      )
+                      .map((c) => {
+                        const isPartner = c.itemType === 'SOCIO';
+                        return `
+                        <tr style="${isPartner ? 'background: #FAF8FE;' : ''}">
+                          <td>
+                            <strong>${c.customerName}</strong>
+                            ${c.customerPhone ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📞 ${c.customerPhone}</div>` : ''}
+                            ${isPartner && c.role ? `<div style="font-size: 0.72rem; color: #6D28D9; font-weight: 700;">💼 ${c.role}</div>` : ''}
+                          </td>
+                          <td>
+                            ${isPartner 
+                              ? `<span class="badge" style="background: #EDE9FE; color: #6D28D9; font-weight: 800; font-size: 0.72rem;">👥 Socio (${c.reasonType === 'CONSUMO_SOCIO' ? 'Consumo' : c.reasonType})</span>`
+                              : `<span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.72rem;">🛒 Venta Cliente</span>`}
+                          </td>
+                          <td><small>🍶 ${c.batchCode}<br><strong>${c.flavor}</strong></small></td>
+                          <td><strong>${c.liters} L</strong> <small>(${c.bottlesSummary})</small></td>
+                          <td style="text-align: right;">
+                            <div style="font-weight: 700; color: ${isPartner ? '#6D28D9' : 'var(--success)'};">${formatCOP(c.paidAmount)}</div>
+                            ${isPartner ? `<small style="font-size: 0.7rem; color: var(--text-muted);">Valor venta</small>` : ''}
+                          </td>
+                          <td>
+                            <small>${formatDate(c.deliveryDate || c.orderDate)}</small>
+                            ${isPartner && c.notes ? `<div style="font-size: 0.7rem; color: #92400E; max-width: 140px;">📝 ${c.notes}</div>` : ''}
+                          </td>
+                        </tr>
+                      `;
+                      })
                       .join('')}
                   </tbody>
                 </table>
@@ -1605,7 +1702,7 @@ function openDeliveredLitersModal(salesData, kpis, periodLabel) {
                 : `
               <div class="empty-state" style="padding: 30px;">
                 <div class="empty-state-icon">🥛</div>
-                <div class="empty-state-title">No hay litros entregados en este periodo</div>
+                <div class="empty-state-title">No hay entregas en este periodo</div>
                 <div class="empty-state-text">Selecciona otro rango o fecha en el panel superior.</div>
               </div>
             `
@@ -1622,6 +1719,14 @@ function openDeliveredLitersModal(salesData, kpis, periodLabel) {
     const closeModal = () => (modalOverlay.innerHTML = '');
     document.getElementById('btnCloseDelModal')?.addEventListener('click', closeModal);
     document.getElementById('btnOkDelModal')?.addEventListener('click', closeModal);
+
+    modalOverlay.querySelectorAll('.btn-deliv-tab').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        currentTab = e.currentTarget.dataset.tab;
+        delivLitersPage = 1;
+        renderModal();
+      });
+    });
 
     attachPaginationEvents(modalOverlay, 'modalDelivLitersPagination', (newPage) => {
       delivLitersPage = newPage;

@@ -22,6 +22,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const purchaseWhere: any = {};
     const staffPaymentWhere: any = {};
     const cashMovementWhere: any = {};
+    const dischargeWhere: any = {};
 
     let activeFilterDate = '';
     let customDateRange: { gte: Date; lte: Date } | null = null;
@@ -60,6 +61,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       purchaseWhere.purchaseDate = dayRange;
       staffPaymentWhere.paymentDate = dayRange;
       cashMovementWhere.movementDate = dayRange;
+      dischargeWhere.dischargeDate = dayRange;
     } else if (customDateRange) {
       orderWhere.OR = [
         { orderDate: customDateRange },
@@ -69,6 +71,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       purchaseWhere.purchaseDate = customDateRange;
       staffPaymentWhere.paymentDate = customDateRange;
       cashMovementWhere.movementDate = customDateRange;
+      dischargeWhere.dischargeDate = customDateRange;
     } else if (month && typeof month === 'string') {
       const [year, m] = month.split('-').map(Number);
       if (year && m) {
@@ -83,6 +86,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         purchaseWhere.purchaseDate = monthRange;
         staffPaymentWhere.paymentDate = monthRange;
         cashMovementWhere.movementDate = monthRange;
+        dischargeWhere.dischargeDate = monthRange;
       }
     } else if (period === 'month') {
       const [year, m] = todayStr.split('-').map(Number);
@@ -97,6 +101,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       purchaseWhere.purchaseDate = monthRange;
       staffPaymentWhere.paymentDate = monthRange;
       cashMovementWhere.movementDate = monthRange;
+      dischargeWhere.dischargeDate = monthRange;
     } else if (period === 'week') {
       const now = new Date();
       const dayOfWeek = now.getDay();
@@ -113,6 +118,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       purchaseWhere.purchaseDate = { gte: startOfWeek };
       staffPaymentWhere.paymentDate = { gte: startOfWeek };
       cashMovementWhere.movementDate = { gte: startOfWeek };
+      dischargeWhere.dischargeDate = { gte: startOfWeek };
     }
 
     // 1. Consultar todas las entidades en paralelo para máxima velocidad (PostgreSQL Connection Pooling)
@@ -128,6 +134,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       rawMaterials,
       batchesThisMonth,
       allActiveBatches,
+      batchDischarges,
     ] = await Promise.all([
       // 1. Pedidos del período
       prisma.order.findMany({
@@ -232,9 +239,69 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           totalLitersProduced: true,
         },
       }),
+
+      // 10. Retiros de lote (socios, consumo propio, mermas)
+      prisma.batchDischarge.findMany({
+        where: dischargeWhere,
+        include: {
+          batch: {
+            select: {
+              id: true,
+              batchCode: true,
+              flavor: true,
+            },
+          },
+          staffMember: {
+            select: {
+              id: true,
+              fullName: true,
+              role: true,
+              type: true,
+            },
+          },
+        },
+        orderBy: { dischargeDate: 'desc' },
+      }),
     ]);
 
     const lowStockMaterials = rawMaterials.filter((m) => m.currentStock <= m.minStockAlert);
+
+    // Mapeo y cálculo de retiros / entregas a socios
+    const partnerDischarges = (batchDischarges || []).map((d) => {
+      const batchCode = d.batch?.batchCode || 'Lote';
+      const flavor = d.batch?.flavor || 'Natural';
+      const partnerName = d.staffMember?.fullName || (d.reasonType === 'CONSUMO_SOCIO' ? 'Socio' : d.reasonType);
+      const bottlesSummary = `${d.quantityBottles}x ${d.bottleSize} (${flavor})`;
+      return {
+        id: d.id,
+        batchId: d.batchId,
+        batchCode,
+        flavor,
+        partnerName,
+        role: d.staffMember?.role || 'Socio',
+        staffType: d.staffMember?.type || 'SOCIO',
+        bottleSize: d.bottleSize,
+        quantityBottles: d.quantityBottles,
+        totalLiters: d.totalLiters,
+        unitPrice: d.unitPrice,
+        totalAmount: d.totalAmount,
+        reasonType: d.reasonType,
+        notes: d.notes,
+        registeredBy: d.registeredBy,
+        dischargeDate: d.dischargeDate,
+        bottlesSummary,
+      };
+    });
+
+    const totalPartnerDischargedLiters = partnerDischarges
+      .filter((d) => d.reasonType === 'CONSUMO_SOCIO' || d.staffType === 'SOCIO' || d.partnerName)
+      .reduce((sum, d) => sum + d.totalLiters, 0);
+
+    const totalPartnerDischargedAmount = partnerDischarges
+      .filter((d) => d.reasonType === 'CONSUMO_SOCIO' || d.staffType === 'SOCIO' || d.partnerName)
+      .reduce((sum, d) => sum + d.totalAmount, 0);
+
+    const totalAllDischargedLiters = partnerDischarges.reduce((sum, d) => sum + d.totalLiters, 0);
 
     // Cálculos de Nómina y Retiros
     const payrollPayments = staffPayments.filter((p) => p.paymentType !== 'RETIRO_SOCIO');
@@ -277,6 +344,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const totalLitersAll = orders.reduce((sum, o) => sum + o.totalLiters, 0);
     const deliveredLiters = deliveredOrders.reduce((sum, o) => sum + o.totalLiters, 0);
     const inProcessLiters = inProcessOrders.reduce((sum, o) => sum + o.totalLiters, 0);
+    const totalDispatchedLiters = deliveredLiters + totalPartnerDischargedLiters;
 
     const totalRawMaterialPurchases = purchases.reduce((sum, p) => sum + p.totalCost, 0);
     const totalGeneralExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
@@ -503,6 +571,10 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         totalLitersAll,
         totalLitersSold: deliveredLiters,
         deliveredLiters,
+        partnerDischargedLiters: totalPartnerDischargedLiters,
+        partnerDischargedAmount: totalPartnerDischargedAmount,
+        totalAllDischargedLiters,
+        totalDispatchedLiters,
         inProcessLiters,
         totalSalesAmount,
         totalInjections,
@@ -793,6 +865,13 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           delivered: deliveredGroups,
           inProcess: inProcessGroups,
           all: allGroups,
+          partnerDischarges,
+          dischargesSummary: {
+            totalPartnerLiters: totalPartnerDischargedLiters,
+            totalPartnerAmount: totalPartnerDischargedAmount,
+            totalAllDischargedLiters,
+            dischargesCount: partnerDischarges.length,
+          },
         },
       },
       lowStockAlerts: lowStockMaterials.map((m) => ({
