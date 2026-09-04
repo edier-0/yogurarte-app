@@ -9,7 +9,7 @@ export const createCreditSchema = z.object({
   initialPayment: z.coerce.number().min(0).optional().default(0),
   initialPaymentMethod: z.string().optional().default('EFECTIVO'),
   paymentType: z.enum(['CUOTAS_FIJAS', 'ABONOS_LIBRES']).optional().default('CUOTAS_FIJAS'),
-  frequency: z.enum(['SEMANAL', 'QUINCENAL', 'MENSUAL', 'PERSONALIZADO']).optional().default('MENSUAL'),
+  frequency: z.enum(['DIARIA', 'SEMANAL', 'QUINCENAL', 'MENSUAL', 'PERSONALIZADO', 'LIBRE']).optional().default('MENSUAL'),
   installmentAmount: z.coerce.number().min(0).optional(),
   totalInstallments: z.coerce.number().int().positive().optional().nullable(),
   startDate: z.string().optional(),
