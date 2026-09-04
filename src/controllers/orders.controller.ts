@@ -374,8 +374,12 @@ export const createOrder = async (req: Request, res: Response) => {
       ? parsedItems[0].bottleSize
       : 'MIXTO';
 
-    // Auto-vincular al primer lote disponible del sabor si no se especificó un lote manualmente
-    if (!parsedBatchId && parsedItems.length > 0) {
+    // Solo auto-vincular lote si el cliente/frontend NO envió batchId explícitamente como null o vacío (es decir, no pidió preventa)
+    const isExplicitlyPreventa = batchId === null || batchId === '' || (parsedItems.length > 0 && parsedItems.every((i) => i.batchId === null));
+    if (isExplicitlyPreventa) {
+      parsedBatchId = null;
+      parsedItems.forEach((it) => { it.batchId = null; });
+    } else if (!parsedBatchId && parsedItems.length > 0) {
       const primaryFlavor = (parsedItems[0]?.flavor || flavor || 'Natural').trim();
       const activeBatchesForFlavor = await prisma.productionBatch.findMany({
         where: {
@@ -386,6 +390,7 @@ export const createOrder = async (req: Request, res: Response) => {
         include: {
           orders: { select: { totalLiters: true } },
           orderItems: { select: { totalLiters: true } },
+          discharges: { select: { totalLiters: true } },
         },
         orderBy: { preparationDate: 'desc' },
       });
@@ -395,7 +400,9 @@ export const createOrder = async (req: Request, res: Response) => {
           b.orders.reduce((sum, o) => sum + o.totalLiters, 0),
           b.orderItems.reduce((sum, it) => sum + it.totalLiters, 0)
         );
-        if (b.totalLitersProduced > sold || b.status === 'COMPLETADO') {
+        const discharges = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
+        const available = Math.max(0, b.totalLitersProduced - sold - discharges);
+        if (available >= totalLitersCalculated) {
           parsedBatchId = b.id;
           parsedItems.forEach((it) => {
             if (!it.batchId) it.batchId = b.id;
@@ -405,13 +412,14 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
-    // Validar capacidad máxima del lote seleccionado en creación
+    // Validar capacidad máxima del lote seleccionado en creación (solo si tiene lote asignado)
     if (parsedBatchId) {
       const batchObj = await prisma.productionBatch.findUnique({
         where: { id: parsedBatchId },
         include: {
           orders: { select: { totalLiters: true } },
           orderItems: { select: { totalLiters: true } },
+          discharges: { select: { totalLiters: true } },
         },
       });
 
@@ -420,10 +428,11 @@ export const createOrder = async (req: Request, res: Response) => {
           batchObj.orders.reduce((sum, o) => sum + o.totalLiters, 0),
           batchObj.orderItems.reduce((sum, it) => sum + it.totalLiters, 0)
         );
-        const availableLiters = Math.max(0, batchObj.totalLitersProduced - sold);
+        const discharges = (batchObj.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
+        const availableLiters = Math.max(0, batchObj.totalLitersProduced - sold - discharges);
         if (totalLitersCalculated > availableLiters) {
           return res.status(400).json({
-            error: `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters}L disponibles, pero este pedido requiere ${totalLitersCalculated}L. No es posible sobrepasar los ${batchObj.totalLitersProduced}L producidos del lote.`,
+            error: `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters}L disponibles, pero este pedido requiere ${totalLitersCalculated}L. Puedes seleccionar otro lote o registrarlo como Encargo Preventa (Sin lote).`,
           });
         }
       }
@@ -593,6 +602,7 @@ export const updateOrder = async (req: Request, res: Response) => {
     let updatedFlavor = currentOrder.flavor;
     let updatedBottleSize = currentOrder.bottleSize;
 
+    let parsedItemsList: any[] | null = null;
     if (Array.isArray(items) && items.length > 0) {
       const parsedItems = items.map((item) => {
         const size = item.bottleSize || '1L';
@@ -610,6 +620,7 @@ export const updateOrder = async (req: Request, res: Response) => {
           totalPrice: qty * itemUnitPrice,
         };
       });
+      parsedItemsList = parsedItems;
 
       updatedLiters = parsedItems.reduce((sum, i) => sum + i.totalLiters, 0);
       updatedQuantity = parsedItems.reduce((sum, i) => sum + i.quantity, 0);
@@ -659,8 +670,14 @@ export const updateOrder = async (req: Request, res: Response) => {
       }
     }
 
-    // Auto-vincular al primer lote disponible si el pedido no tenía lote y no se forzó uno manualmente
-    if (parsedBatchId === null && currentOrder.batchId == null && updatedFlavor) {
+    // Solo auto-vincular lote si el pedido no tenía lote y NO se especificó explícitamente como preventa
+    const isExplicitlyPreventa = batchId === null || batchId === '';
+    if (isExplicitlyPreventa) {
+      parsedBatchId = null;
+      if (parsedItemsList) {
+        parsedItemsList.forEach((it: any) => { it.batchId = null; });
+      }
+    } else if (parsedBatchId === null && currentOrder.batchId == null && updatedFlavor) {
       const primaryFlavor = updatedFlavor.split(',')[0].replace(/^\d+x\s*/, '').replace(/\s*\([^)]*\)/, '').trim();
       const activeBatchesForFlavor = await prisma.productionBatch.findMany({
         where: {
@@ -671,6 +688,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         include: {
           orders: { select: { totalLiters: true } },
           orderItems: { select: { totalLiters: true } },
+          discharges: { select: { totalLiters: true } },
         },
         orderBy: { preparationDate: 'desc' },
       });
@@ -680,20 +698,23 @@ export const updateOrder = async (req: Request, res: Response) => {
           b.orders.reduce((sum, o) => sum + o.totalLiters, 0),
           b.orderItems.reduce((sum, it) => sum + it.totalLiters, 0)
         );
-        if (b.totalLitersProduced > sold || b.status === 'COMPLETADO') {
+        const discharges = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
+        const available = Math.max(0, b.totalLitersProduced - sold - discharges);
+        if (available >= updatedLiters) {
           parsedBatchId = b.id;
           break;
         }
       }
     }
 
-    // Validar capacidad máxima del lote seleccionado en edición
+    // Validar capacidad máxima del lote seleccionado en edición (solo si tiene lote asignado)
     if (parsedBatchId) {
       const batchObj = await prisma.productionBatch.findUnique({
         where: { id: parsedBatchId },
         include: {
           orders: { select: { id: true, totalLiters: true } },
           orderItems: { select: { id: true, orderId: true, totalLiters: true } },
+          discharges: { select: { totalLiters: true } },
         },
       });
 
@@ -704,10 +725,11 @@ export const updateOrder = async (req: Request, res: Response) => {
           otherOrders.reduce((sum, o) => sum + o.totalLiters, 0),
           otherItems.reduce((sum, it) => sum + it.totalLiters, 0)
         );
-        const availableLiters = Math.max(0, batchObj.totalLitersProduced - otherSold);
+        const discharges = (batchObj.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
+        const availableLiters = Math.max(0, batchObj.totalLitersProduced - otherSold - discharges);
         if (updatedLiters > availableLiters) {
           return res.status(400).json({
-            error: `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters}L disponibles (este pedido requiere ${updatedLiters}L). No es posible sobrepasar la capacidad máxima del lote (${batchObj.totalLitersProduced}L).`,
+            error: `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters}L disponibles (este pedido requiere ${updatedLiters}L). Puedes seleccionar otro lote o registrarlo como Encargo Preventa (Sin lote).`,
           });
         }
       }

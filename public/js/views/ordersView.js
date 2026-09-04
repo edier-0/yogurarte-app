@@ -1053,12 +1053,12 @@ export async function openOrderModal(orderData = null) {
   const defaultDeliveryDriverId = isEditing ? (orderData.deliveryDriverId || '') : '';
   const defaultDeliveryFee = isEditing ? (orderData.deliveryFee || 0) : 0;
 
-  // Función para encontrar el mejor lote activo disponible para un sabor
+  // Función para encontrar el mejor lote activo disponible para un sabor con stock disponible
   const findBestBatchForFlavor = (targetFlavor) => {
     if (!targetFlavor || !availableBatches || availableBatches.length === 0) return null;
     const tf = targetFlavor.toLowerCase().trim();
 
-    // 1. Prioridad: Lote del mismo sabor con litros disponibles (> 0) y no agotado
+    // Prioridad: Lote del mismo sabor con litros disponibles (> 0) y no agotado/descartado
     const withLiters = availableBatches.filter(
       (b) => (b.flavor || '').toLowerCase().trim() === tf &&
              b.status !== 'AGOTADO' &&
@@ -1067,24 +1067,18 @@ export async function openOrderModal(orderData = null) {
     );
     if (withLiters.length > 0) return withLiters[0];
 
-    // 2. Cualquier lote activo del mismo sabor
-    const anyActive = availableBatches.filter(
-      (b) => (b.flavor || '').toLowerCase().trim() === tf &&
-             b.status !== 'DESCARTADO'
-    );
-    if (anyActive.length > 0) return anyActive[0];
-
+    // Si no hay lotes con litros disponibles, retornar null para que quede como preventa
     return null;
   };
 
   const initialBatchId = orderData?.batchId || (orderData?.batch?.id) || '';
   let initialBatchObj = availableBatches.find((b) => b.id === Number(initialBatchId));
 
-  // Si no es edición y no se pasó un lote específico, auto-seleccionar el mejor lote disponible
+  // Si no es edición y no se pasó un lote específico, auto-seleccionar solo si hay un lote con litros disponibles
   if (!isEditing && !initialBatchId && availableBatches.length > 0) {
     const firstAvailable = availableBatches.find(
-      (b) => b.status !== 'DESCARTADO' && (b.remainingAvailableLiters === undefined || b.remainingAvailableLiters > 0)
-    ) || availableBatches[0];
+      (b) => b.status !== 'AGOTADO' && b.status !== 'DESCARTADO' && (b.remainingAvailableLiters === undefined || b.remainingAvailableLiters > 0)
+    );
     if (firstAvailable) {
       initialBatchObj = findBestBatchForFlavor(firstAvailable.flavor) || firstAvailable;
     }
@@ -1819,14 +1813,17 @@ export async function openOrderModal(orderData = null) {
             items.forEach((it) => { it.batchId = Number(selectedBatchId); });
             showToast(`⚠️ El lote se ajustó a "${correctBatch.batchCode} (${correctBatch.flavor})" para coincidir con el sabor (${productFlavorsStr}).`, 'info');
           } else {
-            showToast(`⚠️ El lote seleccionado es de sabor "${chosenBatch.flavor}", pero los productos son de sabor "${productFlavorsStr}". Selecciona un lote de "${productFlavorsStr}" o déjalo en preventa.`, 'warning');
-            return;
+            // Pasar a preventa sin lote
+            selectedBatchId = null;
+            if (batchSelect) batchSelect.value = '';
+            items.forEach((it) => { it.batchId = null; });
+            showToast(`🥣 Como no hay lotes con stock de "${productFlavorsStr}", el pedido se registrará como Encargo Preventa (Sin lote).`, 'info');
           }
         }
       }
     }
 
-    // Validar capacidad máxima del lote seleccionado
+    // Validar capacidad máxima del lote seleccionado (solo si tiene lote asignado)
     if (selectedBatchId) {
       const chosenBatch = availableBatches.find((b) => b.id === Number(selectedBatchId));
       if (chosenBatch && chosenBatch.totalLitersProduced !== undefined) {
@@ -1837,10 +1834,13 @@ export async function openOrderModal(orderData = null) {
         const availableLitersForOrder = Math.max(0, remainingLiters + previousOrderLiters);
 
         if (orderLiters > availableLitersForOrder) {
-          showToast(`⚠️ Capacidad excedida: El lote "${chosenBatch.batchCode}" solo tiene ${availableLitersForOrder}L disponibles (este pedido requiere ${orderLiters}L). No es posible sobrepasar la cantidad máxima producida (${chosenBatch.totalLitersProduced}L).`, 'warning');
+          showToast(`⚠️ Capacidad excedida: El lote "${chosenBatch.batchCode}" solo tiene ${availableLitersForOrder}L disponibles (este pedido requiere ${orderLiters}L). Selecciona otro lote o déjalo en Encargo Preventa.`, 'warning');
           return;
         }
       }
+    } else {
+      // Asegurar que todos los ítems tengan batchId null si es preventa
+      items.forEach((it) => { it.batchId = null; });
     }
 
     const total = Number(totalInput.value) || 10000;
