@@ -240,7 +240,13 @@ function filterAndRenderDelivery(container) {
     .filter((o) => o.deliveryStatus !== 'DELIVERED' && o.pendingAmount > 0)
     .reduce((sum, o) => sum + (o.pendingAmount || 0), 0);
 
-  const totalCollectedToday = deliveredOrders
+  // Recaudado total de los pedidos en este alcance (tanto entregados como pagados por anticipado / en preparación / en ruta)
+  const totalCollectedToday = scopedOrders
+    .reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+
+  const deliveredPaid = deliveredOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+  const inProcessPaid = scopedOrders
+    .filter((o) => o.deliveryStatus !== 'DELIVERED')
     .reduce((sum, o) => sum + (o.paidAmount || 0), 0);
 
   // 5. Actualizar chips de estado
@@ -292,10 +298,10 @@ function filterAndRenderDelivery(container) {
         </div>
       </div>
       <div class="kpi-card" style="padding: 12px 16px; border-left: 4px solid #15803D; background: #FFFFFF;">
-        <div class="kpi-label" style="font-size: 0.75rem;">✅ Recaudado Hoy</div>
+        <div class="kpi-label" style="font-size: 0.75rem;">✅ Recaudado (Cobrado)</div>
         <div class="kpi-value" style="font-size: 1.35rem; color: #15803D;">${formatCOP(totalCollectedToday)}</div>
         <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 2px;">
-          ${deliveredOrders.length} entregas completadas
+          ${deliveredOrders.length} entregados (${formatCOP(deliveredPaid)}) ${inProcessPaid > 0 ? `• +${formatCOP(inProcessPaid)} pagado en ruta/prep.` : ''}
         </div>
       </div>
     `;
