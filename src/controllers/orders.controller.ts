@@ -896,8 +896,11 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
         updateData.paymentStatus = 'PENDING';
       }
 
-      // Si el monto pagado aumentó, registrar el abono delta en OrderPayment
-      const delta = finalPaid - existing.paidAmount;
+      // Validar contra la suma real de pagos existentes en base de datos para evitar pagos duplicados concurrentes
+      const existingPayments = await prisma.orderPayment.findMany({ where: { orderId } });
+      const currentPaymentsSum = existingPayments.reduce((sum, p) => sum + p.amount, 0);
+      const delta = finalPaid - currentPaymentsSum;
+
       if (delta > 0) {
         const todayStr = getColombiaDateStr();
         await prisma.orderPayment.create({
@@ -910,7 +913,7 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
             registeredBy: existing.deliveryDriverName || 'Domiciliario',
           },
         });
-      } else if (paymentMethod && existing.payments && existing.payments.length > 0) {
+      } else if (paymentMethod && existingPayments.length > 0) {
         await prisma.orderPayment.updateMany({
           where: { orderId },
           data: { paymentMethod: String(paymentMethod).trim() },
@@ -1009,7 +1012,8 @@ export const addOrderPayment = async (req: Request, res: Response) => {
       },
     });
 
-    const newPaidAmount = order.paidAmount + payAmount;
+    const allPayments = await prisma.orderPayment.findMany({ where: { orderId } });
+    const newPaidAmount = allPayments.reduce((sum, p) => sum + p.amount, 0);
     const newPendingAmount = Math.max(0, order.totalAmount - newPaidAmount);
     let newPaymentStatus = 'PENDING';
     if (newPaidAmount >= order.totalAmount) {
