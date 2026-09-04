@@ -1215,11 +1215,14 @@ export async function openOrderModal(orderData = null) {
                 ${availableBatches
                   .map(
                     (b) => {
-                      const litersText = b.remainingAvailableLiters !== undefined ? ` • ${b.remainingAvailableLiters}L disp.` : '';
+                      const remaining = b.remainingAvailableLiters !== undefined ? b.remainingAvailableLiters : Math.max(0, b.totalLitersProduced - (b.totalSoldLiters || 0) - (b.totalDischargedLiters || 0));
+                      const isFull = remaining <= 0;
+                      const litersText = ` • ${remaining.toFixed(1)}L disp.`;
                       const isSelected = String(effectiveInitialBatchId) === String(b.id);
+                      const statusBadge = isFull ? '🔴 Lleno' : (b.status === 'AGOTADO' ? '⚠️ Agotado' : '✅');
                       return `
-                  <option value="${b.id}" data-price1l="${b.price1L || 10000}" data-price2l="${b.price2L || 20000}" data-flavor="${b.flavor}" ${isSelected ? 'selected' : ''}>
-                    🍶 ${b.batchCode} • ${b.flavor}${litersText} (1L: ${formatCOP(b.price1L || 10000)} • 2L: ${formatCOP(b.price2L || 20000)}) ${b.status === 'AGOTADO' ? '⚠️ Agotado' : '✅'}
+                  <option value="${b.id}" data-price1l="${b.price1L || 10000}" data-price2l="${b.price2L || 20000}" data-flavor="${b.flavor}" data-remaining="${remaining}" ${isSelected ? 'selected' : ''}>
+                    🍶 ${b.batchCode} • ${b.flavor}${litersText} (1L: ${formatCOP(b.price1L || 10000)} • 2L: ${formatCOP(b.price2L || 20000)}) ${statusBadge}
                   </option>
                 `;
                     }
@@ -1500,10 +1503,10 @@ export async function openOrderModal(orderData = null) {
         const availableLitersForOrder = Math.max(0, remainingLiters + previousOrderLiters);
 
         if (sumLiters > availableLitersForOrder) {
-          batchHintDisplay.innerHTML = `🚨 <strong>Capacidad excedida:</strong> El lote tiene ${availableLitersForOrder}L disponibles, pero este pedido requiere ${sumLiters}L (máximo producido: ${chosenBatch.totalLitersProduced}L).`;
+          batchHintDisplay.innerHTML = `🚨 <strong>Capacidad excedida:</strong> El lote "${chosenBatch.batchCode}" solo tiene ${availableLitersForOrder}L disponibles, pero este pedido requiere ${sumLiters}L (máximo producido: ${chosenBatch.totalLitersProduced}L).<br/><span style="font-size:0.75rem; color:#991B1B;">💡 Tip: Crea un nuevo lote de producción o selecciona arriba <strong>"-- 🥣 Encargo Preventa (Sin lote aún) --"</strong>.</span>`;
           batchHintDisplay.style.color = '#DC2626';
         } else {
-          batchHintDisplay.innerHTML = `✅ Lote seleccionado: <strong>${selectedOpt ? selectedOpt.text.replace(/^[🍶\s]*/, '') : ''}</strong>. Precios: 1L: ${formatCOP(currentBatchPrice1L)} • 2L: ${formatCOP(currentBatchPrice2L)}`;
+          batchHintDisplay.innerHTML = `✅ Lote seleccionado: <strong>${selectedOpt ? selectedOpt.text.replace(/^[🍶\s]*/, '') : ''}</strong> (${availableLitersForOrder}L disponibles). Precios: 1L: ${formatCOP(currentBatchPrice1L)} • 2L: ${formatCOP(currentBatchPrice2L)}`;
           batchHintDisplay.style.color = '#15803D';
         }
       }

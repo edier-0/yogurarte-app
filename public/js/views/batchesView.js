@@ -219,7 +219,7 @@ async function loadBatchesList(container) {
                           ? `<span style="color: #0369A1; font-weight: 700; margin-left: 4px;">• 🏷️ ${b.totalDischargedLiters}L retirados</span>`
                           : ''
                       }
-                      <span style="color: ${(b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters - (b.totalDischargedLiters || 0))) > 0 ? '#059669' : '#92400E'}; font-weight: 800; margin-left: 4px;">• 🟢 ${(b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters - (b.totalDischargedLiters || 0))).toFixed(1)}L libres</span>
+                      <span style="color: ${(b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters - (b.totalDischargedLiters || 0))) > 0 ? '#059669' : '#DC2626'}; font-weight: 800; margin-left: 4px;">• ${(b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters - (b.totalDischargedLiters || 0))) > 0 ? `🟢 ${(b.remainingAvailableLiters ?? Math.max(0, b.totalLitersProduced - soldLiters - (b.totalDischargedLiters || 0))).toFixed(1)}L libres` : `🔴 0.0L libres (Lleno)`}</span>
                     </div>
                     ${
                       b.isActive && b.unassignedOrdersCount > 0
@@ -1806,8 +1806,8 @@ async function openBatchDischargeModal(batchIdOrObj, parentContainer = null) {
               <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); padding: 12px 14px; border-radius: var(--radius-md); margin-bottom: 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <strong style="color: var(--primary); font-size: 1.05rem;">Lote #${escapeHtml(batch.batchCode)} (${escapeHtml(batch.flavor)})</strong>
-                  <span class="badge" style="background: #DCFCE7; color: #059669; font-weight: 800; font-size: 0.8rem;">
-                    🟢 ${remainingAvailable.toFixed(1)}L libres
+                  <span class="badge" style="background: ${remainingAvailable > 0 ? '#DCFCE7' : '#FEE2E2'}; color: ${remainingAvailable > 0 ? '#059669' : '#DC2626'}; font-weight: 800; font-size: 0.8rem;">
+                    ${remainingAvailable > 0 ? `🟢 ${remainingAvailable.toFixed(1)}L libres` : `🔴 0.0L libres (Lleno)`}
                   </span>
                 </div>
                 <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
