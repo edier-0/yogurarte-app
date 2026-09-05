@@ -751,7 +751,7 @@ function createOrderCardHtml(o) {
       .map(
         (i) => `
         <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-app); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.82rem; margin-bottom: 4px;">
-          <span>🥛 <strong>${i.quantity}x</strong> Botella ${i.bottleSize} (${i.flavor})</span>
+          <span>🥛 <strong>${i.quantity}x</strong> Botella ${i.bottleSize} (${i.flavor}) ${i.unitPrice ? `<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">@ ${formatCOP(i.unitPrice)}</span>` : ''}</span>
           <strong style="color: var(--primary);">${formatCOP(i.totalPrice)}</strong>
         </div>
       `
@@ -762,7 +762,7 @@ function createOrderCardHtml(o) {
       <div class="order-product-badge-group">
         <span class="order-product-liters">🥛 ${o.totalLiters} Litro(s)</span>
         <span class="order-product-flavor">${o.flavor}</span>
-        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">(Envase ${o.bottleSize})</span>
+        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">(Envase ${o.bottleSize}${o.unitPrice ? ` @ ${formatCOP(o.unitPrice)}` : ''})</span>
       </div>
     `;
   }
@@ -784,6 +784,11 @@ function createOrderCardHtml(o) {
   let deliveryFeeBadge = '';
   if (o.deliveryFee && Number(o.deliveryFee) > 0) {
     deliveryFeeBadge = `<span class="badge" style="background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">🛵 Domicilio: ${formatCOP(o.deliveryFee)}</span>`;
+  }
+
+  let discountBadge = '';
+  if (o.discount && Number(o.discount) > 0) {
+    discountBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">🏷️ Descuento: -${formatCOP(o.discount)}</span>`;
   }
 
   return `
@@ -823,6 +828,7 @@ function createOrderCardHtml(o) {
           }
           ${deliveryBadge}
           ${deliveryFeeBadge}
+          ${discountBadge}
         </div>
       </div>
 
@@ -838,6 +844,7 @@ function createOrderCardHtml(o) {
           <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Total:</span>
           <div class="order-total-price">${formatCOP(o.totalAmount)}</div>
           ${o.deliveryFee && Number(o.deliveryFee) > 0 ? `<div style="font-size: 0.72rem; color: #0284C7; font-weight: 700;">Incluye ${formatCOP(o.deliveryFee)} de domicilio</div>` : ''}
+          ${o.discount && Number(o.discount) > 0 ? `<div style="font-size: 0.72rem; color: #DC2626; font-weight: 700;">Descuento aplicado: -${formatCOP(o.discount)}</div>` : ''}
         </div>
         <div class="order-debt-info">
           ${
@@ -1098,7 +1105,7 @@ export async function openOrderModal(orderData = null) {
       bottleSize: i.bottleSize,
       flavor: i.flavor,
       quantity: i.quantity,
-      unitPrice: i.unitPrice,
+      unitPrice: i.unitPrice !== undefined ? i.unitPrice : (i.bottleSize === '2L' ? currentBatchPrice2L : currentBatchPrice1L),
     }));
   } else if (isEditing) {
     initialItems = [
@@ -1256,20 +1263,27 @@ export async function openOrderModal(orderData = null) {
               </div>
 
               <div class="form-group">
-                <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
-                  <span>Total a Cobrar ($ COP) *</span>
-                  <span id="orderSubtotalBreakdown" style="font-size: 0.73rem; color: var(--primary); font-weight: 700;"></span>
-                </label>
-                <input type="number" id="orderTotalAmount" class="form-input" value="${(initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) + defaultDeliveryFee) || 10000}" required style="font-weight: 800; color: var(--primary); font-size: 1.05rem;" />
+                <label class="form-label">🏷️ Descuento Global ($ COP)</label>
+                <input type="number" id="orderDiscount" class="form-input" value="${orderData?.discount || 0}" min="0" step="500" placeholder="0 si no hay rebaja" style="font-weight: 700; color: #DC2626;" />
               </div>
             </div>
 
             <div class="form-row">
               <div class="form-group">
+                <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>Total a Cobrar ($ COP) *</span>
+                  <span id="orderSubtotalBreakdown" style="font-size: 0.73rem; color: var(--primary); font-weight: 700;"></span>
+                </label>
+                <input type="number" id="orderTotalAmount" class="form-input" value="${(initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) + defaultDeliveryFee - (orderData?.discount || 0)) || 10000}" required style="font-weight: 800; color: var(--primary); font-size: 1.05rem;" />
+              </div>
+
+              <div class="form-group">
                 <label class="form-label">Monto Abonado / Pagado ($ COP)</label>
                 <input type="number" id="orderPaidAmount" class="form-input" value="${defaultPaid}" min="0" placeholder="0 si no ha pagado" />
               </div>
+            </div>
 
+            <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Modalidad de Pago</label>
                 <select id="orderPaymentMethod" class="form-select" style="font-weight: 700;">
@@ -1279,11 +1293,11 @@ export async function openOrderModal(orderData = null) {
                   <option value="TRANSFERENCIA" ${defaultPaymentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>💳 Otra Transferencia</option>
                 </select>
               </div>
-            </div>
 
-            <div class="form-group">
-              <label class="form-label">Saldo Pendiente Calculado</label>
-              <input type="text" id="orderPendingDisplay" class="form-input" value="$10.000 COP" disabled style="background: var(--bg-subtle); font-weight: 800; color: var(--danger);" />
+              <div class="form-group">
+                <label class="form-label">Saldo Pendiente Calculado</label>
+                <input type="text" id="orderPendingDisplay" class="form-input" value="$10.000 COP" disabled style="background: var(--bg-subtle); font-weight: 800; color: var(--danger);" />
+              </div>
             </div>
 
             <!-- Fechas de Pedido y Entrega Programada -->
@@ -1357,17 +1371,20 @@ export async function openOrderModal(orderData = null) {
   function addProductRow(item = { bottleSize: '1L', flavor: 'Natural', quantity: 1, unitPrice: currentBatchPrice1L }) {
     const row = document.createElement('div');
     row.className = 'order-item-row';
-    row.style.cssText = 'display: flex; gap: 6px; align-items: center; background: #FFFFFF; padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);';
+    row.style.cssText = 'display: flex; gap: 6px; align-items: center; background: #FFFFFF; padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); flex-wrap: wrap;';
 
-    const itemPrice = item.bottleSize === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
+    const defaultPriceForSize = item.bottleSize === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
+    const itemPrice = item.unitPrice !== undefined && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) >= 0
+      ? Number(item.unitPrice)
+      : defaultPriceForSize;
 
     row.innerHTML = `
-      <select class="form-select item-size" style="flex: 1.4; font-size: 0.82rem; padding: 6px 8px;">
-        <option value="1L" ${item.bottleSize === '1L' ? 'selected' : ''}>1 Litro (${formatCOP(currentBatchPrice1L)})</option>
-        <option value="2L" ${item.bottleSize === '2L' ? 'selected' : ''}>2 Litros (${formatCOP(currentBatchPrice2L)})</option>
+      <select class="form-select item-size" style="flex: 1.1; font-size: 0.82rem; padding: 6px 6px; min-width: 85px;">
+        <option value="1L" ${item.bottleSize === '1L' ? 'selected' : ''}>1 Litro</option>
+        <option value="2L" ${item.bottleSize === '2L' ? 'selected' : ''}>2 Litros</option>
       </select>
 
-      <select class="form-select item-flavor" style="flex: 1.4; font-size: 0.82rem; padding: 6px 8px;">
+      <select class="form-select item-flavor" style="flex: 1.2; font-size: 0.82rem; padding: 6px 6px; min-width: 90px;">
         <option value="Natural" ${item.flavor === 'Natural' ? 'selected' : ''}>Natural</option>
         <option value="Fresa" ${item.flavor === 'Fresa' ? 'selected' : ''}>Fresa</option>
         <option value="Melocotón" ${item.flavor === 'Melocotón' ? 'selected' : ''}>Melocotón</option>
@@ -1375,13 +1392,18 @@ export async function openOrderModal(orderData = null) {
         <option value="Maracuyá" ${item.flavor === 'Maracuyá' ? 'selected' : ''}>Maracuyá</option>
       </select>
 
-      <input type="number" class="form-input item-qty" min="1" value="${item.quantity || 1}" style="width: 55px; text-align: center; font-weight: 700; padding: 6px 4px;" title="Cantidad de botellas" />
+      <input type="number" class="form-input item-qty" min="1" value="${item.quantity || 1}" style="width: 48px; text-align: center; font-weight: 700; padding: 6px 2px;" title="Cantidad de botellas" placeholder="Cant." />
 
-      <span class="item-subtotal-display" style="font-size: 0.82rem; font-weight: 800; color: var(--primary); min-width: 65px; text-align: right;">
+      <div style="display: flex; align-items: center; gap: 2px; flex: 1.2; min-width: 95px;" title="Precio unitario por botella (Modificable para precios al por mayor o especiales)">
+        <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700;">$</span>
+        <input type="number" class="form-input item-price" min="0" step="500" value="${itemPrice}" style="font-size: 0.82rem; font-weight: 700; padding: 6px 4px; text-align: right; color: #0369A1;" placeholder="Precio c/u" />
+      </div>
+
+      <span class="item-subtotal-display" style="font-size: 0.84rem; font-weight: 800; color: var(--primary); min-width: 70px; text-align: right;">
         ${formatCOP((item.quantity || 1) * itemPrice)}
       </span>
 
-      <button type="button" class="btn btn-outline btn-sm btn-remove-item" style="color: var(--danger); padding: 4px 8px; font-size: 0.85rem;" title="Quitar producto">
+      <button type="button" class="btn btn-outline btn-sm btn-remove-item" style="color: var(--danger); padding: 4px 7px; font-size: 0.85rem;" title="Quitar producto">
         ✕
       </button>
     `;
@@ -1389,13 +1411,27 @@ export async function openOrderModal(orderData = null) {
     const sizeSelect = row.querySelector('.item-size');
     const flavorSelect = row.querySelector('.item-flavor');
     const qtyInput = row.querySelector('.item-qty');
+    const priceInput = row.querySelector('.item-price');
     const removeBtn = row.querySelector('.btn-remove-item');
+
+    let isPriceManuallyEdited = item.unitPrice !== undefined && Number(item.unitPrice) !== defaultPriceForSize;
 
     const updateRow = () => {
       recalculateOrderTotals();
     };
 
-    sizeSelect.addEventListener('change', updateRow);
+    sizeSelect.addEventListener('change', (e) => {
+      if (!isPriceManuallyEdited) {
+        priceInput.value = e.target.value === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
+      }
+      updateRow();
+    });
+
+    priceInput.addEventListener('input', () => {
+      isPriceManuallyEdited = true;
+      updateRow();
+    });
+
     qtyInput.addEventListener('input', updateRow);
 
     // Auto-vincular lote cuando el usuario cambia el sabor del producto
@@ -1413,14 +1449,12 @@ export async function openOrderModal(orderData = null) {
           currentBatchPrice1L = Number(bestBatch.price1L) || 10000;
           currentBatchPrice2L = Number(bestBatch.price2L) || 20000;
 
-          // Actualizar etiquetas de tamaño en todas las filas
+          // Actualizar precios estándar en filas no editadas
           itemsContainer.querySelectorAll('.order-item-row').forEach((r) => {
             const sz = r.querySelector('.item-size');
-            if (sz) {
-              const opt1 = sz.querySelector('option[value="1L"]');
-              const opt2 = sz.querySelector('option[value="2L"]');
-              if (opt1) opt1.textContent = `1 Litro (${formatCOP(currentBatchPrice1L)})`;
-              if (opt2) opt2.textContent = `2 Litros (${formatCOP(currentBatchPrice2L)})`;
+            const pr = r.querySelector('.item-price');
+            if (sz && pr && !isPriceManuallyEdited) {
+              pr.value = sz.value === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
             }
           });
 
@@ -1455,7 +1489,12 @@ export async function openOrderModal(orderData = null) {
     recalculateOrderTotals();
   }
 
-  // Recalcular todos los productos y costo de domicilio
+  // Recalcular todos los productos, descuento y costo de domicilio
+  const discountInput = document.getElementById('orderDiscount');
+  discountInput?.addEventListener('input', () => {
+    recalculateOrderTotals();
+  });
+
   function recalculateOrderTotals() {
     let sumLiters = 0;
     let sumProductsTotal = 0;
@@ -1463,7 +1502,8 @@ export async function openOrderModal(orderData = null) {
     itemsContainer.querySelectorAll('.order-item-row').forEach((row) => {
       const size = row.querySelector('.item-size').value;
       const qty = Number(row.querySelector('.item-qty').value) || 1;
-      const unitPrice = size === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
+      const priceInput = row.querySelector('.item-price');
+      const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : (size === '2L' ? currentBatchPrice2L : currentBatchPrice1L);
       const rowTotal = qty * unitPrice;
       const rowLiters = size === '2L' ? qty * 2 : qty * 1;
 
@@ -1475,17 +1515,17 @@ export async function openOrderModal(orderData = null) {
     });
 
     const fee = Number(deliveryFeeInput?.value) || 0;
-    const grandTotal = sumProductsTotal + fee;
+    const discount = Number(document.getElementById('orderDiscount')?.value) || 0;
+    const grandTotal = Math.max(0, sumProductsTotal + fee - discount);
 
     totalLitersDisplay.value = `${sumLiters} Litro(s)`;
     totalInput.value = grandTotal;
 
     if (subtotalBreakdownDisplay) {
-      if (fee > 0) {
-        subtotalBreakdownDisplay.textContent = `(Prod: ${formatCOP(sumProductsTotal)} + Dom: ${formatCOP(fee)})`;
-      } else {
-        subtotalBreakdownDisplay.textContent = `(Solo productos)`;
-      }
+      let breakdown = `Prod: ${formatCOP(sumProductsTotal)}`;
+      if (fee > 0) breakdown += ` + Dom: ${formatCOP(fee)}`;
+      if (discount > 0) breakdown += ` - Desc: ${formatCOP(discount)}`;
+      subtotalBreakdownDisplay.textContent = `(${breakdown})`;
     }
 
     const paid = Number(paidInput.value) || 0;
@@ -1506,7 +1546,7 @@ export async function openOrderModal(orderData = null) {
           batchHintDisplay.innerHTML = `🚨 <strong>Capacidad excedida:</strong> El lote "${chosenBatch.batchCode}" solo tiene ${availableLitersForOrder}L disponibles, pero este pedido requiere ${sumLiters}L (máximo producido: ${chosenBatch.totalLitersProduced}L).<br/><span style="font-size:0.75rem; color:#991B1B;">💡 Tip: Crea un nuevo lote de producción o selecciona arriba <strong>"-- 🥣 Encargo Preventa (Sin lote aún) --"</strong>.</span>`;
           batchHintDisplay.style.color = '#DC2626';
         } else {
-          batchHintDisplay.innerHTML = `✅ Lote seleccionado: <strong>${selectedOpt ? selectedOpt.text.replace(/^[🍶\s]*/, '') : ''}</strong> (${availableLitersForOrder}L disponibles). Precios: 1L: ${formatCOP(currentBatchPrice1L)} • 2L: ${formatCOP(currentBatchPrice2L)}`;
+          batchHintDisplay.innerHTML = `✅ Lote seleccionado: <strong>${selectedOpt ? selectedOpt.text.replace(/^[🍶\s]*/, '') : ''}</strong> (${availableLitersForOrder}L disponibles). Precios ref: 1L: ${formatCOP(currentBatchPrice1L)} • 2L: ${formatCOP(currentBatchPrice2L)}`;
           batchHintDisplay.style.color = '#15803D';
         }
       }
@@ -1521,16 +1561,8 @@ export async function openOrderModal(orderData = null) {
       currentBatchPrice2L = Number(selectedOpt.dataset.price2l) || 20000;
       const batchFlavor = selectedOpt.dataset.flavor;
 
-      // Actualizar texto en los select de tamaño
+      // Actualizar precios en filas
       itemsContainer.querySelectorAll('.order-item-row').forEach((row) => {
-        const sizeSelect = row.querySelector('.item-size');
-        if (sizeSelect) {
-          const opt1L = sizeSelect.querySelector('option[value="1L"]');
-          const opt2L = sizeSelect.querySelector('option[value="2L"]');
-          if (opt1L) opt1L.textContent = `1 Litro (${formatCOP(currentBatchPrice1L)})`;
-          if (opt2L) opt2L.textContent = `2 Litros (${formatCOP(currentBatchPrice2L)})`;
-        }
-
         // Si el lote tiene un sabor específico y el ítem está en Natural, sugerir el sabor del lote
         if (batchFlavor) {
           const flavorSelect = row.querySelector('.item-flavor');
@@ -1789,7 +1821,8 @@ export async function openOrderModal(orderData = null) {
       const size = row.querySelector('.item-size').value;
       const flavor = row.querySelector('.item-flavor').value;
       const qty = Number(row.querySelector('.item-qty').value) || 1;
-      const unitPrice = size === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
+      const priceInput = row.querySelector('.item-price');
+      const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : (size === '2L' ? currentBatchPrice2L : currentBatchPrice1L);
       items.push({
         batchId: selectedBatchId ? Number(selectedBatchId) : null,
         bottleSize: size,
@@ -1874,6 +1907,7 @@ export async function openOrderModal(orderData = null) {
       deliveryDriverId: deliveryType === 'DOMICILIARIO' ? driverIdVal : null,
       deliveryDriverName: deliveryType === 'DOMICILIARIO' ? driverNameVal : null,
       deliveryFee: Number(document.getElementById('orderDeliveryFee')?.value) || 0,
+      discount: Number(document.getElementById('orderDiscount')?.value) || 0,
       deliveryStatus: statusVal,
       orderDate: document.getElementById('orderDateInput').value,
       deliveryDate: finalDeliveryDateVal,

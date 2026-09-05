@@ -236,6 +236,7 @@ model Order {
   deliveryDriverId Int?
   deliveryDriverName String?
   deliveryFee     Float            @default(0) // Valor/costo del servicio de domicilio ($ COP)
+  discount        Float            @default(0) // Descuento global aplicado al pedido ($ COP)
   dispatchedAt    DateTime?
   orderDate       DateTime         @default(now())
   deliveryDate    DateTime?

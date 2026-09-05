@@ -260,6 +260,7 @@ export const createOrder = async (req: Request, res: Response) => {
       deliveryDriverId,
       deliveryDriverName,
       deliveryFee,
+      discount,
       orderDate,
       deliveryDate,
       deliveryAddress,
@@ -320,7 +321,9 @@ export const createOrder = async (req: Request, res: Response) => {
         const size = item.bottleSize || '1L';
         const qty = Number(item.quantity) || 1;
         const litersPerUnit = size === '2L' ? 2.0 : 1.0;
-        const itemUnitPrice = Number(item.unitPrice) || (size === '2L' ? 20000 : 10000);
+        const itemUnitPrice = item.unitPrice !== undefined && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) >= 0
+          ? Number(item.unitPrice)
+          : (size === '2L' ? 20000 : 10000);
         return {
           batchId: item.batchId ? Number(item.batchId) : parsedBatchId,
           bottleSize: size,
@@ -337,7 +340,9 @@ export const createOrder = async (req: Request, res: Response) => {
       const size = bottleSize || '1L';
       const qty = Number(quantityBottles) || 1;
       const litersPerUnit = size === '2L' ? 2.0 : 1.0;
-      const price = Number(unitPrice) || (size === '2L' ? 20000 : 10000);
+      const price = unitPrice !== undefined && !isNaN(Number(unitPrice)) && Number(unitPrice) >= 0
+        ? Number(unitPrice)
+        : (size === '2L' ? 20000 : 10000);
       parsedItems = [
         {
           batchId: parsedBatchId,
@@ -354,10 +359,13 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // Calcular totales acumulados
     const parsedDeliveryFee = deliveryFee !== undefined ? Number(deliveryFee) : 0;
+    const parsedDiscount = discount !== undefined ? Number(discount) : 0;
     const totalLitersCalculated = parsedItems.reduce((sum, i) => sum + i.totalLiters, 0);
     const totalQuantityBottles = parsedItems.reduce((sum, i) => sum + i.quantity, 0);
     const itemsTotal = parsedItems.reduce((sum, i) => sum + i.totalPrice, 0);
-    const calculatedTotalAmount = totalAmount ? Number(totalAmount) : (itemsTotal + parsedDeliveryFee);
+    const calculatedTotalAmount = totalAmount !== undefined
+      ? Number(totalAmount)
+      : Math.max(0, itemsTotal + parsedDeliveryFee - parsedDiscount);
 
     const paid = Number(paidAmount || 0);
     const pending = Math.max(0, calculatedTotalAmount - paid);
@@ -496,6 +504,7 @@ export const createOrder = async (req: Request, res: Response) => {
         deliveryDriverId: deliveryDriverId ? Number(deliveryDriverId) : null,
         deliveryDriverName: deliveryDriverName ? String(deliveryDriverName).trim() : null,
         deliveryFee: parsedDeliveryFee,
+        discount: parsedDiscount,
         orderDate: dateObj,
         deliveryDate: initialDeliveryDate,
         deliveryAddress: deliveryAddress ? deliveryAddress.trim() : (customerAddress ? customerAddress.trim() : 'Fonseca'),
@@ -564,6 +573,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       deliveryDriverId,
       deliveryDriverName,
       deliveryFee,
+      discount,
       orderDate,
       deliveryDate,
       deliveryAddress,
@@ -596,6 +606,9 @@ export const updateOrder = async (req: Request, res: Response) => {
     }
 
     // 2. Si vienen ítems múltiples, procesar y reemplazar
+    const updatedDeliveryFee = deliveryFee !== undefined ? Number(deliveryFee) : currentOrder.deliveryFee;
+    const updatedDiscount = discount !== undefined ? Number(discount) : (currentOrder.discount || 0);
+
     let updatedLiters = currentOrder.totalLiters;
     let updatedQuantity = currentOrder.quantityBottles;
     let updatedTotal = currentOrder.totalAmount;
@@ -608,7 +621,9 @@ export const updateOrder = async (req: Request, res: Response) => {
         const size = item.bottleSize || '1L';
         const qty = Number(item.quantity) || 1;
         const litersPerUnit = size === '2L' ? 2.0 : 1.0;
-        const itemUnitPrice = Number(item.unitPrice) || (size === '2L' ? 20000 : 10000);
+        const itemUnitPrice = item.unitPrice !== undefined && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) >= 0
+          ? Number(item.unitPrice)
+          : (size === '2L' ? 20000 : 10000);
         return {
           batchId: item.batchId ? Number(item.batchId) : parsedBatchId,
           bottleSize: size,
@@ -624,7 +639,10 @@ export const updateOrder = async (req: Request, res: Response) => {
 
       updatedLiters = parsedItems.reduce((sum, i) => sum + i.totalLiters, 0);
       updatedQuantity = parsedItems.reduce((sum, i) => sum + i.quantity, 0);
-      updatedTotal = parsedItems.reduce((sum, i) => sum + i.totalPrice, 0);
+      const itemsTotal = parsedItems.reduce((sum, i) => sum + i.totalPrice, 0);
+      updatedTotal = totalAmount !== undefined
+        ? Number(totalAmount)
+        : Math.max(0, itemsTotal + updatedDeliveryFee - updatedDiscount);
       updatedFlavor = parsedItems.map((i) => `${i.quantity}x ${i.flavor} (${i.bottleSize})`).join(', ');
       updatedBottleSize = parsedItems.every((i) => i.bottleSize === parsedItems[0].bottleSize)
         ? parsedItems[0].bottleSize
@@ -765,7 +783,8 @@ export const updateOrder = async (req: Request, res: Response) => {
         deliveryType: deliveryType !== undefined ? String(deliveryType).toUpperCase() : currentOrder.deliveryType,
         deliveryDriverId: deliveryDriverId !== undefined ? (deliveryDriverId ? Number(deliveryDriverId) : null) : currentOrder.deliveryDriverId,
         deliveryDriverName: deliveryDriverName !== undefined ? deliveryDriverName : currentOrder.deliveryDriverName,
-        deliveryFee: deliveryFee !== undefined ? Number(deliveryFee) : currentOrder.deliveryFee,
+        deliveryFee: updatedDeliveryFee,
+        discount: updatedDiscount,
         orderDate: orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : currentOrder.orderDate,
         deliveryDate: finalDeliveryDate,
         deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : (customerAddress ? customerAddress.trim() : currentOrder.deliveryAddress),
