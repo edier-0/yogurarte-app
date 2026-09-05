@@ -747,12 +747,25 @@ function createOrderCardHtml(o) {
   // Renderizar detalle de ítems múltiples si existen
   let itemsHtml = '';
   if (o.items && o.items.length > 0) {
-    itemsHtml = o.items
+    const consolidatedMap = new Map();
+    for (const i of o.items) {
+      const key = `${i.bottleSize}_${i.flavor}_${i.unitPrice}`;
+      if (consolidatedMap.has(key)) {
+        const existing = consolidatedMap.get(key);
+        existing.quantity += (Number(i.quantity) || 1);
+        existing.totalPrice += (Number(i.totalPrice) || 0);
+      } else {
+        consolidatedMap.set(key, { ...i, quantity: Number(i.quantity) || 1, totalPrice: Number(i.totalPrice) || (i.quantity * i.unitPrice) });
+      }
+    }
+    const displayItems = Array.from(consolidatedMap.values());
+
+    itemsHtml = displayItems
       .map(
         (i) => `
-        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-app); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.82rem; margin-bottom: 4px;">
-          <span>🥛 <strong>${i.quantity}x</strong> Botella ${i.bottleSize} (${i.flavor}) ${i.unitPrice ? `<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">@ ${formatCOP(i.unitPrice)}</span>` : ''}</span>
-          <strong style="color: var(--primary);">${formatCOP(i.totalPrice)}</strong>
+        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-app); padding: 5px 10px; border-radius: var(--radius-sm); font-size: 0.83rem; margin-bottom: 4px; border: 1px solid var(--border-color);">
+          <span>🥛 <strong>${i.quantity}x</strong> Botella ${i.bottleSize} (${i.flavor}) ${i.unitPrice ? `<span style="font-size: 0.75rem; color: #0284C7; font-weight: 700; background: #E0F2FE; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">@ ${formatCOP(i.unitPrice)}</span>` : ''}</span>
+          <strong style="color: var(--primary); font-size: 0.88rem;">${formatCOP(i.totalPrice)}</strong>
         </div>
       `
       )
@@ -1101,12 +1114,26 @@ export async function openOrderModal(orderData = null) {
   ];
 
   if (isEditing && orderData.items && orderData.items.length > 0) {
-    initialItems = orderData.items.map((i) => ({
-      bottleSize: i.bottleSize,
-      flavor: i.flavor,
-      quantity: i.quantity,
-      unitPrice: i.unitPrice !== undefined ? i.unitPrice : (i.bottleSize === '2L' ? currentBatchPrice2L : currentBatchPrice1L),
-    }));
+    const consolidated = [];
+    for (const it of orderData.items) {
+      const itPrice = it.unitPrice !== undefined && !isNaN(Number(it.unitPrice)) && Number(it.unitPrice) >= 0
+        ? Number(it.unitPrice)
+        : (it.bottleSize === '2L' ? currentBatchPrice2L : currentBatchPrice1L);
+      const existing = consolidated.find(
+        (c) => c.bottleSize === it.bottleSize && c.flavor.toLowerCase() === it.flavor.toLowerCase() && c.unitPrice === itPrice
+      );
+      if (existing) {
+        existing.quantity += (Number(it.quantity) || 1);
+      } else {
+        consolidated.push({
+          bottleSize: it.bottleSize,
+          flavor: it.flavor,
+          quantity: Number(it.quantity) || 1,
+          unitPrice: itPrice,
+        });
+      }
+    }
+    initialItems = consolidated;
   } else if (isEditing) {
     initialItems = [
       {
@@ -1163,9 +1190,9 @@ export async function openOrderModal(orderData = null) {
               <input type="text" id="custAddress" class="form-input" placeholder="Ej: Calle 12 # 15-40, Barrio San Agustín" value="${defaultAddress}" required />
             </div>
 
-            <!-- Modalidad de Entrega, Asignación de Repartidor y Valor del Domicilio -->
+            <!-- Modalidad de Entrega y Asignación de Repartidor -->
             <div style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px;">
-              <div class="form-row" style="margin-bottom: 8px;">
+              <div class="form-row" style="margin-bottom: 0;">
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label" style="font-size: 0.84rem; font-weight: 800; color: #15803D;">Modalidad de Entrega *</label>
                   <select id="orderDeliveryType" class="form-select" style="font-weight: 700; font-size: 0.85rem;">
@@ -1190,24 +1217,6 @@ export async function openOrderModal(orderData = null) {
                       .join('')}
                   </select>
                 </div>
-              </div>
-
-              <!-- Campo para el valor del servicio de domicilio -->
-              <div class="form-group" id="deliveryFeeGroup" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.84rem; font-weight: 800; color: #0369A1; display: flex; justify-content: space-between; align-items: center;">
-                  <span>🛵 Valor del Domicilio ($ COP)</span>
-                  <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">(Si aplica, se suma al total a cobrar)</span>
-                </label>
-                <input 
-                  type="number" 
-                  id="orderDeliveryFee" 
-                  class="form-input" 
-                  min="0" 
-                  step="any" 
-                  value="${defaultDeliveryFee}" 
-                  placeholder="0 si es gratis o entrega en local" 
-                  style="font-weight: 800; font-size: 0.95rem; color: #0369A1;" 
-                />
               </div>
             </div>
 
@@ -1242,62 +1251,82 @@ export async function openOrderModal(orderData = null) {
             </div>
 
             <!-- Sección de Múltiples Productos en el Pedido -->
-            <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <label style="font-size: 0.9rem; font-weight: 800; color: var(--primary); margin: 0;">
-                  🛒 Productos en este Pedido
+            <div style="background: var(--bg-app); border: 1.5px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-size: 0.92rem; font-weight: 800; color: var(--primary); margin: 0;">
+                  🛒 Productos del Pedido
                 </label>
-                <button type="button" class="btn btn-outline btn-sm" id="btnAddOrderItem" style="font-size: 0.78rem; padding: 4px 10px;">
-                  + Agregar Otro Producto
+                <button type="button" class="btn btn-outline btn-sm" id="btnAddOrderItem" style="font-size: 0.78rem; padding: 4px 10px; font-weight: 700;">
+                  + Agregar Producto
                 </button>
+              </div>
+
+              <!-- Cabecera de columnas para máxima claridad visual -->
+              <div style="display: flex; gap: 6px; font-size: 0.72rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; padding: 0 4px; margin-bottom: 6px;">
+                <span style="flex: 1.1; min-width: 85px;">Envase</span>
+                <span style="flex: 1.2; min-width: 90px;">Sabor</span>
+                <span style="width: 48px; text-align: center;">Cant.</span>
+                <span style="flex: 1.2; min-width: 95px; text-align: right;">Precio c/u ($)</span>
+                <span style="min-width: 70px; text-align: right;">Subtotal</span>
+                <span style="width: 28px;"></span>
               </div>
 
               <div id="orderItemsContainer" style="display: flex; flex-direction: column; gap: 8px;"></div>
             </div>
 
-            <!-- Resumen Financiero y Litros -->
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">Total Litros</label>
-                <input type="text" id="orderTotalLitersDisplay" class="form-input" value="1 Litro" disabled style="background: var(--bg-subtle); font-weight: 800; color: var(--primary);" />
+            <!-- Resumen Financiero y Contable del Pedido -->
+            <div style="background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px dashed #CBD5E1; padding-bottom: 8px;">
+                <span style="font-size: 0.88rem; font-weight: 800; color: var(--primary);">💰 Resumen Contable y Cobro</span>
+                <span id="orderTotalLitersBadge" style="background: #EDE9FE; color: var(--primary); font-weight: 800; font-size: 0.78rem; padding: 2px 8px; border-radius: 6px;">🥛 1 Litro</span>
               </div>
 
-              <div class="form-group">
-                <label class="form-label">🏷️ Descuento Global ($ COP)</label>
-                <input type="number" id="orderDiscount" class="form-input" value="${orderData?.discount || 0}" min="0" step="500" placeholder="0 si no hay rebaja" style="font-weight: 700; color: #DC2626;" />
+              <div class="form-row" style="margin-bottom: 10px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px;">Subtotal Productos ($ COP)</label>
+                  <input type="text" id="orderSubtotalDisplay" class="form-input" value="$10.000 COP" disabled style="background: #FFFFFF; font-weight: 700; color: var(--text-main); font-size: 0.9rem;" />
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px; color: #0369A1;">🛵 Domicilio ($ COP)</label>
+                  <input type="number" id="orderDeliveryFee" class="form-input" min="0" step="500" value="${defaultDeliveryFee}" placeholder="0 si es gratis" style="font-weight: 700; color: #0369A1;" />
+                </div>
+              </div>
+
+              <div class="form-row" style="margin-bottom: 10px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px; color: #DC2626;">🏷️ Descuento Global ($ COP)</label>
+                  <input type="number" id="orderDiscount" class="form-input" min="0" step="500" value="${orderData?.discount || 0}" placeholder="0 si no hay rebaja" style="font-weight: 700; color: #DC2626;" />
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.82rem; font-weight: 800; color: #15803D; margin-bottom: 2px;">💵 TOTAL A COBRAR ($ COP) *</label>
+                  <input type="number" id="orderTotalAmount" class="form-input" value="${(initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) + defaultDeliveryFee - (orderData?.discount || 0)) || 10000}" required style="font-weight: 800; color: #15803D; font-size: 1.05rem; background: #F0FDF4; border: 1.5px solid #86EFAC;" />
+                </div>
+              </div>
+
+              <div class="form-row" style="border-top: 1px dashed #CBD5E1; padding-top: 10px; margin-bottom: 0;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px;">Monto Pagado / Abonado ($)</label>
+                  <input type="number" id="orderPaidAmount" class="form-input" min="0" step="500" value="${defaultPaid}" placeholder="0 si no ha pagado" style="font-weight: 700;" />
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px;">Saldo Pendiente de Cobro</label>
+                  <input type="text" id="orderPendingDisplay" class="form-input" value="$0 COP" disabled style="background: #FFFFFF; font-weight: 800; color: var(--danger);" />
+                </div>
               </div>
             </div>
 
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
-                  <span>Total a Cobrar ($ COP) *</span>
-                  <span id="orderSubtotalBreakdown" style="font-size: 0.73rem; color: var(--primary); font-weight: 700;"></span>
-                </label>
-                <input type="number" id="orderTotalAmount" class="form-input" value="${(initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) + defaultDeliveryFee - (orderData?.discount || 0)) || 10000}" required style="font-weight: 800; color: var(--primary); font-size: 1.05rem;" />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Monto Abonado / Pagado ($ COP)</label>
-                <input type="number" id="orderPaidAmount" class="form-input" value="${defaultPaid}" min="0" placeholder="0 si no ha pagado" />
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">Modalidad de Pago</label>
-                <select id="orderPaymentMethod" class="form-select" style="font-weight: 700;">
-                  <option value="EFECTIVO" ${defaultPaymentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo</option>
-                  <option value="NEQUI" ${defaultPaymentMethod === 'NEQUI' ? 'selected' : ''}>🟣 Transferencia Nequi</option>
-                  <option value="BANCOLOMBIA" ${defaultPaymentMethod === 'BANCOLOMBIA' ? 'selected' : ''}>🟡 Transferencia Bancolombia</option>
-                  <option value="TRANSFERENCIA" ${defaultPaymentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>💳 Otra Transferencia</option>
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Saldo Pendiente Calculado</label>
-                <input type="text" id="orderPendingDisplay" class="form-input" value="$10.000 COP" disabled style="background: var(--bg-subtle); font-weight: 800; color: var(--danger);" />
-              </div>
+            <!-- Modalidad de Pago -->
+            <div class="form-group">
+              <label class="form-label">Modalidad de Pago</label>
+              <select id="orderPaymentMethod" class="form-select" style="font-weight: 700;">
+                <option value="EFECTIVO" ${defaultPaymentMethod === 'EFECTIVO' ? 'selected' : ''}>💵 Efectivo</option>
+                <option value="NEQUI" ${defaultPaymentMethod === 'NEQUI' ? 'selected' : ''}>🟣 Transferencia Nequi</option>
+                <option value="BANCOLOMBIA" ${defaultPaymentMethod === 'BANCOLOMBIA' ? 'selected' : ''}>🟡 Transferencia Bancolombia</option>
+                <option value="TRANSFERENCIA" ${defaultPaymentMethod === 'TRANSFERENCIA' ? 'selected' : ''}>💳 Otra Transferencia</option>
+              </select>
             </div>
 
             <!-- Fechas de Pedido y Entrega Programada -->
@@ -1341,7 +1370,8 @@ export async function openOrderModal(orderData = null) {
 
   const form = document.getElementById('newOrderForm');
   const itemsContainer = document.getElementById('orderItemsContainer');
-  const totalLitersDisplay = document.getElementById('orderTotalLitersDisplay');
+  const subtotalDisplay = document.getElementById('orderSubtotalDisplay');
+  const totalLitersBadge = document.getElementById('orderTotalLitersBadge');
   const totalInput = document.getElementById('orderTotalAmount');
   const paidInput = document.getElementById('orderPaidAmount');
   const pendingDisplay = document.getElementById('orderPendingDisplay');
@@ -1351,7 +1381,7 @@ export async function openOrderModal(orderData = null) {
   const driverSelectGroup = document.getElementById('driverSelectGroup');
   const driverSelect = document.getElementById('orderDeliveryDriver');
   const deliveryFeeInput = document.getElementById('orderDeliveryFee');
-  const subtotalBreakdownDisplay = document.getElementById('orderSubtotalBreakdown');
+  const discountInput = document.getElementById('orderDiscount');
   const modalBody = modalOverlay.querySelector('.modal-body');
 
   deliveryTypeSelect?.addEventListener('change', (e) => {
@@ -1364,7 +1394,19 @@ export async function openOrderModal(orderData = null) {
   });
 
   deliveryFeeInput?.addEventListener('input', () => {
-    recalculateOrderTotals();
+    recalculateOrderTotals('FEE');
+  });
+
+  discountInput?.addEventListener('input', () => {
+    recalculateOrderTotals('DISCOUNT');
+  });
+
+  totalInput?.addEventListener('input', () => {
+    recalculateOrderTotals('TOTAL_DIRECT');
+  });
+
+  paidInput?.addEventListener('input', () => {
+    recalculateOrderTotals('PAID');
   });
 
   // Función para renderizar una fila de producto
@@ -1379,12 +1421,12 @@ export async function openOrderModal(orderData = null) {
       : defaultPriceForSize;
 
     row.innerHTML = `
-      <select class="form-select item-size" style="flex: 1.1; font-size: 0.82rem; padding: 6px 6px; min-width: 85px;">
+      <select class="form-select item-size" style="flex: 1.1; font-size: 0.82rem; padding: 6px 6px; min-width: 85px;" title="Tamaño de botella">
         <option value="1L" ${item.bottleSize === '1L' ? 'selected' : ''}>1 Litro</option>
         <option value="2L" ${item.bottleSize === '2L' ? 'selected' : ''}>2 Litros</option>
       </select>
 
-      <select class="form-select item-flavor" style="flex: 1.2; font-size: 0.82rem; padding: 6px 6px; min-width: 90px;">
+      <select class="form-select item-flavor" style="flex: 1.2; font-size: 0.82rem; padding: 6px 6px; min-width: 90px;" title="Sabor del yogur">
         <option value="Natural" ${item.flavor === 'Natural' ? 'selected' : ''}>Natural</option>
         <option value="Fresa" ${item.flavor === 'Fresa' ? 'selected' : ''}>Fresa</option>
         <option value="Melocotón" ${item.flavor === 'Melocotón' ? 'selected' : ''}>Melocotón</option>
@@ -1396,10 +1438,10 @@ export async function openOrderModal(orderData = null) {
 
       <div style="display: flex; align-items: center; gap: 2px; flex: 1.2; min-width: 95px;" title="Precio unitario por botella (Modificable para precios al por mayor o especiales)">
         <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700;">$</span>
-        <input type="number" class="form-input item-price" min="0" step="500" value="${itemPrice}" style="font-size: 0.82rem; font-weight: 700; padding: 6px 4px; text-align: right; color: #0369A1;" placeholder="Precio c/u" />
+        <input type="number" class="form-input item-price" min="0" step="500" value="${itemPrice}" style="font-size: 0.82rem; font-weight: 800; padding: 6px 4px; text-align: right; color: #0369A1; background: #F0F9FF;" placeholder="Precio c/u" />
       </div>
 
-      <span class="item-subtotal-display" style="font-size: 0.84rem; font-weight: 800; color: var(--primary); min-width: 70px; text-align: right;">
+      <span class="item-subtotal-display" style="font-size: 0.85rem; font-weight: 800; color: var(--primary); min-width: 70px; text-align: right;">
         ${formatCOP((item.quantity || 1) * itemPrice)}
       </span>
 
@@ -1417,7 +1459,7 @@ export async function openOrderModal(orderData = null) {
     let isPriceManuallyEdited = item.unitPrice !== undefined && Number(item.unitPrice) !== defaultPriceForSize;
 
     const updateRow = () => {
-      recalculateOrderTotals();
+      recalculateOrderTotals('ITEMS');
     };
 
     sizeSelect.addEventListener('change', (e) => {
@@ -1472,38 +1514,65 @@ export async function openOrderModal(orderData = null) {
           }
         }
       }
-      recalculateOrderTotals();
+      recalculateOrderTotals('ITEMS');
     });
 
     removeBtn.addEventListener('click', () => {
       const allRows = itemsContainer.querySelectorAll('.order-item-row');
       if (allRows.length > 1) {
         row.remove();
-        recalculateOrderTotals();
+        recalculateOrderTotals('ITEMS');
       } else {
         showToast('El pedido debe tener al menos 1 producto', 'warning');
       }
     });
 
     itemsContainer.appendChild(row);
-    recalculateOrderTotals();
+    recalculateOrderTotals('ITEMS');
   }
 
-  // Recalcular todos los productos, descuento y costo de domicilio
-  const discountInput = document.getElementById('orderDiscount');
-  discountInput?.addEventListener('input', () => {
-    recalculateOrderTotals();
-  });
+  let isInternalRecalculating = false;
 
-  function recalculateOrderTotals() {
+  function recalculateOrderTotals(source = 'ITEMS') {
+    if (isInternalRecalculating) return;
+    isInternalRecalculating = true;
+
+    const rows = itemsContainer.querySelectorAll('.order-item-row');
     let sumLiters = 0;
     let sumProductsTotal = 0;
 
-    itemsContainer.querySelectorAll('.order-item-row').forEach((row) => {
-      const size = row.querySelector('.item-size').value;
-      const qty = Number(row.querySelector('.item-qty').value) || 1;
+    const fee = Number(deliveryFeeInput?.value) || 0;
+    let discount = Number(discountInput?.value) || 0;
+
+    if (source === 'TOTAL_DIRECT') {
+      const enteredTotal = Number(totalInput?.value) || 0;
+      if (rows.length === 1) {
+        const row = rows[0];
+        const qty = Number(row.querySelector('.item-qty')?.value) || 1;
+        const derivedUnitPrice = Math.max(0, Math.round((enteredTotal - fee + discount) / qty));
+        const priceInput = row.querySelector('.item-price');
+        if (priceInput) priceInput.value = derivedUnitPrice;
+      } else if (rows.length > 1) {
+        let currentItemsTotal = 0;
+        rows.forEach((r) => {
+          const qty = Number(r.querySelector('.item-qty')?.value) || 1;
+          const priceInput = r.querySelector('.item-price');
+          const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : 10000;
+          currentItemsTotal += qty * unitPrice;
+        });
+        const diff = (currentItemsTotal + fee) - enteredTotal;
+        discount = Math.max(0, diff);
+        if (discountInput) discountInput.value = discount;
+      }
+    }
+
+    // Calcular subtotales por fila
+    rows.forEach((row) => {
+      const size = row.querySelector('.item-size')?.value || '1L';
+      const qty = Number(row.querySelector('.item-qty')?.value) || 1;
       const priceInput = row.querySelector('.item-price');
-      const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : (size === '2L' ? currentBatchPrice2L : currentBatchPrice1L);
+      const defaultPriceForSize = size === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
+      const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : defaultPriceForSize;
       const rowTotal = qty * unitPrice;
       const rowLiters = size === '2L' ? qty * 2 : qty * 1;
 
@@ -1514,23 +1583,26 @@ export async function openOrderModal(orderData = null) {
       if (subDisplay) subDisplay.textContent = formatCOP(rowTotal);
     });
 
-    const fee = Number(deliveryFeeInput?.value) || 0;
-    const discount = Number(document.getElementById('orderDiscount')?.value) || 0;
-    const grandTotal = Math.max(0, sumProductsTotal + fee - discount);
+    const grandTotal = source === 'TOTAL_DIRECT'
+      ? (Number(totalInput?.value) || 0)
+      : Math.max(0, sumProductsTotal + fee - discount);
 
-    totalLitersDisplay.value = `${sumLiters} Litro(s)`;
-    totalInput.value = grandTotal;
-
-    if (subtotalBreakdownDisplay) {
-      let breakdown = `Prod: ${formatCOP(sumProductsTotal)}`;
-      if (fee > 0) breakdown += ` + Dom: ${formatCOP(fee)}`;
-      if (discount > 0) breakdown += ` - Desc: ${formatCOP(discount)}`;
-      subtotalBreakdownDisplay.textContent = `(${breakdown})`;
+    if (source !== 'TOTAL_DIRECT' && totalInput) {
+      totalInput.value = grandTotal;
     }
 
-    const paid = Number(paidInput.value) || 0;
+    if (subtotalDisplay) {
+      subtotalDisplay.value = formatCOP(sumProductsTotal);
+    }
+    if (totalLitersBadge) {
+      totalLitersBadge.textContent = `🥛 ${sumLiters} Litro(s)`;
+    }
+
+    const paid = Number(paidInput?.value) || 0;
     const pending = Math.max(0, grandTotal - paid);
-    pendingDisplay.value = formatCOP(pending);
+    if (pendingDisplay) {
+      pendingDisplay.value = formatCOP(pending);
+    }
 
     // Validar capacidad de lote en tiempo real en el hint
     if (batchSelect && batchSelect.value && batchHintDisplay) {
@@ -1551,6 +1623,8 @@ export async function openOrderModal(orderData = null) {
         }
       }
     }
+
+    isInternalRecalculating = false;
   }
 
   // Listener para cambio de lote de producción
@@ -1577,7 +1651,7 @@ export async function openOrderModal(orderData = null) {
         batchHintDisplay.style.color = 'var(--text-muted)';
       }
     }
-    recalculateOrderTotals();
+    recalculateOrderTotals('ITEMS');
   });
 
   // Inicializar filas existentes
@@ -1592,13 +1666,6 @@ export async function openOrderModal(orderData = null) {
         modalBody.scrollTo({ top: modalBody.scrollHeight / 2, behavior: 'smooth' });
       }, 50);
     }
-  });
-
-  paidInput?.addEventListener('input', () => {
-    const total = Number(totalInput.value) || 0;
-    const paid = Number(paidInput.value) || 0;
-    const pending = Math.max(0, total - paid);
-    pendingDisplay.value = formatCOP(pending);
   });
 
   // Autocomplete interactivo seguro para Nombre y Teléfono/@Usuario

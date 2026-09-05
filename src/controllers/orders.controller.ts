@@ -317,7 +317,7 @@ export const createOrder = async (req: Request, res: Response) => {
     }> = [];
 
     if (Array.isArray(items) && items.length > 0) {
-      parsedItems = items.map((item) => {
+      const rawParsed = items.map((item) => {
         const size = item.bottleSize || '1L';
         const qty = Number(item.quantity) || 1;
         const litersPerUnit = size === '2L' ? 2.0 : 1.0;
@@ -335,6 +335,20 @@ export const createOrder = async (req: Request, res: Response) => {
           totalPrice: qty * itemUnitPrice,
         };
       });
+
+      // Consolidar ítems idénticos
+      for (const it of rawParsed) {
+        const existing = parsedItems.find(
+          (c) => c.bottleSize === it.bottleSize && c.flavor.toLowerCase() === it.flavor.toLowerCase() && c.unitPrice === it.unitPrice && c.batchId === it.batchId
+        );
+        if (existing) {
+          existing.quantity += it.quantity;
+          existing.totalLiters += it.totalLiters;
+          existing.totalPrice += it.totalPrice;
+        } else {
+          parsedItems.push({ ...it });
+        }
+      }
     } else {
       // Fallback a ítem único
       const size = bottleSize || '1L';
@@ -359,13 +373,25 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // Calcular totales acumulados
     const parsedDeliveryFee = deliveryFee !== undefined ? Number(deliveryFee) : 0;
-    const parsedDiscount = discount !== undefined ? Number(discount) : 0;
+    let parsedDiscount = discount !== undefined ? Number(discount) : 0;
     const totalLitersCalculated = parsedItems.reduce((sum, i) => sum + i.totalLiters, 0);
     const totalQuantityBottles = parsedItems.reduce((sum, i) => sum + i.quantity, 0);
-    const itemsTotal = parsedItems.reduce((sum, i) => sum + i.totalPrice, 0);
-    const calculatedTotalAmount = totalAmount !== undefined
-      ? Number(totalAmount)
-      : Math.max(0, itemsTotal + parsedDeliveryFee - parsedDiscount);
+    let itemsTotal = parsedItems.reduce((sum, i) => sum + i.totalPrice, 0);
+
+    // Reconciliación: Si se especificó un totalAmount directo que difiere de la suma de productos + domicilio
+    let calculatedTotalAmount = totalAmount !== undefined ? Number(totalAmount) : Math.max(0, itemsTotal + parsedDeliveryFee - parsedDiscount);
+    if (totalAmount !== undefined) {
+      calculatedTotalAmount = Number(totalAmount);
+      // Si hay 1 solo ítem y el descuento no fue provisto pero el total difiere del precio estándar
+      if (parsedItems.length === 1 && parsedDiscount === 0 && calculatedTotalAmount !== itemsTotal + parsedDeliveryFee) {
+        const adjustedUnitPrice = Math.max(0, Math.round((calculatedTotalAmount - parsedDeliveryFee) / parsedItems[0].quantity));
+        parsedItems[0].unitPrice = adjustedUnitPrice;
+        parsedItems[0].totalPrice = parsedItems[0].quantity * adjustedUnitPrice;
+        itemsTotal = parsedItems[0].totalPrice;
+      } else if (parsedDiscount === 0 && calculatedTotalAmount < itemsTotal + parsedDeliveryFee) {
+        parsedDiscount = (itemsTotal + parsedDeliveryFee) - calculatedTotalAmount;
+      }
+    }
 
     const paid = Number(paidAmount || 0);
     const pending = Math.max(0, calculatedTotalAmount - paid);
@@ -607,7 +633,7 @@ export const updateOrder = async (req: Request, res: Response) => {
 
     // 2. Si vienen ítems múltiples, procesar y reemplazar
     const updatedDeliveryFee = deliveryFee !== undefined ? Number(deliveryFee) : currentOrder.deliveryFee;
-    const updatedDiscount = discount !== undefined ? Number(discount) : (currentOrder.discount || 0);
+    let updatedDiscount = discount !== undefined ? Number(discount) : (currentOrder.discount || 0);
 
     let updatedLiters = currentOrder.totalLiters;
     let updatedQuantity = currentOrder.quantityBottles;
@@ -617,7 +643,7 @@ export const updateOrder = async (req: Request, res: Response) => {
 
     let parsedItemsList: any[] | null = null;
     if (Array.isArray(items) && items.length > 0) {
-      const parsedItems = items.map((item) => {
+      const rawParsed = items.map((item) => {
         const size = item.bottleSize || '1L';
         const qty = Number(item.quantity) || 1;
         const litersPerUnit = size === '2L' ? 2.0 : 1.0;
@@ -635,14 +661,42 @@ export const updateOrder = async (req: Request, res: Response) => {
           totalPrice: qty * itemUnitPrice,
         };
       });
-      parsedItemsList = parsedItems;
 
+      // Consolidar ítems idénticos
+      const parsedItems: typeof rawParsed = [];
+      for (const it of rawParsed) {
+        const existing = parsedItems.find(
+          (c) => c.bottleSize === it.bottleSize && c.flavor.toLowerCase() === it.flavor.toLowerCase() && c.unitPrice === it.unitPrice && c.batchId === it.batchId
+        );
+        if (existing) {
+          existing.quantity += it.quantity;
+          existing.totalLiters += it.totalLiters;
+          existing.totalPrice += it.totalPrice;
+        } else {
+          parsedItems.push({ ...it });
+        }
+      }
+
+      let itemsTotal = parsedItems.reduce((sum, i) => sum + i.totalPrice, 0);
+
+      // Reconciliación si se especificó totalAmount
+      if (totalAmount !== undefined) {
+        updatedTotal = Number(totalAmount);
+        if (parsedItems.length === 1 && updatedDiscount === 0 && updatedTotal !== itemsTotal + updatedDeliveryFee) {
+          const adjustedUnitPrice = Math.max(0, Math.round((updatedTotal - updatedDeliveryFee) / parsedItems[0].quantity));
+          parsedItems[0].unitPrice = adjustedUnitPrice;
+          parsedItems[0].totalPrice = parsedItems[0].quantity * adjustedUnitPrice;
+          itemsTotal = parsedItems[0].totalPrice;
+        } else if (updatedDiscount === 0 && updatedTotal < itemsTotal + updatedDeliveryFee) {
+          updatedDiscount = (itemsTotal + updatedDeliveryFee) - updatedTotal;
+        }
+      } else {
+        updatedTotal = Math.max(0, itemsTotal + updatedDeliveryFee - updatedDiscount);
+      }
+
+      parsedItemsList = parsedItems;
       updatedLiters = parsedItems.reduce((sum, i) => sum + i.totalLiters, 0);
       updatedQuantity = parsedItems.reduce((sum, i) => sum + i.quantity, 0);
-      const itemsTotal = parsedItems.reduce((sum, i) => sum + i.totalPrice, 0);
-      updatedTotal = totalAmount !== undefined
-        ? Number(totalAmount)
-        : Math.max(0, itemsTotal + updatedDeliveryFee - updatedDiscount);
       updatedFlavor = parsedItems.map((i) => `${i.quantity}x ${i.flavor} (${i.bottleSize})`).join(', ');
       updatedBottleSize = parsedItems.every((i) => i.bottleSize === parsedItems[0].bottleSize)
         ? parsedItems[0].bottleSize
@@ -773,7 +827,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         quantityBottles: updatedQuantity,
         totalLiters: updatedLiters,
         flavor: updatedFlavor,
-        unitPrice: unitPrice !== undefined ? Number(unitPrice) : currentOrder.unitPrice,
+        unitPrice: (parsedItemsList && parsedItemsList.length > 0 ? parsedItemsList[0].unitPrice : (unitPrice !== undefined ? Number(unitPrice) : currentOrder.unitPrice)),
         totalAmount: updatedTotal,
         paidAmount: finalPaid,
         pendingAmount: finalPending,
