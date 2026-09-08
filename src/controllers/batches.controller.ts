@@ -20,11 +20,14 @@ export const getBatches = async (req: Request, res: Response) => {
         include: {
           orders: {
             select: {
+              id: true,
               totalLiters: true,
             },
           },
           orderItems: {
             select: {
+              id: true,
+              orderId: true,
               totalLiters: true,
             },
           },
@@ -40,9 +43,11 @@ export const getBatches = async (req: Request, res: Response) => {
       });
 
       const enrichedLite = liteBatches.map((b) => {
-        const soldFromOrders = b.orders.reduce((sum, o) => sum + o.totalLiters, 0);
         const soldFromItems = b.orderItems.reduce((sum, i) => sum + i.totalLiters, 0);
-        const totalSoldLiters = Math.max(soldFromOrders, soldFromItems);
+        const legacySold = b.orders
+          .filter((o) => !b.orderItems.some((it) => it.orderId === o.id))
+          .reduce((sum, o) => sum + o.totalLiters, 0);
+        const totalSoldLiters = soldFromItems + legacySold;
         const totalDischargedLiters = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
         const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
         return {
@@ -103,6 +108,7 @@ export const getBatches = async (req: Request, res: Response) => {
         orderItems: {
           select: {
             id: true,
+            orderId: true,
             quantity: true,
             totalLiters: true,
             totalPrice: true,
@@ -148,9 +154,11 @@ export const getBatches = async (req: Request, res: Response) => {
 
     // Enriquecer con cálculo de ventas y preventa asociadas al lote
     const enrichedBatches = batches.map((b) => {
-      const soldLitersFromOrders = b.orders.reduce((sum, o) => sum + o.totalLiters, 0);
       const soldLitersFromItems = b.orderItems.reduce((sum, i) => sum + i.totalLiters, 0);
-      const totalSoldLiters = Math.max(soldLitersFromOrders, soldLitersFromItems);
+      const legacyOrdersSold = b.orders
+        .filter((o) => !b.orderItems.some((it) => it.orderId === o.id))
+        .reduce((sum, o) => sum + o.totalLiters, 0);
+      const totalSoldLiters = soldLitersFromItems + legacyOrdersSold;
       const totalSoldBottles = b.orders.reduce((sum, o) => sum + o.quantityBottles, 0);
       const totalRevenue = b.orders.reduce((sum, o) => sum + o.totalAmount, 0);
 
@@ -211,6 +219,17 @@ export const getBatchById = async (req: Request, res: Response) => {
             payments: true,
           },
           orderBy: { orderDate: 'desc' },
+        },
+        orderItems: {
+          include: {
+            order: {
+              include: {
+                customer: true,
+                payments: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
         },
         discharges: {
           include: {
@@ -1040,8 +1059,8 @@ export const createBatchDischarge = async (req: Request, res: Response) => {
     const batch = await prisma.productionBatch.findUnique({
       where: { id: Number(id) },
       include: {
-        orders: { select: { totalLiters: true } },
-        orderItems: { select: { totalLiters: true } },
+        orders: { select: { id: true, totalLiters: true } },
+        orderItems: { select: { id: true, orderId: true, totalLiters: true } },
         discharges: true,
       },
     });
@@ -1050,9 +1069,11 @@ export const createBatchDischarge = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Lote no encontrado' });
     }
 
-    const soldLitersFromOrders = batch.orders.reduce((sum, o) => sum + o.totalLiters, 0);
     const soldLitersFromItems = batch.orderItems.reduce((sum, i) => sum + i.totalLiters, 0);
-    const totalSoldLiters = Math.max(soldLitersFromOrders, soldLitersFromItems);
+    const legacyOrdersSold = batch.orders
+      .filter((o) => !batch.orderItems.some((it) => it.orderId === o.id))
+      .reduce((sum, o) => sum + o.totalLiters, 0);
+    const totalSoldLiters = soldLitersFromItems + legacyOrdersSold;
     const totalDischargedLiters = batch.discharges.reduce((sum, d) => sum + d.totalLiters, 0);
     const remainingAvailableLiters = Math.max(0, batch.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
 

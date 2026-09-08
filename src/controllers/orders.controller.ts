@@ -154,7 +154,20 @@ export const getOrders = async (req: Request, res: Response) => {
       where: whereClause,
       include: {
         customer: true,
-        items: true,
+        items: {
+          include: {
+            batch: {
+              select: {
+                id: true,
+                batchCode: true,
+                flavor: true,
+                price1L: true,
+                price2L: true,
+                status: true,
+              },
+            },
+          },
+        },
         payments: {
           orderBy: { paymentDate: 'asc' },
         },
@@ -218,7 +231,20 @@ export const getOrderById = async (req: Request, res: Response) => {
       where: { id: Number(id) },
       include: {
         customer: true,
-        items: true,
+        items: {
+          include: {
+            batch: {
+              select: {
+                id: true,
+                batchCode: true,
+                flavor: true,
+                price1L: true,
+                price2L: true,
+                status: true,
+              },
+            },
+          },
+        },
         payments: {
           orderBy: { paymentDate: 'asc' },
         },
@@ -413,7 +439,7 @@ export const createOrder = async (req: Request, res: Response) => {
     if (isExplicitlyPreventa) {
       parsedBatchId = null;
       parsedItems.forEach((it) => { it.batchId = null; });
-    } else if (!parsedBatchId && parsedItems.length > 0) {
+    } else if (!parsedBatchId && parsedItems.length > 0 && parsedItems.every((i) => !i.batchId)) {
       const primaryFlavor = (parsedItems[0]?.flavor || flavor || 'Natural').trim();
       const activeBatchesForFlavor = await prisma.productionBatch.findMany({
         where: {
@@ -422,18 +448,19 @@ export const createOrder = async (req: Request, res: Response) => {
           status: { in: ['COMPLETADO', 'EN_FERMENTACION', 'EN_PROCESO'] },
         },
         include: {
-          orders: { select: { totalLiters: true } },
-          orderItems: { select: { totalLiters: true } },
+          orders: { select: { id: true, totalLiters: true } },
+          orderItems: { select: { id: true, orderId: true, totalLiters: true } },
           discharges: { select: { totalLiters: true } },
         },
         orderBy: { preparationDate: 'desc' },
       });
 
       for (const b of activeBatchesForFlavor) {
-        const sold = Math.max(
-          b.orders.reduce((sum, o) => sum + o.totalLiters, 0),
-          b.orderItems.reduce((sum, it) => sum + it.totalLiters, 0)
-        );
+        const soldFromItems = b.orderItems.reduce((sum, it) => sum + it.totalLiters, 0);
+        const legacyOrdersSold = b.orders
+          .filter((o) => !b.orderItems.some((it) => it.orderId === o.id))
+          .reduce((sum, o) => sum + o.totalLiters, 0);
+        const sold = soldFromItems + legacyOrdersSold;
         const discharges = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
         const available = Math.max(0, b.totalLitersProduced - sold - discharges);
         if (available >= totalLitersCalculated) {
@@ -446,31 +473,44 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
-    // Validar capacidad máxima del lote seleccionado en creación (solo si tiene lote asignado)
-    if (parsedBatchId) {
+    // Validar capacidad de cada lote específico presente en los ítems
+    const batchLitersMap = new Map<number, number>();
+    for (const item of parsedItems) {
+      if (item.batchId) {
+        const cur = batchLitersMap.get(item.batchId) || 0;
+        batchLitersMap.set(item.batchId, cur + item.totalLiters);
+      }
+    }
+
+    for (const [bId, requestedLiters] of batchLitersMap.entries()) {
       const batchObj = await prisma.productionBatch.findUnique({
-        where: { id: parsedBatchId },
+        where: { id: bId },
         include: {
-          orders: { select: { totalLiters: true } },
-          orderItems: { select: { totalLiters: true } },
+          orders: { select: { id: true, totalLiters: true } },
+          orderItems: { select: { id: true, orderId: true, totalLiters: true } },
           discharges: { select: { totalLiters: true } },
         },
       });
 
       if (batchObj) {
-        const sold = Math.max(
-          batchObj.orders.reduce((sum, o) => sum + o.totalLiters, 0),
-          batchObj.orderItems.reduce((sum, it) => sum + it.totalLiters, 0)
-        );
+        const soldFromItems = batchObj.orderItems.reduce((sum, it) => sum + it.totalLiters, 0);
+        const legacyOrdersSold = batchObj.orders
+          .filter((o) => !batchObj.orderItems.some((it) => it.orderId === o.id))
+          .reduce((sum, o) => sum + o.totalLiters, 0);
+        const sold = soldFromItems + legacyOrdersSold;
         const discharges = (batchObj.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
         const availableLiters = Math.max(0, batchObj.totalLitersProduced - sold - discharges);
-        if (totalLitersCalculated > availableLiters) {
+
+        if (requestedLiters > availableLiters + 0.001) {
           return res.status(400).json({
-            error: `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters}L disponibles, pero este pedido requiere ${totalLitersCalculated}L. Puedes seleccionar otro lote o registrarlo como Encargo Preventa (Sin lote).`,
+            error: `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters.toFixed(1)}L disponibles, pero este pedido requiere ${requestedLiters.toFixed(1)}L de este lote.`,
           });
         }
       }
     }
+
+    const uniqueBatchIds = Array.from(new Set(parsedItems.map((i) => i.batchId).filter(Boolean))) as number[];
+    const finalOrderBatchId = uniqueBatchIds.length === 1 ? uniqueBatchIds[0] : null;
 
     // Generar consecutivo de pedido único (PED-YYYYMMDD-001)
     const dateObj = orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : new Date();
@@ -514,7 +554,7 @@ export const createOrder = async (req: Request, res: Response) => {
       data: {
         orderNumber,
         customerId: finalCustomerId,
-        batchId: parsedBatchId,
+        batchId: finalOrderBatchId,
         bottleSize: bottleSizeSummary,
         quantityBottles: totalQuantityBottles,
         totalLiters: totalLitersCalculated,
@@ -538,7 +578,7 @@ export const createOrder = async (req: Request, res: Response) => {
         registeredBy: registeredBy || 'Edier',
         items: {
           create: parsedItems.map((i) => ({
-            batchId: i.batchId || parsedBatchId,
+            batchId: i.batchId || null,
             bottleSize: i.bottleSize,
             flavor: i.flavor,
             quantity: i.quantity,
@@ -643,6 +683,7 @@ export const updateOrder = async (req: Request, res: Response) => {
 
     let parsedItemsList: any[] | null = null;
     if (Array.isArray(items) && items.length > 0) {
+      const isExplicitlyPreventa = batchId === null || batchId === '';
       const rawParsed = items.map((item) => {
         const size = item.bottleSize || '1L';
         const qty = Number(item.quantity) || 1;
@@ -651,7 +692,7 @@ export const updateOrder = async (req: Request, res: Response) => {
           ? Number(item.unitPrice)
           : (size === '2L' ? 24000 : 12000);
         return {
-          batchId: item.batchId ? Number(item.batchId) : parsedBatchId,
+          batchId: isExplicitlyPreventa ? null : (item.batchId ? Number(item.batchId) : parsedBatchId),
           bottleSize: size,
           flavor: (item.flavor || 'Natural').trim(),
           quantity: qty,
@@ -702,6 +743,43 @@ export const updateOrder = async (req: Request, res: Response) => {
         ? parsedItems[0].bottleSize
         : 'MIXTO';
 
+      // Validar capacidad de cada lote específico presente en los ítems
+      const batchLitersMap = new Map<number, number>();
+      for (const item of parsedItems) {
+        if (item.batchId) {
+          const cur = batchLitersMap.get(item.batchId) || 0;
+          batchLitersMap.set(item.batchId, cur + item.totalLiters);
+        }
+      }
+
+      for (const [bId, requestedLiters] of batchLitersMap.entries()) {
+        const batchObj = await prisma.productionBatch.findUnique({
+          where: { id: bId },
+          include: {
+            orders: { select: { id: true, totalLiters: true } },
+            orderItems: { select: { id: true, orderId: true, totalLiters: true } },
+            discharges: { select: { totalLiters: true } },
+          },
+        });
+
+        if (batchObj) {
+          const otherItems = batchObj.orderItems.filter((it) => it.orderId !== Number(id));
+          const otherLegacyOrders = batchObj.orders.filter((o) => o.id !== Number(id) && !batchObj.orderItems.some((it) => it.orderId === o.id));
+          const otherSold = otherItems.reduce((sum, it) => sum + it.totalLiters, 0) + otherLegacyOrders.reduce((sum, o) => sum + o.totalLiters, 0);
+          const discharges = (batchObj.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
+          const availableLiters = Math.max(0, batchObj.totalLitersProduced - otherSold - discharges);
+
+          if (requestedLiters > availableLiters + 0.001) {
+            return res.status(400).json({
+              error: `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters.toFixed(1)}L disponibles (este pedido requiere ${requestedLiters.toFixed(1)}L de este lote).`,
+            });
+          }
+        }
+      }
+
+      const uniqueBatchIds = Array.from(new Set(parsedItems.map((i) => i.batchId).filter(Boolean))) as number[];
+      parsedBatchId = uniqueBatchIds.length === 1 ? uniqueBatchIds[0] : null;
+
       // Reemplazar ítems en base de datos
       await prisma.orderItem.deleteMany({
         where: { orderId: Number(id) },
@@ -710,7 +788,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       await prisma.orderItem.createMany({
         data: parsedItems.map((i) => ({
           orderId: Number(id),
-          batchId: i.batchId || parsedBatchId,
+          batchId: i.batchId || null,
           bottleSize: i.bottleSize,
           flavor: i.flavor,
           quantity: i.quantity,
@@ -739,71 +817,6 @@ export const updateOrder = async (req: Request, res: Response) => {
         finalPaymentStatus = 'PARTIAL';
       } else {
         finalPaymentStatus = 'PENDING';
-      }
-    }
-
-    // Solo auto-vincular lote si el pedido no tenía lote y NO se especificó explícitamente como preventa
-    const isExplicitlyPreventa = batchId === null || batchId === '';
-    if (isExplicitlyPreventa) {
-      parsedBatchId = null;
-      if (parsedItemsList) {
-        parsedItemsList.forEach((it: any) => { it.batchId = null; });
-      }
-    } else if (parsedBatchId === null && currentOrder.batchId == null && updatedFlavor) {
-      const primaryFlavor = updatedFlavor.split(',')[0].replace(/^\d+x\s*/, '').replace(/\s*\([^)]*\)/, '').trim();
-      const activeBatchesForFlavor = await prisma.productionBatch.findMany({
-        where: {
-          flavor: { equals: primaryFlavor, mode: 'insensitive' },
-          isActive: true,
-          status: { in: ['COMPLETADO', 'EN_FERMENTACION', 'EN_PROCESO'] },
-        },
-        include: {
-          orders: { select: { totalLiters: true } },
-          orderItems: { select: { totalLiters: true } },
-          discharges: { select: { totalLiters: true } },
-        },
-        orderBy: { preparationDate: 'desc' },
-      });
-
-      for (const b of activeBatchesForFlavor) {
-        const sold = Math.max(
-          b.orders.reduce((sum, o) => sum + o.totalLiters, 0),
-          b.orderItems.reduce((sum, it) => sum + it.totalLiters, 0)
-        );
-        const discharges = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
-        const available = Math.max(0, b.totalLitersProduced - sold - discharges);
-        if (available >= updatedLiters) {
-          parsedBatchId = b.id;
-          break;
-        }
-      }
-    }
-
-    // Validar capacidad máxima del lote seleccionado en edición (solo si tiene lote asignado)
-    if (parsedBatchId) {
-      const batchObj = await prisma.productionBatch.findUnique({
-        where: { id: parsedBatchId },
-        include: {
-          orders: { select: { id: true, totalLiters: true } },
-          orderItems: { select: { id: true, orderId: true, totalLiters: true } },
-          discharges: { select: { totalLiters: true } },
-        },
-      });
-
-      if (batchObj) {
-        const otherOrders = batchObj.orders.filter((o) => o.id !== Number(id));
-        const otherItems = batchObj.orderItems.filter((it) => it.orderId !== Number(id));
-        const otherSold = Math.max(
-          otherOrders.reduce((sum, o) => sum + o.totalLiters, 0),
-          otherItems.reduce((sum, it) => sum + it.totalLiters, 0)
-        );
-        const discharges = (batchObj.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
-        const availableLiters = Math.max(0, batchObj.totalLitersProduced - otherSold - discharges);
-        if (updatedLiters > availableLiters) {
-          return res.status(400).json({
-            error: `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters}L disponibles (este pedido requiere ${updatedLiters}L). Puedes seleccionar otro lote o registrarlo como Encargo Preventa (Sin lote).`,
-          });
-        }
       }
     }
 

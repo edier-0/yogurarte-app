@@ -749,13 +749,19 @@ function createOrderCardHtml(o) {
   if (o.items && o.items.length > 0) {
     const consolidatedMap = new Map();
     for (const i of o.items) {
-      const key = `${i.bottleSize}_${i.flavor}_${i.unitPrice}`;
+      const batchTag = i.batch ? `${i.batch.batchCode}` : (i.batchId ? `LOT-${i.batchId}` : '');
+      const key = `${i.bottleSize}_${i.flavor}_${i.unitPrice}_${batchTag}`;
       if (consolidatedMap.has(key)) {
         const existing = consolidatedMap.get(key);
         existing.quantity += (Number(i.quantity) || 1);
         existing.totalPrice += (Number(i.totalPrice) || 0);
       } else {
-        consolidatedMap.set(key, { ...i, quantity: Number(i.quantity) || 1, totalPrice: Number(i.totalPrice) || (i.quantity * i.unitPrice) });
+        consolidatedMap.set(key, {
+          ...i,
+          batchTag,
+          quantity: Number(i.quantity) || 1,
+          totalPrice: Number(i.totalPrice) || (i.quantity * i.unitPrice),
+        });
       }
     }
     const displayItems = Array.from(consolidatedMap.values());
@@ -764,7 +770,7 @@ function createOrderCardHtml(o) {
       .map(
         (i) => `
         <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-app); padding: 5px 10px; border-radius: var(--radius-sm); font-size: 0.83rem; margin-bottom: 4px; border: 1px solid var(--border-color);">
-          <span>🥛 <strong>${i.quantity}x</strong> Botella ${i.bottleSize} (${i.flavor}) ${i.unitPrice ? `<span style="font-size: 0.75rem; color: #0284C7; font-weight: 700; background: #E0F2FE; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">@ ${formatCOP(i.unitPrice)}</span>` : ''}</span>
+          <span>🥛 <strong>${i.quantity}x</strong> Botella ${i.bottleSize} (${i.flavor}) ${i.batchTag ? `<span class="badge" style="font-size: 0.72rem; background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-weight: 800; padding: 1px 5px; margin-left: 4px;">🍶 ${i.batchTag}</span>` : ''} ${i.unitPrice ? `<span style="font-size: 0.75rem; color: #0284C7; font-weight: 700; background: #E0F2FE; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">@ ${formatCOP(i.unitPrice)}</span>` : ''}</span>
           <strong style="color: var(--primary); font-size: 0.88rem;">${formatCOP(i.totalPrice)}</strong>
         </div>
       `
@@ -804,6 +810,36 @@ function createOrderCardHtml(o) {
     discountBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">🏷️ Descuento: -${formatCOP(o.discount)}</span>`;
   }
 
+  // Insignia de Lote(s) de producción o Preventa
+  const distinctBatchCodes = Array.from(new Set(
+    (o.items || [])
+      .map((it) => it.batch ? `${it.batch.batchCode}` : (it.batchId ? `LOT-${it.batchId}` : null))
+      .filter(Boolean)
+  ));
+
+  let batchBadgeHtml = '';
+  if (distinctBatchCodes.length > 1) {
+    batchBadgeHtml = `
+      <span class="badge" style="background: #FDF4FF; color: #86198F; border: 1px solid #F5D0FE; font-size: 0.73rem; font-weight: 800; padding: 2px 6px;">
+        🔀 Multi-Lote (${distinctBatchCodes.join(', ')})
+      </span>
+    `;
+  } else if (o.batch || distinctBatchCodes.length === 1) {
+    const code = o.batch ? o.batch.batchCode : distinctBatchCodes[0];
+    const flv = o.batch?.flavor ? ` (${o.batch.flavor})` : '';
+    batchBadgeHtml = `
+      <span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-size: 0.73rem; font-weight: 800; padding: 2px 6px;">
+        🍶 Lote: ${code}${flv}
+      </span>
+    `;
+  } else {
+    batchBadgeHtml = `
+      <span class="badge" style="background: #FFFBEB; color: #92400E; border: 1px solid #FCD34D; font-size: 0.73rem; font-weight: 800; padding: 2px 6px;">
+        🥣 Encargo Preventa (Sin lote aún)
+      </span>
+    `;
+  }
+
   return `
     <div class="order-card" data-id="${o.id}" style="${cardBorder}">
       <div class="order-card-header">
@@ -830,15 +866,7 @@ function createOrderCardHtml(o) {
           <span>📍</span> ${o.deliveryAddress || o.customer.address || 'Fonseca'}
         </div>
         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center;">
-          ${
-            o.batch
-              ? `<span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-size: 0.73rem; font-weight: 800; padding: 2px 6px;">
-                  🍶 Lote: ${o.batch.batchCode} (${o.batch.flavor})
-                 </span>`
-              : `<span class="badge" style="background: #FFFBEB; color: #92400E; border: 1px solid #FCD34D; font-size: 0.73rem; font-weight: 800; padding: 2px 6px;">
-                  🥣 Encargo Preventa (Sin lote aún)
-                 </span>`
-          }
+          ${batchBadgeHtml}
           ${deliveryBadge}
           ${deliveryFeeBadge}
           ${discountBadge}
@@ -1069,85 +1097,74 @@ export async function openOrderModal(orderData = null) {
     console.error('Error fetching batches or drivers for modal:', e);
   }
 
+  // Asegurar que si estamos editando, los lotes de los ítems existentes estén presentes en la lista
+  const allBatchesForModal = [...availableBatches];
+  if (isEditing) {
+    if (orderData.batch && !allBatchesForModal.some((b) => b.id === orderData.batch.id)) {
+      allBatchesForModal.push(orderData.batch);
+    }
+    (orderData.items || []).forEach((it) => {
+      if (it.batch && !allBatchesForModal.some((b) => b.id === it.batch.id)) {
+        allBatchesForModal.push(it.batch);
+      }
+    });
+  }
+
   const defaultDeliveryType = isEditing ? (orderData.deliveryType || 'PROPIO') : 'PROPIO';
   const defaultDeliveryDriverId = isEditing ? (orderData.deliveryDriverId || '') : '';
   const defaultDeliveryFee = isEditing ? (orderData.deliveryFee || 0) : 0;
 
-  // Función para encontrar el mejor lote activo disponible para un sabor con stock disponible
-  const findBestBatchForFlavor = (targetFlavor) => {
-    if (!targetFlavor || !availableBatches || availableBatches.length === 0) return null;
-    const tf = targetFlavor.toLowerCase().trim();
-
-    // Prioridad: Lote del mismo sabor con litros disponibles (> 0) y no agotado/descartado
-    const withLiters = availableBatches.filter(
-      (b) => (b.flavor || '').toLowerCase().trim() === tf &&
-             b.status !== 'AGOTADO' &&
-             b.status !== 'DESCARTADO' &&
-             (b.remainingAvailableLiters === undefined || b.remainingAvailableLiters > 0)
-    );
-    if (withLiters.length > 0) return withLiters[0];
-
-    // Si no hay lotes con litros disponibles, retornar null para que quede como preventa
-    return null;
-  };
-
-  const initialBatchId = orderData?.batchId || (orderData?.batch?.id) || '';
-  let initialBatchObj = availableBatches.find((b) => b.id === Number(initialBatchId));
-
-  // Si no es edición y no se pasó un lote específico, auto-seleccionar solo si hay un lote con litros disponibles
-  if (!isEditing && !initialBatchId && availableBatches.length > 0) {
-    const firstAvailable = availableBatches.find(
-      (b) => b.status !== 'AGOTADO' && b.status !== 'DESCARTADO' && (b.remainingAvailableLiters === undefined || b.remainingAvailableLiters > 0)
-    );
-    if (firstAvailable) {
-      initialBatchObj = findBestBatchForFlavor(firstAvailable.flavor) || firstAvailable;
-    }
-  }
-
-  const effectiveInitialBatchId = initialBatchObj ? String(initialBatchObj.id) : (initialBatchId ? String(initialBatchId) : '');
-  let currentBatchPrice1L = initialBatchObj?.price1L || (orderData?.batch?.price1L) || 12000;
-  let currentBatchPrice2L = initialBatchObj?.price2L || (orderData?.batch?.price2L) || 24000;
-
   // Lista inicial de ítems
-  let initialItems = [
-    { bottleSize: '1L', flavor: initialBatchObj?.flavor || 'Natural', quantity: 1, unitPrice: currentBatchPrice1L },
-  ];
+  let initialItems = [];
 
   if (isEditing && orderData.items && orderData.items.length > 0) {
-    const consolidated = [];
-    for (const it of orderData.items) {
+    initialItems = orderData.items.map((it) => {
+      const bId = it.batchId !== undefined && it.batchId !== null ? it.batchId : (orderData.batchId || null);
+      const matchingBatch = allBatchesForModal.find((b) => b.id === Number(bId));
+      const defPrice = it.bottleSize === '2L' ? (matchingBatch?.price2L || 24000) : (matchingBatch?.price1L || 12000);
       const itPrice = it.unitPrice !== undefined && !isNaN(Number(it.unitPrice)) && Number(it.unitPrice) >= 0
         ? Number(it.unitPrice)
-        : (it.bottleSize === '2L' ? currentBatchPrice2L : currentBatchPrice1L);
-      const existing = consolidated.find(
-        (c) => c.bottleSize === it.bottleSize && c.flavor.toLowerCase() === it.flavor.toLowerCase() && c.unitPrice === itPrice
-      );
-      if (existing) {
-        existing.quantity += (Number(it.quantity) || 1);
-      } else {
-        consolidated.push({
-          bottleSize: it.bottleSize,
-          flavor: it.flavor,
-          quantity: Number(it.quantity) || 1,
-          unitPrice: itPrice,
-        });
-      }
-    }
-    initialItems = consolidated;
+        : defPrice;
+      return {
+        batchId: bId,
+        bottleSize: it.bottleSize || '1L',
+        flavor: it.flavor || (matchingBatch?.flavor || orderData.flavor || 'Natural'),
+        quantity: Number(it.quantity) || 1,
+        unitPrice: itPrice,
+      };
+    });
   } else if (isEditing) {
+    const bId = orderData.batchId || null;
+    const matchingBatch = allBatchesForModal.find((b) => b.id === Number(bId));
+    const defPrice = orderData.bottleSize === '2L' ? (matchingBatch?.price2L || 24000) : (matchingBatch?.price1L || 12000);
     initialItems = [
       {
+        batchId: bId,
         bottleSize: orderData.bottleSize || '1L',
-        flavor: orderData.flavor || (initialBatchObj?.flavor || 'Natural'),
+        flavor: orderData.flavor || (matchingBatch?.flavor || 'Natural'),
         quantity: orderData.quantityBottles || 1,
-        unitPrice: orderData.unitPrice || currentBatchPrice1L,
+        unitPrice: orderData.unitPrice || defPrice,
+      },
+    ];
+  } else {
+    // Para pedido nuevo: auto-seleccionar el primer lote activo con litros disponibles si existe
+    const firstAvailable = allBatchesForModal.find(
+      (b) => b.status !== 'AGOTADO' && b.status !== 'DESCARTADO' && (b.remainingAvailableLiters === undefined || b.remainingAvailableLiters > 0)
+    );
+    initialItems = [
+      {
+        batchId: firstAvailable ? firstAvailable.id : null,
+        bottleSize: '1L',
+        flavor: firstAvailable ? firstAvailable.flavor : 'Natural Artesanal',
+        quantity: 1,
+        unitPrice: firstAvailable ? (firstAvailable.price1L || 12000) : 12000,
       },
     ];
   }
 
   modalOverlay.innerHTML = `
     <div class="modal-overlay active" id="orderModal">
-      <div class="modal-card" style="max-width: 580px;">
+      <div class="modal-card" style="max-width: 620px;">
         <div class="modal-header">
           <h3 class="modal-title">${modalTitle}</h3>
           <button class="modal-close-btn" id="btnCloseOrderModal">✕</button>
@@ -1220,33 +1237,14 @@ export async function openOrderModal(orderData = null) {
               </div>
             </div>
 
-            <!-- Selector de Lote de Producción (Opcional/Recomendado) -->
+            <!-- Información / Banner de Lotes Flexibles -->
             <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 14px;">
-              <label class="form-label" style="font-size: 0.85rem; font-weight: 800; color: var(--primary); margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
-                <span>🍶 Lote de Producción (Escoge de dónde vendes)</span>
-                <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">Auto-asignado por sabor</span>
-              </label>
-              <select id="orderBatchSelect" class="form-select" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">
-                <option value="" data-price1l="12000" data-price2l="24000" data-flavor="">-- 🥣 Encargo Preventa (Sin lote aún - Se vinculará al producir) --</option>
-                ${availableBatches
-                  .map(
-                    (b) => {
-                      const remaining = b.remainingAvailableLiters !== undefined ? b.remainingAvailableLiters : Math.max(0, b.totalLitersProduced - (b.totalSoldLiters || 0) - (b.totalDischargedLiters || 0));
-                      const isFull = remaining <= 0;
-                      const litersText = ` • ${remaining.toFixed(1)}L disp.`;
-                      const isSelected = String(effectiveInitialBatchId) === String(b.id);
-                      const statusBadge = isFull ? '🔴 Lleno' : (b.status === 'AGOTADO' ? '⚠️ Agotado' : '✅');
-                      return `
-                  <option value="${b.id}" data-price1l="${b.price1L || 12000}" data-price2l="${b.price2L || 24000}" data-flavor="${b.flavor}" data-remaining="${remaining}" ${isSelected ? 'selected' : ''}>
-                    🍶 ${b.batchCode} • ${b.flavor}${litersText} (1L: ${formatCOP(b.price1L || 12000)} • 2L: ${formatCOP(b.price2L || 24000)}) ${statusBadge}
-                  </option>
-                `;
-                    }
-                  )
-                  .join('')}
-              </select>
-              <div id="batchHintDisplay" style="font-size: 0.75rem; color: ${effectiveInitialBatchId ? '#15803D' : 'var(--text-muted)'}; margin-top: 4px;">
-                ${effectiveInitialBatchId && initialBatchObj ? `✨ Vinculado automáticamente a: <strong>${initialBatchObj.batchCode} (${initialBatchObj.flavor}${initialBatchObj.remainingAvailableLiters !== undefined ? ` • ${initialBatchObj.remainingAvailableLiters}L disp.` : ''})</strong>` : '💡 Al seleccionar o cambiar el sabor, se vinculará automáticamente al lote activo con litros disponibles.'}
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                <span style="font-size: 0.84rem; font-weight: 800; color: var(--primary);">🍶 Lotes de Producción y Sabores Flexibles</span>
+                <span style="font-size: 0.72rem; color: #6D28D9; font-weight: 800; background: #EDE9FE; padding: 2px 7px; border-radius: 4px;">Multi-Lote Activo</span>
+              </div>
+              <div id="batchHintDisplay" style="font-size: 0.76rem; color: #5B21B6; line-height: 1.35;">
+                💡 Puedes combinar productos de diferentes lotes (ej: Natural Artesanal y Bajo en Azúcar) o preventas en un solo pedido.
               </div>
             </div>
 
@@ -1261,14 +1259,14 @@ export async function openOrderModal(orderData = null) {
                 </button>
               </div>
 
-              <!-- Cabecera de columnas para máxima claridad visual -->
+              <!-- Cabecera de columnas -->
               <div style="display: flex; gap: 6px; font-size: 0.72rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; padding: 0 4px; margin-bottom: 6px;">
-                <span style="flex: 1.1; min-width: 85px;">Envase</span>
-                <span style="flex: 1.2; min-width: 90px;">Sabor</span>
-                <span style="width: 48px; text-align: center;">Cant.</span>
-                <span style="flex: 1.2; min-width: 95px; text-align: right;">Precio c/u ($)</span>
-                <span style="min-width: 70px; text-align: right;">Subtotal</span>
-                <span style="width: 28px;"></span>
+                <span style="width: 75px;">Envase</span>
+                <span style="flex: 1.6; min-width: 140px;">Lote de Origen / Sabor</span>
+                <span style="width: 44px; text-align: center;">Cant.</span>
+                <span style="width: 80px; text-align: right;">Precio ($)</span>
+                <span style="width: 68px; text-align: right;">Subtotal</span>
+                <span style="width: 24px;"></span>
               </div>
 
               <div id="orderItemsContainer" style="display: flex; flex-direction: column; gap: 8px;"></div>
@@ -1375,7 +1373,6 @@ export async function openOrderModal(orderData = null) {
   const totalInput = document.getElementById('orderTotalAmount');
   const paidInput = document.getElementById('orderPaidAmount');
   const pendingDisplay = document.getElementById('orderPendingDisplay');
-  const batchSelect = document.getElementById('orderBatchSelect');
   const batchHintDisplay = document.getElementById('batchHintDisplay');
   const deliveryTypeSelect = document.getElementById('orderDeliveryType');
   const driverSelectGroup = document.getElementById('driverSelectGroup');
@@ -1409,65 +1406,166 @@ export async function openOrderModal(orderData = null) {
     recalculateOrderTotals('PAID');
   });
 
-  // Función para renderizar una fila de producto
-  function addProductRow(item = { bottleSize: '1L', flavor: 'Natural', quantity: 1, unitPrice: currentBatchPrice1L }) {
+  // Lista de sabores predeterminados para preventa
+  const standardFlavors = [
+    'Natural Artesanal',
+    'Natural Bajo en Azúcar',
+    'Natural Sin Azúcar (Stevia)',
+    'Fresa',
+    'Melocotón',
+    'Mora',
+    'Maracuyá',
+    'Guanábana',
+    'Arequipe',
+  ];
+
+  // Función para renderizar una fila de producto individual con selección de lote/sabor
+  function addProductRow(item = { bottleSize: '1L', flavor: 'Natural Artesanal', quantity: 1, unitPrice: 12000, batchId: null }) {
     const row = document.createElement('div');
     row.className = 'order-item-row';
     row.style.cssText = 'display: flex; gap: 6px; align-items: center; background: #FFFFFF; padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); flex-wrap: wrap;';
 
-    const defaultPriceForSize = item.bottleSize === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
+    const itemBatchId = item.batchId ? Number(item.batchId) : null;
+    const matchingBatch = itemBatchId ? allBatchesForModal.find((b) => b.id === itemBatchId) : null;
+    const defaultPriceForSize = item.bottleSize === '2L'
+      ? (matchingBatch?.price2L || 24000)
+      : (matchingBatch?.price1L || 12000);
+
     const itemPrice = item.unitPrice !== undefined && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) >= 0
       ? Number(item.unitPrice)
       : defaultPriceForSize;
 
+    // Determinar valor inicial del selector de lote/fuente
+    let initialSourceValue = '';
+    let isCustomFlavor = false;
+
+    if (itemBatchId && matchingBatch) {
+      initialSourceValue = `BATCH_${matchingBatch.id}`;
+    } else {
+      const matchStd = standardFlavors.find((f) => f.toLowerCase() === (item.flavor || '').toLowerCase());
+      if (matchStd) {
+        initialSourceValue = `PRE_${matchStd}`;
+      } else if (item.flavor) {
+        initialSourceValue = 'PRE_CUSTOM';
+        isCustomFlavor = true;
+      } else {
+        initialSourceValue = 'PRE_Natural Artesanal';
+      }
+    }
+
+    // Construir opciones de Lotes Activos
+    const activeBatchOptions = allBatchesForModal
+      .map((b) => {
+        const remaining = b.remainingAvailableLiters !== undefined ? b.remainingAvailableLiters : Math.max(0, b.totalLitersProduced - (b.totalSoldLiters || 0) - (b.totalDischargedLiters || 0));
+        const isFull = remaining <= 0 && b.id !== itemBatchId;
+        const litersText = ` • ${remaining.toFixed(1)}L disp.`;
+        const val = `BATCH_${b.id}`;
+        const isSelected = initialSourceValue === val;
+        const statusIcon = isFull ? '🔴' : (b.status === 'AGOTADO' ? '⚠️' : '✅');
+        return `
+          <option value="${val}" data-batch-id="${b.id}" data-flavor="${escapeHtml(b.flavor)}" data-price1l="${b.price1L || 12000}" data-price2l="${b.price2L || 24000}" data-remaining="${remaining}" ${isSelected ? 'selected' : ''}>
+            ${statusIcon} ${b.batchCode} • ${b.flavor}${litersText}
+          </option>
+        `;
+      })
+      .join('');
+
+    // Construir opciones de Preventa
+    const preOptions = standardFlavors
+      .map((f) => {
+        const val = `PRE_${f}`;
+        const isSelected = initialSourceValue === val;
+        return `<option value="${val}" data-flavor="${escapeHtml(f)}" data-price1l="12000" data-price2l="24000" ${isSelected ? 'selected' : ''}>🥣 Preventa: ${f}</option>`;
+      })
+      .join('');
+
     row.innerHTML = `
-      <select class="form-select item-size" style="flex: 1.1; font-size: 0.82rem; padding: 6px 6px; min-width: 85px;" title="Tamaño de botella">
+      <select class="form-select item-size" style="width: 75px; font-size: 0.82rem; padding: 6px 4px;" title="Tamaño de envase">
         <option value="1L" ${item.bottleSize === '1L' ? 'selected' : ''}>1 Litro</option>
         <option value="2L" ${item.bottleSize === '2L' ? 'selected' : ''}>2 Litros</option>
       </select>
 
-      <select class="form-select item-flavor" style="flex: 1.2; font-size: 0.82rem; padding: 6px 6px; min-width: 90px;" title="Sabor del yogur">
-        <option value="Natural" ${item.flavor === 'Natural' ? 'selected' : ''}>Natural</option>
-        <option value="Fresa" ${item.flavor === 'Fresa' ? 'selected' : ''}>Fresa</option>
-        <option value="Melocotón" ${item.flavor === 'Melocotón' ? 'selected' : ''}>Melocotón</option>
-        <option value="Mora" ${item.flavor === 'Mora' ? 'selected' : ''}>Mora</option>
-        <option value="Maracuyá" ${item.flavor === 'Maracuyá' ? 'selected' : ''}>Maracuyá</option>
-      </select>
-
-      <input type="number" class="form-input item-qty" min="1" value="${item.quantity || 1}" style="width: 48px; text-align: center; font-weight: 700; padding: 6px 2px;" title="Cantidad de botellas" placeholder="Cant." />
-
-      <div style="display: flex; align-items: center; gap: 2px; flex: 1.2; min-width: 95px;" title="Precio unitario por botella (Modificable para precios al por mayor o especiales)">
-        <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700;">$</span>
-        <input type="number" class="form-input item-price" min="0" step="500" value="${itemPrice}" style="font-size: 0.82rem; font-weight: 800; padding: 6px 4px; text-align: right; color: #0369A1; background: #F0F9FF;" placeholder="Precio c/u" />
+      <div style="flex: 1.6; min-width: 140px; display: flex; flex-direction: column; gap: 4px;">
+        <select class="form-select item-batch-source" style="font-size: 0.82rem; padding: 6px 6px; font-weight: 700;" title="Lote de producción o Preventa">
+          <optgroup label="🍶 Lotes de Producción">
+            ${activeBatchOptions}
+          </optgroup>
+          <optgroup label="🥣 Encargos Preventa (Sin Lote Aún)">
+            ${preOptions}
+            <option value="PRE_CUSTOM" ${isCustomFlavor ? 'selected' : ''}>✨ Preventa: Otro Sabor Personalizado...</option>
+          </optgroup>
+        </select>
+        <input 
+          type="text" 
+          class="form-input item-custom-flavor" 
+          placeholder="Escribe el sabor personalizado..." 
+          value="${isCustomFlavor ? escapeHtml(item.flavor) : ''}" 
+          style="font-size: 0.8rem; padding: 4px 6px; display: ${isCustomFlavor ? 'block' : 'none'}; border-color: #A855F7; background: #FAF5FF;" 
+        />
       </div>
 
-      <span class="item-subtotal-display" style="font-size: 0.85rem; font-weight: 800; color: var(--primary); min-width: 70px; text-align: right;">
+      <input type="number" class="form-input item-qty" min="1" value="${item.quantity || 1}" style="width: 44px; text-align: center; font-weight: 700; padding: 6px 2px;" title="Cantidad de botellas" placeholder="Cant." />
+
+      <div style="display: flex; align-items: center; gap: 2px; width: 80px;" title="Precio unitario por botella (Modificable para precios especiales)">
+        <input type="number" class="form-input item-price" min="0" step="500" value="${itemPrice}" style="font-size: 0.82rem; font-weight: 800; padding: 6px 4px; text-align: right; color: #0369A1; background: #F0F9FF; width: 100%;" placeholder="Precio" />
+      </div>
+
+      <span class="item-subtotal-display" style="font-size: 0.85rem; font-weight: 800; color: var(--primary); width: 68px; text-align: right;">
         ${formatCOP((item.quantity || 1) * itemPrice)}
       </span>
 
-      <button type="button" class="btn btn-outline btn-sm btn-remove-item" style="color: var(--danger); padding: 4px 7px; font-size: 0.85rem;" title="Quitar producto">
+      <button type="button" class="btn btn-outline btn-sm btn-remove-item" style="color: var(--danger); padding: 4px 6px; font-size: 0.85rem; width: 24px; text-align: center;" title="Quitar producto">
         ✕
       </button>
     `;
 
     const sizeSelect = row.querySelector('.item-size');
-    const flavorSelect = row.querySelector('.item-flavor');
+    const sourceSelect = row.querySelector('.item-batch-source');
+    const customFlavorInput = row.querySelector('.item-custom-flavor');
     const qtyInput = row.querySelector('.item-qty');
     const priceInput = row.querySelector('.item-price');
     const removeBtn = row.querySelector('.btn-remove-item');
 
     let isPriceManuallyEdited = item.unitPrice !== undefined && Number(item.unitPrice) !== defaultPriceForSize;
 
+    const getRowStandardPrice = () => {
+      const selectedOpt = sourceSelect.selectedOptions[0];
+      const is2L = sizeSelect.value === '2L';
+      if (selectedOpt) {
+        return is2L
+          ? (Number(selectedOpt.dataset.price2l) || 24000)
+          : (Number(selectedOpt.dataset.price1l) || 12000);
+      }
+      return is2L ? 24000 : 12000;
+    };
+
     const updateRow = () => {
       recalculateOrderTotals('ITEMS');
     };
 
-    sizeSelect.addEventListener('change', (e) => {
+    sizeSelect.addEventListener('change', () => {
       if (!isPriceManuallyEdited) {
-        priceInput.value = e.target.value === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
+        priceInput.value = getRowStandardPrice();
       }
       updateRow();
     });
+
+    sourceSelect.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val === 'PRE_CUSTOM') {
+        customFlavorInput.style.display = 'block';
+        customFlavorInput.focus();
+      } else {
+        customFlavorInput.style.display = 'none';
+      }
+
+      if (!isPriceManuallyEdited) {
+        priceInput.value = getRowStandardPrice();
+      }
+      updateRow();
+    });
+
+    customFlavorInput.addEventListener('input', updateRow);
 
     priceInput.addEventListener('input', () => {
       isPriceManuallyEdited = true;
@@ -1475,47 +1573,6 @@ export async function openOrderModal(orderData = null) {
     });
 
     qtyInput.addEventListener('input', updateRow);
-
-    // Auto-vincular lote cuando el usuario cambia el sabor del producto
-    flavorSelect.addEventListener('change', (e) => {
-      const selectedFlavor = e.target.value;
-      
-      const allRows = itemsContainer.querySelectorAll('.order-item-row');
-      const allFlavors = Array.from(allRows).map((r) => r.querySelector('.item-flavor')?.value);
-      const isSingleFlavor = allFlavors.every((f) => f === selectedFlavor);
-
-      if (isSingleFlavor || allRows.length === 1) {
-        const bestBatch = findBestBatchForFlavor(selectedFlavor);
-        if (bestBatch) {
-          batchSelect.value = String(bestBatch.id);
-          currentBatchPrice1L = Number(bestBatch.price1L) || 12000;
-          currentBatchPrice2L = Number(bestBatch.price2L) || 24000;
-
-          // Actualizar precios estándar en filas no editadas
-          itemsContainer.querySelectorAll('.order-item-row').forEach((r) => {
-            const sz = r.querySelector('.item-size');
-            const pr = r.querySelector('.item-price');
-            if (sz && pr && !isPriceManuallyEdited) {
-              pr.value = sz.value === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
-            }
-          });
-
-          if (batchHintDisplay) {
-            const litersInfo = bestBatch.remainingAvailableLiters !== undefined ? ` • ${bestBatch.remainingAvailableLiters}L disponibles` : '';
-            batchHintDisplay.innerHTML = `✨ Lote cambiado automáticamente a: <strong>${bestBatch.batchCode} (${bestBatch.flavor}${litersInfo})</strong>. Si deseas otro lote, puedes cambiarlo arriba.`;
-            batchHintDisplay.style.color = '#15803D';
-          }
-          showToast(`🍶 Lote asignado: ${bestBatch.batchCode} (${bestBatch.flavor})`, 'info');
-        } else {
-          batchSelect.value = '';
-          if (batchHintDisplay) {
-            batchHintDisplay.innerHTML = `🥣 No hay lotes activos con litros disponibles de sabor <strong>${selectedFlavor}</strong>. Quedará registrado como encargo preventa.`;
-            batchHintDisplay.style.color = 'var(--text-muted)';
-          }
-        }
-      }
-      recalculateOrderTotals('ITEMS');
-    });
 
     removeBtn.addEventListener('click', () => {
       const allRows = itemsContainer.querySelectorAll('.order-item-row');
@@ -1566,18 +1623,29 @@ export async function openOrderModal(orderData = null) {
       }
     }
 
+    // Mapa para consolidar consumo de litros por lote individual
+    const batchUsageMap = new Map();
+
     // Calcular subtotales por fila
     rows.forEach((row) => {
       const size = row.querySelector('.item-size')?.value || '1L';
       const qty = Number(row.querySelector('.item-qty')?.value) || 1;
+      const sourceSelect = row.querySelector('.item-batch-source');
+      const selectedOpt = sourceSelect?.selectedOptions[0];
+      const defaultPrice = size === '2L' ? (Number(selectedOpt?.dataset.price2l) || 24000) : (Number(selectedOpt?.dataset.price1l) || 12000);
       const priceInput = row.querySelector('.item-price');
-      const defaultPriceForSize = size === '2L' ? currentBatchPrice2L : currentBatchPrice1L;
-      const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : defaultPriceForSize;
+      const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : defaultPrice;
       const rowTotal = qty * unitPrice;
       const rowLiters = size === '2L' ? qty * 2 : qty * 1;
 
       sumLiters += rowLiters;
       sumProductsTotal += rowTotal;
+
+      // Agrupar litros por lote si proviene de un lote activo
+      if (selectedOpt && selectedOpt.value.startsWith('BATCH_')) {
+        const bId = Number(selectedOpt.dataset.batchId);
+        batchUsageMap.set(bId, (batchUsageMap.get(bId) || 0) + rowLiters);
+      }
 
       const subDisplay = row.querySelector('.item-subtotal-display');
       if (subDisplay) subDisplay.textContent = formatCOP(rowTotal);
@@ -1604,63 +1672,72 @@ export async function openOrderModal(orderData = null) {
       pendingDisplay.value = formatCOP(pending);
     }
 
-    // Validar capacidad de lote en tiempo real en el hint
-    if (batchSelect && batchSelect.value && batchHintDisplay) {
-      const selectedOpt = batchSelect.selectedOptions[0];
-      const chosenBatch = availableBatches.find((b) => b.id === Number(batchSelect.value));
-      if (chosenBatch && chosenBatch.totalLitersProduced !== undefined) {
-        const isSameBatch = isEditing && String(orderData?.batchId) === String(batchSelect.value);
-        const previousOrderLiters = isSameBatch ? (orderData?.totalLiters || 0) : 0;
-        const remainingLiters = chosenBatch.remainingAvailableLiters !== undefined ? chosenBatch.remainingAvailableLiters : chosenBatch.totalLitersProduced;
-        const availableLitersForOrder = Math.max(0, remainingLiters + previousOrderLiters);
+    // Validar capacidad en tiempo real por cada lote utilizado
+    if (batchHintDisplay) {
+      const capacityErrors = [];
+      const batchSummaries = [];
 
-        if (sumLiters > availableLitersForOrder) {
-          batchHintDisplay.innerHTML = `🚨 <strong>Capacidad excedida:</strong> El lote "${chosenBatch.batchCode}" solo tiene ${availableLitersForOrder}L disponibles, pero este pedido requiere ${sumLiters}L (máximo producido: ${chosenBatch.totalLitersProduced}L).<br/><span style="font-size:0.75rem; color:#991B1B;">💡 Tip: Crea un nuevo lote de producción o selecciona arriba <strong>"-- 🥣 Encargo Preventa (Sin lote aún) --"</strong>.</span>`;
-          batchHintDisplay.style.color = '#DC2626';
-        } else {
-          batchHintDisplay.innerHTML = `✅ Lote seleccionado: <strong>${selectedOpt ? selectedOpt.text.replace(/^[🍶\s]*/, '') : ''}</strong> (${availableLitersForOrder}L disponibles). Precios ref: 1L: ${formatCOP(currentBatchPrice1L)} • 2L: ${formatCOP(currentBatchPrice2L)}`;
-          batchHintDisplay.style.color = '#15803D';
+      for (const [bId, litersRequired] of batchUsageMap.entries()) {
+        const chosenBatch = allBatchesForModal.find((b) => b.id === bId);
+        if (chosenBatch && chosenBatch.totalLitersProduced !== undefined) {
+          // Litros que ya tenía asignados este pedido en el lote antes de editar
+          let prevOrderLitersForThisBatch = 0;
+          if (isEditing && orderData?.items) {
+            prevOrderLitersForThisBatch = orderData.items
+              .filter((it) => (it.batchId || orderData.batchId) === bId)
+              .reduce((s, it) => s + (it.bottleSize === '2L' ? it.quantity * 2 : it.quantity * 1), 0);
+          } else if (isEditing && orderData?.batchId === bId) {
+            prevOrderLitersForThisBatch = orderData.totalLiters || 0;
+          }
+
+          const remaining = chosenBatch.remainingAvailableLiters !== undefined ? chosenBatch.remainingAvailableLiters : chosenBatch.totalLitersProduced;
+          const availableForOrder = Math.max(0, remaining + prevOrderLitersForThisBatch);
+
+          if (litersRequired > availableForOrder) {
+            capacityErrors.push(`🚨 <strong>Capacidad excedida en ${chosenBatch.batchCode} (${chosenBatch.flavor}):</strong> Requiere ${litersRequired}L pero solo hay ${availableForOrder}L disponibles.`);
+          } else {
+            batchSummaries.push(`🍶 <strong>${chosenBatch.batchCode} (${chosenBatch.flavor}):</strong> ${litersRequired}L asignados (${(availableForOrder - litersRequired).toFixed(1)}L quedarán disp.)`);
+          }
         }
+      }
+
+      if (capacityErrors.length > 0) {
+        batchHintDisplay.innerHTML = `${capacityErrors.join('<br/>')}<br/><span style="font-size:0.75rem; color:#991B1B;">💡 Tip: Reduce la cantidad o selecciona la opción de <strong>"🥣 Preventa"</strong> para esos litros.</span>`;
+        batchHintDisplay.style.color = '#DC2626';
+      } else if (batchSummaries.length > 0) {
+        batchHintDisplay.innerHTML = `✅ ${batchSummaries.join(' • ')}`;
+        batchHintDisplay.style.color = '#15803D';
+      } else {
+        batchHintDisplay.innerHTML = `🥣 <strong>Encargo Preventa (Sin Lote):</strong> Los productos quedarán registrados para vincularse al lote que prepares posteriormente.`;
+        batchHintDisplay.style.color = '#B45309';
       }
     }
 
     isInternalRecalculating = false;
   }
 
-  // Listener para cambio de lote de producción
-  batchSelect?.addEventListener('change', (e) => {
-    const selectedOpt = e.target.selectedOptions[0];
-    if (selectedOpt && selectedOpt.value) {
-      currentBatchPrice1L = Number(selectedOpt.dataset.price1l) || 12000;
-      currentBatchPrice2L = Number(selectedOpt.dataset.price2l) || 24000;
-      const batchFlavor = selectedOpt.dataset.flavor;
-
-      // Actualizar precios en filas
-      itemsContainer.querySelectorAll('.order-item-row').forEach((row) => {
-        // Si el lote tiene un sabor específico y el ítem está en Natural, sugerir el sabor del lote
-        if (batchFlavor) {
-          const flavorSelect = row.querySelector('.item-flavor');
-          if (flavorSelect && (flavorSelect.value === 'Natural' || itemsContainer.querySelectorAll('.order-item-row').length === 1)) {
-            flavorSelect.value = batchFlavor;
-          }
-        }
-      });
-    } else {
-      if (batchHintDisplay) {
-        batchHintDisplay.innerHTML = `💡 Al seleccionar un lote, se aplicarán automáticamente sus precios de venta configurados.`;
-        batchHintDisplay.style.color = 'var(--text-muted)';
-      }
-    }
-    recalculateOrderTotals('ITEMS');
-  });
-
   // Inicializar filas existentes
   initialItems.forEach((it) => addProductRow(it));
 
   // Botón para agregar más productos
   document.getElementById('btnAddOrderItem')?.addEventListener('click', () => {
-    const selectedBatchFlavor = batchSelect?.selectedOptions[0]?.dataset?.flavor || 'Natural';
-    addProductRow({ bottleSize: '1L', flavor: selectedBatchFlavor, quantity: 1, unitPrice: currentBatchPrice1L });
+    // Tomar por defecto el lote del último producto o primer disponible
+    const lastRowSource = itemsContainer.querySelector('.order-item-row:last-child .item-batch-source')?.value;
+    let newBatchId = null;
+    let newFlavor = 'Natural Artesanal';
+    let newPrice = 12000;
+
+    if (lastRowSource && lastRowSource.startsWith('BATCH_')) {
+      const lastBId = Number(lastRowSource.replace('BATCH_', ''));
+      const bObj = allBatchesForModal.find((b) => b.id === lastBId);
+      if (bObj) {
+        newBatchId = bObj.id;
+        newFlavor = bObj.flavor;
+        newPrice = bObj.price1L || 12000;
+      }
+    }
+
+    addProductRow({ bottleSize: '1L', flavor: newFlavor, quantity: 1, unitPrice: newPrice, batchId: newBatchId });
     if (modalBody) {
       setTimeout(() => {
         modalBody.scrollTo({ top: modalBody.scrollHeight / 2, behavior: 'smooth' });
@@ -1822,10 +1899,8 @@ export async function openOrderModal(orderData = null) {
 
   if (!isEditing) {
     phoneInput?.addEventListener('blur', async () => {
-      // Retardo pequeño para permitir que el clic en una sugerencia se procese primero
       setTimeout(() => {
         const phone = (phoneInput.value || '').trim();
-        // Solo autocompletar si el campo de nombre aún está vacío Y es una coincidencia exacta inequívoca
         if (!nameInput.value.trim() && phone.length >= 4) {
           const isUsername = phone.startsWith('@') || /[a-zA-Z]/.test(phone);
           let foundCust = null;
@@ -1880,71 +1955,83 @@ export async function openOrderModal(orderData = null) {
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    let selectedBatchId = batchSelect?.value || null;
-
-    // Recoger todos los ítems de las filas
+    // Recoger todos los ítems de las filas con sus lotes respectivos
     const items = [];
-    itemsContainer.querySelectorAll('.order-item-row').forEach((row) => {
+    const batchUsageMap = new Map();
+
+    const rows = itemsContainer.querySelectorAll('.order-item-row');
+    for (const row of rows) {
       const size = row.querySelector('.item-size').value;
-      const flavor = row.querySelector('.item-flavor').value;
+      const sourceSelect = row.querySelector('.item-batch-source');
+      const customFlavorInput = row.querySelector('.item-custom-flavor');
+      const selectedOpt = sourceSelect.selectedOptions[0];
+
+      let itemBatchId = null;
+      let flavor = 'Natural Artesanal';
+
+      if (sourceSelect.value.startsWith('BATCH_')) {
+        itemBatchId = Number(selectedOpt.dataset.batchId);
+        flavor = selectedOpt.dataset.flavor || 'Natural';
+      } else if (sourceSelect.value === 'PRE_CUSTOM') {
+        itemBatchId = null;
+        flavor = (customFlavorInput?.value || 'Natural Personalizado').trim() || 'Natural Personalizado';
+      } else if (sourceSelect.value.startsWith('PRE_')) {
+        itemBatchId = null;
+        flavor = selectedOpt.dataset.flavor || 'Natural Artesanal';
+      }
+
       const qty = Number(row.querySelector('.item-qty').value) || 1;
       const priceInput = row.querySelector('.item-price');
-      const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : (size === '2L' ? currentBatchPrice2L : currentBatchPrice1L);
+      const defaultPrice = size === '2L' ? (Number(selectedOpt?.dataset.price2l) || 24000) : (Number(selectedOpt?.dataset.price1l) || 12000);
+      const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : defaultPrice;
+
       items.push({
-        batchId: selectedBatchId ? Number(selectedBatchId) : null,
+        batchId: itemBatchId,
         bottleSize: size,
         flavor,
         quantity: qty,
         unitPrice,
       });
-    });
 
-    // Validar concordancia de sabor entre el lote seleccionado y los productos
-    if (selectedBatchId) {
-      const chosenBatch = availableBatches.find((b) => b.id === Number(selectedBatchId));
-      if (chosenBatch && chosenBatch.flavor) {
-        const batchFlavorNorm = (chosenBatch.flavor || '').toLowerCase().trim();
-        const itemFlavors = items.map((it) => (it.flavor || '').toLowerCase().trim());
-        const isMismatched = itemFlavors.length > 0 && itemFlavors.every((f) => f !== batchFlavorNorm);
-
-        if (isMismatched) {
-          const productFlavorsStr = Array.from(new Set(items.map((it) => it.flavor))).join(', ');
-          const correctBatch = findBestBatchForFlavor(items[0].flavor);
-          if (correctBatch) {
-            selectedBatchId = String(correctBatch.id);
-            if (batchSelect) batchSelect.value = selectedBatchId;
-            items.forEach((it) => { it.batchId = Number(selectedBatchId); });
-            showToast(`⚠️ El lote se ajustó a "${correctBatch.batchCode} (${correctBatch.flavor})" para coincidir con el sabor (${productFlavorsStr}).`, 'info');
-          } else {
-            // Pasar a preventa sin lote
-            selectedBatchId = null;
-            if (batchSelect) batchSelect.value = '';
-            items.forEach((it) => { it.batchId = null; });
-            showToast(`🥣 Como no hay lotes con stock de "${productFlavorsStr}", el pedido se registrará como Encargo Preventa (Sin lote).`, 'info');
-          }
-        }
+      if (itemBatchId) {
+        const itemLiters = size === '2L' ? qty * 2 : qty * 1;
+        batchUsageMap.set(itemBatchId, (batchUsageMap.get(itemBatchId) || 0) + itemLiters);
       }
     }
 
-    // Validar capacidad máxima del lote seleccionado (solo si tiene lote asignado)
-    if (selectedBatchId) {
-      const chosenBatch = availableBatches.find((b) => b.id === Number(selectedBatchId));
-      if (chosenBatch && chosenBatch.totalLitersProduced !== undefined) {
-        const orderLiters = items.reduce((sum, it) => sum + (it.bottleSize === '2L' ? it.quantity * 2 : it.quantity * 1), 0);
-        const isSameBatch = isEditing && String(orderData?.batchId) === String(selectedBatchId);
-        const previousOrderLiters = isSameBatch ? (orderData?.totalLiters || 0) : 0;
-        const remainingLiters = chosenBatch.remainingAvailableLiters !== undefined ? chosenBatch.remainingAvailableLiters : chosenBatch.totalLitersProduced;
-        const availableLitersForOrder = Math.max(0, remainingLiters + previousOrderLiters);
+    if (items.length === 0) {
+      showToast('El pedido debe tener al menos 1 producto', 'warning');
+      return;
+    }
 
-        if (orderLiters > availableLitersForOrder) {
-          showToast(`⚠️ Capacidad excedida: El lote "${chosenBatch.batchCode}" solo tiene ${availableLitersForOrder}L disponibles (este pedido requiere ${orderLiters}L). Selecciona otro lote o déjalo en Encargo Preventa.`, 'warning');
+    // Validar capacidad de cada lote individualmente antes de enviar
+    for (const [bId, litersRequired] of batchUsageMap.entries()) {
+      const chosenBatch = allBatchesForModal.find((b) => b.id === bId);
+      if (chosenBatch && chosenBatch.totalLitersProduced !== undefined) {
+        let prevOrderLitersForThisBatch = 0;
+        if (isEditing && orderData?.items) {
+          prevOrderLitersForThisBatch = orderData.items
+            .filter((it) => (it.batchId || orderData.batchId) === bId)
+            .reduce((s, it) => s + (it.bottleSize === '2L' ? it.quantity * 2 : it.quantity * 1), 0);
+        } else if (isEditing && orderData?.batchId === bId) {
+          prevOrderLitersForThisBatch = orderData.totalLiters || 0;
+        }
+
+        const remaining = chosenBatch.remainingAvailableLiters !== undefined ? chosenBatch.remainingAvailableLiters : chosenBatch.totalLitersProduced;
+        const availableForOrder = Math.max(0, remaining + prevOrderLitersForThisBatch);
+
+        if (litersRequired > availableForOrder) {
+          showToast(`⚠️ Capacidad excedida: El lote "${chosenBatch.batchCode} (${chosenBatch.flavor})" solo tiene ${availableForOrder}L disponibles (este pedido requiere ${litersRequired}L).`, 'warning');
           return;
         }
       }
-    } else {
-      // Asegurar que todos los ítems tengan batchId null si es preventa
-      items.forEach((it) => { it.batchId = null; });
     }
+
+    // Si todos los ítems comparten el mismo batchId, se pasa como batchId global; si hay mezcla o preventa, se pasa null
+    const uniqueBatchIds = Array.from(new Set(items.map((it) => it.batchId)));
+    const finalOrderBatchId = (uniqueBatchIds.length === 1 && uniqueBatchIds[0] !== null)
+      ? Number(uniqueBatchIds[0])
+      : null;
 
     const total = Number(totalInput.value) || 12000;
     const paid = Number(paidInput.value) || 0;
@@ -1965,7 +2052,7 @@ export async function openOrderModal(orderData = null) {
       customerName: document.getElementById('custFullName').value,
       customerPhone: document.getElementById('custPhone').value,
       customerAddress: document.getElementById('custAddress').value,
-      batchId: selectedBatchId ? Number(selectedBatchId) : null,
+      batchId: finalOrderBatchId,
       items,
       totalAmount: total,
       paidAmount: paid,

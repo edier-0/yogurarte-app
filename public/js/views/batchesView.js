@@ -407,12 +407,18 @@ async function openBatchModal() {
               <div class="form-group">
                 <label class="form-label">Sabor del Yogur *</label>
                 <select id="batchFlavor" class="form-select">
-                  <option value="Natural" selected>Natural Artesanal</option>
+                  <option value="Natural" selected>Natural Artesanal (Tradicional)</option>
+                  <option value="Natural Bajo en Azúcar">Natural Bajo en Azúcar</option>
+                  <option value="Natural Sin Azúcar">Natural Sin Azúcar (Stevia)</option>
                   <option value="Fresa">Fresa (Frutos Rojos)</option>
                   <option value="Melocotón">Melocotón / Durazno</option>
                   <option value="Mora">Mora Silvestre</option>
                   <option value="Maracuyá">Maracuyá Tropical</option>
+                  <option value="OTRO">✍️ Otro sabor o variante personalizada...</option>
                 </select>
+                <div id="customFlavorGroup" style="display: none; margin-top: 6px;">
+                  <input type="text" id="customBatchFlavor" class="form-input" placeholder="Escribe el nombre del sabor o variante (ej: Natural Stevia, Guanábana)..." />
+                </div>
               </div>
 
               <div class="form-group">
@@ -918,10 +924,20 @@ async function openBatchModal() {
   // Detección reactiva de encargos pendientes para el sabor seleccionado
   const pendingContainer = document.getElementById('pendingOrdersHintContainer');
   const flavorSelect = document.getElementById('batchFlavor');
+  const customFlavorGroup = document.getElementById('customFlavorGroup');
+  const customBatchFlavor = document.getElementById('customBatchFlavor');
+
+  const getEffectiveNewBatchFlavor = () => {
+    const sel = flavorSelect?.value || 'Natural';
+    if (sel === 'OTRO') {
+      return customBatchFlavor?.value.trim() || 'Personalizado';
+    }
+    return sel;
+  };
   
   const checkPendingOrdersForFlavor = async () => {
     if (!pendingContainer || !flavorSelect) return;
-    const selectedFlavor = flavorSelect.value || 'Natural';
+    const selectedFlavor = getEffectiveNewBatchFlavor();
     try {
       const pendingData = await api.getPendingBatchOrders(selectedFlavor);
       const orders = pendingData?.orders || [];
@@ -1047,6 +1063,30 @@ async function openBatchModal() {
   };
 
   flavorSelect?.addEventListener('change', () => {
+    const val = flavorSelect.value;
+    if (val === 'OTRO') {
+      if (customFlavorGroup) customFlavorGroup.style.display = 'block';
+      if (customBatchFlavor) customBatchFlavor.focus();
+    } else {
+      if (customFlavorGroup) customFlavorGroup.style.display = 'none';
+      if (val === 'Natural Bajo en Azúcar') {
+        if (useSugarCheckbox) useSugarCheckbox.checked = true;
+        if (sugarGplInput) sugarGplInput.value = '40';
+        updateCalculations();
+      } else if (val === 'Natural Sin Azúcar') {
+        if (useSugarCheckbox) useSugarCheckbox.checked = false;
+        if (sugarGplInput) sugarGplInput.value = '0';
+        updateCalculations();
+      } else if (val === 'Natural' && sugarGplInput && (sugarGplInput.value === '40' || sugarGplInput.value === '0')) {
+        if (useSugarCheckbox) useSugarCheckbox.checked = true;
+        sugarGplInput.value = '80';
+        updateCalculations();
+      }
+    }
+    checkPendingOrdersForFlavor();
+  });
+
+  customBatchFlavor?.addEventListener('input', () => {
     checkPendingOrdersForFlavor();
   });
   checkPendingOrdersForFlavor();
@@ -1163,7 +1203,7 @@ async function openBatchModal() {
       usePowderedMilk: usePowderCheckbox.checked,
       powderedMilkGramsPerLiter: Number(powderGplInput.value) || 0,
       useLabels: useLabelsCheckbox.checked,
-      flavor: document.getElementById('batchFlavor').value,
+      flavor: getEffectiveNewBatchFlavor(),
       preparationDate: document.getElementById('batchDate').value,
       notes: document.getElementById('batchNotes').value,
       registeredBy: store.currentUser,
@@ -1221,10 +1261,52 @@ async function openBatchDetailModal(batchId) {
       statusBadge = '<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FCA5A5; font-weight: 800;">🚫 Baja</span>';
     }
 
-    const linkedOrders = batch.orders || [];
     const linkedDischarges = batch.discharges || [];
 
-    const totalSoldLiters = linkedOrders.reduce((sum, o) => sum + (o.totalLiters || 0), 0);
+    // Consolidar todos los pedidos vinculados (directos o por OrderItem de lote mixto)
+    const orderMap = new Map();
+    (batch.orders || []).forEach((o) => {
+      orderMap.set(o.id, {
+        id: o.id,
+        orderNumber: o.orderNumber,
+        customer: o.customer,
+        orderDate: o.orderDate,
+        quantityBottles: o.quantityBottles,
+        totalLiters: o.totalLiters,
+        totalAmount: o.totalAmount,
+        paidAmount: o.paidAmount,
+        pendingAmount: o.pendingAmount,
+        paymentStatus: o.paymentStatus,
+      });
+    });
+
+    (batch.orderItems || []).forEach((it) => {
+      if (it.order) {
+        const o = it.order;
+        if (!orderMap.has(o.id)) {
+          orderMap.set(o.id, {
+            id: o.id,
+            orderNumber: o.orderNumber,
+            customer: o.customer,
+            orderDate: o.orderDate,
+            quantityBottles: it.quantity,
+            totalLiters: it.totalLiters,
+            totalAmount: it.totalPrice,
+            paidAmount: o.paidAmount,
+            pendingAmount: o.pendingAmount,
+            paymentStatus: o.paymentStatus,
+          });
+        }
+      }
+    });
+
+    const linkedOrders = Array.from(orderMap.values());
+
+    const soldLitersFromItems = (batch.orderItems || []).reduce((sum, i) => sum + i.totalLiters, 0);
+    const legacyOrdersSold = (batch.orders || [])
+      .filter((o) => !(batch.orderItems || []).some((it) => it.orderId === o.id))
+      .reduce((sum, o) => sum + o.totalLiters, 0);
+    const totalSoldLiters = soldLitersFromItems + legacyOrdersSold;
     const totalSoldBottles = linkedOrders.reduce((sum, o) => sum + (o.quantityBottles || 0), 0);
     const totalSoldAmount = linkedOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
     const totalPaidAmount = linkedOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
@@ -2008,6 +2090,9 @@ async function openEditBatchModal(batchId) {
   const prepDate = batch.preparationDate ? String(batch.preparationDate).split('T')[0] : getTodayLocalDateStr();
   const expDate = batch.expirationDate ? String(batch.expirationDate).split('T')[0] : '';
 
+  const standardFlavors = ['Natural', 'Natural Bajo en Azúcar', 'Natural Sin Azúcar', 'Fresa', 'Melocotón', 'Mora', 'Maracuyá'];
+  const isCustomFlavor = !standardFlavors.includes(batch.flavor);
+
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">
       <div class="modal-card" style="max-width: 520px;">
@@ -2023,11 +2108,17 @@ async function openEditBatchModal(batchId) {
                 <label class="form-label">Sabor *</label>
                 <select id="editBatchFlavor" class="form-select">
                   <option value="Natural" ${batch.flavor === 'Natural' ? 'selected' : ''}>Natural Artesanal</option>
+                  <option value="Natural Bajo en Azúcar" ${batch.flavor === 'Natural Bajo en Azúcar' ? 'selected' : ''}>Natural Bajo en Azúcar</option>
+                  <option value="Natural Sin Azúcar" ${batch.flavor === 'Natural Sin Azúcar' ? 'selected' : ''}>Natural Sin Azúcar (Stevia)</option>
                   <option value="Fresa" ${batch.flavor === 'Fresa' ? 'selected' : ''}>Fresa (Frutos Rojos)</option>
                   <option value="Melocotón" ${batch.flavor === 'Melocotón' ? 'selected' : ''}>Melocotón / Durazno</option>
                   <option value="Mora" ${batch.flavor === 'Mora' ? 'selected' : ''}>Mora Silvestre</option>
                   <option value="Maracuyá" ${batch.flavor === 'Maracuyá' ? 'selected' : ''}>Maracuyá Tropical</option>
+                  <option value="OTRO" ${isCustomFlavor ? 'selected' : ''}>✍️ Otro sabor o variante personalizada...</option>
                 </select>
+                <div id="editCustomFlavorGroup" style="${isCustomFlavor ? 'display: block;' : 'display: none;'} margin-top: 6px;">
+                  <input type="text" id="editCustomBatchFlavor" class="form-input" value="${isCustomFlavor ? escapeHtml(batch.flavor) : ''}" placeholder="Escribe el sabor o variante..." />
+                </div>
               </div>
 
               <div class="form-group">
@@ -2135,14 +2226,32 @@ async function openEditBatchModal(batchId) {
     recalculateEdit();
   });
 
+  const editFlavorSelect = document.getElementById('editBatchFlavor');
+  const editCustomFlavorGroup = document.getElementById('editCustomFlavorGroup');
+  const editCustomBatchFlavor = document.getElementById('editCustomBatchFlavor');
+
+  editFlavorSelect?.addEventListener('change', () => {
+    if (editFlavorSelect.value === 'OTRO') {
+      if (editCustomFlavorGroup) editCustomFlavorGroup.style.display = 'block';
+      if (editCustomBatchFlavor) editCustomBatchFlavor.focus();
+    } else {
+      if (editCustomFlavorGroup) editCustomFlavorGroup.style.display = 'none';
+    }
+  });
+
   const closeModal = () => (modalOverlay.innerHTML = '');
   document.getElementById('btnCloseEditBatchModal')?.addEventListener('click', closeModal);
   document.getElementById('btnCancelEditBatchModal')?.addEventListener('click', closeModal);
 
   document.getElementById('editBatchForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const flavorVal = editFlavorSelect?.value || 'Natural';
+    const finalFlavor = flavorVal === 'OTRO'
+      ? (editCustomBatchFlavor?.value.trim() || 'Personalizado')
+      : flavorVal;
+
     const payload = {
-      flavor: document.getElementById('editBatchFlavor').value,
+      flavor: finalFlavor,
       status: document.getElementById('editBatchStatus').value,
       price1L: Number(document.getElementById('editBatchPrice1L')?.value) || 12000,
       price2L: Number(document.getElementById('editBatchPrice2L')?.value) || 24000,
