@@ -688,8 +688,8 @@ export const createBatch = async (req: Request, res: Response) => {
           totalLitersProduced,
           yieldPercentage,
           flavor: flavor ? flavor.trim() : 'Natural',
-          price1L: price1L !== undefined && Number(price1L) > 0 ? Number(price1L) : 10000,
-          price2L: price2L !== undefined && Number(price2L) > 0 ? Number(price2L) : 20000,
+          price1L: price1L !== undefined && Number(price1L) > 0 ? Number(price1L) : 12000,
+          price2L: price2L !== undefined && Number(price2L) > 0 ? Number(price2L) : 24000,
           preparationDate: dateObj,
           expirationDate: expirationDate ? new Date(`${String(expirationDate).split('T')[0]}T12:00:00.000Z`) : null,
           totalCost: totalBatchCost,
@@ -1069,7 +1069,7 @@ export const createBatchDischarge = async (req: Request, res: Response) => {
       });
     }
 
-    const defaultUnitPrice = size === '2L' ? (batch.price2L || 20000) : (batch.price1L || 10000);
+    const defaultUnitPrice = size === '2L' ? (batch.price2L || 24000) : (batch.price1L || 12000);
     const effectiveUnitPrice = Number(unitPrice) > 0 ? Number(unitPrice) : defaultUnitPrice;
     const totalAmount = size === '2L' ? (qtyBottles * effectiveUnitPrice) : (litersToDischarge * effectiveUnitPrice);
 

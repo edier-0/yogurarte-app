@@ -50,12 +50,31 @@ export const createExpense = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Descripción y monto válido son requeridos' });
     }
 
+    let parsedExpenseDate = new Date();
+    if (expenseDate) {
+      const dateParts = String(expenseDate).split('T')[0].split('-').map(Number);
+      if (dateParts.length === 3) {
+        const now = new Date();
+        if (
+          dateParts[0] === now.getFullYear() &&
+          dateParts[1] === (now.getMonth() + 1) &&
+          dateParts[2] === now.getDate()
+        ) {
+          parsedExpenseDate = now;
+        } else {
+          parsedExpenseDate = new Date(Date.UTC(dateParts[0], dateParts[1] - 1, dateParts[2], 12, 0, 0));
+        }
+      } else {
+        parsedExpenseDate = new Date(expenseDate);
+      }
+    }
+
     const expense = await prisma.expense.create({
       data: {
         category: category || 'OTRO',
         description: description.trim(),
         amount: parsedAmount,
-        expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
+        expenseDate: parsedExpenseDate,
         paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
         notes: notes ? notes.trim() : null,
         registeredBy: registeredBy || 'Edier',

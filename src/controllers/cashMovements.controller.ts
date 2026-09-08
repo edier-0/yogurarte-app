@@ -72,13 +72,32 @@ export const createCashMovement = async (req: Request, res: Response) => {
     ];
     const movementType = validTypes.includes(type) ? type : 'BASE_INICIAL';
 
+    let parsedMovementDate = new Date();
+    if (movementDate) {
+      const dateParts = String(movementDate).split('T')[0].split('-').map(Number);
+      if (dateParts.length === 3) {
+        const now = new Date();
+        if (
+          dateParts[0] === now.getFullYear() &&
+          dateParts[1] === (now.getMonth() + 1) &&
+          dateParts[2] === now.getDate()
+        ) {
+          parsedMovementDate = now;
+        } else {
+          parsedMovementDate = new Date(Date.UTC(dateParts[0], dateParts[1] - 1, dateParts[2], 12, 0, 0));
+        }
+      } else {
+        parsedMovementDate = new Date(movementDate);
+      }
+    }
+
     const movement = await prisma.cashMovement.create({
       data: {
         type: movementType,
         amount: parsedAmount,
         concept: concept.trim(),
         paymentMethod: paymentMethod || 'EFECTIVO',
-        movementDate: movementDate ? new Date(movementDate) : new Date(),
+        movementDate: parsedMovementDate,
         notes: notes ? notes.trim() : null,
         registeredBy: registeredBy || 'Edier',
       },

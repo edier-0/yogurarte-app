@@ -18,6 +18,32 @@ let activeMovementTab = 'ALL'; // 'ALL' | 'BASE' | 'SALES' | 'PURCHASES' | 'EXPE
 let searchFilter = '';
 let currentCashData = null;
 
+export function getMovementExactTime(m) {
+  if (!m) return 0;
+  const dVal = m.date || m.paymentDate || m.movementDate || m.expenseDate;
+  const cVal = m.createdAt;
+  if (dVal && cVal) {
+    const dStr = String(dVal);
+    const cStr = String(cVal);
+    const dDay = dStr.split('T')[0];
+    const cDay = cStr.split('T')[0];
+    if (dDay === cDay) {
+      return new Date(cStr).getTime();
+    }
+  }
+  return new Date(dVal || cVal || 0).getTime();
+}
+
+export function compareMovementsDesc(a, b) {
+  const timeB = getMovementExactTime(b);
+  const timeA = getMovementExactTime(a);
+  if (timeB !== timeA) return timeB - timeA;
+  const cB = new Date(b.createdAt || 0).getTime();
+  const cA = new Date(a.createdAt || 0).getTime();
+  if (cB !== cA) return cB - cA;
+  return (b.rawId || 0) - (a.rawId || 0);
+}
+
 export async function renderCashControl(container) {
   // Generar opciones de meses anteriores
   const monthOptions = [];
@@ -258,7 +284,7 @@ async function loadCashData(container) {
         displayAmount: t.amount,
         tabCategory: 'TRANSFERS',
       })),
-    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    ].sort(compareMovementsDesc);
 
     // Conteo por categorías
     const countAll = allMovements.filter((m) => m.flowType !== 'TRANSFER').length;
@@ -624,7 +650,7 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
         ...allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_BANCO_A_EFECTIVO').map((t) => ({ ...t, flowType: 'INFLOW', categoryLabel: '🔄 Retiro de Banco a Efectivo' })),
         ...allMovements.filter((m) => m.flowType === 'OUTFLOW' && isCash(m.paymentMethod)),
         ...allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_EFECTIVO_A_BANCO').map((t) => ({ ...t, flowType: 'OUTFLOW', categoryLabel: '🔄 Consignación de Efectivo a Banco' })),
-      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      ].sort(compareMovementsDesc);
 
       openCashKpiDetailModal({
         title: '💵 Desglose de Dinero en Efectivo (En Mano)',
@@ -642,7 +668,7 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
         ...allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_EFECTIVO_A_BANCO').map((t) => ({ ...t, flowType: 'INFLOW', categoryLabel: '🔄 Consignación desde Efectivo' })),
         ...allMovements.filter((m) => m.flowType === 'OUTFLOW' && !isCash(m.paymentMethod)),
         ...allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_BANCO_A_EFECTIVO').map((t) => ({ ...t, flowType: 'OUTFLOW', categoryLabel: '🔄 Retiro hacia Efectivo' })),
-      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      ].sort(compareMovementsDesc);
 
       openCashKpiDetailModal({
         title: '🟣 Desglose de Fondos en Transferencia (Nequi / Banco)',
@@ -1471,9 +1497,22 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
                 methodBadge = `<span class="badge" style="background: #FAF5FF; color: #7E22CE; font-weight: 700; font-size: 0.72rem;">🟣 ${m.paymentMethod || 'TRANSFERENCIA'}</span>`;
               }
 
+              const exactDateVal = (m.date && String(m.date).includes('T') && !String(m.date).endsWith('T00:00:00.000Z')) ? m.date : (m.createdAt || m.date);
+              let timeStr = '';
+              if (exactDateVal) {
+                try {
+                  timeStr = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(exactDateVal));
+                } catch (e) {
+                  timeStr = '';
+                }
+              }
+
               return `
               <tr>
-                <td><small style="color: var(--text-muted); font-weight: 600;">${formatDate(m.date)}</small></td>
+                <td>
+                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.82rem;">${formatDate(m.date)}</div>
+                  ${timeStr ? `<div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">🕒 ${timeStr}</div>` : ''}
+                </td>
                 <td>
                   <span class="badge" style="background: ${badgeBg}; color: ${badgeColor}; font-weight: 800; font-size: 0.72rem;">
                     ${typeLabel}
@@ -1768,7 +1807,7 @@ export function openCashKpiDetailModal({
         const cat = (item.categoryLabel || item.category || item.type || '').toLowerCase();
         return desc.includes(normalizedFilter) || person.includes(normalizedFilter) || notes.includes(normalizedFilter) || method.includes(normalizedFilter) || cat.includes(normalizedFilter);
       })
-      .sort((a, b) => new Date(b.date || b.paymentDate || b.movementDate || 0).getTime() - new Date(a.date || a.paymentDate || a.movementDate || 0).getTime());
+      .sort(compareMovementsDesc);
 
     const { pageItems, totalPages, totalItems, currentPage } = paginateArray(filteredItems, page, 15);
     kpiDetailPage = currentPage;
@@ -1802,6 +1841,15 @@ export function openCashKpiDetailModal({
                   const itemIsPos = item.flowType === 'INFLOW' || (!isTransfer && (item.displayAmount !== undefined ? item.displayAmount > 0 : item.amount > 0));
                   const itemAmount = Math.abs(item.displayAmount !== undefined ? item.displayAmount : item.amount);
                   const dateStr = item.date ? formatDate(item.date) : item.movementDate ? formatDate(item.movementDate) : 'N/A';
+                  const exactDateVal = (item.date && String(item.date).includes('T') && !String(item.date).endsWith('T00:00:00.000Z')) ? item.date : (item.createdAt || item.date || item.movementDate || item.paymentDate);
+                  let timeStr = '';
+                  if (exactDateVal) {
+                    try {
+                      timeStr = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(exactDateVal));
+                    } catch (e) {
+                      timeStr = '';
+                    }
+                  }
                   const desc = item.concept || item.description || item.flavor || item.orderNumber || 'Movimiento';
                   const person = item.customerName || item.supplier || item.registeredBy || item.staffName || '—';
 
@@ -1868,7 +1916,10 @@ export function openCashKpiDetailModal({
 
                   return `
                     <tr>
-                      <td><small style="color: var(--text-muted); font-weight: 600;">${dateStr}</small></td>
+                      <td>
+                        <div style="font-weight: 700; color: var(--text-main); font-size: 0.8rem;">${dateStr}</div>
+                        ${timeStr ? `<div style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">🕒 ${timeStr}</div>` : ''}
+                      </td>
                       <td>
                         <span class="badge" style="background: ${typeBadgeBg}; color: ${typeBadgeColor}; font-weight: 800; font-size: 0.72rem;">
                           ${typeLabel}

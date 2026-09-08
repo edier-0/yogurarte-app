@@ -1910,27 +1910,55 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
   const salesMovements = inflows.filter((i) => !i.isCashMovement);
 
   let cashTab = 'ALL'; // 'ALL', 'BASE', 'SALES', 'OUTFLOWS'
+  let unifiedPage = 1;
   let inflowsPage = 1;
   let outflowsPage = 1;
 
+  const allUnifiedMovements = [
+    ...inflows.map((i) => ({
+      ...i,
+      flowType: 'INFLOW',
+      displayAmount: i.amount,
+      badgeText: i.isCashMovement ? (i.categoryLabel || '🏦 BASE / APORTE') : (i.orderNumber ? `🥛 ${i.orderNumber}` : '🥛 VENTA COBRADA'),
+      badgeBg: i.isCashMovement ? '#E0F2FE' : '#DCFCE7',
+      badgeColor: i.isCashMovement ? '#0369A1' : '#15803D',
+      title: i.isCashMovement ? (i.flavor || i.concept || 'Base / Aporte') : `${i.liters}L (${i.flavor})`,
+      person: i.customerName || i.registeredBy || 'Edier',
+    })),
+    ...outflows.map((o) => ({
+      ...o,
+      flowType: 'OUTFLOW',
+      displayAmount: -o.amount,
+      badgeText: o.categoryLabel || o.category || '📤 EGRESO',
+      badgeBg: '#FEE2E2',
+      badgeColor: '#DC2626',
+      title: o.description,
+      person: o.supplier || o.registeredBy || 'Edier',
+    })),
+  ].sort((a, b) => {
+    const timeB = (b.date && String(b.date).includes('T') && !String(b.date).endsWith('T00:00:00.000Z')) ? new Date(b.date).getTime() : new Date(b.createdAt || b.date || 0).getTime();
+    const timeA = (a.date && String(a.date).includes('T') && !String(a.date).endsWith('T00:00:00.000Z')) ? new Date(a.date).getTime() : new Date(a.createdAt || a.date || 0).getTime();
+    if (timeB !== timeA) return timeB - timeA;
+    const cB = new Date(b.createdAt || 0).getTime();
+    const cA = new Date(a.createdAt || 0).getTime();
+    if (cB !== cA) return cB - cA;
+    return (b.rawId || 0) - (a.rawId || 0);
+  });
+
   function renderModal() {
-    // Filtrar inflows y outflows según la pestaña
     let displayInflows = [];
     let displayOutflows = [];
 
-    if (cashTab === 'ALL') {
-      displayInflows = inflows;
-      displayOutflows = outflows;
-    } else if (cashTab === 'BASE') {
+    if (cashTab === 'BASE') {
       displayInflows = baseMovements;
-      displayOutflows = [];
     } else if (cashTab === 'SALES') {
       displayInflows = salesMovements;
-      displayOutflows = [];
     } else if (cashTab === 'OUTFLOWS') {
-      displayInflows = [];
       displayOutflows = outflows;
     }
+
+    const { pageItems: pageUnified, totalPages: uniTotalPages, totalItems: uniTotalItems, currentPage: currentUniPage } = paginateArray(allUnifiedMovements, unifiedPage, 15);
+    unifiedPage = currentUniPage;
 
     const { pageItems: pageInflows, totalPages: inTotalPages, totalItems: inTotalItems, currentPage: currentInPage } = paginateArray(displayInflows, inflowsPage, 15);
     inflowsPage = currentInPage;
@@ -2001,7 +2029,7 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
 
             <!-- Pestañas de Filtrado de Movimientos -->
             <div style="display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; flex-wrap: wrap;">
-              <button type="button" class="btn btn-sm ${cashTab === 'ALL' ? 'btn-primary' : 'btn-outline'}" id="btnTabAllCash">📊 Todos (${inflows.length + outflows.length})</button>
+              <button type="button" class="btn btn-sm ${cashTab === 'ALL' ? 'btn-primary' : 'btn-outline'}" id="btnTabAllCash">📊 Todos los Movimientos (${allUnifiedMovements.length})</button>
               <button type="button" class="btn btn-sm ${cashTab === 'BASE' ? 'btn-primary' : 'btn-outline'}" id="btnTabBaseCash" style="${cashTab !== 'BASE' ? 'color: #0369A1; border-color: #BAE6FD;' : ''}">🏦 Base / Aportes (${baseMovements.length})</button>
               <button type="button" class="btn btn-sm ${cashTab === 'SALES' ? 'btn-primary' : 'btn-outline'}" id="btnTabInflows" style="${cashTab !== 'SALES' ? 'color: #15803D; border-color: #BBF7D0;' : ''}">📥 Ventas Cobradas (${salesMovements.length})</button>
               <button type="button" class="btn btn-sm ${cashTab === 'OUTFLOWS' ? 'btn-primary' : 'btn-outline'}" id="btnTabOutflows" style="${cashTab !== 'OUTFLOWS' ? 'color: #DC2626; border-color: #FECACA;' : ''}">📤 Salidas (-${formatCOP(totalOutflow)})</button>
@@ -2009,12 +2037,89 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
 
             <!-- Tablas de Movimientos -->
             ${
-              (cashTab === 'ALL' || cashTab === 'BASE' || cashTab === 'SALES')
+              cashTab === 'ALL'
+                ? `
+              <div id="cashUnifiedSection" style="margin-bottom: 18px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <strong style="color: var(--primary); font-size: 0.88rem;">📑 Historial Cronológico de Movimientos de Caja</strong>
+                  <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">${allUnifiedMovements.length} movimiento(s)</span>
+                </div>
+                ${
+                  allUnifiedMovements.length > 0
+                    ? `
+                  <div class="table-responsive">
+                    <table class="app-table" style="font-size: 0.82rem;">
+                      <thead>
+                        <tr>
+                          <th>Fecha y Hora</th>
+                          <th>Tipo / Origen</th>
+                          <th>Detalle / Concepto</th>
+                          <th>Responsable / Cliente</th>
+                          <th style="text-align: right;">Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${pageUnified
+                          .map((m) => {
+                            const isPos = m.flowType === 'INFLOW';
+                            const exactDateVal = (m.date && String(m.date).includes('T') && !String(m.date).endsWith('T00:00:00.000Z')) ? m.date : (m.createdAt || m.date);
+                            let timeStr = '';
+                            if (exactDateVal) {
+                              try {
+                                timeStr = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(exactDateVal));
+                              } catch (e) {
+                                timeStr = '';
+                              }
+                            }
+                            return `
+                              <tr>
+                                <td>
+                                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.8rem;">${formatDate(m.date)}</div>
+                                  ${timeStr ? `<div style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">🕒 ${timeStr}</div>` : ''}
+                                </td>
+                                <td>
+                                  <span class="badge" style="background: ${m.badgeBg}; color: ${m.badgeColor}; font-weight: 800; font-size: 0.72rem;">
+                                    ${m.badgeText}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong>${m.title}</strong>
+                                  ${m.notes ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📝 ${m.notes}</div>` : ''}
+                                </td>
+                                <td><span style="font-weight: 600;">${m.person}</span></td>
+                                <td style="text-align: right; font-weight: 800; color: ${isPos ? '#15803D' : '#DC2626'}; font-size: 0.95rem;">
+                                  ${isPos ? '+' : '-'}${formatCOP(Math.abs(m.amount))}
+                                </td>
+                              </tr>
+                            `;
+                          })
+                          .join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ${renderPaginationHtml({
+                    currentPage: unifiedPage,
+                    totalPages: uniTotalPages,
+                    totalItems: uniTotalItems,
+                    pageSize: 15,
+                    itemName: 'movimientos de caja',
+                    paginationId: 'modalCashUnifiedPagination',
+                  })}
+                `
+                    : `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 10px; text-align: center; background: #F8FAFC; border-radius: var(--radius-sm);">No hay movimientos registrados en este período</div>`
+                }
+              </div>
+            `
+                : ''
+            }
+
+            ${
+              (cashTab === 'BASE' || cashTab === 'SALES')
                 ? `
               <div id="cashInflowsSection" style="margin-bottom: 18px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                  <strong style="color: #15803D; font-size: 0.88rem;">📥 Entradas de Dinero (Bases, Aportes y Ventas)</strong>
-                  <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">Total: +${formatCOP(totalInflow)}</span>
+                  <strong style="color: #15803D; font-size: 0.88rem;">📥 Entradas de Dinero (${cashTab === 'BASE' ? 'Bases y Aportes' : 'Ventas Cobradas'})</strong>
+                  <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 700;">Total: +${formatCOP(displayInflows.reduce((s, i) => s + i.amount, 0))}</span>
                 </div>
                 ${
                   displayInflows.length > 0
@@ -2023,7 +2128,7 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
                     <table class="app-table" style="font-size: 0.82rem;">
                       <thead>
                         <tr>
-                          <th>Fecha</th>
+                          <th>Fecha y Hora</th>
                           <th>Tipo / N°</th>
                           <th>Origen / Cliente</th>
                           <th>Detalle / Concepto</th>
@@ -2032,21 +2137,33 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
                       </thead>
                       <tbody>
                         ${pageInflows
-                          .map(
-                            (i) => `
-                          <tr class="cash-row ${i.isCashMovement ? 'row-base' : 'row-sale'}">
-                            <td><small>${formatDate(i.date)}</small></td>
-                            <td>
-                              <span class="badge" style="background: ${i.isCashMovement ? '#E0F2FE' : '#DCFCE7'}; color: ${i.isCashMovement ? '#0369A1' : '#15803D'}; font-weight: 800; font-size: 0.72rem;">
-                                ${i.orderNumber}
-                              </span>
-                            </td>
-                            <td><strong>${i.customerName}</strong></td>
-                            <td>${i.isCashMovement ? `<strong>${i.flavor}</strong>` : `${i.liters}L (${i.flavor})`}</td>
-                            <td style="text-align: right; color: #15803D; font-weight: 800;">+${formatCOP(i.amount)}</td>
-                          </tr>
-                        `
-                          )
+                          .map((i) => {
+                            const exactDateVal = (i.date && String(i.date).includes('T') && !String(i.date).endsWith('T00:00:00.000Z')) ? i.date : (i.createdAt || i.date);
+                            let timeStr = '';
+                            if (exactDateVal) {
+                              try {
+                                timeStr = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(exactDateVal));
+                              } catch (e) {
+                                timeStr = '';
+                              }
+                            }
+                            return `
+                              <tr class="cash-row ${i.isCashMovement ? 'row-base' : 'row-sale'}">
+                                <td>
+                                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.8rem;">${formatDate(i.date)}</div>
+                                  ${timeStr ? `<div style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">🕒 ${timeStr}</div>` : ''}
+                                </td>
+                                <td>
+                                  <span class="badge" style="background: ${i.isCashMovement ? '#E0F2FE' : '#DCFCE7'}; color: ${i.isCashMovement ? '#0369A1' : '#15803D'}; font-weight: 800; font-size: 0.72rem;">
+                                    ${i.orderNumber}
+                                  </span>
+                                </td>
+                                <td><strong>${i.customerName}</strong></td>
+                                <td>${i.isCashMovement ? `<strong>${i.flavor}</strong>` : `${i.liters}L (${i.flavor})`}</td>
+                                <td style="text-align: right; color: #15803D; font-weight: 800;">+${formatCOP(i.amount)}</td>
+                              </tr>
+                            `;
+                          })
                           .join('')}
                       </tbody>
                     </table>
@@ -2068,7 +2185,7 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
             }
 
             ${
-              (cashTab === 'ALL' || cashTab === 'OUTFLOWS')
+              cashTab === 'OUTFLOWS'
                 ? `
               <div id="cashOutflowsSection" style="margin-bottom: 18px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -2082,7 +2199,7 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
                     <table class="app-table" style="font-size: 0.82rem;">
                       <thead>
                         <tr>
-                          <th>Fecha</th>
+                          <th>Fecha y Hora</th>
                           <th>Tipo</th>
                           <th>Descripción / Proveedor</th>
                           <th style="text-align: right;">Pagado de Caja</th>
@@ -2090,20 +2207,32 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
                       </thead>
                       <tbody>
                         ${pageOutflows
-                          .map(
-                            (o) => `
-                          <tr>
-                            <td><small>${formatDate(o.date)}</small></td>
-                            <td><span class="badge" style="background: var(--bg-subtle); color: var(--text-main); font-size: 0.72rem;">${o.categoryLabel || o.category}</span></td>
-                            <td>
-                              <strong>${o.description}</strong>
-                              ${o.supplier ? `<div style="font-size: 0.72rem; color: var(--text-muted);">🏢 ${o.supplier}</div>` : ''}
-                              ${o.notes ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📝 ${o.notes}</div>` : ''}
-                            </td>
-                            <td style="text-align: right; color: #DC2626; font-weight: 800;">-${formatCOP(o.amount)}</td>
-                          </tr>
-                        `
-                          )
+                          .map((o) => {
+                            const exactDateVal = (o.date && String(o.date).includes('T') && !String(o.date).endsWith('T00:00:00.000Z')) ? o.date : (o.createdAt || o.date);
+                            let timeStr = '';
+                            if (exactDateVal) {
+                              try {
+                                timeStr = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(exactDateVal));
+                              } catch (e) {
+                                timeStr = '';
+                              }
+                            }
+                            return `
+                              <tr>
+                                <td>
+                                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.8rem;">${formatDate(o.date)}</div>
+                                  ${timeStr ? `<div style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">🕒 ${timeStr}</div>` : ''}
+                                </td>
+                                <td><span class="badge" style="background: var(--bg-subtle); color: var(--text-main); font-size: 0.72rem;">${o.categoryLabel || o.category}</span></td>
+                                <td>
+                                  <strong>${o.description}</strong>
+                                  ${o.supplier ? `<div style="font-size: 0.72rem; color: var(--text-muted);">🏢 ${o.supplier}</div>` : ''}
+                                  ${o.notes ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📝 ${o.notes}</div>` : ''}
+                                </td>
+                                <td style="text-align: right; color: #DC2626; font-weight: 800;">-${formatCOP(o.amount)}</td>
+                              </tr>
+                            `;
+                          })
                           .join('')}
                       </tbody>
                     </table>

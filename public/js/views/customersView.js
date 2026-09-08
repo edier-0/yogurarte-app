@@ -221,7 +221,7 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
   } else {
     // Cliente al día
     msg = `¡Hola *${fullName}*! 🥛✨ Te saludamos con mucho aprecio de *YogurArte*.\n\n` +
-          `¿Te gustaría encargar de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos para tomar tu pedido con tus sabores favoritos. 🍓🍑🍇🥛` +
+          `¿Te gustaría encargar de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos para tomar tu pedido. 🥛✨` +
           instagramLine;
   }
 
@@ -853,7 +853,7 @@ async function openCustomerPaymentModal(customerOrId) {
       .reduce((sum, o) => sum + (o.realPending || 0), 0);
 
     const totalPending = deliveredDebt + inProcessAmount;
-    const defaultAmount = deliveredDebt > 0 ? deliveredDebt : (totalPending > 0 ? totalPending : 10000);
+    const defaultAmount = deliveredDebt > 0 ? deliveredDebt : (totalPending > 0 ? totalPending : 12000);
 
     modalOverlay.innerHTML = `
       <div class="modal-overlay active">
@@ -941,14 +941,14 @@ async function openCustomerPaymentModal(customerOrId) {
                   <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="${deliveredDebt > 0 ? deliveredDebt : totalPending}" style="font-size: 0.74rem; padding: 3px 8px;">
                     Total (${formatCOP(deliveredDebt > 0 ? deliveredDebt : totalPending)})
                   </button>
-                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="10000" style="font-size: 0.74rem; padding: 3px 8px;">
-                    $10.000
+                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="12000" style="font-size: 0.74rem; padding: 3px 8px;">
+                    $12.000
                   </button>
-                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="20000" style="font-size: 0.74rem; padding: 3px 8px;">
-                    $20.000
+                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="24000" style="font-size: 0.74rem; padding: 3px 8px;">
+                    $24.000
                   </button>
-                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="5000" style="font-size: 0.74rem; padding: 3px 8px;">
-                    $5.000
+                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="6000" style="font-size: 0.74rem; padding: 3px 8px;">
+                    $6.000
                   </button>
                 </div>
               </div>

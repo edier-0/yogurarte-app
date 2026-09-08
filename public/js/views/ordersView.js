@@ -1105,8 +1105,8 @@ export async function openOrderModal(orderData = null) {
   }
 
   const effectiveInitialBatchId = initialBatchObj ? String(initialBatchObj.id) : (initialBatchId ? String(initialBatchId) : '');
-  let currentBatchPrice1L = initialBatchObj?.price1L || (orderData?.batch?.price1L) || 10000;
-  let currentBatchPrice2L = initialBatchObj?.price2L || (orderData?.batch?.price2L) || 20000;
+  let currentBatchPrice1L = initialBatchObj?.price1L || (orderData?.batch?.price1L) || 12000;
+  let currentBatchPrice2L = initialBatchObj?.price2L || (orderData?.batch?.price2L) || 24000;
 
   // Lista inicial de ítems
   let initialItems = [
@@ -1227,7 +1227,7 @@ export async function openOrderModal(orderData = null) {
                 <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">Auto-asignado por sabor</span>
               </label>
               <select id="orderBatchSelect" class="form-select" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">
-                <option value="" data-price1l="10000" data-price2l="20000" data-flavor="">-- 🥣 Encargo Preventa (Sin lote aún - Se vinculará al producir) --</option>
+                <option value="" data-price1l="12000" data-price2l="24000" data-flavor="">-- 🥣 Encargo Preventa (Sin lote aún - Se vinculará al producir) --</option>
                 ${availableBatches
                   .map(
                     (b) => {
@@ -1237,8 +1237,8 @@ export async function openOrderModal(orderData = null) {
                       const isSelected = String(effectiveInitialBatchId) === String(b.id);
                       const statusBadge = isFull ? '🔴 Lleno' : (b.status === 'AGOTADO' ? '⚠️ Agotado' : '✅');
                       return `
-                  <option value="${b.id}" data-price1l="${b.price1L || 10000}" data-price2l="${b.price2L || 20000}" data-flavor="${b.flavor}" data-remaining="${remaining}" ${isSelected ? 'selected' : ''}>
-                    🍶 ${b.batchCode} • ${b.flavor}${litersText} (1L: ${formatCOP(b.price1L || 10000)} • 2L: ${formatCOP(b.price2L || 20000)}) ${statusBadge}
+                  <option value="${b.id}" data-price1l="${b.price1L || 12000}" data-price2l="${b.price2L || 24000}" data-flavor="${b.flavor}" data-remaining="${remaining}" ${isSelected ? 'selected' : ''}>
+                    🍶 ${b.batchCode} • ${b.flavor}${litersText} (1L: ${formatCOP(b.price1L || 12000)} • 2L: ${formatCOP(b.price2L || 24000)}) ${statusBadge}
                   </option>
                 `;
                     }
@@ -1284,7 +1284,7 @@ export async function openOrderModal(orderData = null) {
               <div class="form-row" style="margin-bottom: 10px;">
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px;">Subtotal Productos ($ COP)</label>
-                  <input type="text" id="orderSubtotalDisplay" class="form-input" value="$10.000 COP" disabled style="background: #FFFFFF; font-weight: 700; color: var(--text-main); font-size: 0.9rem;" />
+                  <input type="text" id="orderSubtotalDisplay" class="form-input" value="$12.000 COP" disabled style="background: #FFFFFF; font-weight: 700; color: var(--text-main); font-size: 0.9rem;" />
                 </div>
 
                 <div class="form-group" style="margin-bottom: 0;">
@@ -1301,7 +1301,7 @@ export async function openOrderModal(orderData = null) {
 
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label" style="font-size: 0.82rem; font-weight: 800; color: #15803D; margin-bottom: 2px;">💵 TOTAL A COBRAR ($ COP) *</label>
-                  <input type="number" id="orderTotalAmount" class="form-input" value="${(initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) + defaultDeliveryFee - (orderData?.discount || 0)) || 10000}" required style="font-weight: 800; color: #15803D; font-size: 1.05rem; background: #F0FDF4; border: 1.5px solid #86EFAC;" />
+                  <input type="number" id="orderTotalAmount" class="form-input" value="${(initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) + defaultDeliveryFee - (orderData?.discount || 0)) || 12000}" required style="font-weight: 800; color: #15803D; font-size: 1.05rem; background: #F0FDF4; border: 1.5px solid #86EFAC;" />
                 </div>
               </div>
 
@@ -1488,8 +1488,8 @@ export async function openOrderModal(orderData = null) {
         const bestBatch = findBestBatchForFlavor(selectedFlavor);
         if (bestBatch) {
           batchSelect.value = String(bestBatch.id);
-          currentBatchPrice1L = Number(bestBatch.price1L) || 10000;
-          currentBatchPrice2L = Number(bestBatch.price2L) || 20000;
+          currentBatchPrice1L = Number(bestBatch.price1L) || 12000;
+          currentBatchPrice2L = Number(bestBatch.price2L) || 24000;
 
           // Actualizar precios estándar en filas no editadas
           itemsContainer.querySelectorAll('.order-item-row').forEach((r) => {
@@ -1557,7 +1557,7 @@ export async function openOrderModal(orderData = null) {
         rows.forEach((r) => {
           const qty = Number(r.querySelector('.item-qty')?.value) || 1;
           const priceInput = r.querySelector('.item-price');
-          const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : 10000;
+          const unitPrice = priceInput && priceInput.value !== '' ? Number(priceInput.value) : 12000;
           currentItemsTotal += qty * unitPrice;
         });
         const diff = (currentItemsTotal + fee) - enteredTotal;
@@ -1631,8 +1631,8 @@ export async function openOrderModal(orderData = null) {
   batchSelect?.addEventListener('change', (e) => {
     const selectedOpt = e.target.selectedOptions[0];
     if (selectedOpt && selectedOpt.value) {
-      currentBatchPrice1L = Number(selectedOpt.dataset.price1l) || 10000;
-      currentBatchPrice2L = Number(selectedOpt.dataset.price2l) || 20000;
+      currentBatchPrice1L = Number(selectedOpt.dataset.price1l) || 12000;
+      currentBatchPrice2L = Number(selectedOpt.dataset.price2l) || 24000;
       const batchFlavor = selectedOpt.dataset.flavor;
 
       // Actualizar precios en filas
@@ -1946,7 +1946,7 @@ export async function openOrderModal(orderData = null) {
       items.forEach((it) => { it.batchId = null; });
     }
 
-    const total = Number(totalInput.value) || 10000;
+    const total = Number(totalInput.value) || 12000;
     const paid = Number(paidInput.value) || 0;
 
     const deliveryType = deliveryTypeSelect?.value || 'PROPIO';

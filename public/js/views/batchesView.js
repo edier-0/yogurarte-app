@@ -155,8 +155,8 @@ async function loadBatchesList(container) {
 
                 const isInactive = !b.isActive;
                 const hasExtraYield = b.totalLitersProduced > b.milkUsedLiters;
-                const p1 = b.price1L || 10000;
-                const p2 = b.price2L || 20000;
+                const p1 = b.price1L || 12000;
+                const p2 = b.price2L || 24000;
 
                 let statusBadge = '<span class="badge badge-paid">✅ Disponible</span>';
                 if (isInactive) {
@@ -565,11 +565,11 @@ async function openBatchModal() {
               <div class="form-row" style="margin-bottom: 0;">
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label">Precio Botella 1L ($ COP) *</label>
-                  <input type="number" id="batchPrice1L" class="form-input" min="0" step="any" value="10000" required style="font-weight: 800; color: var(--primary);" />
+                  <input type="number" id="batchPrice1L" class="form-input" min="0" step="any" value="12000" required style="font-weight: 800; color: var(--primary);" />
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label">Precio Botella 2L ($ COP) *</label>
-                  <input type="number" id="batchPrice2L" class="form-input" min="0" step="any" value="20000" required style="font-weight: 800; color: var(--primary);" />
+                  <input type="number" id="batchPrice2L" class="form-input" min="0" step="any" value="24000" required style="font-weight: 800; color: var(--primary);" />
                 </div>
               </div>
               <div id="batchMarginPreview" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; font-weight: 600;">
@@ -859,8 +859,8 @@ async function openBatchModal() {
     }
 
     // Margen de ganancia proyectado por botella
-    const price1L = Number(document.getElementById('batchPrice1L')?.value) || 10000;
-    const price2L = Number(document.getElementById('batchPrice2L')?.value) || 20000;
+    const price1L = Number(document.getElementById('batchPrice1L')?.value) || 12000;
+    const price2L = Number(document.getElementById('batchPrice2L')?.value) || 24000;
     const marginPreview = document.getElementById('batchMarginPreview');
     if (marginPreview) {
       const margin1 = price1L - costPerLiter;
@@ -1156,8 +1156,8 @@ async function openBatchModal() {
       totalLitersProduced: totalProduced,
       bottles1LProduced: b1,
       bottles2LProduced: b2,
-      price1L: Number(document.getElementById('batchPrice1L')?.value) || 10000,
-      price2L: Number(document.getElementById('batchPrice2L')?.value) || 20000,
+      price1L: Number(document.getElementById('batchPrice1L')?.value) || 12000,
+      price2L: Number(document.getElementById('batchPrice2L')?.value) || 24000,
       useSugar: useSugarCheckbox.checked,
       sugarGramsPerLiter: Number(sugarGplInput.value) || 0,
       usePowderedMilk: usePowderCheckbox.checked,
@@ -1209,8 +1209,8 @@ async function openBatchDetailModal(batchId) {
     ]);
 
     const hasExtraYield = batch.totalLitersProduced > batch.milkUsedLiters;
-    const p1 = batch.price1L || 10000;
-    const p2 = batch.price2L || 20000;
+    const p1 = batch.price1L || 12000;
+    const p2 = batch.price2L || 24000;
 
     let statusBadge = '<span class="badge badge-paid">✅ Activo / Disponible</span>';
     if (!batch.isActive) {
@@ -1785,8 +1785,8 @@ async function openBatchDischargeModal(batchIdOrObj, parentContainer = null) {
     const staffList = await api.getStaff({ includeInactive: false });
     const partners = staffList.filter((s) => s.type === 'SOCIO' || s.role === 'SOCIO');
 
-    const p1 = batch.price1L || 10000;
-    const p2 = batch.price2L || 20000;
+    const p1 = batch.price1L || 12000;
+    const p2 = batch.price2L || 24000;
 
     const remainingAvailable = batch.remainingAvailableLiters !== undefined
       ? batch.remainingAvailableLiters
@@ -1999,8 +1999,8 @@ async function openEditBatchModal(batchId) {
   if (!modalOverlay) return;
 
   const batch = await api.getBatchById(batchId);
-  const p1 = batch.price1L || 10000;
-  const p2 = batch.price2L || 20000;
+  const p1 = batch.price1L || 12000;
+  const p2 = batch.price2L || 24000;
   const b1 = batch.bottles1LProduced || 0;
   const b2 = batch.bottles2LProduced || 0;
   const milk = batch.milkUsedLiters || 0;
@@ -2144,8 +2144,8 @@ async function openEditBatchModal(batchId) {
     const payload = {
       flavor: document.getElementById('editBatchFlavor').value,
       status: document.getElementById('editBatchStatus').value,
-      price1L: Number(document.getElementById('editBatchPrice1L')?.value) || 10000,
-      price2L: Number(document.getElementById('editBatchPrice2L')?.value) || 20000,
+      price1L: Number(document.getElementById('editBatchPrice1L')?.value) || 12000,
+      price2L: Number(document.getElementById('editBatchPrice2L')?.value) || 24000,
       preparationDate: document.getElementById('editBatchDate').value,
       expirationDate: document.getElementById('editBatchExpDate').value || null,
       milkUsedLiters: Number(editMilk.value),

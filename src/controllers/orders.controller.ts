@@ -323,7 +323,7 @@ export const createOrder = async (req: Request, res: Response) => {
         const litersPerUnit = size === '2L' ? 2.0 : 1.0;
         const itemUnitPrice = item.unitPrice !== undefined && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) >= 0
           ? Number(item.unitPrice)
-          : (size === '2L' ? 20000 : 10000);
+          : (size === '2L' ? 24000 : 12000);
         return {
           batchId: item.batchId ? Number(item.batchId) : parsedBatchId,
           bottleSize: size,
@@ -356,7 +356,7 @@ export const createOrder = async (req: Request, res: Response) => {
       const litersPerUnit = size === '2L' ? 2.0 : 1.0;
       const price = unitPrice !== undefined && !isNaN(Number(unitPrice)) && Number(unitPrice) >= 0
         ? Number(unitPrice)
-        : (size === '2L' ? 20000 : 10000);
+        : (size === '2L' ? 24000 : 12000);
       parsedItems = [
         {
           batchId: parsedBatchId,
@@ -519,7 +519,7 @@ export const createOrder = async (req: Request, res: Response) => {
         quantityBottles: totalQuantityBottles,
         totalLiters: totalLitersCalculated,
         flavor: flavorSummary,
-        unitPrice: parsedItems[0]?.unitPrice || 10000,
+        unitPrice: parsedItems[0]?.unitPrice || 12000,
         totalAmount: calculatedTotalAmount,
         paidAmount: paid,
         pendingAmount: pending,
@@ -649,7 +649,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         const litersPerUnit = size === '2L' ? 2.0 : 1.0;
         const itemUnitPrice = item.unitPrice !== undefined && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) >= 0
           ? Number(item.unitPrice)
-          : (size === '2L' ? 20000 : 10000);
+          : (size === '2L' ? 24000 : 12000);
         return {
           batchId: item.batchId ? Number(item.batchId) : parsedBatchId,
           bottleSize: size,

@@ -694,6 +694,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
                 rawId: m.id,
                 orderNumber: m.type === 'BASE_INICIAL' ? '🏦 BASE-INICIAL' : m.type === 'AJUSTE_SOBRANTE' ? '⚖️ AJUSTE-SOBRANTE (+)' : m.type === 'AJUSTE_CAJA' ? '⚖️ AJUSTE-CAJA' : '💼 APORTE-BOLSILLO',
                 date: m.movementDate,
+                createdAt: m.createdAt,
                 customerName: m.registeredBy || 'Edier',
                 customerPhone: '',
                 amount: m.amount,
@@ -723,6 +724,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
                       paymentId: p.id,
                       orderNumber: o.orderNumber,
                       date: p.paymentDate || o.deliveryDate || o.orderDate,
+                      createdAt: p.createdAt || o.createdAt,
                       customerName: o.customer?.fullName || 'Cliente',
                       customerPhone: o.customer?.phone || '',
                       amount: p.amount,
@@ -746,6 +748,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
                   paymentId: null as number | null,
                   orderNumber: o.orderNumber,
                   date: o.deliveryDate || o.orderDate,
+                  createdAt: o.createdAt,
                   customerName: o.customer?.fullName || 'Cliente',
                   customerPhone: o.customer?.phone || '',
                   amount: o.paidAmount,
@@ -763,12 +766,18 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
                   movementType: 'VENTA',
                 }];
               }),
-          ].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+          ].sort((a: any, b: any) => {
+            const timeB = new Date(b.date || b.createdAt || 0).getTime();
+            const timeA = new Date(a.date || a.createdAt || 0).getTime();
+            if (timeB !== timeA) return timeB - timeA;
+            return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+          }),
           outflows: [
             ...purchases.map((p) => ({
               id: `purch_${p.id}`,
               rawId: p.id,
               date: p.purchaseDate,
+              createdAt: p.createdAt,
               category: 'COMPRA_INSUMO',
               categoryLabel: '🥛 Compra Insumo',
               description: `${p.rawMaterial?.name || 'Insumo'} (${p.quantity} ${p.rawMaterial?.unit || 'und'})`,
@@ -781,6 +790,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
               id: `exp_${e.id}`,
               rawId: e.id,
               date: e.expenseDate,
+              createdAt: e.createdAt,
               category: 'GASTO_GENERAL',
               categoryLabel: `⚙️ ${e.category}`,
               description: e.description,
@@ -793,6 +803,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
               id: `pay_${p.id}`,
               rawId: p.id,
               date: p.paymentDate,
+              createdAt: p.createdAt,
               category: 'NOMINA',
               categoryLabel: '👥 Nómina',
               description: `${p.staff?.fullName || 'Personal'} - ${p.calculationDetails || 'Pago'}`,
@@ -804,6 +815,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
               id: `draw_${p.id}`,
               rawId: p.id,
               date: p.paymentDate,
+              createdAt: p.createdAt,
               category: 'RETIRO_SOCIO',
               categoryLabel: '💼 Retiro Socio',
               description: `${p.staff?.fullName || 'Socio'} - ${p.calculationDetails || 'Retiro'}`,
@@ -817,6 +829,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
                 id: `cash_ret_${m.id}`,
                 rawId: m.id,
                 date: m.movementDate,
+                createdAt: m.createdAt,
                 category: m.type,
                 categoryLabel: m.type === 'AJUSTE_FALTANTE' ? '⚖️ Ajuste Faltante / 4x1000 (-)' : '🏦 Retiro de Base',
                 description: `${m.concept} (${m.registeredBy || 'Edier'})`,
@@ -826,13 +839,19 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
                 isCashMovement: true,
                 rawMovement: m,
               })),
-          ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+          ].sort((a: any, b: any) => {
+            const timeB = new Date(b.date || b.createdAt || 0).getTime();
+            const timeA = new Date(a.date || a.createdAt || 0).getTime();
+            if (timeB !== timeA) return timeB - timeA;
+            return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+          }),
           transfers: cashMovements
             .filter((m) => m.type === 'TRASLADO_EFECTIVO_A_BANCO' || m.type === 'TRASLADO_BANCO_A_EFECTIVO')
             .map((m) => ({
               id: `cash_trans_${m.id}`,
               rawId: m.id,
               date: m.movementDate,
+              createdAt: m.createdAt,
               type: m.type,
               category: 'TRASLADO',
               categoryLabel: m.type === 'TRASLADO_EFECTIVO_A_BANCO' ? '🔄 Efectivo ➔ Transferencia' : '🔄 Transferencia ➔ Efectivo',
