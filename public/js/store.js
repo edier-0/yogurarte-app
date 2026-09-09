@@ -266,3 +266,12 @@ export const buildWhatsAppUrl = (contact, message) => {
   return `https://api.whatsapp.com/send/?text=${encodedText}`;
 };
 
+export function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
