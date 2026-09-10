@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, formatMovementTime, getMovementEffectiveDate, getTodayLocalDateStr, showToast, store } from '../store.js';
 import { openExpenseModal, openCashMovementModal } from './expensesView.js';
 import { openPaymentModal, openEditOrderPaymentModal } from './ordersView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
@@ -20,18 +20,8 @@ let currentCashData = null;
 
 export function getMovementExactTime(m) {
   if (!m) return 0;
-  const dVal = m.date || m.paymentDate || m.movementDate || m.expenseDate;
-  const cVal = m.createdAt;
-  if (dVal && cVal) {
-    const dStr = String(dVal);
-    const cStr = String(cVal);
-    const dDay = dStr.split('T')[0];
-    const cDay = cStr.split('T')[0];
-    if (dDay === cDay) {
-      return new Date(cStr).getTime();
-    }
-  }
-  return new Date(dVal || cVal || 0).getTime();
+  const d = getMovementEffectiveDate(m);
+  return d ? d.getTime() : 0;
 }
 
 export function compareMovementsDesc(a, b) {
@@ -1497,20 +1487,12 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
                 methodBadge = `<span class="badge" style="background: #FAF5FF; color: #7E22CE; font-weight: 700; font-size: 0.72rem;">🟣 ${m.paymentMethod || 'TRANSFERENCIA'}</span>`;
               }
 
-              const exactDateVal = (m.date && String(m.date).includes('T') && !String(m.date).endsWith('T00:00:00.000Z')) ? m.date : (m.createdAt || m.date);
-              let timeStr = '';
-              if (exactDateVal) {
-                try {
-                  timeStr = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(exactDateVal));
-                } catch (e) {
-                  timeStr = '';
-                }
-              }
+              const timeStr = formatMovementTime(m);
 
               return `
               <tr>
                 <td>
-                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.82rem;">${formatDate(m.date)}</div>
+                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.82rem;">${formatDate(m.date || m.movementDate || m.createdAt)}</div>
                   ${timeStr ? `<div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">🕒 ${timeStr}</div>` : ''}
                 </td>
                 <td>
@@ -1840,16 +1822,8 @@ export function openCashKpiDetailModal({
                   const isTransfer = item.flowType === 'TRANSFER' || item.type?.startsWith('TRASLADO_');
                   const itemIsPos = item.flowType === 'INFLOW' || (!isTransfer && (item.displayAmount !== undefined ? item.displayAmount > 0 : item.amount > 0));
                   const itemAmount = Math.abs(item.displayAmount !== undefined ? item.displayAmount : item.amount);
-                  const dateStr = item.date ? formatDate(item.date) : item.movementDate ? formatDate(item.movementDate) : 'N/A';
-                  const exactDateVal = (item.date && String(item.date).includes('T') && !String(item.date).endsWith('T00:00:00.000Z')) ? item.date : (item.createdAt || item.date || item.movementDate || item.paymentDate);
-                  let timeStr = '';
-                  if (exactDateVal) {
-                    try {
-                      timeStr = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(exactDateVal));
-                    } catch (e) {
-                      timeStr = '';
-                    }
-                  }
+                  const dateStr = item.date ? formatDate(item.date) : item.movementDate ? formatDate(item.movementDate) : (item.createdAt ? formatDate(item.createdAt) : 'N/A');
+                  const timeStr = formatMovementTime(item);
                   const desc = item.concept || item.description || item.flavor || item.orderNumber || 'Movimiento';
                   const person = item.customerName || item.supplier || item.registeredBy || item.staffName || '—';
 

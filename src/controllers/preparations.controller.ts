@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
+import { getColombiaDateStr, parseColombiaDate } from '../utils/date.utils.js';
 
 function isKgUnit(unit: string): boolean {
   if (!unit) return false;
@@ -124,11 +125,9 @@ export const createPreparation = async (req: Request, res: Response) => {
       }
 
       // 2. Generar código de preparación (ej. PREP-YYYYMMDD-01)
-      const dateObj = preparationDate ? new Date(`${String(preparationDate).split('T')[0]}T12:00:00.000Z`) : new Date();
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      const datePrefix = `PREP-${year}${month}${day}`;
+      const dateObj = parseColombiaDate(preparationDate);
+      const dateStr = getColombiaDateStr(dateObj).replace(/-/g, '');
+      const datePrefix = `PREP-${dateStr}`;
 
       const countToday = await tx.supplyPreparation.count({
         where: {

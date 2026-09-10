@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
+import { getColombiaDateStr, parseColombiaDate } from '../utils/date.utils.js';
 
 export const getBatches = async (req: Request, res: Response) => {
   try {
@@ -436,8 +437,8 @@ export const createBatch = async (req: Request, res: Response) => {
     }
 
     // Generar código de lote secuencial único para el día
-    const dateObj = preparationDate ? new Date(`${String(preparationDate).split('T')[0]}T12:00:00.000Z`) : new Date();
-    const dateStr = dateObj.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateObj = parseColombiaDate(preparationDate);
+    const dateStr = getColombiaDateStr(dateObj).replace(/-/g, '');
     
     const todayBatches = await prisma.productionBatch.findMany({
       where: {
@@ -710,7 +711,7 @@ export const createBatch = async (req: Request, res: Response) => {
           price1L: price1L !== undefined && Number(price1L) > 0 ? Number(price1L) : 12000,
           price2L: price2L !== undefined && Number(price2L) > 0 ? Number(price2L) : 24000,
           preparationDate: dateObj,
-          expirationDate: expirationDate ? new Date(`${String(expirationDate).split('T')[0]}T12:00:00.000Z`) : null,
+          expirationDate: expirationDate ? parseColombiaDate(expirationDate) : null,
           totalCost: totalBatchCost,
           costPerLiter,
           notes: notes ? notes.trim() : null,
@@ -956,8 +957,8 @@ export const updateBatch = async (req: Request, res: Response) => {
         flavor: flavor !== undefined ? flavor.trim() : undefined,
         price1L: price1L !== undefined && Number(price1L) > 0 ? Number(price1L) : undefined,
         price2L: price2L !== undefined && Number(price2L) > 0 ? Number(price2L) : undefined,
-        preparationDate: preparationDate ? new Date(`${String(preparationDate).split('T')[0]}T12:00:00.000Z`) : undefined,
-        expirationDate: expirationDate ? new Date(`${String(expirationDate).split('T')[0]}T12:00:00.000Z`) : undefined,
+        preparationDate: preparationDate ? parseColombiaDate(preparationDate) : undefined,
+        expirationDate: expirationDate ? parseColombiaDate(expirationDate) : undefined,
         notes: notes !== undefined ? notes.trim() : undefined,
         status: status !== undefined ? String(status).trim() : undefined,
       },

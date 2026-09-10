@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
+import { parseColombiaDate } from '../utils/date.utils.js';
 
 export const getExpenses = async (req: Request, res: Response) => {
   try {
@@ -50,24 +51,7 @@ export const createExpense = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Descripción y monto válido son requeridos' });
     }
 
-    let parsedExpenseDate = new Date();
-    if (expenseDate) {
-      const dateParts = String(expenseDate).split('T')[0].split('-').map(Number);
-      if (dateParts.length === 3) {
-        const now = new Date();
-        if (
-          dateParts[0] === now.getFullYear() &&
-          dateParts[1] === (now.getMonth() + 1) &&
-          dateParts[2] === now.getDate()
-        ) {
-          parsedExpenseDate = now;
-        } else {
-          parsedExpenseDate = new Date(Date.UTC(dateParts[0], dateParts[1] - 1, dateParts[2], 12, 0, 0));
-        }
-      } else {
-        parsedExpenseDate = new Date(expenseDate);
-      }
-    }
+    const parsedExpenseDate = parseColombiaDate(expenseDate);
 
     const expense = await prisma.expense.create({
       data: {

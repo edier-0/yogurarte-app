@@ -2,15 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../prisma.js';
 import { getAllSettingsMap } from './settings.controller.js';
 import { buildWhatsAppUrl } from '../utils/whatsapp.utils.js';
-
-const getColombiaDateStr = (d = new Date()) => {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Bogota',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d);
-};
+import { getColombiaDateStr, parseColombiaDate } from '../utils/date.utils.js';
 
 export const getOrders = async (req: Request, res: Response) => {
   try {
@@ -513,8 +505,8 @@ export const createOrder = async (req: Request, res: Response) => {
     const finalOrderBatchId = uniqueBatchIds.length === 1 ? uniqueBatchIds[0] : null;
 
     // Generar consecutivo de pedido único (PED-YYYYMMDD-001)
-    const dateObj = orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : new Date();
-    const dateStr = dateObj.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateObj = parseColombiaDate(orderDate);
+    const dateStr = getColombiaDateStr(dateObj).replace(/-/g, '');
     
     const todayOrders = await prisma.order.findMany({
       where: {
@@ -544,10 +536,9 @@ export const createOrder = async (req: Request, res: Response) => {
 
     let initialDeliveryDate: Date | null = null;
     if (deliveryDate) {
-      initialDeliveryDate = new Date(`${String(deliveryDate).split('T')[0]}T12:00:00.000Z`);
+      initialDeliveryDate = parseColombiaDate(deliveryDate);
     } else if (deliveryStatus === 'DELIVERED') {
-      const todayStr = getColombiaDateStr();
-      initialDeliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
+      initialDeliveryDate = new Date();
     }
 
     const order = await prisma.order.create({
@@ -822,11 +813,10 @@ export const updateOrder = async (req: Request, res: Response) => {
 
     let finalDeliveryDate = currentOrder.deliveryDate;
     if (deliveryDate) {
-      finalDeliveryDate = new Date(`${String(deliveryDate).split('T')[0]}T12:00:00.000Z`);
+      finalDeliveryDate = parseColombiaDate(deliveryDate);
     } else if (deliveryStatus === 'DELIVERED') {
-      const todayStr = getColombiaDateStr();
       if (currentOrder.deliveryStatus !== 'DELIVERED' || !currentOrder.deliveryDate) {
-        finalDeliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
+        finalDeliveryDate = new Date();
       }
     }
 
@@ -852,7 +842,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         deliveryDriverName: deliveryDriverName !== undefined ? deliveryDriverName : currentOrder.deliveryDriverName,
         deliveryFee: updatedDeliveryFee,
         discount: updatedDiscount,
-        orderDate: orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : currentOrder.orderDate,
+        orderDate: orderDate ? parseColombiaDate(orderDate) : currentOrder.orderDate,
         deliveryDate: finalDeliveryDate,
         deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : (customerAddress ? customerAddress.trim() : currentOrder.deliveryAddress),
         notes: notes !== undefined ? notes : currentOrder.notes,
@@ -881,7 +871,7 @@ export const updateOrder = async (req: Request, res: Response) => {
     } else if (finalPaid > 0) {
       if (existingPayments.length === 0) {
         // No había abono previo registrado, crear el registro de abono
-        const pDate = orderDate ? new Date(`${String(orderDate).split('T')[0]}T12:00:00.000Z`) : currentOrder.orderDate;
+        const pDate = orderDate ? parseColombiaDate(orderDate) : currentOrder.orderDate;
         await prisma.orderPayment.create({
           data: {
             orderId: Number(id),
@@ -983,8 +973,7 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
     if (deliveryStatus) {
       updateData.deliveryStatus = deliveryStatus;
       if (deliveryStatus === 'DELIVERED') {
-        const todayStr = getColombiaDateStr();
-        updateData.deliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
+        updateData.deliveryDate = new Date();
       } else if (deliveryStatus === 'IN_ROUTE' && !existing.dispatchedAt) {
         updateData.dispatchedAt = new Date();
       } else if (deliveryStatus === 'PENDING' || deliveryStatus === 'PREPARING' || deliveryStatus === 'READY_FOR_DISPATCH') {
@@ -1010,12 +999,11 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
       const delta = finalPaid - currentPaymentsSum;
 
       if (delta > 0) {
-        const todayStr = getColombiaDateStr();
         await prisma.orderPayment.create({
           data: {
             orderId,
             amount: delta,
-            paymentDate: new Date(`${todayStr}T12:00:00.000Z`),
+            paymentDate: new Date(),
             paymentMethod: paymentMethod ? String(paymentMethod).trim() : (existing.paymentMethod || 'EFECTIVO'),
             notes: 'Pago recibido al entregar domicilio',
             registeredBy: existing.deliveryDriverName || 'Domiciliario',
@@ -1062,7 +1050,7 @@ export const rescheduleOverdueOrders = async (req: Request, res: Response) => {
   try {
     const todayStr = getColombiaDateStr();
     const todayStart = new Date(`${todayStr}T00:00:00.000Z`);
-    const newDeliveryDate = new Date(`${todayStr}T12:00:00.000Z`);
+    const newDeliveryDate = new Date();
 
     // Buscar pedidos pendientes por entregar cuya fecha de entrega (o de pedido) sea anterior a hoy
     const result = await prisma.order.updateMany({
@@ -1106,8 +1094,7 @@ export const addOrderPayment = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'El monto del abono debe ser mayor a 0' });
     }
 
-    const todayStr = getColombiaDateStr();
-    const paymentDate = new Date(`${todayStr}T12:00:00.000Z`);
+    const paymentDate = parseColombiaDate(req.body.paymentDate);
 
     const newPayment = await prisma.orderPayment.create({
       data: {
@@ -1182,7 +1169,7 @@ export const updateOrderPayment = async (req: Request, res: Response) => {
       updateData.amount = payAmount;
     }
     if (paymentMethod) updateData.paymentMethod = String(paymentMethod).trim();
-    if (paymentDate) updateData.paymentDate = new Date(`${String(paymentDate).split('T')[0]}T12:00:00.000Z`);
+    if (paymentDate) updateData.paymentDate = parseColombiaDate(paymentDate);
     if (notes !== undefined) updateData.notes = notes ? String(notes).trim() : null;
     if (registeredBy) updateData.registeredBy = String(registeredBy).trim();
 

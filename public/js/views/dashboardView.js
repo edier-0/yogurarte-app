@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatDateTime, formatStock, getTodayLocalDateStr, showToast } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, formatMovementTime, formatStock, getTodayLocalDateStr, showToast } from '../store.js';
 import { openPaymentModal } from './ordersView.js';
 import { openCashMovementModal } from './expensesView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
@@ -2062,19 +2062,11 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
                         ${pageUnified
                           .map((m) => {
                             const isPos = m.flowType === 'INFLOW';
-                            const exactDateVal = (m.date && String(m.date).includes('T') && !String(m.date).endsWith('T00:00:00.000Z')) ? m.date : (m.createdAt || m.date);
-                            let timeStr = '';
-                            if (exactDateVal) {
-                              try {
-                                timeStr = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(exactDateVal));
-                              } catch (e) {
-                                timeStr = '';
-                              }
-                            }
+                            const timeStr = formatMovementTime(m);
                             return `
                               <tr>
                                 <td>
-                                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.8rem;">${formatDate(m.date)}</div>
+                                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.8rem;">${formatDate(m.date || m.createdAt)}</div>
                                   ${timeStr ? `<div style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">🕒 ${timeStr}</div>` : ''}
                                 </td>
                                 <td>
@@ -2138,19 +2130,11 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
                       <tbody>
                         ${pageInflows
                           .map((i) => {
-                            const exactDateVal = (i.date && String(i.date).includes('T') && !String(i.date).endsWith('T00:00:00.000Z')) ? i.date : (i.createdAt || i.date);
-                            let timeStr = '';
-                            if (exactDateVal) {
-                              try {
-                                timeStr = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(exactDateVal));
-                              } catch (e) {
-                                timeStr = '';
-                              }
-                            }
+                            const timeStr = formatMovementTime(i);
                             return `
                               <tr class="cash-row ${i.isCashMovement ? 'row-base' : 'row-sale'}">
                                 <td>
-                                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.8rem;">${formatDate(i.date)}</div>
+                                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.8rem;">${formatDate(i.date || i.createdAt)}</div>
                                   ${timeStr ? `<div style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">🕒 ${timeStr}</div>` : ''}
                                 </td>
                                 <td>
@@ -2208,19 +2192,11 @@ function openCashBalanceModal(cashFlowData, kpis, periodLabel) {
                       <tbody>
                         ${pageOutflows
                           .map((o) => {
-                            const exactDateVal = (o.date && String(o.date).includes('T') && !String(o.date).endsWith('T00:00:00.000Z')) ? o.date : (o.createdAt || o.date);
-                            let timeStr = '';
-                            if (exactDateVal) {
-                              try {
-                                timeStr = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(exactDateVal));
-                              } catch (e) {
-                                timeStr = '';
-                              }
-                            }
+                            const timeStr = formatMovementTime(o);
                             return `
                               <tr>
                                 <td>
-                                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.8rem;">${formatDate(o.date)}</div>
+                                  <div style="font-weight: 700; color: var(--text-main); font-size: 0.8rem;">${formatDate(o.date || o.createdAt)}</div>
                                   ${timeStr ? `<div style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">🕒 ${timeStr}</div>` : ''}
                                 </td>
                                 <td><span class="badge" style="background: var(--bg-subtle); color: var(--text-main); font-size: 0.72rem;">${o.categoryLabel || o.category}</span></td>

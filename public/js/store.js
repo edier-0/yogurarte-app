@@ -174,6 +174,73 @@ export const formatDateTime = (dateStr) => {
   }
 };
 
+/**
+ * Obtiene la fecha y hora efectiva real de un movimiento para ordenamiento y formateo,
+ * combinando el día del evento con la hora real de creación en lugar de una hora fija artificial (7:00 AM).
+ */
+export const getMovementEffectiveDate = (m) => {
+  if (!m) return new Date(0);
+  const dStr = m.date || m.movementDate || m.expenseDate || m.purchaseDate || m.paymentDate;
+  const cStr = m.createdAt;
+
+  let datePart = '';
+  if (dStr) {
+    const s = typeof dStr === 'object' && dStr.toISOString ? dStr.toISOString() : String(dStr);
+    datePart = s.split('T')[0];
+  } else if (cStr) {
+    const s = typeof cStr === 'object' && cStr.toISOString ? cStr.toISOString() : String(cStr);
+    datePart = s.split('T')[0];
+  }
+
+  // Comprobar si dStr tiene una hora específica válida (no dummy 00:00 ni 12:00 UTC)
+  if (dStr) {
+    const s = typeof dStr === 'object' && dStr.toISOString ? dStr.toISOString() : String(dStr);
+    if (s.includes('T') && !s.endsWith('T00:00:00.000Z') && !s.endsWith('T12:00:00.000Z') && !s.endsWith('T05:00:00.000Z')) {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  // Si tenemos createdAt, extraer su hora en UTC y combinarla con el datePart
+  if (cStr) {
+    const cDate = new Date(cStr);
+    if (!isNaN(cDate.getTime())) {
+      if (!datePart) return cDate;
+      const hours = String(cDate.getUTCHours()).padStart(2, '0');
+      const mins = String(cDate.getUTCMinutes()).padStart(2, '0');
+      const secs = String(cDate.getUTCSeconds()).padStart(2, '0');
+      const ms = String(cDate.getUTCMilliseconds()).padStart(3, '0');
+      const combined = new Date(`${datePart}T${hours}:${mins}:${secs}.${ms}Z`);
+      if (!isNaN(combined.getTime())) return combined;
+      return cDate;
+    }
+  }
+
+  if (dStr) {
+    const d = new Date(dStr);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  return new Date(0);
+};
+
+/**
+ * Formatea la hora de un movimiento mostrando la hora exacta (ej. "12:37 p. m.", "9:02 p. m.")
+ */
+export const formatMovementTime = (m) => {
+  const d = getMovementEffectiveDate(m);
+  if (!d || isNaN(d.getTime()) || d.getTime() === 0) return '';
+  try {
+    return new Intl.DateTimeFormat('es-CO', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d);
+  } catch (e) {
+    return '';
+  }
+};
+
 // Obtener fecha actual en formato local YYYY-MM-DD
 export const getTodayLocalDateStr = () => {
   const d = new Date();

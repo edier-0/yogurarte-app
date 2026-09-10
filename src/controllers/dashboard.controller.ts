@@ -1,20 +1,11 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
+import { getColombiaDateStr, parseColombiaDate } from '../utils/date.utils.js';
 
 export const getDashboardSummary = async (req: Request, res: Response) => {
   try {
     const { period, date, startDate, endDate, month } = req.query;
     const now = new Date();
-
-    const getColombiaDateStr = (d = new Date()) => {
-      return new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Bogota',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(d); // "YYYY-MM-DD"
-    };
-
     const todayStr = getColombiaDateStr(now);
 
     const orderWhere: any = {};
@@ -767,10 +758,35 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
                 }];
               }),
           ].sort((a: any, b: any) => {
-            const timeB = new Date(b.date || b.createdAt || 0).getTime();
-            const timeA = new Date(a.date || a.createdAt || 0).getTime();
-            if (timeB !== timeA) return timeB - timeA;
-            return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+            const getEffTime = (item: any) => {
+              const dStr = item.date ? (item.date instanceof Date ? item.date.toISOString() : String(item.date)) : '';
+              const cStr = item.createdAt ? (item.createdAt instanceof Date ? item.createdAt.toISOString() : String(item.createdAt)) : '';
+              const datePart = dStr ? dStr.split('T')[0] : (cStr ? cStr.split('T')[0] : '');
+
+              if (dStr && dStr.includes('T') && !dStr.endsWith('T00:00:00.000Z') && !dStr.endsWith('T12:00:00.000Z')) {
+                const d = new Date(dStr);
+                if (!isNaN(d.getTime())) return d.getTime();
+              }
+              if (cStr) {
+                const cDate = new Date(cStr);
+                if (!isNaN(cDate.getTime())) {
+                  if (!datePart) return cDate.getTime();
+                  const hours = String(cDate.getUTCHours()).padStart(2, '0');
+                  const mins = String(cDate.getUTCMinutes()).padStart(2, '0');
+                  const secs = String(cDate.getUTCSeconds()).padStart(2, '0');
+                  const ms = String(cDate.getUTCMilliseconds()).padStart(3, '0');
+                  const combined = new Date(`${datePart}T${hours}:${mins}:${secs}.${ms}Z`);
+                  if (!isNaN(combined.getTime())) return combined.getTime();
+                  return cDate.getTime();
+                }
+              }
+              if (dStr) {
+                const d = new Date(dStr);
+                if (!isNaN(d.getTime())) return d.getTime();
+              }
+              return 0;
+            };
+            return getEffTime(b) - getEffTime(a);
           }),
           outflows: [
             ...purchases.map((p) => ({
@@ -840,10 +856,35 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
                 rawMovement: m,
               })),
           ].sort((a: any, b: any) => {
-            const timeB = new Date(b.date || b.createdAt || 0).getTime();
-            const timeA = new Date(a.date || a.createdAt || 0).getTime();
-            if (timeB !== timeA) return timeB - timeA;
-            return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+            const getEffTime = (item: any) => {
+              const dStr = item.date ? (item.date instanceof Date ? item.date.toISOString() : String(item.date)) : '';
+              const cStr = item.createdAt ? (item.createdAt instanceof Date ? item.createdAt.toISOString() : String(item.createdAt)) : '';
+              const datePart = dStr ? dStr.split('T')[0] : (cStr ? cStr.split('T')[0] : '');
+
+              if (dStr && dStr.includes('T') && !dStr.endsWith('T00:00:00.000Z') && !dStr.endsWith('T12:00:00.000Z')) {
+                const d = new Date(dStr);
+                if (!isNaN(d.getTime())) return d.getTime();
+              }
+              if (cStr) {
+                const cDate = new Date(cStr);
+                if (!isNaN(cDate.getTime())) {
+                  if (!datePart) return cDate.getTime();
+                  const hours = String(cDate.getUTCHours()).padStart(2, '0');
+                  const mins = String(cDate.getUTCMinutes()).padStart(2, '0');
+                  const secs = String(cDate.getUTCSeconds()).padStart(2, '0');
+                  const ms = String(cDate.getUTCMilliseconds()).padStart(3, '0');
+                  const combined = new Date(`${datePart}T${hours}:${mins}:${secs}.${ms}Z`);
+                  if (!isNaN(combined.getTime())) return combined.getTime();
+                  return cDate.getTime();
+                }
+              }
+              if (dStr) {
+                const d = new Date(dStr);
+                if (!isNaN(d.getTime())) return d.getTime();
+              }
+              return 0;
+            };
+            return getEffTime(b) - getEffTime(a);
           }),
           transfers: cashMovements
             .filter((m) => m.type === 'TRASLADO_EFECTIVO_A_BANCO' || m.type === 'TRASLADO_BANCO_A_EFECTIVO')
@@ -868,6 +909,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           rawMaterials: purchases.map((p) => ({
             id: p.id,
             date: p.purchaseDate,
+            createdAt: p.createdAt,
             name: p.rawMaterial?.name || 'Insumo',
             category: p.rawMaterial?.category || 'INSUMO',
             quantity: p.quantity,
@@ -879,6 +921,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           generalExpenses: expenses.map((e) => ({
             id: e.id,
             date: e.expenseDate,
+            createdAt: e.createdAt,
             category: e.category,
             description: e.description,
             amount: e.amount,
@@ -887,6 +930,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           payroll: payrollPayments.map((p) => ({
             id: p.id,
             date: p.paymentDate,
+            createdAt: p.createdAt,
             staffName: p.staff?.fullName || 'Colaborador',
             role: p.staff?.role || 'Personal',
             paymentType: p.paymentType,
@@ -898,6 +942,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
           ownerDraws: ownerDrawPayments.map((p) => ({
             id: p.id,
             date: p.paymentDate,
+            createdAt: p.createdAt,
             staffName: p.staff?.fullName || 'Socio',
             calculationDetails: p.calculationDetails || 'Retiro de utilidades',
             netAmount: p.netAmount,

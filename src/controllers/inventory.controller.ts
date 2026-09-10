@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
+import { parseColombiaDate } from '../utils/date.utils.js';
 
 export const getMaterials = async (req: Request, res: Response) => {
   try {
@@ -145,8 +146,8 @@ export const createPurchase = async (req: Request, res: Response) => {
     const newTotalValue = currentTotalValue + parsedTotalCost;
     const newAvgCost = newStock > 0 ? Math.round(newTotalValue / newStock) : Math.round(parsedUnitCost);
 
-    // Parse date keeping local calendar day
-    const dateObj = purchaseDate ? new Date(`${String(purchaseDate).split('T')[0]}T12:00:00.000Z`) : new Date();
+    // Parse date keeping accurate Colombia timestamp
+    const dateObj = parseColombiaDate(purchaseDate);
 
     // Transacción: registrar compra y actualizar stock
     const [purchase] = await prisma.$transaction([
@@ -216,7 +217,7 @@ export const updatePurchase = async (req: Request, res: Response) => {
           quantity: newQty,
           unitCost: Math.round(newUnitCost * 100) / 100,
           totalCost: Math.round(newTotalCost),
-          purchaseDate: purchaseDate ? new Date(`${String(purchaseDate).split('T')[0]}T12:00:00.000Z`) : currentPurchase.purchaseDate,
+          purchaseDate: purchaseDate ? parseColombiaDate(purchaseDate) : currentPurchase.purchaseDate,
           paymentMethod: paymentMethod !== undefined ? paymentMethod.trim() : currentPurchase.paymentMethod,
           notes: notes !== undefined ? notes.trim() : currentPurchase.notes,
         },
@@ -300,7 +301,7 @@ export const adjustStock = async (req: Request, res: Response) => {
     const deltaQuantity = Math.round((parsedStock - previousStock) * 1000) / 1000;
     const unitCost = material.avgCost || 0;
     const totalCostImpact = Math.round(deltaQuantity * unitCost);
-    const dateObj = adjustmentDate ? new Date(`${String(adjustmentDate).split('T')[0]}T12:00:00.000Z`) : new Date();
+    const dateObj = parseColombiaDate(adjustmentDate);
 
     const [adjustment, updatedMaterial] = await prisma.$transaction([
       prisma.inventoryAdjustment.create({

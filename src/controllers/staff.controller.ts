@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
 import { buildWhatsAppUrl } from '../utils/whatsapp.utils.js';
+import { parseColombiaDate } from '../utils/date.utils.js';
 
 // Listar miembros del personal y socios
 export const getStaff = async (req: Request, res: Response) => {
@@ -263,9 +264,9 @@ export const createStaffPayment = async (req: Request, res: Response) => {
         amount: grossAmount,
         deductions: ded,
         netAmount: finalNet,
-        periodStart: periodStart ? new Date(periodStart) : null,
-        periodEnd: periodEnd ? new Date(periodEnd) : null,
-        paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+        periodStart: periodStart ? parseColombiaDate(periodStart) : null,
+        periodEnd: periodEnd ? parseColombiaDate(periodEnd) : null,
+        paymentDate: parseColombiaDate(paymentDate),
         calculationDetails: calculationDetails || null,
         paymentMethod: paymentMethod || 'EFECTIVO',
         notes: notes || null,
@@ -325,9 +326,9 @@ export const updateStaffPayment = async (req: Request, res: Response) => {
       data.netAmount = Math.max(0, g - d);
     }
 
-    if (periodStart !== undefined) data.periodStart = periodStart ? new Date(periodStart) : null;
-    if (periodEnd !== undefined) data.periodEnd = periodEnd ? new Date(periodEnd) : null;
-    if (paymentDate !== undefined) data.paymentDate = paymentDate ? new Date(paymentDate) : existing.paymentDate;
+    if (periodStart !== undefined) data.periodStart = periodStart ? parseColombiaDate(periodStart) : null;
+    if (periodEnd !== undefined) data.periodEnd = periodEnd ? parseColombiaDate(periodEnd) : null;
+    if (paymentDate !== undefined) data.paymentDate = paymentDate ? parseColombiaDate(paymentDate) : existing.paymentDate;
     if (calculationDetails !== undefined) data.calculationDetails = calculationDetails || null;
     if (paymentMethod !== undefined) data.paymentMethod = paymentMethod;
     if (notes !== undefined) data.notes = notes || null;
