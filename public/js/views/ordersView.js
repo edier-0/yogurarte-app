@@ -1970,14 +1970,14 @@ export async function openOrderModal(orderData = null) {
       let flavor = 'Natural Artesanal';
 
       if (sourceSelect.value.startsWith('BATCH_')) {
-        itemBatchId = Number(selectedOpt.dataset.batchId);
-        flavor = selectedOpt.dataset.flavor || 'Natural';
+        itemBatchId = Number(sourceSelect.value.replace('BATCH_', ''));
+        flavor = selectedOpt?.dataset?.flavor || (allBatchesForModal.find((b) => b.id === itemBatchId)?.flavor || 'Natural');
       } else if (sourceSelect.value === 'PRE_CUSTOM') {
         itemBatchId = null;
         flavor = (customFlavorInput?.value || 'Natural Personalizado').trim() || 'Natural Personalizado';
       } else if (sourceSelect.value.startsWith('PRE_')) {
         itemBatchId = null;
-        flavor = selectedOpt.dataset.flavor || 'Natural Artesanal';
+        flavor = selectedOpt?.dataset?.flavor || sourceSelect.value.replace('PRE_', '');
       }
 
       const qty = Number(row.querySelector('.item-qty').value) || 1;
@@ -2028,8 +2028,8 @@ export async function openOrderModal(orderData = null) {
     }
 
     // Si todos los ítems comparten el mismo batchId, se pasa como batchId global; si hay mezcla o preventa, se pasa null
-    const uniqueBatchIds = Array.from(new Set(items.map((it) => it.batchId)));
-    const finalOrderBatchId = (uniqueBatchIds.length === 1 && uniqueBatchIds[0] !== null)
+    const uniqueBatchIds = Array.from(new Set(items.map((it) => it.batchId).filter((b) => b !== null && b !== undefined)));
+    const finalOrderBatchId = (uniqueBatchIds.length === 1)
       ? Number(uniqueBatchIds[0])
       : null;
 

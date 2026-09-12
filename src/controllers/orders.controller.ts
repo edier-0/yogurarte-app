@@ -342,8 +342,16 @@ export const createOrder = async (req: Request, res: Response) => {
         const itemUnitPrice = item.unitPrice !== undefined && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) >= 0
           ? Number(item.unitPrice)
           : (size === '2L' ? 24000 : 12000);
+        
+        let itemBatchId: number | null = null;
+        if (item.batchId !== undefined && item.batchId !== null && item.batchId !== '') {
+          itemBatchId = Number(item.batchId);
+        } else if (parsedBatchId !== undefined && parsedBatchId !== null) {
+          itemBatchId = Number(parsedBatchId);
+        }
+
         return {
-          batchId: item.batchId ? Number(item.batchId) : parsedBatchId,
+          batchId: itemBatchId,
           bottleSize: size,
           flavor: (item.flavor || 'Natural').trim(),
           quantity: qty,
@@ -426,41 +434,41 @@ export const createOrder = async (req: Request, res: Response) => {
       ? parsedItems[0].bottleSize
       : 'MIXTO';
 
-    // Solo auto-vincular lote si el cliente/frontend NO envió batchId explícitamente como null o vacío (es decir, no pidió preventa)
-    const isExplicitlyPreventa = batchId === null || batchId === '' || (parsedItems.length > 0 && parsedItems.every((i) => i.batchId === null));
-    if (isExplicitlyPreventa) {
-      parsedBatchId = null;
-      parsedItems.forEach((it) => { it.batchId = null; });
-    } else if (!parsedBatchId && parsedItems.length > 0 && parsedItems.every((i) => !i.batchId)) {
-      const primaryFlavor = (parsedItems[0]?.flavor || flavor || 'Natural').trim();
-      const activeBatchesForFlavor = await prisma.productionBatch.findMany({
-        where: {
-          flavor: { equals: primaryFlavor, mode: 'insensitive' },
-          isActive: true,
-          status: { in: ['COMPLETADO', 'EN_FERMENTACION', 'EN_PROCESO'] },
-        },
-        include: {
-          orders: { select: { id: true, totalLiters: true } },
-          orderItems: { select: { id: true, orderId: true, totalLiters: true } },
-          discharges: { select: { totalLiters: true } },
-        },
-        orderBy: { preparationDate: 'desc' },
-      });
+    // Auto-vincular lote únicamente si no se enviaron lotes explícitos y no es preventa explícita
+    const hasAnyItemBatch = parsedItems.some((i) => i.batchId !== null && i.batchId !== undefined);
+    if (!hasAnyItemBatch && !parsedBatchId) {
+      const isExplicitPreventa = batchId === null || batchId === '';
+      if (!isExplicitPreventa) {
+        const primaryFlavor = (parsedItems[0]?.flavor || flavor || 'Natural').trim();
+        const activeBatchesForFlavor = await prisma.productionBatch.findMany({
+          where: {
+            flavor: { equals: primaryFlavor, mode: 'insensitive' },
+            isActive: true,
+            status: { in: ['COMPLETADO', 'EN_FERMENTACION', 'EN_PROCESO'] },
+          },
+          include: {
+            orders: { select: { id: true, totalLiters: true } },
+            orderItems: { select: { id: true, orderId: true, totalLiters: true } },
+            discharges: { select: { totalLiters: true } },
+          },
+          orderBy: { preparationDate: 'desc' },
+        });
 
-      for (const b of activeBatchesForFlavor) {
-        const soldFromItems = b.orderItems.reduce((sum, it) => sum + it.totalLiters, 0);
-        const legacyOrdersSold = b.orders
-          .filter((o) => !b.orderItems.some((it) => it.orderId === o.id))
-          .reduce((sum, o) => sum + o.totalLiters, 0);
-        const sold = soldFromItems + legacyOrdersSold;
-        const discharges = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
-        const available = Math.max(0, b.totalLitersProduced - sold - discharges);
-        if (available >= totalLitersCalculated) {
-          parsedBatchId = b.id;
-          parsedItems.forEach((it) => {
-            if (!it.batchId) it.batchId = b.id;
-          });
-          break;
+        for (const b of activeBatchesForFlavor) {
+          const soldFromItems = b.orderItems.reduce((sum, it) => sum + it.totalLiters, 0);
+          const legacyOrdersSold = b.orders
+            .filter((o) => !b.orderItems.some((it) => it.orderId === o.id))
+            .reduce((sum, o) => sum + o.totalLiters, 0);
+          const sold = soldFromItems + legacyOrdersSold;
+          const discharges = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
+          const available = Math.max(0, b.totalLitersProduced - sold - discharges);
+          if (available >= totalLitersCalculated) {
+            parsedBatchId = b.id;
+            parsedItems.forEach((it) => {
+              if (!it.batchId) it.batchId = b.id;
+            });
+            break;
+          }
         }
       }
     }
@@ -674,7 +682,6 @@ export const updateOrder = async (req: Request, res: Response) => {
 
     let parsedItemsList: any[] | null = null;
     if (Array.isArray(items) && items.length > 0) {
-      const isExplicitlyPreventa = batchId === null || batchId === '';
       const rawParsed = items.map((item) => {
         const size = item.bottleSize || '1L';
         const qty = Number(item.quantity) || 1;
@@ -682,8 +689,16 @@ export const updateOrder = async (req: Request, res: Response) => {
         const itemUnitPrice = item.unitPrice !== undefined && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) >= 0
           ? Number(item.unitPrice)
           : (size === '2L' ? 24000 : 12000);
+
+        let itemBatchId: number | null = null;
+        if (item.batchId !== undefined && item.batchId !== null && item.batchId !== '') {
+          itemBatchId = Number(item.batchId);
+        } else if (parsedBatchId !== undefined && parsedBatchId !== null) {
+          itemBatchId = Number(parsedBatchId);
+        }
+
         return {
-          batchId: isExplicitlyPreventa ? null : (item.batchId ? Number(item.batchId) : parsedBatchId),
+          batchId: itemBatchId,
           bottleSize: size,
           flavor: (item.flavor || 'Natural').trim(),
           quantity: qty,
