@@ -1174,6 +1174,68 @@
   color: #0284C7;
 }
 
+/* Optimización de Stickers y Medios de WhatsApp */
+.crm-sticker-wrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 140px;
+  height: 140px;
+  position: relative;
+  contain: strict;
+  content-visibility: auto;
+}
+
+.crm-sticker-img {
+  width: 140px;
+  height: 140px;
+  object-fit: contain;
+  display: block;
+  image-rendering: -webkit-optimize-contrast;
+  will-change: opacity, transform;
+  transition: opacity 0.18s ease-in, transform 0.18s ease-in;
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.crm-sticker-img.loaded {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.crm-sticker-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 130px;
+  height: 130px;
+  background: rgba(147, 51, 234, 0.05);
+  border: 1.5px dashed rgba(147, 51, 234, 0.25);
+  border-radius: 16px;
+  animation: crmStickerPulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes crmStickerPulse {
+  0% { transform: scale(0.98); opacity: 0.7; }
+  100% { transform: scale(1.02); opacity: 1; }
+}
+
+.crm-media-img {
+  max-width: 250px;
+  max-height: 250px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  display: block;
+  cursor: pointer;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.18s ease-in;
+}
+
+.crm-media-img.loaded {
+  opacity: 1;
+}
+
 /* Área de Envío y Respuestas Rápidas */
 .crm-input-wrapper {
   background: #FFFFFF;

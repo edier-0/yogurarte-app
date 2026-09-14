@@ -213,6 +213,26 @@ class WhatsAppService {
   }
 
   /**
+   * Guarda un buffer de medios de WhatsApp en el almacenamiento estático en disco para carga instantánea
+   */
+  private async saveMediaBuffer(messageId: string, ext: string, buffer: Buffer): Promise<string> {
+    try {
+      const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'chat-media');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      const safeId = messageId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filename = `${safeId}.${ext}`;
+      const filePath = path.join(uploadDir, filename);
+      await fs.promises.writeFile(filePath, buffer);
+      return `/uploads/chat-media/${filename}`;
+    } catch (e) {
+      console.warn('Aviso: guardando en Base64 por error al escribir archivo:', e);
+      return `data:image/${ext === 'webp' ? 'webp' : 'jpeg'};base64,${buffer.toString('base64')}`;
+    }
+  }
+
+  /**
    * Procesa un mensaje entrante o saliente de WhatsApp
    */
   private async processIncomingMessage(msg: WAMessage) {
@@ -241,7 +261,7 @@ class WhatsAppService {
       mediaMimeType = 'image/jpeg';
       try {
         if (this.sock) {
-          const buffer = await downloadMediaMessage(
+          const buffer = (await downloadMediaMessage(
             msg,
             'buffer',
             {},
@@ -249,9 +269,9 @@ class WhatsAppService {
               logger: pino({ level: 'silent' }),
               reuploadRequest: this.sock.updateMediaMessage,
             }
-          );
+          )) as Buffer;
           if (buffer) {
-            mediaUrl = `data:image/jpeg;base64,${buffer.toString('base64')}`;
+            mediaUrl = await this.saveMediaBuffer(messageId, 'jpg', buffer);
           }
         }
       } catch (err) {
@@ -263,7 +283,7 @@ class WhatsAppService {
       mediaMimeType = 'image/webp';
       try {
         if (this.sock) {
-          const buffer = await downloadMediaMessage(
+          const buffer = (await downloadMediaMessage(
             msg,
             'buffer',
             {},
@@ -271,9 +291,9 @@ class WhatsAppService {
               logger: pino({ level: 'silent' }),
               reuploadRequest: this.sock.updateMediaMessage,
             }
-          );
+          )) as Buffer;
           if (buffer) {
-            mediaUrl = `data:image/webp;base64,${buffer.toString('base64')}`;
+            mediaUrl = await this.saveMediaBuffer(messageId, 'webp', buffer);
           }
         }
       } catch (err) {

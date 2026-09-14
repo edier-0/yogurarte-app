@@ -4,6 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { Server as SocketIOServer } from 'socket.io';
@@ -89,7 +90,20 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // 5. Limitador de peticiones general para la API
 app.use('/api', apiLimiter);
 
-// 6. Servir archivos estáticos del frontend con caché controlada
+// 6. Servir archivos multimedia de WhatsApp con caché inmutable para carga instantánea
+const uploadsPath = path.join(__dirname, '../public/uploads');
+if (!fs.existsSync(uploadsPath)) {
+  fs.mkdirSync(uploadsPath, { recursive: true });
+}
+app.use(
+  '/uploads',
+  express.static(uploadsPath, {
+    maxAge: '30d',
+    immutable: true,
+  })
+);
+
+// 7. Servir archivos estáticos del frontend con caché controlada
 const publicPath = path.join(__dirname, '../public');
 app.use(
   express.static(publicPath, {

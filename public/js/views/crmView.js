@@ -70,6 +70,43 @@ function initSocket() {
     renderConversationList();
   });
 
+  socketInstance.on('whatsapp:media_updated', (payload) => {
+    const { messageId, mediaUrl, mediaMimeType } = payload;
+    const msg = cachedMessages.find((m) => m.messageId === messageId);
+    if (msg) {
+      msg.mediaUrl = mediaUrl;
+      if (mediaMimeType) msg.mediaMimeType = mediaMimeType;
+
+      const placeholderEl = document.querySelector(`[data-media-msg-id="${messageId}"]`);
+      if (placeholderEl) {
+        if (msg.messageType === 'STICKER') {
+          placeholderEl.outerHTML = `
+            <div class="crm-sticker-wrapper" data-media-msg-id="${messageId}">
+              <img 
+                src="${mediaUrl}" 
+                alt="Sticker" 
+                class="crm-sticker-img loaded" 
+                loading="lazy" 
+                decoding="async" 
+              />
+            </div>
+          `;
+        } else if (msg.messageType === 'IMAGE') {
+          placeholderEl.outerHTML = `
+            <img 
+              src="${mediaUrl}" 
+              alt="Foto" 
+              class="crm-media-img loaded" 
+              loading="lazy" 
+              decoding="async" 
+              onclick="window.open(this.src)" 
+            />
+          `;
+        }
+      }
+    }
+  });
+
   socketInstance.on('whatsapp:conversation_read', ({ conversationId }) => {
     const conv = cachedConversations.find((c) => c.id === conversationId);
     if (conv) {
@@ -456,18 +493,51 @@ async function openConversation(convId) {
 function renderMessageBubbleContent(msg) {
   if (msg.messageType === 'STICKER') {
     if (msg.mediaUrl) {
-      return `<div style="display: inline-block; padding: 2px;"><img src="${msg.mediaUrl}" alt="Sticker" style="width: 140px; height: 140px; object-fit: contain; display: block;" /></div>`;
+      return `
+        <div class="crm-sticker-wrapper" data-media-msg-id="${msg.messageId || ''}">
+          <img 
+            src="${msg.mediaUrl}" 
+            alt="Sticker" 
+            class="crm-sticker-img" 
+            loading="lazy" 
+            decoding="async" 
+            onload="this.classList.add('loaded')" 
+            onerror="this.onerror=null;this.parentElement.innerHTML='✨ <em>Sticker</em>'" 
+          />
+        </div>
+      `;
     }
-    return `<div style="display: flex; align-items: center; gap: 6px; font-size: 0.88rem;"><span>✨</span> <em>Sticker de WhatsApp</em></div>`;
+    return `
+      <div class="crm-sticker-loading" data-media-msg-id="${msg.messageId || ''}" title="Cargando sticker...">
+        <span style="font-size: 1.4rem;">✨</span>
+      </div>
+    `;
   }
 
   if (msg.messageType === 'IMAGE') {
     let imgHtml = '';
     if (msg.mediaUrl) {
-      imgHtml = `<img src="${msg.mediaUrl}" alt="Foto" style="max-width: 250px; max-height: 250px; border-radius: 8px; margin-bottom: 4px; display: block; cursor: pointer;" onclick="window.open(this.src)" />`;
+      imgHtml = `
+        <img 
+          src="${msg.mediaUrl}" 
+          alt="Foto" 
+          class="crm-media-img" 
+          loading="lazy" 
+          decoding="async" 
+          onclick="window.open(this.src)" 
+          onload="this.classList.add('loaded')" 
+          onerror="this.onerror=null;this.style.display='none'" 
+        />
+      `;
+    } else {
+      imgHtml = `
+        <div class="crm-sticker-loading" data-media-msg-id="${msg.messageId || ''}" title="Cargando imagen..." style="width: 180px; height: 120px;">
+          <span style="font-size: 1.4rem;">📷</span>
+        </div>
+      `;
     }
     const caption = msg.text && msg.text !== '📷 Imagen' ? `<div class="crm-msg-text">${escapeHtml(msg.text)}</div>` : '';
-    return `${imgHtml}${caption || (!imgHtml ? '<div class="crm-msg-text">📷 Imagen</div>' : '')}`;
+    return `${imgHtml}${caption}`;
   }
 
   return `<div class="crm-msg-text">${escapeHtml(msg.text || '')}</div>`;
@@ -508,7 +578,7 @@ function renderChatMessages() {
     const timeStr = msgDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
     const isOutgoing = msg.fromMe;
     const senderName = isOutgoing ? (msg.senderName || 'YogurArte') : '';
-    const isSticker = msg.messageType === 'STICKER' && msg.mediaUrl;
+    const isSticker = msg.messageType === 'STICKER';
 
     html += `
       <div class="crm-msg-row ${isOutgoing ? 'outgoing' : 'incoming'}" id="msg-${msg.id}">
@@ -538,7 +608,7 @@ function appendMessageToChat(msg) {
   const timeStr = msgDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
   const isOutgoing = msg.fromMe;
   const senderName = isOutgoing ? (msg.senderName || 'YogurArte') : '';
-  const isSticker = msg.messageType === 'STICKER' && msg.mediaUrl;
+  const isSticker = msg.messageType === 'STICKER';
 
   const msgDiv = document.createElement('div');
   msgDiv.className = `crm-msg-row ${isOutgoing ? 'outgoing' : 'incoming'}`;
