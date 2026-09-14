@@ -102,16 +102,21 @@ export async function renderCrm(container) {
             </button>
           </div>
 
-          <div class="search-box input-with-icon" style="width: 100%; max-width: 100%;">
-            <span class="input-icon">🔍</span>
-            <input 
-              type="text" 
-              id="crmSearchInput" 
-              class="form-input" 
-              placeholder="Buscar chat o teléfono..." 
-              value="${searchQuery}"
-              style="height: 36px; font-size: 0.86rem;"
-            />
+          <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
+            <div class="search-box input-with-icon" style="flex: 1; min-width: 0;">
+              <span class="input-icon">🔍</span>
+              <input 
+                type="text" 
+                id="crmSearchInput" 
+                class="form-input" 
+                placeholder="Buscar chat o teléfono..." 
+                value="${searchQuery}"
+                style="height: 36px; font-size: 0.86rem; width: 100%;"
+              />
+            </div>
+            <button class="btn btn-sm btn-primary" id="btnStartNewChat" title="Iniciar conversación con nuevo número" style="font-weight: 800; font-size: 0.8rem; padding: 0 10px; height: 36px; display: flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0;">
+              <span>➕</span> <span>Nuevo</span>
+            </button>
           </div>
         </div>
 
@@ -127,9 +132,12 @@ export async function renderCrm(container) {
         <div id="crmEmptyState" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; padding: 20px; color: var(--text-muted);">
           <div style="font-size: 3.5rem; margin-bottom: 12px;">💬</div>
           <h3 style="font-weight: 800; color: var(--text-main); margin-bottom: 6px;">Centro de Mensajería YogurArte</h3>
-          <p style="font-size: 0.88rem; max-width: 380px; line-height: 1.4;">
-            Selecciona una conversación de la izquierda para responder a tus clientes en tiempo real y crear pedidos instantáneos.
+          <p style="font-size: 0.88rem; max-width: 380px; line-height: 1.4; margin-bottom: 16px;">
+            Selecciona una conversación de la izquierda o haz clic en <strong>➕ Nuevo</strong> para iniciar un chat con cualquier número.
           </p>
+          <button class="btn btn-primary" id="btnEmptyStateNewChat" style="font-weight: 800; padding: 10px 18px;">
+            ➕ Iniciar Nuevo Chat de WhatsApp
+          </button>
         </div>
 
         <div id="crmActiveChatContainer" style="display: none; height: 100%; flex-direction: column;">
@@ -318,7 +326,7 @@ function renderConversationList() {
   if (cachedConversations.length === 0) {
     listEl.innerHTML = `
       <li style="padding: 30px 16px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
-        No hay conversaciones aún.<br><small>Los chats aparecerán aquí cuando los clientes escriban a tu WhatsApp.</small>
+        No hay conversaciones aún.<br><small>Los chats aparecerán aquí cuando los clientes escriban a tu WhatsApp o puedes hacer clic en <strong>➕ Nuevo</strong> arriba.</small>
       </li>
     `;
     return;
@@ -539,9 +547,9 @@ function getStatusIcon(status) {
  */
 function scrollToBottom() {
   const messagesArea = document.getElementById('crmChatMessages');
-  if (messagesArea) {
-    messagesArea.scrollTop = messagesArea.scrollHeight;
-  }
+  if (!messagesArea) return;
+
+  messagesArea.scrollTop = messagesArea.scrollHeight;
 }
 
 /**
@@ -647,6 +655,14 @@ function attachCrmEvents() {
     renderConversationList();
   });
 
+  // Botón Nuevo Chat (Header y Estado Vacío)
+  document.getElementById('btnStartNewChat')?.addEventListener('click', () => {
+    openNewChatModal();
+  });
+  document.getElementById('btnEmptyStateNewChat')?.addEventListener('click', () => {
+    openNewChatModal();
+  });
+
   // Botón Volver a la lista en Móvil
   document.getElementById('btnBackToConvList')?.addEventListener('click', () => {
     const layout = document.getElementById('crmLayout');
@@ -747,6 +763,221 @@ function attachCrmEvents() {
   // Botón Vincular Cliente Manualmente
   document.getElementById('btnLinkCustomerModal')?.addEventListener('click', () => {
     openLinkCustomerModal();
+  });
+}
+
+/**
+ * Modal para Iniciar Nuevo Chat desde cero con cualquier número o cliente
+ */
+export async function openNewChatModal() {
+  const modalContainer = document.getElementById('modalContainer');
+  if (!modalContainer) return;
+
+  let customers = [];
+  try {
+    customers = await api.getCustomers();
+  } catch (err) {
+    console.error('Error fetching customers for new chat:', err);
+  }
+
+  modalContainer.innerHTML = `
+    <div class="modal-overlay active" id="newChatModalOverlay">
+      <div class="modal-card" style="max-width: 500px;">
+        <div class="modal-header">
+          <h3 class="modal-title">💬 Iniciar Nuevo Chat de WhatsApp</h3>
+          <button class="modal-close" id="btnCloseNewChatModal">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 18px 20px;">
+          <!-- Pestañas de Selección -->
+          <div style="display: flex; gap: 8px; margin-bottom: 16px; background: var(--bg-subtle); padding: 4px; border-radius: var(--radius-md);">
+            <button type="button" class="btn btn-sm filter-chip active" id="tabNewChatCustomer" style="flex: 1; text-align: center; border-radius: var(--radius-sm);">
+              👤 Cliente Registrado
+            </button>
+            <button type="button" class="btn btn-sm filter-chip" id="tabNewChatDirect" style="flex: 1; text-align: center; border-radius: var(--radius-sm);">
+              📱 Número Nuevo Directo
+            </button>
+          </div>
+
+          <form id="formNewChat">
+            <!-- Sección A: Selector de Cliente -->
+            <div id="sectionCustomerSelect" class="form-group">
+              <label class="form-label" style="font-weight: 700;">Seleccionar Cliente de YogurArte *</label>
+              <select id="selectNewChatCustomer" class="form-input" style="font-weight: 700;">
+                <option value="">-- Busca o selecciona un cliente --</option>
+                ${customers
+                  .filter((c) => c.phone)
+                  .map((c) => `<option value="${c.id}" data-phone="${c.phone}" data-name="${escapeHtml(c.fullName)}">${escapeHtml(c.fullName)} (📱 ${c.phone})</option>`)
+                  .join('')}
+              </select>
+            </div>
+
+            <!-- Sección B: Entrada de Número Directo -->
+            <div id="sectionDirectPhone" style="display: none; flex-direction: column; gap: 12px;">
+              <div class="form-group">
+                <label class="form-label" style="font-weight: 700;">Número de WhatsApp (con o sin +57) *</label>
+                <div class="input-with-icon" style="width: 100%;">
+                  <span class="input-icon">📱</span>
+                  <input 
+                    type="tel" 
+                    id="inputNewChatPhone" 
+                    class="form-input" 
+                    placeholder="Ej: 300 123 4567" 
+                    style="font-weight: 700;"
+                  />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" style="font-weight: 700;">Nombre del Contacto (Opcional)</label>
+                <input 
+                  type="text" 
+                  id="inputNewChatName" 
+                  class="form-input" 
+                  placeholder="Ej: Laura Gómez" 
+                />
+              </div>
+            </div>
+
+            <!-- Mensaje Inicial -->
+            <div class="form-group" style="margin-top: 14px;">
+              <label class="form-label" style="font-weight: 700;">Mensaje Inicial *</label>
+              
+              <!-- Plantillas rápidas -->
+              <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px;">
+                <button type="button" class="crm-quick-chip" id="chipNewChatHello">👋 Saludo Inicial</button>
+                <button type="button" class="crm-quick-chip" id="chipNewChatFlavors">🥛 Carta de Sabores</button>
+                <button type="button" class="crm-quick-chip" id="chipNewChatConfirm">📦 Confirmar Pedido</button>
+              </div>
+
+              <textarea 
+                id="inputNewChatMessage" 
+                class="form-input" 
+                rows="3" 
+                placeholder="Escribe el mensaje que recibirá el cliente..." 
+                required
+                style="resize: vertical; font-size: 0.9rem;"
+              >¡Hola! Te escribo de YogurArte Fonseca 🥛✨. ¿Cómo estás?</textarea>
+            </div>
+
+            <div class="modal-footer" style="padding: 14px 0 0 0; display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; border-top: 1px solid var(--border-color);">
+              <button type="button" class="btn btn-outline" id="btnCancelNewChat">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="btnSubmitNewChat" style="font-weight: 800;">
+                🚀 Enviar y Abrir Chat
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Control de pestañas (Cliente vs Directo)
+  let currentMode = 'customer'; // 'customer' | 'direct'
+  const tabCust = document.getElementById('tabNewChatCustomer');
+  const tabDir = document.getElementById('tabNewChatDirect');
+  const secCust = document.getElementById('sectionCustomerSelect');
+  const secDir = document.getElementById('sectionDirectPhone');
+  const selectCust = document.getElementById('selectNewChatCustomer');
+  const inputPhone = document.getElementById('inputNewChatPhone');
+  const inputName = document.getElementById('inputNewChatName');
+  const inputMsg = document.getElementById('inputNewChatMessage');
+
+  tabCust?.addEventListener('click', () => {
+    currentMode = 'customer';
+    tabCust.classList.add('active');
+    tabDir?.classList.remove('active');
+    secCust.style.display = 'block';
+    secDir.style.display = 'none';
+  });
+
+  tabDir?.addEventListener('click', () => {
+    currentMode = 'direct';
+    tabDir.classList.add('active');
+    tabCust?.classList.remove('active');
+    secCust.style.display = 'none';
+    secDir.style.display = 'flex';
+    inputPhone?.focus();
+  });
+
+  // Chips de plantillas en el modal
+  document.getElementById('chipNewChatHello')?.addEventListener('click', () => {
+    if (inputMsg) inputMsg.value = '¡Hola! Te escribo de YogurArte Fonseca 🥛✨. ¿Cómo estás?';
+  });
+  document.getElementById('chipNewChatFlavors')?.addEventListener('click', () => {
+    if (inputMsg) inputMsg.value = '¡Hola! 🥛✨ En YogurArte hoy tenemos disponibles deliciosos yogures artesanales:\n- Fresa 🍓\n- Mora 🍇\n- Melocotón 🍑\n- Frutos Rojos 🍒\n- Arequipe 🍯\n\n¿Te gustaría hacer un pedido para hoy?';
+  });
+  document.getElementById('chipNewChatConfirm')?.addEventListener('click', () => {
+    if (inputMsg) inputMsg.value = '¡Hola! Te escribo de YogurArte para confirmar los detalles de tu entrega de yogur artesanal 🥛🏡.';
+  });
+
+  // Cerrar modal
+  const closeModal = () => {
+    modalContainer.innerHTML = '';
+  };
+  document.getElementById('btnCloseNewChatModal')?.addEventListener('click', closeModal);
+  document.getElementById('btnCancelNewChat')?.addEventListener('click', closeModal);
+  document.getElementById('newChatModalOverlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'newChatModalOverlay') closeModal();
+  });
+
+  // Enviar formulario
+  document.getElementById('formNewChat')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = inputMsg ? inputMsg.value.trim() : '';
+    if (!text) {
+      showToast('Por favor escribe un mensaje inicial', 'warning');
+      return;
+    }
+
+    let phone = '';
+    let contactName = '';
+    let customerId = null;
+
+    if (currentMode === 'customer') {
+      const opt = selectCust?.selectedOptions[0];
+      if (!opt || !opt.value) {
+        showToast('Por favor selecciona un cliente de la lista', 'warning');
+        return;
+      }
+      customerId = Number(opt.value);
+      phone = opt.dataset.phone || '';
+      contactName = opt.dataset.name || '';
+    } else {
+      phone = inputPhone ? inputPhone.value.trim() : '';
+      contactName = inputName ? inputName.value.trim() : '';
+      if (!phone || phone.replace(/\D/g, '').length < 7) {
+        showToast('Por favor ingresa un número de teléfono válido', 'warning');
+        return;
+      }
+    }
+
+    const btnSubmit = document.getElementById('btnSubmitNewChat');
+    try {
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Enviando mensaje... ⏳';
+      }
+
+      const res = await api.sendCrmMessage(phone, text, {
+        contactName: contactName || undefined,
+        customerId: customerId || undefined,
+      });
+
+      showToast('¡Chat iniciado con éxito! 💬✨');
+      closeModal();
+
+      // Recargar lista y abrir la conversación inmediatamente
+      await loadStatusAndConversations();
+      if (res?.conversation?.id) {
+        openConversation(res.conversation.id);
+      }
+    } catch (err) {
+      showToast(err.message || 'Error al iniciar chat de WhatsApp', 'error');
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = '🚀 Enviar y Abrir Chat';
+      }
+    }
   });
 }
 

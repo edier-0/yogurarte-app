@@ -116,13 +116,19 @@ export const getConversationMessages = async (req: Request, res: Response) => {
 
 export const sendMessage = async (req: Request, res: Response) => {
   try {
-    const { remoteJid, text } = req.body;
+    const { remoteJid, to, text, contactName, customerId } = req.body;
+    const recipient = remoteJid || to;
 
-    if (!remoteJid || !text || !text.trim()) {
-      return res.status(400).json({ error: 'Se requiere destinatario y mensaje de texto' });
+    if (!recipient || !text || !text.trim()) {
+      return res.status(400).json({ error: 'Se requiere número o destinatario y mensaje de texto' });
     }
 
-    const result = await whatsappService.sendMessage(remoteJid, text);
+    const result = await whatsappService.sendMessage(
+      recipient,
+      text,
+      contactName,
+      customerId ? Number(customerId) : undefined
+    );
     res.json(result);
   } catch (error: any) {
     console.error('Error sending WhatsApp message:', error);

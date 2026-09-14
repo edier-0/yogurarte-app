@@ -340,12 +340,16 @@ class WhatsAppService {
     }
   }
 
-  public async sendMessage(remoteJid: string, text: string) {
+  public async sendMessage(remoteJid: string, text: string, optionalName?: string, optionalCustomerId?: number) {
     if (!this.sock || this.status !== 'CONNECTED') {
       throw new Error('WhatsApp no está conectado actualmente. Por favor escanea el código QR.');
     }
 
-    const cleanJid = remoteJid.includes('@') ? remoteJid : `${remoteJid.replace(/\D/g, '')}@s.whatsapp.net`;
+    let rawDigits = remoteJid.replace(/\D/g, '');
+    if (rawDigits.length === 10 && rawDigits.startsWith('3')) {
+      rawDigits = `57${rawDigits}`;
+    }
+    const cleanJid = remoteJid.includes('@') ? remoteJid : `${rawDigits}@s.whatsapp.net`;
     const cleanNumber = cleanJid.split('@')[0].replace(/\D/g, '');
 
     const sentMsg = await this.sock.sendMessage(cleanJid, { text: text.trim() });
@@ -359,26 +363,28 @@ class WhatsAppService {
 
     if (!conversation) {
       const last10 = cleanNumber.slice(-10);
-      const matchingCustomer = await prisma.customer.findFirst({
-        where: {
-          OR: [
-            { phone: cleanNumber },
-            { phone: last10 },
-            { phone: { contains: last10 } },
-          ],
-        },
-      });
+      const matchingCustomer = optionalCustomerId
+        ? await prisma.customer.findUnique({ where: { id: optionalCustomerId } })
+        : await prisma.customer.findFirst({
+            where: {
+              OR: [
+                { phone: cleanNumber },
+                { phone: last10 },
+                { phone: { contains: last10 } },
+              ],
+            },
+          });
 
       conversation = await prisma.chatConversation.create({
         data: {
           remoteJid: cleanJid,
           phoneNumber: cleanNumber,
-          contactName: matchingCustomer?.fullName || cleanNumber,
+          contactName: optionalName || matchingCustomer?.fullName || cleanNumber,
           unreadCount: 0,
           lastMessageText: text.trim(),
           lastMessageTimestamp: now,
           lastMessageFromMe: true,
-          customerId: matchingCustomer?.id || null,
+          customerId: matchingCustomer?.id || optionalCustomerId || null,
         },
         include: { customer: true },
       });
@@ -386,6 +392,8 @@ class WhatsAppService {
       conversation = await prisma.chatConversation.update({
         where: { id: conversation.id },
         data: {
+          contactName: optionalName && (!conversation.contactName || conversation.contactName === cleanNumber) ? optionalName : conversation.contactName,
+          customerId: optionalCustomerId || conversation.customerId,
           lastMessageText: text.trim(),
           lastMessageTimestamp: now,
           lastMessageFromMe: true,

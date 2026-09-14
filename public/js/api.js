@@ -591,10 +591,10 @@ export const api = {
     return apiFetch(`/crm/conversations/${conversationId}/messages`);
   },
 
-  async sendCrmMessage(to, text) {
+  async sendCrmMessage(to, text, extra = {}) {
     return apiFetch('/crm/send', {
       method: 'POST',
-      body: JSON.stringify({ to, text }),
+      body: JSON.stringify({ to, text, ...extra }),
     });
   },
 
