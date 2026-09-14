@@ -174,11 +174,10 @@ export async function renderCrm(container) {
           <!-- Área de Composición y Respuestas Rápidas -->
           <div class="crm-input-wrapper">
             <div class="crm-quick-replies">
-              <button class="crm-quick-chip" data-reply="sabores">🥛 Sabores y Precios</button>
+              <button class="crm-quick-chip" data-reply="saludo">👋 Saludo YogurArte</button>
               <button class="crm-quick-chip" data-reply="camino">🛵 Pedido en Camino</button>
               <button class="crm-quick-chip" data-reply="pago">💳 Medios de Pago</button>
               <button class="crm-quick-chip" data-reply="direccion">📍 Confirmar Dirección</button>
-              <button class="crm-quick-chip" data-reply="saludo">👋 Saludo YogurArte</button>
             </div>
 
             <form id="crmSendForm" class="crm-composer-row">
@@ -754,16 +753,14 @@ function attachCrmEvents() {
       const type = e.currentTarget.dataset.reply;
       let text = '';
 
-      if (type === 'sabores') {
-        text = '¡Hola! 🥛✨ En YogurArte hoy tenemos disponibles deliciosos yogures artesanales:\n- Fresa 🍓\n- Mora 🍇\n- Melocotón 🍑\n- Frutos Rojos 🍒\n- Arequipe 🍯\n\n¿Cuál te gustaría ordenar?';
+      if (type === 'saludo') {
+        text = '¡Hola! Bienvenido a YogurArte Fonseca 🥛✨. ¿En qué podemos colaborarte el día de hoy?';
       } else if (type === 'camino') {
         text = '🛵 ¡Hola! Te informamos que tu pedido de YogurArte ya va en camino con nuestro domiciliario. ¡Pronto estará en tu puerta!';
       } else if (type === 'pago') {
         text = '💳 Puedes realizar tu pago mediante transferencia a:\n- Nequi / Bancolombia: 302 458 1882\n- Titular: Edier / YogurArte\nPor favor nos envías el comprobante por aquí. ¡Muchas gracias! 🙏';
       } else if (type === 'direccion') {
         text = '🏡 Para asegurar que tu pedido llegue a tiempo, por favor confírmanos:\n- Dirección exacta y barrio:\n- Nombre de quien recibe:\n- Teléfono de contacto:\n- Método de pago (Efectivo / Nequi / Bancolombia):';
-      } else if (type === 'saludo') {
-        text = '¡Hola! Bienvenido a YogurArte Fonseca 🥛✨. ¿En qué podemos colaborarte el día de hoy?';
       }
 
       if (msgInput && text) {
@@ -890,7 +887,6 @@ export async function openNewChatModal() {
               <!-- Plantillas rápidas -->
               <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px;">
                 <button type="button" class="crm-quick-chip" id="chipNewChatHello">👋 Saludo Inicial</button>
-                <button type="button" class="crm-quick-chip" id="chipNewChatFlavors">🥛 Carta de Sabores</button>
                 <button type="button" class="crm-quick-chip" id="chipNewChatConfirm">📦 Confirmar Pedido</button>
               </div>
 
@@ -1044,9 +1040,6 @@ export async function openNewChatModal() {
   // Chips de plantillas
   document.getElementById('chipNewChatHello')?.addEventListener('click', () => {
     if (inputMsg) inputMsg.value = '¡Hola! Te escribo de YogurArte Fonseca 🥛✨. ¿Cómo estás?';
-  });
-  document.getElementById('chipNewChatFlavors')?.addEventListener('click', () => {
-    if (inputMsg) inputMsg.value = '¡Hola! 🥛✨ En YogurArte hoy tenemos disponibles deliciosos yogures artesanales:\n- Fresa 🍓\n- Mora 🍇\n- Melocotón 🍑\n- Frutos Rojos 🍒\n- Arequipe 🍯\n\n¿Te gustaría hacer un pedido para hoy?';
   });
   document.getElementById('chipNewChatConfirm')?.addEventListener('click', () => {
     if (inputMsg) inputMsg.value = '¡Hola! Te escribo de YogurArte para confirmar los detalles de tu entrega de yogur artesanal 🥛🏡.';
