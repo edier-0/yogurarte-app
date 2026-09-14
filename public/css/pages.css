@@ -1447,14 +1447,28 @@
   }
 
   .crm-customer-sidebar-header {
-    padding-top: max(14px, env(safe-area-inset-top, 14px)) !important;
-    padding-bottom: 12px !important;
-    padding-left: 16px !important;
-    padding-right: 14px !important;
+    padding-top: max(54px, calc(env(safe-area-inset-top, 0px) + 18px)) !important;
+    padding-bottom: 14px !important;
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    min-height: 80px !important;
+    background: #FFFFFF !important;
+    border-bottom: 1.5px solid var(--border-color) !important;
   }
 
   .crm-btn-close-customer-sidebar {
     display: flex !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    border-radius: 50% !important;
+    background: #F1F5F9 !important;
+    border: 1.5px solid #CBD5E1 !important;
+    color: #334155 !important;
+    font-size: 1.15rem !important;
+    font-weight: 800 !important;
+    cursor: pointer !important;
   }
 
   .crm-mobile-only-btn {
