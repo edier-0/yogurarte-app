@@ -576,6 +576,12 @@ export const api = {
     });
   },
 
+  async refreshCrmQR() {
+    return apiFetch('/crm/refresh-qr', {
+      method: 'POST',
+    });
+  },
+
   async getCrmConversations(search = '') {
     const query = search ? `?search=${encodeURIComponent(search)}` : '';
     return apiFetch(`/crm/conversations${query}`);

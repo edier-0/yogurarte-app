@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getStatus,
   logout,
+  refreshQR,
   getConversations,
   getConversationMessages,
   sendMessage,
@@ -13,6 +14,7 @@ const router = Router();
 
 router.get('/status', getStatus);
 router.post('/logout', logout);
+router.post('/refresh-qr', refreshQR);
 router.get('/conversations', getConversations);
 router.get('/conversations/:id/messages', getConversationMessages);
 router.post('/conversations/:id/read', markAsRead);

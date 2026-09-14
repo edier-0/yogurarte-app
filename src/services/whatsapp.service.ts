@@ -3,6 +3,7 @@ import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  Browsers,
   WASocket,
   WAMessage,
 } from '@whiskeysockets/baileys';
@@ -35,6 +36,9 @@ class WhatsAppService {
   }
 
   public getStatus() {
+    if (!this.sock && !this.isInitializing && this.status === 'DISCONNECTED') {
+      this.init().catch((err) => console.error('Error auto-init WhatsApp:', err));
+    }
     return {
       status: this.status,
       qr: this.qrCodeDataUrl,
@@ -51,8 +55,15 @@ class WhatsAppService {
 
     try {
       const { state, saveCreds } = await useMultiFileAuthState(this.authFolder);
-      const { version, isLatest } = await fetchLatestBaileysVersion();
-      console.log(`📱 Iniciando WhatsApp Baileys v${version.join('.')} (Latest: ${isLatest})`);
+      let version: [number, number, number] = [2, 3000, 1043857760];
+      try {
+        const vRes = await fetchLatestBaileysVersion();
+        if (vRes?.version) version = vRes.version;
+      } catch (vErr) {
+        console.warn('Usando versión Baileys de respaldo:', vErr);
+      }
+
+      console.log(`📱 Iniciando WhatsApp Baileys v${version.join('.')}`);
 
       const logger = pino({ level: 'silent' });
 
@@ -63,10 +74,9 @@ class WhatsAppService {
           creds: state.creds,
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
-        printQRInTerminal: false,
         generateHighQualityLinkPreview: true,
         syncFullHistory: false,
-        browser: ['YogurArte CRM', 'Chrome', '1.0.0'],
+        browser: Browsers.ubuntu('Chrome'),
       });
 
       this.sock.ev.on('creds.update', saveCreds);
@@ -178,7 +188,24 @@ class WhatsAppService {
     this.broadcastStatus();
 
     setTimeout(() => this.init(), 1500);
-    return { success: true };
+    return { success: true, message: 'Sesión de WhatsApp cerrada' };
+  }
+
+  public async refreshQR() {
+    try {
+      if (this.sock) {
+        try {
+          this.sock.end(undefined);
+        } catch (e) {}
+      }
+    } catch (e) {}
+    this.status = 'CONNECTING';
+    this.qrCodeDataUrl = null;
+    this.sock = null;
+    this.isInitializing = false;
+    this.broadcastStatus();
+    await this.init();
+    return this.getStatus();
   }
 
   private async processIncomingMessage(msg: WAMessage) {

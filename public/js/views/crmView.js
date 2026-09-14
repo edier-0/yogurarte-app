@@ -97,7 +97,7 @@ export async function renderCrm(container) {
               <span class="crm-status-dot"></span>
               <span id="crmStatusLabel">Desconectado</span>
             </div>
-            <button class="btn btn-sm btn-outline" id="btnWhatsAppConnect" style="font-size: 0.78rem; padding: 4px 10px; font-weight: 700;">
+            <button class="btn btn-sm btn-outline" id="btnWhatsAppConnect" style="font-size: 0.78rem; padding: 5px 12px; font-weight: 700;">
               📱 Conectar / QR
             </button>
           </div>
@@ -288,14 +288,14 @@ function updateStatusUI() {
     badge.classList.add('connected');
     label.textContent = wpStatus.phoneNumber ? `Conectado (${wpStatus.phoneNumber})` : 'Conectado';
     if (btnConnect) {
-      btnConnect.textContent = '⚙️ Estado';
+      btnConnect.textContent = '⚙️ WhatsApp Conectado';
       btnConnect.className = 'btn btn-sm btn-outline';
     }
   } else if (wpStatus.status === 'CONNECTING') {
     badge.classList.add('connecting');
-    label.textContent = 'Conectando...';
+    label.textContent = wpStatus.qr ? 'QR Listo para Escanear' : 'Conectando...';
     if (btnConnect) {
-      btnConnect.textContent = '⏳ Ver QR';
+      btnConnect.textContent = wpStatus.qr ? '📷 Escanear QR' : '⏳ Ver QR';
       btnConnect.className = 'btn btn-sm btn-warning';
     }
   } else {
@@ -803,7 +803,7 @@ async function openLinkCustomerModal() {
   }
 
   modalContainer.innerHTML = `
-    <div class="modal-overlay" id="linkCustomerModalOverlay">
+    <div class="modal-overlay active" id="linkCustomerModalOverlay">
       <div class="modal-card" style="max-width: 440px;">
         <div class="modal-header">
           <h3 class="modal-title">🔗 Vincular Chat a Cliente</h3>
@@ -864,12 +864,12 @@ async function openLinkCustomerModal() {
 /**
  * Modal para Escanear Código QR de WhatsApp
  */
-export function openWhatsAppQRModal() {
+export async function openWhatsAppQRModal() {
   const modalContainer = document.getElementById('modalContainer');
   if (!modalContainer) return;
 
   modalContainer.innerHTML = `
-    <div class="modal-overlay" id="qrModalOverlay">
+    <div class="modal-overlay active" id="qrModalOverlay">
       <div class="modal-card" style="max-width: 480px; text-align: center;">
         <div class="modal-header" style="justify-content: center; position: relative;">
           <h3 class="modal-title" style="font-size: 1.15rem;">📱 Conexión de WhatsApp YogurArte</h3>
@@ -887,9 +887,27 @@ export function openWhatsAppQRModal() {
     modalContainer.innerHTML = '';
   });
 
+  document.getElementById('qrModalOverlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'qrModalOverlay') {
+      if (qrModalInterval) clearInterval(qrModalInterval);
+      modalContainer.innerHTML = '';
+    }
+  });
+
+  // Mostrar estado actual inmediatamente
   updateQRModalContent();
 
-  // Polling auxiliar cada 3s por si socket tiene retardo
+  // Consultar estado de inmediato por si el QR ya está listo
+  try {
+    const statusData = await api.getWhatsAppStatus();
+    wpStatus = statusData;
+    updateStatusUI();
+    updateQRModalContent();
+  } catch (err) {
+    console.warn('Error consultando estado en openWhatsAppQRModal:', err);
+  }
+
+  // Polling auxiliar cada 2s
   if (qrModalInterval) clearInterval(qrModalInterval);
   qrModalInterval = setInterval(async () => {
     try {
@@ -900,7 +918,7 @@ export function openWhatsAppQRModal() {
     } catch (err) {
       console.warn('Polling status error:', err);
     }
-  }, 3000);
+  }, 2000);
 }
 
 /**
@@ -963,23 +981,58 @@ function updateQRModalContent() {
         <li>Toca en <strong>Vincular un dispositivo</strong> y apunta tu cámara a este código QR.</li>
       </ol>
 
-      <div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">
-        ⏳ Este código se actualiza automáticamente. Escanéalo antes de que expire.
+      <div style="display: flex; justify-content: center; gap: 10px; align-items: center; margin-top: 12px;">
+        <button class="btn btn-sm btn-outline" id="btnRefreshQrAction" style="font-size: 0.78rem; font-weight: 700; padding: 6px 12px;">
+          🔄 Regenerar Código QR
+        </button>
       </div>
     `;
+
+    document.getElementById('btnRefreshQrAction')?.addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      e.currentTarget.textContent = 'Generando... ⏳';
+      try {
+        const res = await api.refreshCrmQR();
+        wpStatus = res;
+        updateStatusUI();
+        updateQRModalContent();
+        showToast('Nuevo código QR generado 📷✨');
+      } catch (err) {
+        showToast(err.message || 'Error al regenerar QR', 'error');
+      }
+    });
+
     return;
   }
 
   // Estado conectando / esperando generación de QR
   body.innerHTML = `
-    <div style="padding: 30px 0;">
-      <div style="font-size: 2.5rem; margin-bottom: 12px;">⏳</div>
-      <h4 style="font-weight: 800; color: var(--text-main); margin-bottom: 6px;">Generando Código QR Seguro...</h4>
-      <p style="font-size: 0.82rem; color: var(--text-muted);">
-        Estamos iniciando el servicio de WhatsApp. Espera un momento por favor.
+    <div style="padding: 24px 0;">
+      <div style="font-size: 2.5rem; margin-bottom: 12px; animation: pulse 1.5s infinite;">⏳</div>
+      <h4 style="font-weight: 800; color: var(--text-main); margin-bottom: 6px;">Iniciando WhatsApp...</h4>
+      <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 16px;">
+        Estamos generando el código QR seguro de conexión. Si tarda unos segundos, haz clic en el botón de abajo.
       </p>
+      <button class="btn btn-sm btn-primary" id="btnForceQrAction" style="font-weight: 700; padding: 8px 16px;">
+        🔄 Generar Código QR Ahora
+      </button>
     </div>
   `;
+
+  document.getElementById('btnForceQrAction')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    e.currentTarget.textContent = 'Generando... ⏳';
+    try {
+      const res = await api.refreshCrmQR();
+      wpStatus = res;
+      updateStatusUI();
+      updateQRModalContent();
+    } catch (err) {
+      showToast(err.message || 'Error al iniciar QR', 'error');
+      e.currentTarget.disabled = false;
+      e.currentTarget.textContent = '🔄 Generar Código QR Ahora';
+    }
+  });
 }
 
 /**

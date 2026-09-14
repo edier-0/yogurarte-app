@@ -22,6 +22,16 @@ export const logout = async (req: Request, res: Response) => {
   }
 };
 
+export const refreshQR = async (req: Request, res: Response) => {
+  try {
+    const statusData = await whatsappService.refreshQR();
+    res.json(statusData);
+  } catch (error) {
+    console.error('Error refreshing WhatsApp QR:', error);
+    res.status(500).json({ error: 'Error al regenerar código QR' });
+  }
+};
+
 export const getConversations = async (req: Request, res: Response) => {
   try {
     const { search, unreadOnly } = req.query;
