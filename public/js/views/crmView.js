@@ -755,7 +755,7 @@ function attachCrmEvents() {
       let text = '';
 
       if (type === 'sabores') {
-        text = '¡Hola! 🥛✨ En YogurArte ofrecemos delicioso Yogur 100% Natural Artesanal:\n\n🍶 *Presentaciones y Precios:*\n• 1 Litro: $12.000\n• 2 Litros: $22.000\n\n¿Te gustaría hacer un pedido para hoy?';
+        text = '¡Hola! 🥛✨ En YogurArte ofrecemos delicioso Yogur 100% Natural Artesanal:\n\n🍶 *Presentaciones y Precios:*\n• 1 Litro: $12.000\n• 2 Litros: $24.000\n\n¿Te gustaría hacer un pedido para hoy?';
       } else if (type === 'saludo') {
         text = '¡Hola! Bienvenido a YogurArte Fonseca 🥛✨. ¿En qué podemos colaborarte el día de hoy?';
       } else if (type === 'camino') {
@@ -1046,7 +1046,7 @@ export async function openNewChatModal() {
     if (inputMsg) inputMsg.value = '¡Hola! Te escribo de YogurArte Fonseca 🥛✨. ¿Cómo estás?';
   });
   document.getElementById('chipNewChatFlavors')?.addEventListener('click', () => {
-    if (inputMsg) inputMsg.value = '¡Hola! 🥛✨ En YogurArte ofrecemos delicioso Yogur 100% Natural Artesanal:\n\n🍶 *Presentaciones y Precios:*\n• 1 Litro: $12.000\n• 2 Litros: $22.000\n\n¿Te gustaría hacer un pedido para hoy?';
+    if (inputMsg) inputMsg.value = '¡Hola! 🥛✨ En YogurArte ofrecemos delicioso Yogur 100% Natural Artesanal:\n\n🍶 *Presentaciones y Precios:*\n• 1 Litro: $12.000\n• 2 Litros: $24.000\n\n¿Te gustaría hacer un pedido para hoy?';
   });
   document.getElementById('chipNewChatConfirm')?.addEventListener('click', () => {
     if (inputMsg) inputMsg.value = '¡Hola! Te escribo de YogurArte para confirmar los detalles de tu entrega de yogur artesanal 🥛🏡.';
