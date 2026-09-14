@@ -246,11 +246,14 @@ export async function renderCrm(container) {
 
       <!-- SIDEBAR DERECHO: DETALLES DEL CLIENTE Y PEDIDOS -->
       <aside class="crm-customer-sidebar" id="crmCustomerSidebar">
-        <!-- Encabezado con Botón Cerrar para Móvil y Desktop -->
+        <!-- Encabezado con Botones de Volver y Cerrar para Móvil y Desktop -->
         <div class="crm-customer-sidebar-header">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 1.15rem;">👤</span>
-            <h4 style="margin: 0; font-size: 0.98rem; font-weight: 800; color: var(--text-main);">Ficha del Cliente</h4>
+          <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+            <button class="btn btn-sm btn-outline" id="btnHeaderBackToChat" title="Volver a los mensajes" style="padding: 6px 10px; font-weight: 800; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px; background: #F1F5F9; border-radius: var(--radius-sm); border: 1.5px solid var(--border-color); color: var(--text-main); cursor: pointer; flex-shrink: 0;">
+              ← Volver
+            </button>
+            <span style="font-size: 1.15rem; flex-shrink: 0;">👤</span>
+            <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Ficha del Cliente</h4>
           </div>
           <button class="crm-btn-close-customer-sidebar" id="btnCloseCustomerSidebar" title="Cerrar ficha">
             ✕
@@ -264,6 +267,11 @@ export async function renderCrm(container) {
           </div>
 
           <div id="crmCustomerInfoContent" style="display: none; flex-direction: column; gap: 16px;">
+            <!-- Botón Superior Rápido para Volver en Móvil -->
+            <button class="btn btn-outline" id="btnTopCloseCustomerSidebar" style="width: 100%; padding: 10px; font-size: 0.84rem; font-weight: 800; background: #F8FAFC; border: 1.5px solid var(--border-color); color: var(--text-main); display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--radius-sm);">
+              ← Volver a la conversación
+            </button>
+
             <div class="crm-cust-profile-card">
               <div class="crm-cust-avatar-large" id="custPanelAvatar">👤</div>
               <div class="crm-cust-name" id="custPanelName">Nombre Cliente</div>
@@ -300,8 +308,8 @@ export async function renderCrm(container) {
               </div>
             </div>
 
-            <button class="btn btn-outline" id="btnBottomCloseCustomerSidebar" style="width: 100%; padding: 10px; font-size: 0.85rem; font-weight: 700; margin-top: 4px; border-color: var(--border-color);">
-              ✕ Cerrar y Volver al Chat
+            <button class="btn btn-outline" id="btnBottomCloseCustomerSidebar" style="width: 100%; padding: 12px; font-size: 0.86rem; font-weight: 800; border: 2px solid var(--border-color); background: #F8FAFC; color: var(--text-main); margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--radius-sm);">
+              ✕ Cerrar Ficha y Volver al Chat
             </button>
           </div>
         </div>
@@ -833,7 +841,9 @@ function attachCrmEvents() {
 
   document.getElementById('btnToggleCustomerDrawer')?.addEventListener('click', toggleCustomerSidebar);
   document.getElementById('crmChatHeaderDetails')?.addEventListener('click', toggleCustomerSidebar);
+  document.getElementById('btnHeaderBackToChat')?.addEventListener('click', closeCustomerSidebar);
   document.getElementById('btnCloseCustomerSidebar')?.addEventListener('click', closeCustomerSidebar);
+  document.getElementById('btnTopCloseCustomerSidebar')?.addEventListener('click', closeCustomerSidebar);
   document.getElementById('btnBottomCloseCustomerSidebar')?.addEventListener('click', closeCustomerSidebar);
   sidebarOverlay?.addEventListener('click', closeCustomerSidebar);
 
