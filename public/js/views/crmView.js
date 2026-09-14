@@ -193,11 +193,16 @@ export async function renderCrm(container) {
               </div>
             </div>
 
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <button class="btn btn-sm btn-primary" id="btnFastOrder" style="font-weight: 800; font-size: 0.8rem; padding: 6px 12px;">
-                🥛 Crear Pedido
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <!-- Botón de Estado / Sesión de WhatsApp visible en móvil y desktop -->
+              <button class="btn btn-sm btn-outline crm-header-status-btn" id="btnWpStatusChatHeader" title="Estado de WhatsApp / Gestionar Sesión">
+                <span class="crm-status-dot" id="crmHeaderStatusDot"></span>
+                <span class="crm-header-status-text" id="crmHeaderStatusText">Sesión</span>
               </button>
-              <button class="btn btn-sm btn-outline" id="btnToggleCustomerDrawer" title="Ver ficha del cliente" style="padding: 6px 10px;">
+              <button class="btn btn-sm btn-primary" id="btnFastOrder" style="font-weight: 800; font-size: 0.8rem; padding: 6px 10px;">
+                🥛 Pedido
+              </button>
+              <button class="btn btn-sm btn-outline" id="btnToggleCustomerDrawer" title="Ver ficha del cliente" style="padding: 6px 10px; font-weight: 700;">
                 👤
               </button>
             </div>
@@ -223,7 +228,7 @@ export async function renderCrm(container) {
                 id="crmMsgInput" 
                 class="crm-input-textarea" 
                 rows="1" 
-                placeholder="Escribe un mensaje..."
+                placeholder="Escribe un mensaje..." 
                 required
               ></textarea>
               <button type="submit" class="crm-btn-send" id="btnSendCrmMsg" title="Enviar mensaje">
@@ -234,46 +239,63 @@ export async function renderCrm(container) {
         </div>
       </section>
 
+      <!-- OVERLAY PARA CERRAR SIDEBAR EN MÓVIL AL TOCAR AFUERA -->
+      <div class="crm-customer-sidebar-overlay" id="crmCustomerSidebarOverlay"></div>
+
       <!-- SIDEBAR DERECHO: DETALLES DEL CLIENTE Y PEDIDOS -->
       <aside class="crm-customer-sidebar" id="crmCustomerSidebar">
-        <div id="crmCustomerInfoPlaceholder" style="text-align: center; color: var(--text-muted); padding: 20px 0;">
-          <p style="font-size: 0.85rem;">Selecciona una conversación para ver los detalles del cliente.</p>
+        <!-- Encabezado con Botón Cerrar para Móvil y Desktop -->
+        <div class="crm-customer-sidebar-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.1rem;">👤</span>
+            <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: var(--text-main);">Ficha del Cliente</h4>
+          </div>
+          <button class="crm-btn-close-customer-sidebar" id="btnCloseCustomerSidebar" title="Cerrar ficha">
+            ✕
+          </button>
         </div>
 
-        <div id="crmCustomerInfoContent" style="display: none; flex-direction: column; gap: 16px;">
-          <div class="crm-cust-profile-card">
-            <div class="crm-cust-avatar-large" id="custPanelAvatar">👤</div>
-            <div class="crm-cust-name" id="custPanelName">Nombre Cliente</div>
-            <div class="crm-cust-phone" id="custPanelPhone">+57 300 000 0000</div>
-            <div id="custPanelAddress" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">📍 Sin dirección registrada</div>
+        <div class="crm-customer-sidebar-body">
+          <div id="crmCustomerInfoPlaceholder" style="text-align: center; color: var(--text-muted); padding: 30px 10px;">
+            <div style="font-size: 2.2rem; margin-bottom: 8px;">👤</div>
+            <p style="font-size: 0.85rem; margin: 0;">Selecciona una conversación para ver los detalles del cliente.</p>
           </div>
 
-          <div class="crm-cust-stats">
-            <div class="crm-cust-stat-box">
-              <div class="crm-cust-stat-val" id="custStatOrders">0</div>
-              <div class="crm-cust-stat-lbl">Pedidos Totales</div>
+          <div id="crmCustomerInfoContent" style="display: none; flex-direction: column; gap: 16px;">
+            <div class="crm-cust-profile-card">
+              <div class="crm-cust-avatar-large" id="custPanelAvatar">👤</div>
+              <div class="crm-cust-name" id="custPanelName">Nombre Cliente</div>
+              <div class="crm-cust-phone" id="custPanelPhone">+57 300 000 0000</div>
+              <div id="custPanelAddress" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">📍 Sin dirección registrada</div>
             </div>
-            <div class="crm-cust-stat-box">
-              <div class="crm-cust-stat-val" id="custStatDebt" style="color: var(--danger);">$0</div>
-              <div class="crm-cust-stat-lbl">Saldo Pendiente</div>
+
+            <div class="crm-cust-stats">
+              <div class="crm-cust-stat-box">
+                <div class="crm-cust-stat-val" id="custStatOrders">0</div>
+                <div class="crm-cust-stat-lbl">Pedidos Totales</div>
+              </div>
+              <div class="crm-cust-stat-box">
+                <div class="crm-cust-stat-val" id="custStatDebt" style="color: var(--danger);">$0</div>
+                <div class="crm-cust-stat-lbl">Saldo Pendiente</div>
+              </div>
             </div>
-          </div>
 
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            <button class="btn btn-primary" id="btnCustPanelNewOrder" style="width: 100%; font-weight: 800; padding: 10px;">
-              🥛 Nuevo Pedido para este Cliente
-            </button>
-            <button class="btn btn-outline" id="btnLinkCustomerModal" style="width: 100%; font-size: 0.8rem; padding: 8px;">
-              🔗 Vincular / Cambiar Cliente
-            </button>
-          </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <button class="btn btn-primary" id="btnCustPanelNewOrder" style="width: 100%; font-weight: 800; padding: 10px;">
+                🥛 Nuevo Pedido para este Cliente
+              </button>
+              <button class="btn btn-outline" id="btnLinkCustomerModal" style="width: 100%; font-size: 0.8rem; padding: 8px;">
+                🔗 Vincular / Cambiar Cliente
+              </button>
+            </div>
 
-          <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
-            <h5 style="font-size: 0.85rem; font-weight: 800; color: var(--text-main); margin-bottom: 8px;">
-              Últimos Pedidos
-            </h5>
-            <div id="custRecentOrdersList" style="display: flex; flex-direction: column; gap: 6px;">
-              <span style="font-size: 0.78rem; color: var(--text-muted);">Sin pedidos previos.</span>
+            <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
+              <h5 style="font-size: 0.85rem; font-weight: 800; color: var(--text-main); margin-bottom: 8px;">
+                Últimos Pedidos
+              </h5>
+              <div id="custRecentOrdersList" style="display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-size: 0.78rem; color: var(--text-muted);">Sin pedidos previos.</span>
+              </div>
             </div>
           </div>
         </div>
@@ -318,37 +340,57 @@ async function loadStatusAndConversations() {
 }
 
 /**
- * Actualiza los badges de estado en el header
+ * Actualiza los badges de estado en el header y barra superior del chat
  */
 function updateStatusUI() {
   const badge = document.getElementById('crmStatusBadge');
   const label = document.getElementById('crmStatusLabel');
   const btnConnect = document.getElementById('btnWhatsAppConnect');
+  const headerStatusBtn = document.getElementById('btnWpStatusChatHeader');
+  const headerStatusDot = document.getElementById('crmHeaderStatusDot');
+  const headerStatusText = document.getElementById('crmHeaderStatusText');
 
-  if (!badge || !label) return;
+  if (badge && label) {
+    badge.className = 'crm-status-indicator';
 
-  badge.className = 'crm-status-indicator';
-
-  if (wpStatus.status === 'CONNECTED') {
-    badge.classList.add('connected');
-    label.textContent = wpStatus.phoneNumber ? `Conectado (${wpStatus.phoneNumber})` : 'Conectado';
-    if (btnConnect) {
-      btnConnect.textContent = '⚙️ WhatsApp Conectado';
-      btnConnect.className = 'btn btn-sm btn-outline';
+    if (wpStatus.status === 'CONNECTED') {
+      badge.classList.add('connected');
+      label.textContent = wpStatus.phoneNumber ? `Conectado (${wpStatus.phoneNumber})` : 'Conectado';
+      if (btnConnect) {
+        btnConnect.textContent = '⚙️ WhatsApp Conectado';
+        btnConnect.className = 'btn btn-sm btn-outline';
+      }
+    } else if (wpStatus.status === 'CONNECTING') {
+      badge.classList.add('connecting');
+      label.textContent = wpStatus.qr ? 'QR Listo para Escanear' : 'Conectando...';
+      if (btnConnect) {
+        btnConnect.textContent = wpStatus.qr ? '📷 Escanear QR' : '⏳ Ver QR';
+        btnConnect.className = 'btn btn-sm btn-warning';
+      }
+    } else {
+      badge.classList.add('disconnected');
+      label.textContent = 'Desconectado';
+      if (btnConnect) {
+        btnConnect.textContent = '📱 Conectar QR';
+        btnConnect.className = 'btn btn-sm btn-primary';
+      }
     }
-  } else if (wpStatus.status === 'CONNECTING') {
-    badge.classList.add('connecting');
-    label.textContent = wpStatus.qr ? 'QR Listo para Escanear' : 'Conectando...';
-    if (btnConnect) {
-      btnConnect.textContent = wpStatus.qr ? '📷 Escanear QR' : '⏳ Ver QR';
-      btnConnect.className = 'btn btn-sm btn-warning';
-    }
-  } else {
-    badge.classList.add('disconnected');
-    label.textContent = 'Desconectado';
-    if (btnConnect) {
-      btnConnect.textContent = '📱 Conectar QR';
-      btnConnect.className = 'btn btn-sm btn-primary';
+  }
+
+  // Sincronizar botón de estado en la cabecera del chat (visible en móvil y desktop)
+  if (headerStatusBtn) {
+    if (wpStatus.status === 'CONNECTED') {
+      headerStatusBtn.className = 'btn btn-sm btn-outline crm-header-status-btn connected';
+      if (headerStatusDot) headerStatusDot.style.background = '#16A34A';
+      if (headerStatusText) headerStatusText.textContent = wpStatus.phoneNumber ? `+${wpStatus.phoneNumber}` : 'WhatsApp Activo';
+    } else if (wpStatus.status === 'CONNECTING') {
+      headerStatusBtn.className = 'btn btn-sm btn-warning crm-header-status-btn connecting';
+      if (headerStatusDot) headerStatusDot.style.background = '#D97706';
+      if (headerStatusText) headerStatusText.textContent = wpStatus.qr ? 'Escanear QR' : 'Conectando';
+    } else {
+      headerStatusBtn.className = 'btn btn-sm btn-outline crm-header-status-btn disconnected';
+      if (headerStatusDot) headerStatusDot.style.background = '#DC2626';
+      if (headerStatusText) headerStatusText.textContent = 'Desconectado';
     }
   }
 }
@@ -764,14 +806,36 @@ function attachCrmEvents() {
     if (layout) layout.classList.remove('viewing-chat');
   });
 
-  // Toggle de sidebar del cliente en Tablets/Laptops
+  // Toggle y Cierre de Sidebar del Cliente en Móvil y Tablets
+  const sidebar = document.getElementById('crmCustomerSidebar');
+  const sidebarOverlay = document.getElementById('crmCustomerSidebarOverlay');
+
+  const closeCustomerSidebar = () => {
+    if (sidebar) sidebar.classList.remove('mobile-open');
+    if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+  };
+
   document.getElementById('btnToggleCustomerDrawer')?.addEventListener('click', () => {
-    const sidebar = document.getElementById('crmCustomerSidebar');
-    if (sidebar) sidebar.classList.toggle('mobile-open');
+    if (sidebar) {
+      const isOpen = sidebar.classList.toggle('mobile-open');
+      if (sidebarOverlay) {
+        if (isOpen) sidebarOverlay.classList.add('active');
+        else sidebarOverlay.classList.remove('active');
+      }
+    }
   });
 
-  // Botón de Conectar / QR WhatsApp
+  document.getElementById('btnCloseCustomerSidebar')?.addEventListener('click', closeCustomerSidebar);
+  sidebarOverlay?.addEventListener('click', closeCustomerSidebar);
+
+  // Botones y Badges de Conectar / Gestionar Sesión de WhatsApp
   document.getElementById('btnWhatsAppConnect')?.addEventListener('click', () => {
+    openWhatsAppQRModal();
+  });
+  document.getElementById('crmStatusBadge')?.addEventListener('click', () => {
+    openWhatsAppQRModal();
+  });
+  document.getElementById('btnWpStatusChatHeader')?.addEventListener('click', () => {
     openWhatsAppQRModal();
   });
 
