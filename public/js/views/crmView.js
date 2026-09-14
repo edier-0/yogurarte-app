@@ -184,12 +184,14 @@ export async function renderCrm(container) {
               <button class="crm-btn-back" id="btnBackToConvList" title="Volver a chats">
                 ←
               </button>
-              <div class="crm-conv-avatar" id="activeChatAvatar">
-                ?
-              </div>
-              <div>
-                <h4 class="crm-chat-title" id="activeChatName">Nombre del Cliente</h4>
-                <div class="crm-chat-subtitle" id="activeChatPhone">+57 000 000 0000</div>
+              <div id="crmChatHeaderDetails" style="display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0;" title="Ver detalles y pedidos de este cliente">
+                <div class="crm-conv-avatar" id="activeChatAvatar">
+                  ?
+                </div>
+                <div style="min-width: 0;">
+                  <h4 class="crm-chat-title" id="activeChatName">Nombre del Cliente</h4>
+                  <div class="crm-chat-subtitle" id="activeChatPhone">+57 000 000 0000</div>
+                </div>
               </div>
             </div>
 
@@ -247,8 +249,8 @@ export async function renderCrm(container) {
         <!-- Encabezado con Botón Cerrar para Móvil y Desktop -->
         <div class="crm-customer-sidebar-header">
           <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 1.1rem;">👤</span>
-            <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: var(--text-main);">Ficha del Cliente</h4>
+            <span style="font-size: 1.15rem;">👤</span>
+            <h4 style="margin: 0; font-size: 0.98rem; font-weight: 800; color: var(--text-main);">Ficha del Cliente</h4>
           </div>
           <button class="crm-btn-close-customer-sidebar" id="btnCloseCustomerSidebar" title="Cerrar ficha">
             ✕
@@ -297,6 +299,10 @@ export async function renderCrm(container) {
                 <span style="font-size: 0.78rem; color: var(--text-muted);">Sin pedidos previos.</span>
               </div>
             </div>
+
+            <button class="btn btn-outline" id="btnBottomCloseCustomerSidebar" style="width: 100%; padding: 10px; font-size: 0.85rem; font-weight: 700; margin-top: 4px; border-color: var(--border-color);">
+              ✕ Cerrar y Volver al Chat
+            </button>
           </div>
         </div>
       </aside>
@@ -815,7 +821,7 @@ function attachCrmEvents() {
     if (sidebarOverlay) sidebarOverlay.classList.remove('active');
   };
 
-  document.getElementById('btnToggleCustomerDrawer')?.addEventListener('click', () => {
+  const toggleCustomerSidebar = () => {
     if (sidebar) {
       const isOpen = sidebar.classList.toggle('mobile-open');
       if (sidebarOverlay) {
@@ -823,9 +829,12 @@ function attachCrmEvents() {
         else sidebarOverlay.classList.remove('active');
       }
     }
-  });
+  };
 
+  document.getElementById('btnToggleCustomerDrawer')?.addEventListener('click', toggleCustomerSidebar);
+  document.getElementById('crmChatHeaderDetails')?.addEventListener('click', toggleCustomerSidebar);
   document.getElementById('btnCloseCustomerSidebar')?.addEventListener('click', closeCustomerSidebar);
+  document.getElementById('btnBottomCloseCustomerSidebar')?.addEventListener('click', closeCustomerSidebar);
   sidebarOverlay?.addEventListener('click', closeCustomerSidebar);
 
   // Botones y Badges de Conectar / Gestionar Sesión de WhatsApp
