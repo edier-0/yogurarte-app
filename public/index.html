@@ -43,6 +43,11 @@
           <span>Mis Domicilios de Hoy</span>
         </button>
 
+        <button class="nav-item" data-tab="crm">
+          <span class="nav-icon">💬</span>
+          <span>CRM / WhatsApp</span>
+        </button>
+
         <button class="nav-item" data-tab="orders">
           <span class="nav-icon">🥛</span>
           <span>Pedidos y Ventas</span>
@@ -170,6 +175,14 @@
           <button class="mobile-more-close" id="btnCloseMobileMore" title="Cerrar">✕</button>
         </div>
         <div class="mobile-more-grid">
+          <button class="mobile-more-item" data-tab="crm">
+            <span class="more-item-icon">💬</span>
+            <div class="more-item-info">
+              <span class="more-item-title">CRM / WhatsApp</span>
+              <span class="more-item-desc">Mensajes y atención</span>
+            </div>
+          </button>
+
           <button class="mobile-more-item" data-tab="inventory">
             <span class="more-item-icon">📦</span>
             <div class="more-item-info">
@@ -220,6 +233,9 @@
     <div class="toast-container" id="toastContainer"></div>
 
   </div>
+
+  <!-- Socket.IO Client para Tiempo Real -->
+  <script src="/socket.io/socket.io.js"></script>
 
   <!-- JavaScript Modular -->
   <script type="module" src="/js/app.js"></script>

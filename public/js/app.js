@@ -9,11 +9,13 @@ import { renderCashControl } from './views/cashControlView.js';
 import { renderStaff } from './views/staffView.js';
 import { renderCustomers } from './views/customersView.js';
 import { renderDelivery } from './views/deliveryView.js';
+import { renderCrm } from './views/crmView.js';
 
 // Mapa de Vistas
 const views = {
   dashboard: { title: 'Panel de Control', render: renderDashboard },
   delivery: { title: '🛵 Mis Domicilios de Hoy', render: renderDelivery },
+  crm: { title: '💬 CRM y WhatsApp Multi-Agente', render: renderCrm },
   orders: { title: 'Pedidos y Ventas', render: renderOrders },
   cashControl: { title: 'Control de Caja y Finanzas', render: renderCashControl },
   batches: { title: 'Producción de Lotes', render: renderBatches },
@@ -69,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (isProd) {
         btn.style.display = ['batches', 'inventory', 'orders'].includes(tab) ? 'flex' : 'none';
       } else if (isSales) {
-        btn.style.display = ['orders', 'customers', 'batches'].includes(tab) ? 'flex' : 'none';
+        btn.style.display = ['orders', 'crm', 'customers', 'batches'].includes(tab) ? 'flex' : 'none';
       } else {
         btn.style.display = 'flex';
       }
@@ -493,7 +495,7 @@ document.addEventListener('DOMContentLoaded', () => {
       effectiveTab = 'delivery';
     } else if (role === 'PRODUCCION' && !['batches', 'inventory', 'orders'].includes(tabName)) {
       effectiveTab = 'batches';
-    } else if (role === 'VENTAS' && !['orders', 'customers', 'batches'].includes(tabName)) {
+    } else if (role === 'VENTAS' && !['orders', 'crm', 'customers', 'batches'].includes(tabName)) {
       effectiveTab = 'orders';
     }
 
@@ -515,7 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Actualizar Estados Activos en Mobile Nav
-    const moreTabs = ['inventory', 'expenses', 'staff', 'customers'];
+    const moreTabs = ['crm', 'inventory', 'expenses', 'staff', 'customers'];
     const btnMobileMore = document.getElementById('btnMobileMore');
     const mobileMoreIcon = document.getElementById('mobileMoreIcon');
     const mobileMoreLabel = document.getElementById('mobileMoreLabel');
@@ -530,7 +532,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (moreTabs.includes(tabName)) {
       btnMobileMore?.classList.add('active');
-      if (tabName === 'inventory') {
+      if (tabName === 'crm') {
+        if (mobileMoreIcon) mobileMoreIcon.textContent = '💬';
+        if (mobileMoreLabel) mobileMoreLabel.textContent = 'CRM';
+      } else if (tabName === 'inventory') {
         if (mobileMoreIcon) mobileMoreIcon.textContent = '📦';
         if (mobileMoreLabel) mobileMoreLabel.textContent = 'Insumos';
       } else if (tabName === 'expenses') {

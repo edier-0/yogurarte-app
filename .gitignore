@@ -65,3 +65,5 @@ coverage/
 tmp/
 temp/
 scratch/
+auth_info_baileys/
+.baileys_auth/

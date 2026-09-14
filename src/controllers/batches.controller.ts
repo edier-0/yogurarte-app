@@ -133,14 +133,18 @@ export const getBatches = async (req: Request, res: Response) => {
       orderBy: { preparationDate: 'desc' },
     });
 
-    // Consultar todos los pedidos activos sin lote asignado (preventa)
+    // Consultar todos los pedidos activos que tengan productos sin lote asignado (preventa)
     const unassignedOrders = await prisma.order.findMany({
       where: {
-        batchId: null,
         deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
+        OR: [
+          { batchId: null, items: { none: {} } },
+          { items: { some: { batchId: null } } },
+        ],
       },
       select: {
         id: true,
+        batchId: true,
         flavor: true,
         totalLiters: true,
         items: {
@@ -170,14 +174,27 @@ export const getBatches = async (req: Request, res: Response) => {
 
       // Calcular encargos pendientes sin lote para el sabor de este lote
       const bFlavorNorm = (b.flavor || '').toLowerCase().trim();
-      const matchingUnassigned = unassignedOrders.filter((uo) => {
-        const oFlavorNorm = (uo.flavor || '').toLowerCase().trim();
-        const hasMatchingItem = uo.items.some((it) => (it.flavor || '').toLowerCase().trim().includes(bFlavorNorm) && it.batchId == null);
-        return oFlavorNorm.includes(bFlavorNorm) || bFlavorNorm.includes(oFlavorNorm) || hasMatchingItem;
-      });
+      let unassignedOrdersCount = 0;
+      let unassignedLiters = 0;
 
-      const unassignedOrdersCount = matchingUnassigned.length;
-      const unassignedLiters = matchingUnassigned.reduce((sum, uo) => sum + uo.totalLiters, 0);
+      for (const uo of unassignedOrders) {
+        if (uo.items && uo.items.length > 0) {
+          const unassignedItems = uo.items.filter(
+            (it) => it.batchId == null && (it.flavor || '').toLowerCase().trim().includes(bFlavorNorm)
+          );
+          if (unassignedItems.length > 0) {
+            unassignedOrdersCount++;
+            unassignedLiters += unassignedItems.reduce((sum, it) => sum + it.totalLiters, 0);
+          }
+        } else if (uo.batchId == null) {
+          const oFlavorNorm = (uo.flavor || '').toLowerCase().trim();
+          if (oFlavorNorm.includes(bFlavorNorm) || bFlavorNorm.includes(oFlavorNorm)) {
+            unassignedOrdersCount++;
+            unassignedLiters += uo.totalLiters;
+          }
+        }
+      }
+
       const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
 
       return {
@@ -789,20 +806,14 @@ export const getPendingOrdersByFlavor = async (req: Request, res: Response) => {
   try {
     const { flavor } = req.query;
 
-    const where: any = {
-      batchId: null,
-      deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
-    };
-
-    if (flavor && typeof flavor === 'string' && flavor.trim() !== '' && flavor.toUpperCase() !== 'ALL') {
-      where.OR = [
-        { flavor: { contains: flavor.trim(), mode: 'insensitive' } },
-        { items: { some: { flavor: { contains: flavor.trim(), mode: 'insensitive' } } } },
-      ];
-    }
-
-    const pendingOrders = await prisma.order.findMany({
-      where,
+    const allUnassigned = await prisma.order.findMany({
+      where: {
+        deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
+        OR: [
+          { batchId: null, items: { none: {} } },
+          { items: { some: { batchId: null } } },
+        ],
+      },
       include: {
         customer: {
           select: {
@@ -817,8 +828,34 @@ export const getPendingOrdersByFlavor = async (req: Request, res: Response) => {
       orderBy: { orderDate: 'asc' },
     });
 
-    const totalLiters = pendingOrders.reduce((sum, o) => sum + o.totalLiters, 0);
-    const totalAmount = pendingOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const targetFlavor = (flavor && typeof flavor === 'string' && flavor.trim() !== '' && flavor.toUpperCase() !== 'ALL')
+      ? flavor.trim().toLowerCase()
+      : null;
+
+    const pendingOrders = allUnassigned.filter((o) => {
+      if (o.items && o.items.length > 0) {
+        return o.items.some((it) => it.batchId === null && (!targetFlavor || (it.flavor || '').toLowerCase().includes(targetFlavor)));
+      }
+      if (o.batchId === null) {
+        return !targetFlavor || (o.flavor || '').toLowerCase().includes(targetFlavor);
+      }
+      return false;
+    });
+
+    // Calcular litros pendientes únicamente de los ítems sin lote
+    let totalLiters = 0;
+    let totalAmount = 0;
+
+    for (const o of pendingOrders) {
+      if (o.items && o.items.length > 0) {
+        const unassignedItems = o.items.filter((it) => it.batchId === null && (!targetFlavor || (it.flavor || '').toLowerCase().includes(targetFlavor)));
+        totalLiters += unassignedItems.reduce((sum, it) => sum + it.totalLiters, 0);
+        totalAmount += unassignedItems.reduce((sum, it) => sum + it.totalPrice, 0);
+      } else {
+        totalLiters += o.totalLiters;
+        totalAmount += o.totalAmount;
+      }
+    }
 
     res.json({
       count: pendingOrders.length,

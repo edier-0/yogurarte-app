@@ -1,3 +1,4 @@
+import http from 'http';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -5,6 +6,7 @@ import compression from 'compression';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { Server as SocketIOServer } from 'socket.io';
 
 import ordersRoutes from './routes/orders.routes.js';
 import batchesRoutes from './routes/batches.routes.js';
@@ -18,6 +20,8 @@ import staffRoutes from './routes/staff.routes.js';
 import cashMovementsRoutes from './routes/cashMovements.routes.js';
 import creditsRoutes from './routes/credits.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import crmRoutes from './routes/crm.routes.js';
+import { whatsappService } from './services/whatsapp.service.js';
 
 import { requireAuth } from './middlewares/auth.middleware.js';
 import { apiLimiter } from './middlewares/rateLimiter.middleware.js';
@@ -29,6 +33,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const server = http.createServer(app);
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
+whatsappService.setSocketServer(io);
+
 const PORT = process.env.PORT || 3000;
 
 // Configuración de Proxy para entornos de producción (HTTPS / Reverse Proxy)
@@ -109,6 +123,7 @@ app.use('/api/staff', requireAuth, staffRoutes);
 app.use('/api/cash-movements', requireAuth, cashMovementsRoutes);
 app.use('/api/credits', requireAuth, creditsRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/crm', requireAuth, crmRoutes);
 
 // 8. Manejador 404 para rutas API no encontradas
 app.use(notFoundHandler);
@@ -123,9 +138,9 @@ app.use(errorHandler);
 
 import prisma from './prisma.js';
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Servidor YogurArte Seguro corriendo en http://localhost:${PORT}`);
-  console.log(`🔒 Protección: Helmet + Rate Limiting + Bcrypt + JWT`);
+  console.log(`🔒 Protección: Helmet + Rate Limiting + Bcrypt + JWT + Socket.IO`);
   console.log(`📁 Frontend servido desde: ${publicPath}`);
 
   // Rutina de optimización y estadísticas en PostgreSQL para índices B-Tree
@@ -133,4 +148,9 @@ app.listen(PORT, () => {
     .$executeRawUnsafe('ANALYZE;')
     .then(() => console.log('⚡ Estadísticas de PostgreSQL optimizadas (ANALYZE completado)'))
     .catch((err) => console.warn('Aviso: No se pudo ejecutar ANALYZE automático:', err.message));
+
+  // Inicializar servicio de WhatsApp Baileys en segundo plano
+  whatsappService.init().catch((err) => {
+    console.error('❌ Error inicializando WhatsApp Baileys:', err);
+  });
 });

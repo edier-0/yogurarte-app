@@ -33,7 +33,8 @@ model Customer {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @default(now()) @updatedAt
-  orders       Order[]
+  orders        Order[]
+  conversations ChatConversation[]
 
   @@index([fullName])
   @@index([phone])
@@ -423,6 +424,56 @@ model SystemSetting {
   key       String   @id
   value     String
   updatedAt DateTime @default(now()) @updatedAt
+}
+
+// ==========================================
+// 💬 CRM Y MENSAJERÍA DE WHATSAPP MULTI-AGENTE
+// ==========================================
+
+model ChatConversation {
+  id                    Int           @id @default(autoincrement())
+  remoteJid             String        @unique // Identificador de WhatsApp: 57300xxxxxxx@s.whatsapp.net
+  phoneNumber           String        // Número telefónico formateado
+  contactName           String?       // Nombre del contacto en WhatsApp
+  profilePicUrl         String?       // Foto de perfil
+  unreadCount           Int           @default(0)
+  lastMessageText       String?
+  lastMessageTimestamp  DateTime?
+  lastMessageFromMe     Boolean       @default(false)
+  isArchived            Boolean       @default(false)
+  isPinned              Boolean       @default(false)
+  customerId            Int?
+  customer              Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @default(now()) @updatedAt
+  messages              ChatMessage[]
+
+  @@index([remoteJid])
+  @@index([phoneNumber])
+  @@index([lastMessageTimestamp])
+  @@index([customerId])
+  @@index([unreadCount])
+}
+
+model ChatMessage {
+  id             Int              @id @default(autoincrement())
+  conversationId Int
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String           @unique // ID del mensaje de Baileys / WAMessage
+  fromMe         Boolean          @default(false)
+  senderName     String?
+  messageType    String           @default("TEXT") // TEXT, IMAGE, AUDIO, VIDEO, DOCUMENT, LOCATION, STICKER
+  text           String?
+  mediaUrl       String?
+  mediaMimeType  String?
+  status         String           @default("DELIVERED") // PENDING, SENT, DELIVERED, READ, ERROR
+  timestamp      DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([timestamp])
+  @@index([fromMe])
 }
 
 

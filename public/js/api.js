@@ -564,4 +564,45 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
+
+  // CRM y WhatsApp Multi-Agente
+  async getWhatsAppStatus() {
+    return apiFetch('/crm/status');
+  },
+
+  async logoutWhatsApp() {
+    return apiFetch('/crm/logout', {
+      method: 'POST',
+    });
+  },
+
+  async getCrmConversations(search = '') {
+    const query = search ? `?search=${encodeURIComponent(search)}` : '';
+    return apiFetch(`/crm/conversations${query}`);
+  },
+
+  async getCrmMessages(conversationId) {
+    return apiFetch(`/crm/conversations/${conversationId}/messages`);
+  },
+
+  async sendCrmMessage(to, text) {
+    return apiFetch('/crm/send', {
+      method: 'POST',
+      body: JSON.stringify({ to, text }),
+    });
+  },
+
+  async markCrmConversationAsRead(conversationId) {
+    return apiFetch(`/crm/conversations/${conversationId}/read`, {
+      method: 'POST',
+    });
+  },
+
+  async linkCrmCustomer(conversationId, customerId) {
+    return apiFetch(`/crm/conversations/${conversationId}/link-customer`, {
+      method: 'POST',
+      body: JSON.stringify({ customerId }),
+    });
+  },
 };
+
