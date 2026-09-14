@@ -68,23 +68,29 @@ export const getConversations = async (req: Request, res: Response) => {
                 id: true,
                 orderNumber: true,
                 totalAmount: true,
-                pendingAmount: true,
-                deliveryStatus: true,
                 paymentStatus: true,
-                orderDate: true,
+                deliveryStatus: true,
+                deliveryDate: true,
+                payments: {
+                  select: {
+                    amount: true,
+                  },
+                },
               },
-              orderBy: { orderDate: 'desc' },
-              take: 3,
+              orderBy: { createdAt: 'desc' },
+              take: 5,
             },
           },
         },
       },
-      orderBy: { lastMessageTimestamp: 'desc' },
+      orderBy: {
+        lastMessageTimestamp: 'desc',
+      },
     });
 
     res.json(conversations);
   } catch (error) {
-    console.error('Error fetching conversations:', error);
+    console.error('Error fetching CRM conversations:', error);
     res.status(500).json({ error: 'Error al obtener conversaciones' });
   }
 };
@@ -150,12 +156,51 @@ export const markAsRead = async (req: Request, res: Response) => {
 export const linkCustomer = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const conversationId = Number(id);
     const { customerId } = req.body;
+    const targetCustId = customerId ? Number(customerId) : null;
+
+    if (!targetCustId) {
+      const updated = await prisma.chatConversation.update({
+        where: { id: conversationId },
+        data: { customerId: null },
+        include: { customer: true },
+      });
+      return res.json(updated);
+    }
+
+    const customer = await prisma.customer.findUnique({
+      where: { id: targetCustId },
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    // Si ya existía otra conversación para este cliente, fusionar los mensajes
+    const existingOtherConv = await prisma.chatConversation.findFirst({
+      where: {
+        customerId: targetCustId,
+        id: { not: conversationId },
+      },
+    });
+
+    if (existingOtherConv) {
+      await prisma.chatMessage.updateMany({
+        where: { conversationId: existingOtherConv.id },
+        data: { conversationId },
+      });
+      await prisma.chatConversation.delete({
+        where: { id: existingOtherConv.id },
+      });
+    }
 
     const conversation = await prisma.chatConversation.update({
-      where: { id: Number(id) },
+      where: { id: conversationId },
       data: {
-        customerId: customerId ? Number(customerId) : null,
+        customerId: targetCustId,
+        contactName: customer.fullName,
+        phoneNumber: customer.phone ? customer.phone.replace(/\D/g, '') : undefined,
       },
       include: {
         customer: true,
@@ -165,6 +210,6 @@ export const linkCustomer = async (req: Request, res: Response) => {
     res.json(conversation);
   } catch (error) {
     console.error('Error linking customer to conversation:', error);
-    res.status(500).json({ error: 'Error al vincular cliente' });
+    res.status(500).json({ error: 'Error al vincular cliente con la conversación' });
   }
 };

@@ -6,6 +6,7 @@ import makeWASocket, {
   Browsers,
   WASocket,
   WAMessage,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
@@ -132,6 +133,9 @@ class WhatsAppService {
           this.reconnectAttempts = 0;
           this.isInitializing = false;
           this.broadcastStatus();
+
+          // Limpiar/unificar chats duplicados por LID
+          this.mergeDuplicateConversations().catch((e) => console.warn('Aviso merge chats:', e));
         }
       });
 
@@ -208,6 +212,9 @@ class WhatsAppService {
     return this.getStatus();
   }
 
+  /**
+   * Procesa un mensaje entrante o saliente de WhatsApp
+   */
   private async processIncomingMessage(msg: WAMessage) {
     if (!msg.message) return;
     const remoteJid = msg.key.remoteJid;
@@ -219,11 +226,10 @@ class WhatsAppService {
     const messageId = msg.key.id || `MSG-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     const pushName = msg.pushName || null;
 
-    const rawNumber = remoteJid.split('@')[0];
-    const cleanNumber = rawNumber.replace(/\D/g, '');
-
     let text = '';
     let messageType = 'TEXT';
+    let mediaUrl: string | null = null;
+    let mediaMimeType: string | null = null;
 
     if (msg.message.conversation) {
       text = msg.message.conversation;
@@ -232,6 +238,47 @@ class WhatsAppService {
     } else if (msg.message.imageMessage) {
       messageType = 'IMAGE';
       text = msg.message.imageMessage.caption || '📷 Imagen';
+      mediaMimeType = 'image/jpeg';
+      try {
+        if (this.sock) {
+          const buffer = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            {
+              logger: pino({ level: 'silent' }),
+              reuploadRequest: this.sock.updateMediaMessage,
+            }
+          );
+          if (buffer) {
+            mediaUrl = `data:image/jpeg;base64,${buffer.toString('base64')}`;
+          }
+        }
+      } catch (err) {
+        console.warn('Aviso: no se pudo descargar imagen:', err);
+      }
+    } else if (msg.message.stickerMessage) {
+      messageType = 'STICKER';
+      text = '✨ Sticker';
+      mediaMimeType = 'image/webp';
+      try {
+        if (this.sock) {
+          const buffer = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            {
+              logger: pino({ level: 'silent' }),
+              reuploadRequest: this.sock.updateMediaMessage,
+            }
+          );
+          if (buffer) {
+            mediaUrl = `data:image/webp;base64,${buffer.toString('base64')}`;
+          }
+        }
+      } catch (err) {
+        console.warn('Aviso: no se pudo descargar sticker:', err);
+      }
     } else if (msg.message.audioMessage) {
       messageType = 'AUDIO';
       text = '🎵 Nota de voz / Audio';
@@ -241,9 +288,6 @@ class WhatsAppService {
     } else if (msg.message.documentMessage) {
       messageType = 'DOCUMENT';
       text = msg.message.documentMessage.fileName || '📄 Documento';
-    } else if (msg.message.stickerMessage) {
-      messageType = 'STICKER';
-      text = '✨ Sticker';
     } else if (msg.message.locationMessage) {
       messageType = 'LOCATION';
       text = '📍 Ubicación';
@@ -252,7 +296,7 @@ class WhatsAppService {
       text = '👤 Contacto';
     }
 
-    if (!text && messageType === 'TEXT') {
+    if (!text && messageType === 'TEXT' && !mediaUrl) {
       return;
     }
 
@@ -260,15 +304,65 @@ class WhatsAppService {
       ? new Date(Number(msg.messageTimestamp) * 1000)
       : new Date();
 
+    const rawNumber = remoteJid.split('@')[0];
+    const cleanNumber = rawNumber.replace(/\D/g, '');
+    const isLid = remoteJid.endsWith('@lid');
+
+    // 1. Buscar si ya existe una conversación exactamente con este remoteJid
     let conversation = await prisma.chatConversation.findUnique({
       where: { remoteJid },
       include: { customer: true },
     });
 
-    if (!conversation) {
-      let matchedCustomerId: number | null = null;
-      let matchedContactName: string | null = pushName;
+    // 2. Si es un LID (Linked Device ID de WhatsApp), unificar con el chat principal del cliente
+    if (isLid && !conversation) {
+      // Intentar vincular por pushName (ej: Yeilin)
+      if (pushName && pushName.trim()) {
+        const matchingCustomer = await prisma.customer.findFirst({
+          where: {
+            fullName: { contains: pushName.trim(), mode: 'insensitive' },
+          },
+        });
 
+        if (matchingCustomer) {
+          const existingCustConv = await prisma.chatConversation.findFirst({
+            where: {
+              OR: [
+                { customerId: matchingCustomer.id },
+                { phoneNumber: matchingCustomer.phone ? matchingCustomer.phone.replace(/\D/g, '') : undefined },
+                { contactName: { contains: matchingCustomer.fullName, mode: 'insensitive' } },
+              ],
+            },
+            include: { customer: true },
+          });
+
+          if (existingCustConv) {
+            conversation = existingCustConv;
+          }
+        }
+      }
+
+      // Si no se encontró por pushName, buscar si hubo un chat reciente enviado por nosotros
+      if (!conversation) {
+        const recentOutgoingConv = await prisma.chatConversation.findFirst({
+          where: {
+            lastMessageFromMe: true,
+            lastMessageTimestamp: {
+              gte: new Date(Date.now() - 2 * 60 * 60 * 1000), // últimas 2 horas
+            },
+          },
+          orderBy: { lastMessageTimestamp: 'desc' },
+          include: { customer: true },
+        });
+
+        if (recentOutgoingConv) {
+          conversation = recentOutgoingConv;
+        }
+      }
+    }
+
+    // 3. Si no existe, buscar por cliente o crear
+    if (!conversation) {
       const last10 = cleanNumber.slice(-10);
       const matchingCustomer = await prisma.customer.findFirst({
         where: {
@@ -276,25 +370,21 @@ class WhatsAppService {
             { phone: cleanNumber },
             { phone: last10 },
             { phone: { contains: last10 } },
+            pushName ? { fullName: { contains: pushName, mode: 'insensitive' } } : {},
           ],
         },
       });
-
-      if (matchingCustomer) {
-        matchedCustomerId = matchingCustomer.id;
-        matchedContactName = matchingCustomer.fullName;
-      }
 
       conversation = await prisma.chatConversation.create({
         data: {
           remoteJid,
           phoneNumber: cleanNumber,
-          contactName: matchedContactName || pushName || cleanNumber,
+          contactName: matchingCustomer?.fullName || pushName || cleanNumber,
           unreadCount: fromMe ? 0 : 1,
-          lastMessageText: text,
+          lastMessageText: text || (messageType === 'STICKER' ? '✨ Sticker' : '📷 Imagen'),
           lastMessageTimestamp: messageDate,
           lastMessageFromMe: fromMe,
-          customerId: matchedCustomerId,
+          customerId: matchingCustomer?.id || null,
         },
         include: { customer: true },
       });
@@ -302,8 +392,8 @@ class WhatsAppService {
       conversation = await prisma.chatConversation.update({
         where: { id: conversation.id },
         data: {
-          contactName: pushName && !conversation.customerId ? pushName : conversation.contactName,
-          lastMessageText: text,
+          contactName: pushName && (!conversation.customerId || conversation.contactName === conversation.phoneNumber) ? pushName : conversation.contactName,
+          lastMessageText: text || (messageType === 'STICKER' ? '✨ Sticker' : '📷 Imagen'),
           lastMessageTimestamp: messageDate,
           lastMessageFromMe: fromMe,
           unreadCount: fromMe ? conversation.unreadCount : conversation.unreadCount + 1,
@@ -312,6 +402,7 @@ class WhatsAppService {
       });
     }
 
+    // Guardar el mensaje
     const existingMsg = await prisma.chatMessage.findUnique({
       where: { messageId },
     });
@@ -326,6 +417,8 @@ class WhatsAppService {
           senderName: fromMe ? 'YogurArte' : (pushName || conversation.contactName || 'Cliente'),
           messageType,
           text,
+          mediaUrl,
+          mediaMimeType,
           status: fromMe ? 'SENT' : 'DELIVERED',
           timestamp: messageDate,
         },
@@ -340,6 +433,9 @@ class WhatsAppService {
     }
   }
 
+  /**
+   * Envía un mensaje saliente a través de WhatsApp
+   */
   public async sendMessage(remoteJid: string, text: string, optionalName?: string, optionalCustomerId?: number) {
     if (!this.sock || this.status !== 'CONNECTED') {
       throw new Error('WhatsApp no está conectado actualmente. Por favor escanea el código QR.');
@@ -375,19 +471,43 @@ class WhatsAppService {
             },
           });
 
-      conversation = await prisma.chatConversation.create({
-        data: {
-          remoteJid: cleanJid,
-          phoneNumber: cleanNumber,
-          contactName: optionalName || matchingCustomer?.fullName || cleanNumber,
-          unreadCount: 0,
-          lastMessageText: text.trim(),
-          lastMessageTimestamp: now,
-          lastMessageFromMe: true,
-          customerId: matchingCustomer?.id || optionalCustomerId || null,
-        },
-        include: { customer: true },
-      });
+      // Si existe un chat previo con LID para este mismo cliente, reutilizarlo
+      let existingLidConv = null;
+      if (matchingCustomer) {
+        existingLidConv = await prisma.chatConversation.findFirst({
+          where: {
+            customerId: matchingCustomer.id,
+            remoteJid: { contains: '@lid' },
+          },
+          include: { customer: true },
+        });
+      }
+
+      if (existingLidConv) {
+        conversation = await prisma.chatConversation.update({
+          where: { id: existingLidConv.id },
+          data: {
+            lastMessageText: text.trim(),
+            lastMessageTimestamp: now,
+            lastMessageFromMe: true,
+          },
+          include: { customer: true },
+        });
+      } else {
+        conversation = await prisma.chatConversation.create({
+          data: {
+            remoteJid: cleanJid,
+            phoneNumber: cleanNumber,
+            contactName: optionalName || matchingCustomer?.fullName || cleanNumber,
+            unreadCount: 0,
+            lastMessageText: text.trim(),
+            lastMessageTimestamp: now,
+            lastMessageFromMe: true,
+            customerId: matchingCustomer?.id || optionalCustomerId || null,
+          },
+          include: { customer: true },
+        });
+      }
     } else {
       conversation = await prisma.chatConversation.update({
         where: { id: conversation.id },
@@ -443,6 +563,71 @@ class WhatsAppService {
 
     if (this.io) {
       this.io.emit('whatsapp:conversation_read', { conversationId });
+    }
+  }
+
+  /**
+   * Rutina para fusionar automáticamente chats duplicados (LID vs Phone JID)
+   */
+  public async mergeDuplicateConversations() {
+    try {
+      const lidConversations = await prisma.chatConversation.findMany({
+        where: { remoteJid: { contains: '@lid' } },
+        include: { messages: true, customer: true },
+      });
+
+      for (const lidConv of lidConversations) {
+        // Buscar si hay otra conversación con el mismo cliente o nombre
+        let primaryConv = null;
+        if (lidConv.customerId) {
+          primaryConv = await prisma.chatConversation.findFirst({
+            where: {
+              customerId: lidConv.customerId,
+              id: { not: lidConv.id },
+            },
+          });
+        } else if (lidConv.contactName && !lidConv.contactName.startsWith('+') && isNaN(Number(lidConv.contactName))) {
+          primaryConv = await prisma.chatConversation.findFirst({
+            where: {
+              contactName: { contains: lidConv.contactName, mode: 'insensitive' },
+              id: { not: lidConv.id },
+            },
+          });
+        }
+
+        if (primaryConv) {
+          console.log(`🔗 Fusionando chat LID #${lidConv.id} en chat principal #${primaryConv.id} (${primaryConv.contactName})`);
+          // Mover mensajes
+          await prisma.chatMessage.updateMany({
+            where: { conversationId: lidConv.id },
+            data: { conversationId: primaryConv.id },
+          });
+
+          // Actualizar último mensaje del chat principal
+          const lastMsg = await prisma.chatMessage.findFirst({
+            where: { conversationId: primaryConv.id },
+            orderBy: { timestamp: 'desc' },
+          });
+
+          if (lastMsg) {
+            await prisma.chatConversation.update({
+              where: { id: primaryConv.id },
+              data: {
+                lastMessageText: lastMsg.text,
+                lastMessageTimestamp: lastMsg.timestamp,
+                lastMessageFromMe: lastMsg.fromMe,
+              },
+            });
+          }
+
+          // Eliminar conversación LID duplicada
+          await prisma.chatConversation.delete({
+            where: { id: lidConv.id },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Error en mergeDuplicateConversations:', err);
     }
   }
 }

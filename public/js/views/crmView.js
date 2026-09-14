@@ -64,7 +64,7 @@ function initSocket() {
     } else if (!message.fromMe) {
       // Notificación visual discreta
       const senderName = conversation.contactName || conversation.phoneNumber || 'Cliente';
-      showToast(`💬 Mensaje de ${senderName}: ${escapeHtml(message.text || 'Archivo adjunto')}`, 'info');
+      showToast(`💬 Mensaje de ${senderName}: ${escapeHtml(message.text || (message.messageType === 'STICKER' ? '✨ Sticker' : 'Archivo adjunto'))}`, 'info');
     }
 
     renderConversationList();
@@ -410,7 +410,7 @@ async function openConversation(convId) {
   const conv = cachedConversations.find((c) => c.id === convId);
   if (conv) {
     document.getElementById('activeChatName').textContent = conv.contactName || conv.phoneNumber || 'Cliente';
-    document.getElementById('activeChatPhone').textContent = conv.phoneNumber ? `+${conv.phoneNumber}` : '';
+    document.getElementById('activeChatPhone').textContent = conv.phoneNumber ? (conv.phoneNumber.startsWith('57') ? `+${conv.phoneNumber}` : `+57 ${conv.phoneNumber}`) : '';
     document.getElementById('activeChatAvatar').textContent = (conv.contactName || conv.phoneNumber || '?').charAt(0).toUpperCase();
 
     // Actualizar sidebar del cliente
@@ -451,6 +451,29 @@ async function openConversation(convId) {
 }
 
 /**
+ * Helper para renderizar el contenido visual de un mensaje (Texto, Sticker o Imagen)
+ */
+function renderMessageBubbleContent(msg) {
+  if (msg.messageType === 'STICKER') {
+    if (msg.mediaUrl) {
+      return `<div style="display: inline-block; padding: 2px;"><img src="${msg.mediaUrl}" alt="Sticker" style="width: 140px; height: 140px; object-fit: contain; display: block;" /></div>`;
+    }
+    return `<div style="display: flex; align-items: center; gap: 6px; font-size: 0.88rem;"><span>✨</span> <em>Sticker de WhatsApp</em></div>`;
+  }
+
+  if (msg.messageType === 'IMAGE') {
+    let imgHtml = '';
+    if (msg.mediaUrl) {
+      imgHtml = `<img src="${msg.mediaUrl}" alt="Foto" style="max-width: 250px; max-height: 250px; border-radius: 8px; margin-bottom: 4px; display: block; cursor: pointer;" onclick="window.open(this.src)" />`;
+    }
+    const caption = msg.text && msg.text !== '📷 Imagen' ? `<div class="crm-msg-text">${escapeHtml(msg.text)}</div>` : '';
+    return `${imgHtml}${caption || (!imgHtml ? '<div class="crm-msg-text">📷 Imagen</div>' : '')}`;
+  }
+
+  return `<div class="crm-msg-text">${escapeHtml(msg.text || '')}</div>`;
+}
+
+/**
  * Renderiza los mensajes del chat activo
  */
 function renderChatMessages() {
@@ -485,13 +508,14 @@ function renderChatMessages() {
     const timeStr = msgDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
     const isOutgoing = msg.fromMe;
     const senderName = isOutgoing ? (msg.senderName || 'YogurArte') : '';
+    const isSticker = msg.messageType === 'STICKER' && msg.mediaUrl;
 
     html += `
       <div class="crm-msg-row ${isOutgoing ? 'outgoing' : 'incoming'}" id="msg-${msg.id}">
-        <div class="crm-msg-bubble">
-          ${isOutgoing && senderName ? `<div class="crm-msg-sender">${escapeHtml(senderName)}</div>` : ''}
-          <div class="crm-msg-text">${escapeHtml(msg.text || '')}</div>
-          <div class="crm-msg-meta">
+        <div class="crm-msg-bubble" style="${isSticker ? 'background: transparent; box-shadow: none; padding: 2px;' : ''}">
+          ${isOutgoing && senderName && !isSticker ? `<div class="crm-msg-sender">${escapeHtml(senderName)}</div>` : ''}
+          ${renderMessageBubbleContent(msg)}
+          <div class="crm-msg-meta" style="${isSticker ? 'justify-content: flex-end; background: rgba(255,255,255,0.7); border-radius: 6px; padding: 2px 6px; width: fit-content; margin-left: auto;' : ''}">
             <span>${timeStr}</span>
             ${isOutgoing ? `<span class="crm-msg-status ${msg.status === 'READ' ? 'read' : ''}">${getStatusIcon(msg.status)}</span>` : ''}
           </div>
@@ -514,15 +538,16 @@ function appendMessageToChat(msg) {
   const timeStr = msgDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
   const isOutgoing = msg.fromMe;
   const senderName = isOutgoing ? (msg.senderName || 'YogurArte') : '';
+  const isSticker = msg.messageType === 'STICKER' && msg.mediaUrl;
 
   const msgDiv = document.createElement('div');
   msgDiv.className = `crm-msg-row ${isOutgoing ? 'outgoing' : 'incoming'}`;
   msgDiv.id = `msg-${msg.id}`;
   msgDiv.innerHTML = `
-    <div class="crm-msg-bubble">
-      ${isOutgoing && senderName ? `<div class="crm-msg-sender">${escapeHtml(senderName)}</div>` : ''}
-      <div class="crm-msg-text">${escapeHtml(msg.text || '')}</div>
-      <div class="crm-msg-meta">
+    <div class="crm-msg-bubble" style="${isSticker ? 'background: transparent; box-shadow: none; padding: 2px;' : ''}">
+      ${isOutgoing && senderName && !isSticker ? `<div class="crm-msg-sender">${escapeHtml(senderName)}</div>` : ''}
+      ${renderMessageBubbleContent(msg)}
+      <div class="crm-msg-meta" style="${isSticker ? 'justify-content: flex-end; background: rgba(255,255,255,0.7); border-radius: 6px; padding: 2px 6px; width: fit-content; margin-left: auto;' : ''}">
         <span>${timeStr}</span>
         ${isOutgoing ? `<span class="crm-msg-status ${msg.status === 'READ' ? 'read' : ''}">${getStatusIcon(msg.status)}</span>` : ''}
       </div>
@@ -547,9 +572,9 @@ function getStatusIcon(status) {
  */
 function scrollToBottom() {
   const messagesArea = document.getElementById('crmChatMessages');
-  if (!messagesArea) return;
-
-  messagesArea.scrollTop = messagesArea.scrollHeight;
+  if (messagesArea) {
+    messagesArea.scrollTop = messagesArea.scrollHeight;
+  }
 }
 
 /**
@@ -637,7 +662,7 @@ function updateCustomerPanel(conv) {
     if (recentOrdersList) {
       recentOrdersList.innerHTML = `
         <div style="background: #FFFBEB; border: 1px dashed #FCD34D; padding: 10px; border-radius: var(--radius-sm); font-size: 0.75rem; color: #92400E;">
-          Este contacto aún no está registrado como cliente en YogurArte. Puedes crearle un pedido directo para guardarlo automáticamente.
+          Este contacto aún no está registrado como cliente en YogurArte. Puedes crearle un pedido directo o vincularlo arriba.
         </div>
       `;
     }
@@ -767,7 +792,7 @@ function attachCrmEvents() {
 }
 
 /**
- * Modal para Iniciar Nuevo Chat desde cero con cualquier número o cliente
+ * Modal para Iniciar Nuevo Chat desde cero con buscador reactivo de clientes y sugerencias
  */
 export async function openNewChatModal() {
   const modalContainer = document.getElementById('modalContainer');
@@ -791,7 +816,7 @@ export async function openNewChatModal() {
           <!-- Pestañas de Selección -->
           <div style="display: flex; gap: 8px; margin-bottom: 16px; background: var(--bg-subtle); padding: 4px; border-radius: var(--radius-md);">
             <button type="button" class="btn btn-sm filter-chip active" id="tabNewChatCustomer" style="flex: 1; text-align: center; border-radius: var(--radius-sm);">
-              👤 Cliente Registrado
+              👤 Buscar Cliente Registrado
             </button>
             <button type="button" class="btn btn-sm filter-chip" id="tabNewChatDirect" style="flex: 1; text-align: center; border-radius: var(--radius-sm);">
               📱 Número Nuevo Directo
@@ -799,16 +824,36 @@ export async function openNewChatModal() {
           </div>
 
           <form id="formNewChat">
-            <!-- Sección A: Selector de Cliente -->
-            <div id="sectionCustomerSelect" class="form-group">
-              <label class="form-label" style="font-weight: 700;">Seleccionar Cliente de YogurArte *</label>
-              <select id="selectNewChatCustomer" class="form-input" style="font-weight: 700;">
-                <option value="">-- Busca o selecciona un cliente --</option>
-                ${customers
-                  .filter((c) => c.phone)
-                  .map((c) => `<option value="${c.id}" data-phone="${c.phone}" data-name="${escapeHtml(c.fullName)}">${escapeHtml(c.fullName)} (📱 ${c.phone})</option>`)
-                  .join('')}
-              </select>
+            <!-- Sección A: Buscador con Sugerencias -->
+            <div id="sectionCustomerSelect" class="form-group" style="position: relative;">
+              <label class="form-label" style="font-weight: 700;">Buscar Cliente por Nombre, Teléfono o Barrio *</label>
+              <div class="input-with-icon" style="width: 100%;">
+                <span class="input-icon">🔍</span>
+                <input 
+                  type="text" 
+                  id="inputCustSearchAutocomplete" 
+                  class="form-input" 
+                  placeholder="Escribe para ver sugerencias (ej: Yeilin, Edier...)" 
+                  autocomplete="off"
+                  style="font-weight: 700;"
+                />
+              </div>
+
+              <!-- Lista flotante de sugerencias -->
+              <div id="custSuggestionsDropdown" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #FFFFFF; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); max-height: 220px; overflow-y: auto; box-shadow: var(--shadow-lg); z-index: 60; display: none;">
+              </div>
+
+              <!-- Tarjeta de cliente seleccionado -->
+              <div id="selectedCustPreviewCard" style="display: none; margin-top: 10px; background: var(--primary-light); border: 1.5px solid var(--primary); padding: 10px 14px; border-radius: var(--radius-md); justify-content: space-between; align-items: center;">
+                <div>
+                  <strong id="selectedCustPreviewName" style="color: var(--primary); font-size: 0.95rem; display: block;">Cliente</strong>
+                  <span id="selectedCustPreviewPhone" style="font-size: 0.8rem; color: var(--text-main); font-weight: 600;">📱 300 000 0000</span>
+                  <span id="selectedCustPreviewAddr" style="font-size: 0.74rem; color: var(--text-muted); display: block;">📍 Dirección</span>
+                </div>
+                <button type="button" id="btnRemoveSelectedCust" class="btn btn-sm btn-outline" style="padding: 4px 8px; font-size: 0.75rem; border-color: var(--danger); color: var(--danger); font-weight: 700;">
+                  Cambiar ✕
+                </button>
+              </div>
             </div>
 
             <!-- Sección B: Entrada de Número Directo -->
@@ -821,7 +866,7 @@ export async function openNewChatModal() {
                     type="tel" 
                     id="inputNewChatPhone" 
                     class="form-input" 
-                    placeholder="Ej: 300 123 4567" 
+                    placeholder="Ej: 314 746 4663" 
                     style="font-weight: 700;"
                   />
                 </div>
@@ -833,7 +878,7 @@ export async function openNewChatModal() {
                   type="text" 
                   id="inputNewChatName" 
                   class="form-input" 
-                  placeholder="Ej: Laura Gómez" 
+                  placeholder="Ej: Yeilin" 
                 />
               </div>
             </div>
@@ -871,17 +916,114 @@ export async function openNewChatModal() {
     </div>
   `;
 
-  // Control de pestañas (Cliente vs Directo)
   let currentMode = 'customer'; // 'customer' | 'direct'
+  let selectedCustomerObj = null;
+
   const tabCust = document.getElementById('tabNewChatCustomer');
   const tabDir = document.getElementById('tabNewChatDirect');
   const secCust = document.getElementById('sectionCustomerSelect');
   const secDir = document.getElementById('sectionDirectPhone');
-  const selectCust = document.getElementById('selectNewChatCustomer');
+  const searchInput = document.getElementById('inputCustSearchAutocomplete');
+  const suggestionsBox = document.getElementById('custSuggestionsDropdown');
+  const previewCard = document.getElementById('selectedCustPreviewCard');
+  const previewName = document.getElementById('selectedCustPreviewName');
+  const previewPhone = document.getElementById('selectedCustPreviewPhone');
+  const previewAddr = document.getElementById('selectedCustPreviewAddr');
+  const btnRemoveCust = document.getElementById('btnRemoveSelectedCust');
   const inputPhone = document.getElementById('inputNewChatPhone');
   const inputName = document.getElementById('inputNewChatName');
   const inputMsg = document.getElementById('inputNewChatMessage');
 
+  // Función para mostrar sugerencias de clientes
+  function renderSuggestions(query) {
+    if (!suggestionsBox) return;
+    const q = (query || '').toLowerCase().trim();
+    const matches = customers.filter((c) => {
+      const name = (c.fullName || '').toLowerCase();
+      const phone = (c.phone || '').toLowerCase();
+      const addr = (c.address || '').toLowerCase();
+      return name.includes(q) || phone.includes(q) || addr.includes(q);
+    });
+
+    if (matches.length === 0) {
+      suggestionsBox.innerHTML = `
+        <div style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
+          No se encontraron clientes con "${escapeHtml(query)}"
+        </div>
+      `;
+      suggestionsBox.style.display = 'block';
+      return;
+    }
+
+    suggestionsBox.innerHTML = matches
+      .slice(0, 8)
+      .map((c) => `
+        <div class="cust-suggestion-item" data-id="${c.id}" style="padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.15s ease;">
+          <div style="width: 34px; height: 34px; border-radius: 50%; background: var(--primary-light); color: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0;">
+            ${c.fullName.charAt(0).toUpperCase()}
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 700; color: var(--text-main); font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${escapeHtml(c.fullName)}
+            </div>
+            <div style="font-size: 0.76rem; color: var(--text-muted); display: flex; gap: 8px;">
+              <span>📱 ${escapeHtml(c.phone || 'Sin tel')}</span>
+              ${c.address ? `<span>📍 ${escapeHtml(c.address)}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `)
+      .join('');
+
+    suggestionsBox.style.display = 'block';
+
+    // Click en una sugerencia
+    suggestionsBox.querySelectorAll('.cust-suggestion-item').forEach((item) => {
+      item.addEventListener('click', (e) => {
+        const id = Number(e.currentTarget.dataset.id);
+        const cust = customers.find((c) => c.id === id);
+        if (cust) {
+          selectCustomer(cust);
+        }
+      });
+    });
+  }
+
+  function selectCustomer(cust) {
+    selectedCustomerObj = cust;
+    if (searchInput) searchInput.style.display = 'none';
+    if (suggestionsBox) suggestionsBox.style.display = 'none';
+    if (previewCard) previewCard.style.display = 'flex';
+    if (previewName) previewName.textContent = cust.fullName;
+    if (previewPhone) previewPhone.textContent = `📱 ${cust.phone || 'Sin teléfono'}`;
+    if (previewAddr) previewAddr.textContent = cust.address ? `📍 ${cust.address}` : '📍 Sin dirección registrada';
+  }
+
+  btnRemoveCust?.addEventListener('click', () => {
+    selectedCustomerObj = null;
+    if (searchInput) {
+      searchInput.style.display = 'block';
+      searchInput.value = '';
+      searchInput.focus();
+    }
+    if (previewCard) previewCard.style.display = 'none';
+  });
+
+  searchInput?.addEventListener('input', (e) => {
+    renderSuggestions(e.target.value);
+  });
+
+  searchInput?.addEventListener('focus', () => {
+    renderSuggestions(searchInput.value);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (suggestionsBox && !secCust?.contains(e.target)) {
+      suggestionsBox.style.display = 'none';
+    }
+  });
+
+  // Control de pestañas
   tabCust?.addEventListener('click', () => {
     currentMode = 'customer';
     tabCust.classList.add('active');
@@ -899,7 +1041,7 @@ export async function openNewChatModal() {
     inputPhone?.focus();
   });
 
-  // Chips de plantillas en el modal
+  // Chips de plantillas
   document.getElementById('chipNewChatHello')?.addEventListener('click', () => {
     if (inputMsg) inputMsg.value = '¡Hola! Te escribo de YogurArte Fonseca 🥛✨. ¿Cómo estás?';
   });
@@ -934,14 +1076,17 @@ export async function openNewChatModal() {
     let customerId = null;
 
     if (currentMode === 'customer') {
-      const opt = selectCust?.selectedOptions[0];
-      if (!opt || !opt.value) {
-        showToast('Por favor selecciona un cliente de la lista', 'warning');
+      if (!selectedCustomerObj) {
+        showToast('Por favor selecciona un cliente de las sugerencias', 'warning');
         return;
       }
-      customerId = Number(opt.value);
-      phone = opt.dataset.phone || '';
-      contactName = opt.dataset.name || '';
+      customerId = selectedCustomerObj.id;
+      phone = selectedCustomerObj.phone || '';
+      contactName = selectedCustomerObj.fullName || '';
+      if (!phone) {
+        showToast('Este cliente no tiene un teléfono registrado', 'warning');
+        return;
+      }
     } else {
       phone = inputPhone ? inputPhone.value.trim() : '';
       contactName = inputName ? inputName.value.trim() : '';
@@ -1016,7 +1161,7 @@ function triggerFastOrder() {
 }
 
 /**
- * Modal para vincular conversación con un cliente existente
+ * Modal para vincular conversación con un cliente existente usando buscador reactivo
  */
 async function openLinkCustomerModal() {
   if (!currentActiveConvId) return;
@@ -1035,22 +1180,44 @@ async function openLinkCustomerModal() {
 
   modalContainer.innerHTML = `
     <div class="modal-overlay active" id="linkCustomerModalOverlay">
-      <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-card" style="max-width: 460px;">
         <div class="modal-header">
           <h3 class="modal-title">🔗 Vincular Chat a Cliente</h3>
           <button class="modal-close" id="btnCloseLinkCustModal">✕</button>
         </div>
-        <div class="modal-body" style="padding: 16px 20px;">
+        <div class="modal-body" style="padding: 18px 20px;">
           <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
             Vincula esta conversación de WhatsApp (${escapeHtml(conv.contactName || conv.phoneNumber || 'Chat')}) con la ficha de cliente en YogurArte para sincronizar sus pedidos y saldos.
           </p>
 
-          <div class="form-group">
-            <label class="form-label" style="font-weight: 700;">Seleccionar Cliente</label>
-            <select id="selectLinkCustomer" class="form-input" style="font-weight: 700;">
-              <option value="">-- Selecciona un cliente registrado --</option>
-              ${customers.map((c) => `<option value="${c.id}" ${conv.customerId === c.id ? 'selected' : ''}>${escapeHtml(c.fullName)} (${c.phone || 'Sin tel'})</option>`).join('')}
-            </select>
+          <div class="form-group" style="position: relative;">
+            <label class="form-label" style="font-weight: 700;">Buscar Cliente por Nombre o Teléfono *</label>
+            <div class="input-with-icon" style="width: 100%;">
+              <span class="input-icon">🔍</span>
+              <input 
+                type="text" 
+                id="inputLinkCustSearch" 
+                class="form-input" 
+                placeholder="Escribe el nombre del cliente..." 
+                autocomplete="off"
+                style="font-weight: 700;"
+              />
+            </div>
+
+            <!-- Sugerencias -->
+            <div id="linkCustSuggestionsDropdown" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #FFFFFF; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); max-height: 200px; overflow-y: auto; box-shadow: var(--shadow-lg); z-index: 60; display: none;">
+            </div>
+
+            <!-- Seleccionado -->
+            <div id="linkSelectedCustCard" style="display: none; margin-top: 10px; background: var(--primary-light); border: 1.5px solid var(--primary); padding: 10px 14px; border-radius: var(--radius-md); justify-content: space-between; align-items: center;">
+              <div>
+                <strong id="linkSelectedCustName" style="color: var(--primary); font-size: 0.95rem; display: block;">Cliente</strong>
+                <span id="linkSelectedCustPhone" style="font-size: 0.78rem; color: var(--text-muted);">📱 300 000 0000</span>
+              </div>
+              <button type="button" id="btnRemoveLinkSelectedCust" class="btn btn-sm btn-outline" style="padding: 4px 8px; font-size: 0.75rem; border-color: var(--danger); color: var(--danger); font-weight: 700;">
+                Cambiar ✕
+              </button>
+            </div>
           </div>
         </div>
         <div class="modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -1061,6 +1228,73 @@ async function openLinkCustomerModal() {
     </div>
   `;
 
+  let selectedLinkCustId = conv.customerId || null;
+  const linkSearchInput = document.getElementById('inputLinkCustSearch');
+  const linkSuggestions = document.getElementById('linkCustSuggestionsDropdown');
+  const selectedCard = document.getElementById('linkSelectedCustCard');
+  const selectedName = document.getElementById('linkSelectedCustName');
+  const selectedPhone = document.getElementById('linkSelectedCustPhone');
+  const btnRemove = document.getElementById('btnRemoveLinkSelectedCust');
+
+  // Si ya tiene un cliente vinculado, mostrarlo seleccionado
+  if (conv.customer) {
+    selectLinkCust(conv.customer);
+  }
+
+  function renderLinkSuggestions(query) {
+    if (!linkSuggestions) return;
+    const q = (query || '').toLowerCase().trim();
+    const matches = customers.filter((c) => (c.fullName || '').toLowerCase().includes(q) || (c.phone || '').includes(q));
+
+    if (matches.length === 0) {
+      linkSuggestions.innerHTML = `<div style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">No se encontraron clientes</div>`;
+      linkSuggestions.style.display = 'block';
+      return;
+    }
+
+    linkSuggestions.innerHTML = matches
+      .slice(0, 6)
+      .map((c) => `
+        <div class="link-suggestion-item" data-id="${c.id}" style="padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; display: flex; align-items: center; gap: 8px;">
+          <strong style="color: var(--text-main); font-size: 0.88rem;">${escapeHtml(c.fullName)}</strong>
+          <span style="font-size: 0.78rem; color: var(--text-muted); margin-left: auto;">📱 ${c.phone || 'Sin tel'}</span>
+        </div>
+      `)
+      .join('');
+
+    linkSuggestions.style.display = 'block';
+
+    linkSuggestions.querySelectorAll('.link-suggestion-item').forEach((item) => {
+      item.addEventListener('click', (e) => {
+        const id = Number(e.currentTarget.dataset.id);
+        const cust = customers.find((c) => c.id === id);
+        if (cust) selectLinkCust(cust);
+      });
+    });
+  }
+
+  function selectLinkCust(cust) {
+    selectedLinkCustId = cust.id;
+    if (linkSearchInput) linkSearchInput.style.display = 'none';
+    if (linkSuggestions) linkSuggestions.style.display = 'none';
+    if (selectedCard) selectedCard.style.display = 'flex';
+    if (selectedName) selectedName.textContent = cust.fullName;
+    if (selectedPhone) selectedPhone.textContent = `📱 ${cust.phone || 'Sin teléfono'}`;
+  }
+
+  btnRemove?.addEventListener('click', () => {
+    selectedLinkCustId = null;
+    if (linkSearchInput) {
+      linkSearchInput.style.display = 'block';
+      linkSearchInput.value = '';
+      linkSearchInput.focus();
+    }
+    if (selectedCard) selectedCard.style.display = 'none';
+  });
+
+  linkSearchInput?.addEventListener('input', (e) => renderLinkSuggestions(e.target.value));
+  linkSearchInput?.addEventListener('focus', () => renderLinkSuggestions(linkSearchInput.value));
+
   document.getElementById('btnCloseLinkCustModal')?.addEventListener('click', () => {
     modalContainer.innerHTML = '';
   });
@@ -1069,15 +1303,13 @@ async function openLinkCustomerModal() {
   });
 
   document.getElementById('btnConfirmLinkCust')?.addEventListener('click', async () => {
-    const select = document.getElementById('selectLinkCustomer');
-    const customerId = select ? Number(select.value) : null;
-    if (!customerId) {
+    if (!selectedLinkCustId) {
       showToast('Por favor selecciona un cliente de la lista', 'warning');
       return;
     }
 
     try {
-      await api.linkCrmCustomer(currentActiveConvId, customerId);
+      await api.linkCrmCustomer(currentActiveConvId, selectedLinkCustId);
       showToast('Cliente vinculado exitosamente 🔗✨');
       modalContainer.innerHTML = '';
       
