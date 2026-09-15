@@ -969,6 +969,8 @@ function attachOrderCardEvents(container) {
           await dispatchSmartWhatsApp({
             phone: res.phone,
             text: res.rawMessage,
+            contactName: res.customerName,
+            customerId: res.customerId,
             fallbackUrl: res.whatsappUrl,
             successToast: '✅ Notificación enviada por WhatsApp oficial',
           });

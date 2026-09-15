@@ -3,6 +3,7 @@ import { formatCOP, formatDate, formatDateTime, formatMovementTime, formatStock,
 import { openPaymentModal } from './ordersView.js';
 import { openCashMovementModal } from './expensesView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
+import { dispatchSmartWhatsApp } from '../utils/whatsappDispatch.js';
 
 let dashOrdersCurrentPage = 1;
 let deliveredUnpaidCurrentPage = 1;
@@ -749,17 +750,24 @@ export async function renderDashboard(container) {
       openInProcessLitersModal(detailedData.salesByBatchAndFlavor || {}, kpis, activeFilterLabel);
     });
 
-    // Listeners de WhatsApp en pedidos
+    // Listeners de WhatsApp en pedidos (Cobros del Dashboard y Pedidos Recientes)
     container.querySelectorAll('.btn-dash-whatsapp').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         const id = e.currentTarget.dataset.id;
         try {
           const res = await api.getWhatsAppLink(id);
-          if (res.whatsappUrl) {
-            window.open(res.whatsappUrl, '_blank');
+          if (res) {
+            await dispatchSmartWhatsApp({
+              phone: res.phone,
+              text: res.rawMessage,
+              contactName: res.customerName,
+              customerId: res.customerId,
+              fallbackUrl: res.whatsappUrl,
+              successToast: '✅ Notificación de WhatsApp enviada exitosamente',
+            });
           }
         } catch (err) {
-          showToast('Error al generar enlace de WhatsApp', 'danger');
+          showToast('Error al procesar recordatorio de WhatsApp', 'danger');
         }
       });
     });

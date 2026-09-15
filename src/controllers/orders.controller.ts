@@ -1392,6 +1392,8 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
         whatsappUrl,
         rawMessage: deliveredMsg,
         phone: rawContact,
+        customerName: order.customer.fullName,
+        customerId: order.customerId,
       });
     }
 
@@ -1414,6 +1416,8 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
         whatsappUrl,
         rawMessage: paidMsg,
         phone: rawContact,
+        customerName: order.customer.fullName,
+        customerId: order.customerId,
       });
     }
 
@@ -1455,6 +1459,8 @@ export const getWhatsAppLink = async (req: Request, res: Response) => {
       whatsappUrl,
       rawMessage: message,
       phone: rawContact,
+      customerName: order.customer.fullName,
+      customerId: order.customerId,
     });
   } catch (error) {
     console.error('Error generating whatsapp link:', error);
