@@ -1836,19 +1836,46 @@ function openLinkCustomerModal(conv) {
 
   modalContainer.innerHTML = `
     <div class="modal-backdrop">
-      <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-card" style="max-width: 440px;">
         <div class="modal-header">
           <h3 class="modal-title" style="font-size: 1.05rem; font-weight: 800;">🤝 Vincular con Cliente</h3>
           <button class="modal-close" id="btnCloseLinkModal">✕</button>
         </div>
-        <div style="padding: 16px;">
-          <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 12px;">
-            Selecciona el cliente al que pertenece el número <strong>${conv.phoneNumber || conv.remoteJid}</strong>:
+        <div style="padding: 18px;">
+          <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 14px; line-height: 1.4;">
+            Busca y selecciona el cliente al que pertenece el número <strong>${escapeHtml(conv.phoneNumber || conv.remoteJid)}</strong>:
           </p>
-          <select id="linkCustomerIdSelect" class="orders-select-item" style="width: 100%; height: 38px; margin-bottom: 16px;">
-            <option value="">Cargando clientes...</option>
-          </select>
-          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+
+          <!-- Input con Autocomplete y Sugerencias -->
+          <div class="form-group autocomplete-wrapper" style="margin-bottom: 14px;">
+            <label class="form-label" style="font-size: 0.8rem; font-weight: 700; margin-bottom: 5px;">
+              Buscar Cliente por Nombre o Teléfono *
+            </label>
+            <div class="input-with-icon">
+              <span class="input-icon">🔍</span>
+              <input 
+                type="text" 
+                id="linkCustomerSearchInput" 
+                class="form-input" 
+                placeholder="Escribe el nombre o teléfono del cliente..." 
+                autocomplete="off" 
+                style="height: 40px; font-size: 0.88rem;"
+              />
+            </div>
+            <input type="hidden" id="selectedLinkCustomerId" value="" />
+            <div id="linkCustomerSuggestions" class="autocomplete-dropdown"></div>
+          </div>
+
+          <!-- Tarjeta de confirmación del cliente seleccionado -->
+          <div id="selectedCustomerCard" style="display: none; background: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 16px; align-items: center; justify-content: space-between;">
+            <div style="min-width: 0;">
+              <div id="selectedCustName" style="font-weight: 800; font-size: 0.88rem; color: #166534; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Cliente</div>
+              <div id="selectedCustDetails" style="font-size: 0.76rem; color: #15803D; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">📞 Teléfono • 📍 Dirección</div>
+            </div>
+            <button type="button" id="btnClearSelectedCust" class="btn btn-sm" style="background: none; border: none; font-size: 1.1rem; color: #166534; cursor: pointer; padding: 2px 6px; font-weight: 800;" title="Cambiar cliente">✕</button>
+          </div>
+
+          <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px;">
             <button type="button" class="btn btn-outline" id="btnCancelLink">Cancelar</button>
             <button type="button" class="btn btn-primary" id="btnConfirmLink" style="font-weight: 800;">
               Confirmar Vinculación
@@ -1860,24 +1887,123 @@ function openLinkCustomerModal(conv) {
   `;
   modalContainer.style.display = 'flex';
 
-  modalContainer.querySelector('#btnCloseLinkModal')?.addEventListener('click', () => {
+  const closeLinkModal = () => {
     modalContainer.style.display = 'none';
-  });
-  modalContainer.querySelector('#btnCancelLink')?.addEventListener('click', () => {
-    modalContainer.style.display = 'none';
+  };
+
+  modalContainer.querySelector('#btnCloseLinkModal')?.addEventListener('click', closeLinkModal);
+  modalContainer.querySelector('#btnCancelLink')?.addEventListener('click', closeLinkModal);
+
+  const searchInput = modalContainer.querySelector('#linkCustomerSearchInput');
+  const suggestionsBox = modalContainer.querySelector('#linkCustomerSuggestions');
+  const hiddenIdInput = modalContainer.querySelector('#selectedLinkCustomerId');
+  const cardEl = modalContainer.querySelector('#selectedCustomerCard');
+  const cardNameEl = modalContainer.querySelector('#selectedCustName');
+  const cardDetailsEl = modalContainer.querySelector('#selectedCustDetails');
+  const btnClear = modalContainer.querySelector('#btnClearSelectedCust');
+
+  let allCustomers = [];
+
+  api.getCustomers({ lite: 'true' }).then((custs) => {
+    allCustomers = custs || [];
+  }).catch((err) => {
+    console.error('Error fetching customers for link modal:', err);
   });
 
-  const select = modalContainer.querySelector('#linkCustomerIdSelect');
-  api.getCustomers({ lite: 'true' }).then((custs) => {
-    select.innerHTML =
-      '<option value="">Selecciona un cliente...</option>' +
-      (custs || []).map((c) => `<option value="${c.id}">${escapeHtml(c.fullName)} (${escapeHtml(c.phone)})</option>`).join('');
+  const selectCustomer = (customer) => {
+    if (!customer) return;
+    hiddenIdInput.value = customer.id;
+    searchInput.value = customer.fullName;
+    cardNameEl.textContent = `👤 ${customer.fullName}`;
+    cardDetailsEl.textContent = `📞 ${customer.phone || 'Sin teléfono'} • 📍 ${customer.address || 'Fonseca'}`;
+    cardEl.style.display = 'flex';
+    suggestionsBox.innerHTML = '';
+    suggestionsBox.classList.remove('active');
+  };
+
+  const clearSelection = () => {
+    hiddenIdInput.value = '';
+    searchInput.value = '';
+    cardEl.style.display = 'none';
+    searchInput.focus();
+  };
+
+  btnClear?.addEventListener('click', clearSelection);
+
+  searchInput?.addEventListener('input', (e) => {
+    const query = e.target.value.trim().toLowerCase();
+    hiddenIdInput.value = '';
+    cardEl.style.display = 'none';
+
+    if (!query || query.length < 1 || allCustomers.length === 0) {
+      suggestionsBox.innerHTML = '';
+      suggestionsBox.classList.remove('active');
+      return;
+    }
+
+    const matches = allCustomers.filter((c) => {
+      const nameMatch = c.fullName && c.fullName.toLowerCase().includes(query);
+      const phoneMatch = c.phone && c.phone.replace(/\D/g, '').includes(query.replace(/\D/g, ''));
+      const addressMatch = c.address && c.address.toLowerCase().includes(query);
+      return nameMatch || phoneMatch || addressMatch;
+    });
+
+    if (matches.length === 0) {
+      suggestionsBox.innerHTML = `
+        <div style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 0.8rem;">
+          No se encontraron clientes con "${escapeHtml(e.target.value)}"
+        </div>
+      `;
+      suggestionsBox.classList.add('active');
+      return;
+    }
+
+    suggestionsBox.innerHTML = matches
+      .slice(0, 6)
+      .map(
+        (c) => `
+        <div class="autocomplete-item" data-id="${c.id}">
+          <span class="autocomplete-item-name" style="font-weight: 700; color: var(--text-main); font-size: 0.85rem;">👤 ${escapeHtml(c.fullName)}</span>
+          <span class="autocomplete-item-details" style="font-size: 0.74rem; color: var(--text-muted);">📞 ${escapeHtml(c.phone || 'Sin teléfono')} • 📍 ${escapeHtml(c.address || 'Fonseca')}</span>
+        </div>
+      `
+      )
+      .join('');
+
+    suggestionsBox.classList.add('active');
+
+    suggestionsBox.querySelectorAll('.autocomplete-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        const id = Number(item.dataset.id);
+        const found = allCustomers.find((cust) => cust.id === id);
+        if (found) selectCustomer(found);
+      });
+    });
+  });
+
+  // Cerrar sugerencias al hacer click afuera
+  modalContainer.addEventListener('click', (e) => {
+    if (!e.target.closest('.autocomplete-wrapper')) {
+      suggestionsBox?.classList.remove('active');
+    }
   });
 
   modalContainer.querySelector('#btnConfirmLink')?.addEventListener('click', async () => {
-    const customerId = select.value ? Number(select.value) : null;
+    let customerId = hiddenIdInput.value ? Number(hiddenIdInput.value) : null;
+
+    // Si el usuario escribió un nombre exacto pero no hizo click en la sugerencia
+    if (!customerId && searchInput.value.trim()) {
+      const exactMatch = allCustomers.find(
+        (c) => c.fullName.toLowerCase() === searchInput.value.trim().toLowerCase()
+      );
+      if (exactMatch) {
+        customerId = exactMatch.id;
+      }
+    }
+
     if (!customerId) {
-      showToast('Selecciona un cliente de la lista', 'warning');
+      showToast('Por favor busca y selecciona un cliente de las sugerencias', 'warning');
+      searchInput.focus();
       return;
     }
 
