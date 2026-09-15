@@ -279,6 +279,7 @@ export const createOrder = async (req: Request, res: Response) => {
       deliveryDriverName,
       deliveryFee,
       discount,
+      isLoyaltyReward,
       orderDate,
       deliveryDate,
       deliveryAddress,
@@ -606,6 +607,13 @@ export const createOrder = async (req: Request, res: Response) => {
         },
       },
     });
+
+    if (isLoyaltyReward && finalCustomerId) {
+      await prisma.customer.update({
+        where: { id: finalCustomerId },
+        data: { loyaltyRedeemedCount: { increment: 1 } },
+      }).catch((e) => console.warn('Aviso: No se pudo incrementar loyaltyRedeemedCount:', e.message));
+    }
 
     res.status(201).json(order);
   } catch (error) {

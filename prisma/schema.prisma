@@ -29,12 +29,14 @@ model Customer {
   phone        String
   address      String
   neighborhood String?
-  notes        String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @default(now()) @updatedAt
-  orders        Order[]
-  conversations ChatConversation[]
+  notes                String?
+  loyaltyRedeemedCount Int                  @default(0)
+  isActive             Boolean              @default(true)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @default(now()) @updatedAt
+  orders               Order[]
+  conversations        ChatConversation[]
+  recurringSchedules   RecurringSchedule[]
 
   @@index([fullName])
   @@index([phone])
@@ -442,6 +444,7 @@ model ChatConversation {
   lastMessageFromMe     Boolean       @default(false)
   isArchived            Boolean       @default(false)
   isPinned              Boolean       @default(false)
+  tag                   String        @default("NUEVO") // NUEVO, INTERESADO, PEDIDO_ACTIVO, CLIENTE_FRECUENTE, SEGUIMIENTO
   customerId            Int?
   customer              Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
   createdAt             DateTime      @default(now())
@@ -453,6 +456,7 @@ model ChatConversation {
   @@index([lastMessageTimestamp])
   @@index([customerId])
   @@index([unreadCount])
+  @@index([tag])
 }
 
 model ChatMessage {
@@ -487,6 +491,39 @@ model WhatsAppAuthSession {
 
   @@unique([sessionId, keyId])
   @@index([sessionId])
+}
+
+model RecurringSchedule {
+  id              Int       @id @default(autoincrement())
+  customerId      Int
+  customer        Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  frequencyDays   Int       @default(15) // 7 (semanal), 15 (quincenal), 30 (mensual)
+  preferredFlavor String    @default("Fresa")
+  bottleSize      String    @default("1L") // 1L, 2L
+  quantity        Int       @default(1)
+  nextDate        DateTime
+  lastOrderDate   DateTime?
+  notes           String?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  @@index([customerId])
+  @@index([nextDate])
+  @@index([isActive])
+}
+
+model CrmQuickReply {
+  id        Int      @id @default(autoincrement())
+  shortcut  String   @unique // /sabores, /precios, /pago, /saludo, /domicilio
+  title     String
+  content   String   @db.Text
+  category  String   @default("VENTAS") // VENTAS, PAGOS, GENERAL, INFO
+  mediaUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([category])
 }
 
 

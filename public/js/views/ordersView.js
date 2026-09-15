@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store, escapeHtml } from '../store.js';
+import { dispatchSmartWhatsApp } from '../utils/whatsappDispatch.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
 let ordersCurrentPage = 1;
@@ -957,18 +958,23 @@ function createOrderCardHtml(o) {
 }
 
 function attachOrderCardEvents(container) {
-  // WhatsApp Direct Click
+  // WhatsApp Direct Click (Enrutamiento Inteligente por Rol: CRM oficial o WhatsApp Personal)
   container.querySelectorAll('.btn-whatsapp-action').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const id = e.currentTarget.dataset.id;
       const type = e.currentTarget.dataset.type || '';
       try {
         const res = await api.getWhatsAppLink(id, type);
-        if (res.whatsappUrl) {
-          window.open(res.whatsappUrl, '_blank');
+        if (res) {
+          await dispatchSmartWhatsApp({
+            phone: res.phone,
+            text: res.rawMessage,
+            fallbackUrl: res.whatsappUrl,
+            successToast: '✅ Notificación enviada por WhatsApp oficial',
+          });
         }
       } catch (err) {
-        showToast('Error al generar enlace de WhatsApp', 'danger');
+        showToast('Error al enviar mensaje de WhatsApp', 'danger');
       }
     });
   });

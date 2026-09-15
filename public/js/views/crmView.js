@@ -1,17 +1,21 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatDateTime, showToast, store, escapeHtml } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, showToast, store, escapeHtml, buildWhatsAppUrl } from '../store.js';
+import { dispatchSmartWhatsApp } from '../utils/whatsappDispatch.js';
 import { openOrderModal } from './ordersView.js';
 
+let crmCurrentSubmodule = 'chats'; // 'chats' | 'loyalty' | 'recurring' | 'quickReplies'
 let currentActiveConvId = null;
 let cachedConversations = [];
 let cachedMessages = [];
 let activeCustomer = null;
 let socketInstance = null;
 let searchQuery = '';
+let currentTagFilter = 'ALL';
 let wpStatus = { status: 'DISCONNECTED', qr: null, phoneNumber: null, user: null };
 let qrModalInterval = null;
 let hasMoreOldMessages = true;
 let isLoadingOldMessages = false;
+let cachedQuickReplies = [];
 
 /**
  * Inicializar o reutilizar la conexión Socket.IO
@@ -37,7 +41,7 @@ function initSocket() {
 
   socketInstance.on('whatsapp:message', (payload) => {
     const { conversation, message } = payload;
-    
+
     // Actualizar lista de conversaciones en memoria
     const existingIndex = cachedConversations.findIndex((c) => c.id === conversation.id);
     if (existingIndex >= 0) {
@@ -50,7 +54,11 @@ function initSocket() {
     }
 
     // Reordenar por último mensaje
-    cachedConversations.sort((a, b) => new Date(b.lastMessageTimestamp || 0).getTime() - new Date(a.lastMessageTimestamp || 0).getTime());
+    cachedConversations.sort(
+      (a, b) =>
+        new Date(b.lastMessageTimestamp || 0).getTime() -
+        new Date(a.lastMessageTimestamp || 0).getTime()
+    );
 
     // Si el chat actual está abierto y corresponde a este mensaje
     if (currentActiveConvId === conversation.id) {
@@ -59,17 +67,22 @@ function initSocket() {
         appendMessageToChat(message);
         scrollToBottom();
       }
-      // Marcar como leído
       if (!message.fromMe) {
         api.markCrmConversationAsRead(conversation.id).catch(console.error);
       }
     } else if (!message.fromMe) {
-      // Notificación visual discreta
       const senderName = conversation.contactName || conversation.phoneNumber || 'Cliente';
-      showToast(`💬 Mensaje de ${senderName}: ${escapeHtml(message.text || (message.messageType === 'STICKER' ? '✨ Sticker' : 'Archivo adjunto'))}`, 'info');
+      showToast(
+        `💬 Mensaje de ${senderName}: ${escapeHtml(
+          message.text || (message.messageType === 'STICKER' ? '✨ Sticker' : 'Archivo adjunto')
+        )}`,
+        'info'
+      );
     }
 
-    renderConversationList();
+    if (crmCurrentSubmodule === 'chats') {
+      renderConversationList();
+    }
   });
 
   socketInstance.on('whatsapp:media_updated', (payload) => {
@@ -84,25 +97,21 @@ function initSocket() {
         if (msg.messageType === 'STICKER') {
           placeholderEl.outerHTML = `
             <div class="crm-sticker-wrapper" data-media-msg-id="${messageId}">
-              <img 
-                src="${mediaUrl}" 
-                alt="Sticker" 
-                class="crm-sticker-img loaded" 
-                loading="lazy" 
-                decoding="async" 
-              />
+              <img src="${mediaUrl}" alt="Sticker" class="crm-sticker-img loaded" loading="lazy" decoding="async" />
             </div>
           `;
         } else if (msg.messageType === 'IMAGE') {
           placeholderEl.outerHTML = `
-            <img 
-              src="${mediaUrl}" 
-              alt="Foto" 
-              class="crm-media-img loaded" 
-              loading="lazy" 
-              decoding="async" 
-              onclick="window.open(this.src)" 
-            />
+            <img src="${mediaUrl}" alt="Foto" class="crm-msg-image loaded" loading="lazy" decoding="async" data-media-msg-id="${messageId}" onclick="window.open('${mediaUrl}', '_blank')" />
+          `;
+        } else if (msg.messageType === 'AUDIO') {
+          placeholderEl.outerHTML = `
+            <div class="crm-audio-player" data-media-msg-id="${messageId}">
+              <audio controls preload="metadata" style="max-width: 220px; height: 36px;">
+                <source src="${mediaUrl}" type="${mediaMimeType || 'audio/ogg'}" />
+                Tu navegador no soporta reproducción de audio.
+              </audio>
+            </div>
           `;
         }
       }
@@ -113,7 +122,7 @@ function initSocket() {
     const conv = cachedConversations.find((c) => c.id === conversationId);
     if (conv) {
       conv.unreadCount = 0;
-      renderConversationList();
+      if (crmCurrentSubmodule === 'chats') renderConversationList();
     }
   });
 
@@ -121,11 +130,70 @@ function initSocket() {
 }
 
 /**
- * Renderizado principal de la vista CRM
+ * Renderizado principal de la vista CRM con navegación de 4 submódulos
  */
 export async function renderCrm(container) {
   initSocket();
 
+  container.innerHTML = `
+    <!-- Barra de Submódulos CRM -->
+    <div class="crm-submodule-nav" id="crmSubmoduleNav">
+      <button class="crm-submodule-btn ${crmCurrentSubmodule === 'chats' ? 'active' : ''}" data-sub="chats">
+        💬 Bandeja de Chats
+      </button>
+      <button class="crm-submodule-btn ${crmCurrentSubmodule === 'loyalty' ? 'active' : ''}" data-sub="loyalty">
+        🎁 Fidelización (10+1)
+      </button>
+      <button class="crm-submodule-btn ${crmCurrentSubmodule === 'recurring' ? 'active' : ''}" data-sub="recurring">
+        🔁 Compras Frecuentes
+      </button>
+      <button class="crm-submodule-btn ${crmCurrentSubmodule === 'quickReplies' ? 'active' : ''}" data-sub="quickReplies">
+        ⚡ Plantillas Rápidas
+      </button>
+    </div>
+
+    <!-- Contenedor Dinámico de Submódulos -->
+    <div id="crmSubmoduleContainer" style="width: 100%;">
+      <!-- Submódulo inyectado dinámicamente -->
+    </div>
+  `;
+
+  // Attach submodule navigation listeners
+  container.querySelectorAll('#crmSubmoduleNav .crm-submodule-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      container.querySelectorAll('#crmSubmoduleNav .crm-submodule-btn').forEach((b) => b.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      crmCurrentSubmodule = e.currentTarget.dataset.sub;
+      loadSubmoduleView(container);
+    });
+  });
+
+  await loadSubmoduleView(container);
+}
+
+/**
+ * Enrutador de submódulos del CRM
+ */
+async function loadSubmoduleView(container) {
+  const subContainer = container.querySelector('#crmSubmoduleContainer');
+  if (!subContainer) return;
+
+  if (crmCurrentSubmodule === 'chats') {
+    await renderChatsSubmodule(subContainer);
+  } else if (crmCurrentSubmodule === 'loyalty') {
+    await renderLoyaltySubmodule(subContainer);
+  } else if (crmCurrentSubmodule === 'recurring') {
+    await renderRecurringSubmodule(subContainer);
+  } else if (crmCurrentSubmodule === 'quickReplies') {
+    await renderQuickRepliesSubmodule(subContainer);
+  }
+}
+
+// ==========================================
+// 💬 SUBMÓDULO 1: BANDEJA DE CHATS Y WHATSAPP
+// ==========================================
+
+async function renderChatsSubmodule(container) {
   container.innerHTML = `
     <div class="crm-layout" id="crmLayout">
       <!-- SIDEBAR IZQUIERDO: LISTA DE CONVERSACIONES -->
@@ -141,7 +209,7 @@ export async function renderCrm(container) {
             </button>
           </div>
 
-          <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
+          <div style="display: flex; gap: 8px; align-items: center; width: 100%; margin-bottom: 8px;">
             <div class="search-box input-with-icon" style="flex: 1; min-width: 0;">
               <span class="input-icon">🔍</span>
               <input 
@@ -153,9 +221,18 @@ export async function renderCrm(container) {
                 style="height: 36px; font-size: 0.86rem; width: 100%;"
               />
             </div>
-            <button class="btn btn-sm btn-primary" id="btnStartNewChat" title="Iniciar conversación con nuevo número" style="font-weight: 800; font-size: 0.8rem; padding: 0 10px; height: 36px; display: flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0;">
+            <button class="btn btn-sm btn-primary" id="btnStartNewChat" title="Iniciar chat con cualquier número" style="font-weight: 800; font-size: 0.8rem; padding: 0 10px; height: 36px; display: flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0;">
               <span>➕</span> <span>Nuevo</span>
             </button>
+          </div>
+
+          <!-- Filtro de Etiquetas / Embudo -->
+          <div style="display: flex; gap: 4px; overflow-x: auto; width: 100%; padding-bottom: 2px; scrollbar-width: none;">
+            <button class="filter-chip ${currentTagFilter === 'ALL' ? 'active' : ''}" data-tag="ALL" style="font-size: 0.72rem; padding: 2px 8px;">Todos</button>
+            <button class="filter-chip ${currentTagFilter === 'NUEVO' ? 'active' : ''}" data-tag="NUEVO" style="font-size: 0.72rem; padding: 2px 8px;">🆕 Nuevos</button>
+            <button class="filter-chip ${currentTagFilter === 'INTERESADO' ? 'active' : ''}" data-tag="INTERESADO" style="font-size: 0.72rem; padding: 2px 8px;">⭐ Interesados</button>
+            <button class="filter-chip ${currentTagFilter === 'PEDIDO_ACTIVO' ? 'active' : ''}" data-tag="PEDIDO_ACTIVO" style="font-size: 0.72rem; padding: 2px 8px;">🥛 Pedidos</button>
+            <button class="filter-chip ${currentTagFilter === 'CLIENTE_FRECUENTE' ? 'active' : ''}" data-tag="CLIENTE_FRECUENTE" style="font-size: 0.72rem; padding: 2px 8px;">👑 Fieles</button>
           </div>
         </div>
 
@@ -172,7 +249,7 @@ export async function renderCrm(container) {
           <div style="font-size: 3.5rem; margin-bottom: 12px;">💬</div>
           <h3 style="font-weight: 800; color: var(--text-main); margin-bottom: 6px;">Centro de Mensajería YogurArte</h3>
           <p style="font-size: 0.88rem; max-width: 380px; line-height: 1.4; margin-bottom: 16px;">
-            Selecciona una conversación de la izquierda o haz clic en <strong>➕ Nuevo</strong> para iniciar un chat con cualquier número.
+            Selecciona una conversación de la izquierda o haz clic en <strong>➕ Nuevo</strong> para escribir a un cliente.
           </p>
           <button class="btn btn-primary" id="btnEmptyStateNewChat" style="font-weight: 800; padding: 10px 18px;">
             ➕ Iniciar Nuevo Chat de WhatsApp
@@ -186,20 +263,20 @@ export async function renderCrm(container) {
               <button class="crm-btn-back" id="btnBackToConvList" title="Volver a chats">
                 ←
               </button>
-              <div id="crmChatHeaderDetails" style="display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0;" title="Ver detalles y pedidos de este cliente">
-                <div class="crm-conv-avatar" id="activeChatAvatar">
-                  ?
-                </div>
+              <div id="crmChatHeaderDetails" style="display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0;" title="Ver ficha y pedidos del cliente">
+                <div class="crm-conv-avatar" id="activeChatAvatar">?</div>
                 <div style="min-width: 0;">
-                  <h4 class="crm-chat-title" id="activeChatName">Nombre del Cliente</h4>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <h4 class="crm-chat-title" id="activeChatName">Nombre del Cliente</h4>
+                    <span id="activeChatTagBadge" class="crm-tag-badge NUEVO">🆕 Nuevo</span>
+                  </div>
                   <div class="crm-chat-subtitle" id="activeChatPhone">+57 000 000 0000</div>
                 </div>
               </div>
             </div>
 
             <div style="display: flex; align-items: center; gap: 6px;">
-              <!-- Botón de Estado / Sesión de WhatsApp visible en móvil y desktop -->
-              <button class="btn btn-sm btn-outline crm-header-status-btn" id="btnWpStatusChatHeader" title="Estado de WhatsApp / Gestionar Sesión">
+              <button class="btn btn-sm btn-outline crm-header-status-btn" id="btnWpStatusChatHeader" title="Estado de WhatsApp">
                 <span class="crm-status-dot" id="crmHeaderStatusDot"></span>
                 <span class="crm-header-status-text" id="crmHeaderStatusText">Sesión</span>
               </button>
@@ -213,18 +290,13 @@ export async function renderCrm(container) {
           </div>
 
           <!-- Mensajes -->
-          <div class="crm-chat-messages" id="crmChatMessages">
-            <!-- Mensajes inyectados dinámicamente -->
-          </div>
+          <div class="crm-chat-messages" id="crmChatMessages"></div>
 
           <!-- Área de Composición y Respuestas Rápidas -->
           <div class="crm-input-wrapper">
-            <div class="crm-quick-replies">
-              <button class="crm-quick-chip" data-reply="sabores">🥛 Sabores y Precios</button>
-              <button class="crm-quick-chip" data-reply="saludo">👋 Saludo YogurArte</button>
-              <button class="crm-quick-chip" data-reply="camino">🛵 Pedido en Camino</button>
-              <button class="crm-quick-chip" data-reply="pago">💳 Medios de Pago</button>
-              <button class="crm-quick-chip" data-reply="direccion">📍 Confirmar Dirección</button>
+            <!-- Barra de atajos dinámicos -->
+            <div class="crm-quick-replies-bar" id="crmQuickChipsBar">
+              <!-- Cargados dinámicamente -->
             </div>
 
             <form id="crmSendForm" class="crm-composer-row">
@@ -232,7 +304,7 @@ export async function renderCrm(container) {
                 id="crmMsgInput" 
                 class="crm-input-textarea" 
                 rows="1" 
-                placeholder="Escribe un mensaje..." 
+                placeholder="Escribe un mensaje o usa un atajo (/sabores, /precios, /pago)..." 
                 required
               ></textarea>
               <button type="submit" class="crm-btn-send" id="btnSendCrmMsg" title="Enviar mensaje">
@@ -243,1474 +315,1554 @@ export async function renderCrm(container) {
         </div>
       </section>
 
-      <!-- OVERLAY PARA CERRAR SIDEBAR EN MÓVIL AL TOCAR AFUERA -->
+      <!-- OVERLAY PARA CERRAR SIDEBAR EN MÓVIL -->
       <div class="crm-customer-sidebar-overlay" id="crmCustomerSidebarOverlay"></div>
 
-      <!-- SIDEBAR DERECHO: DETALLES DEL CLIENTE Y PEDIDOS -->
+      <!-- SIDEBAR DERECHO: DETALLES DEL CLIENTE, FIDELIZACIÓN Y PEDIDOS -->
       <aside class="crm-customer-sidebar" id="crmCustomerSidebar">
-        <!-- Encabezado de la Ficha -->
-        <div class="crm-customer-sidebar-header">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 1.15rem;">👤</span>
-            <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: var(--text-main);">Ficha del Cliente</h4>
-          </div>
-          <!-- Botón Cerrar (Solo visible en Móvil/Tablet) -->
-          <button class="crm-btn-close-customer-sidebar" id="btnCloseCustomerSidebar" title="Cerrar">
-            ✕
-          </button>
+        <div class="crm-cust-header">
+          <h4 style="font-weight: 800; margin: 0; font-size: 0.95rem; color: var(--primary);">
+            👤 Ficha del Cliente
+          </h4>
+          <button class="crm-cust-close" id="btnCloseCustomerDrawer" title="Cerrar detalles">✕</button>
         </div>
 
-        <div class="crm-customer-sidebar-body">
-          <div id="crmCustomerInfoPlaceholder" style="text-align: center; color: var(--text-muted); padding: 30px 10px;">
-            <div style="font-size: 2.2rem; margin-bottom: 8px;">👤</div>
-            <p style="font-size: 0.85rem; margin: 0;">Selecciona una conversación para ver los detalles del cliente.</p>
-          </div>
-
-          <div id="crmCustomerInfoContent" style="display: none; flex-direction: column; gap: 16px;">
-            <div class="crm-cust-profile-card">
-              <div class="crm-cust-avatar-large" id="custPanelAvatar">👤</div>
-              <div class="crm-cust-name" id="custPanelName">Nombre Cliente</div>
-              <div class="crm-cust-phone" id="custPanelPhone">+57 300 000 0000</div>
-              <div id="custPanelAddress" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">📍 Sin dirección registrada</div>
-            </div>
-
-            <div class="crm-cust-stats">
-              <div class="crm-cust-stat-box">
-                <div class="crm-cust-stat-val" id="custStatOrders">0</div>
-                <div class="crm-cust-stat-lbl">Pedidos Totales</div>
-              </div>
-              <div class="crm-cust-stat-box">
-                <div class="crm-cust-stat-val" id="custStatDebt" style="color: var(--danger);">$0</div>
-                <div class="crm-cust-stat-lbl">Saldo Pendiente</div>
-              </div>
-            </div>
-
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-              <button class="btn btn-primary" id="btnCustPanelNewOrder" style="width: 100%; font-weight: 800; padding: 10px;">
-                🥛 Nuevo Pedido para este Cliente
-              </button>
-              <button class="btn btn-outline" id="btnLinkCustomerModal" style="width: 100%; font-size: 0.8rem; padding: 8px;">
-                🔗 Vincular / Cambiar Cliente
-              </button>
-            </div>
-
-            <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
-              <h5 style="font-size: 0.85rem; font-weight: 800; color: var(--text-main); margin-bottom: 8px;">
-                Últimos Pedidos
-              </h5>
-              <div id="custRecentOrdersList" style="display: flex; flex-direction: column; gap: 6px;">
-                <span style="font-size: 0.78rem; color: var(--text-muted);">Sin pedidos previos.</span>
-              </div>
-            </div>
-
-            <!-- Botón inferior para cerrar (Solo en móvil) -->
-            <button class="btn btn-outline crm-mobile-only-btn" id="btnBottomCloseCustomerSidebar" style="width: 100%; padding: 10px; font-size: 0.84rem; font-weight: 700; border: 1.5px solid var(--border-color); background: #F8FAFC; color: var(--text-main); margin-top: 4px;">
-              ✕ Cerrar Ficha
-            </button>
-          </div>
+        <div class="crm-cust-body" id="crmCustomerBody">
+          <!-- Inyectado dinámicamente -->
         </div>
       </aside>
     </div>
   `;
 
-  // Asignar Eventos del DOM
-  attachCrmEvents();
+  // Attach event listeners for chats submodule
+  attachChatSubmoduleEvents(container);
 
-  // Cargar estado inicial de WhatsApp y conversaciones
-  loadStatusAndConversations();
+  // Cargar estado de WhatsApp y respuestas rápidas
+  try {
+    const [statusData, quickReplies] = await Promise.all([
+      api.getWhatsAppStatus(),
+      api.getCrmQuickReplies(),
+    ]);
+    wpStatus = statusData;
+    cachedQuickReplies = quickReplies || [];
+    updateStatusUI();
+    renderQuickChips();
+  } catch (err) {
+    console.error('Error loading CRM initial data:', err);
+  }
+
+  // Cargar lista de conversaciones
+  await loadConversations();
 }
 
 /**
- * Carga inicial de estado y chats
+ * Renderizar chips de respuestas rápidas sobre el input
  */
-async function loadStatusAndConversations() {
-  try {
-    const statusData = await api.getWhatsAppStatus();
-    wpStatus = statusData;
-    updateStatusUI();
-  } catch (err) {
-    console.warn('Error checking WhatsApp status:', err);
+function renderQuickChips() {
+  const bar = document.getElementById('crmQuickChipsBar');
+  if (!bar) return;
+
+  if (cachedQuickReplies.length === 0) {
+    bar.innerHTML = `
+      <button type="button" class="crm-quick-chip" data-shortcut="/sabores">🥛 Sabores</button>
+      <button type="button" class="crm-quick-chip" data-shortcut="/precios">💰 Precios</button>
+      <button type="button" class="crm-quick-chip" data-shortcut="/pago">💳 Nequi/Pago</button>
+      <button type="button" class="crm-quick-chip" data-shortcut="/saludo">👋 Saludo</button>
+      <button type="button" class="crm-quick-chip" data-shortcut="/fidelizacion">🎁 10+1 Gratis</button>
+    `;
+  } else {
+    bar.innerHTML = cachedQuickReplies
+      .map(
+        (r) => `
+      <button type="button" class="crm-quick-chip" data-shortcut="${escapeHtml(r.shortcut)}" title="${escapeHtml(r.title)}">
+        ⚡ ${escapeHtml(r.shortcut)}
+      </button>
+    `
+      )
+      .join('');
   }
 
+  bar.querySelectorAll('.crm-quick-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const shortcut = chip.dataset.shortcut;
+      const found = cachedQuickReplies.find((q) => q.shortcut === shortcut);
+      const input = document.getElementById('crmMsgInput');
+      if (input) {
+        if (found) {
+          input.value = found.content;
+        } else if (shortcut === '/sabores') {
+          input.value = '🥛 *Sabores Artesanales YogurArte:*\n• Fresa 🍓\n• Mora 🫐\n• Melocotón 🍑\n• Guanábana 🍈\n• Arequipe 🍯\n• Natural 🍶\n\n¿Cuál te gustaría encargar?';
+        } else if (shortcut === '/precios') {
+          input.value = '💰 *Precios Oficiales YogurArte:*\n• Botella 1 Litro: $12.000 COP\n• Botella 2 Litros: $22.000 COP\n\n🛵 Domicilio en todo Fonseca.';
+        } else if (shortcut === '/pago') {
+          input.value = '💳 *Cuentas para Pago:*\n• Nequi: 3024581882\n• Bancolombia: A nombre de Edier / YogurArte\n\nPor favor nos envías el comprobante. ¡Gracias!';
+        } else if (shortcut === '/saludo') {
+          input.value = '👋 ¡Hola! Bienvenido a *YogurArte*, tu yogur artesanal 100% natural en Fonseca. ¿En qué te podemos consentir hoy?';
+        } else if (shortcut === '/fidelizacion') {
+          input.value = '🎁 ¡En *YogurArte* premiamos tu fidelidad! Por cada 10 botellas que compres, ¡te regalamos 1 botella de 1 Litro totalmente gratis! 🥛✨';
+        }
+        input.focus();
+      }
+    });
+  });
+}
+
+/**
+ * Asignar eventos del submódulo de chats
+ */
+function attachChatSubmoduleEvents(container) {
+  // Búsqueda en chats
+  const searchInput = container.querySelector('#crmSearchInput');
+  searchInput?.addEventListener('input', (e) => {
+    searchQuery = e.target.value;
+    loadConversations();
+  });
+
+  // Filtros de etiqueta de embudo
+  container.querySelectorAll('.filter-chip[data-tag]').forEach((chip) => {
+    chip.addEventListener('click', (e) => {
+      container.querySelectorAll('.filter-chip[data-tag]').forEach((c) => c.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      currentTagFilter = e.currentTarget.dataset.tag;
+      loadConversations();
+    });
+  });
+
+  // Botón nuevo chat
+  container.querySelector('#btnStartNewChat')?.addEventListener('click', openNewChatModal);
+  container.querySelector('#btnEmptyStateNewChat')?.addEventListener('click', openNewChatModal);
+
+  // Botón conectar / QR
+  container.querySelector('#btnWhatsAppConnect')?.addEventListener('click', openQRModal);
+  container.querySelector('#btnWpStatusChatHeader')?.addEventListener('click', openQRModal);
+
+  // Volver a la lista en móvil
+  container.querySelector('#btnBackToConvList')?.addEventListener('click', () => {
+    document.getElementById('crmLayout')?.classList.remove('viewing-chat');
+  });
+
+  // Toggle drawer de cliente en móvil/desktop
+  const toggleDrawer = () => {
+    const sidebar = document.getElementById('crmCustomerSidebar');
+    const overlay = document.getElementById('crmCustomerSidebarOverlay');
+    sidebar?.classList.toggle('open');
+    overlay?.classList.toggle('open');
+  };
+
+  container.querySelector('#btnToggleCustomerDrawer')?.addEventListener('click', toggleDrawer);
+  container.querySelector('#crmChatHeaderDetails')?.addEventListener('click', toggleDrawer);
+  container.querySelector('#btnCloseCustomerDrawer')?.addEventListener('click', toggleDrawer);
+  container.querySelector('#crmCustomerSidebarOverlay')?.addEventListener('click', toggleDrawer);
+
+  // Botón crear pedido rápido desde chat
+  container.querySelector('#btnFastOrder')?.addEventListener('click', () => {
+    const conv = cachedConversations.find((c) => c.id === currentActiveConvId);
+    if (!conv) return;
+
+    openOrderModal({
+      customer: conv.customer
+        ? { fullName: conv.customer.fullName, phone: conv.customer.phone, address: conv.customer.address }
+        : { fullName: conv.contactName || '', phone: conv.phoneNumber || '', address: 'Fonseca' },
+      customerId: conv.customerId || null,
+      deliveryAddress: conv.customer?.address || 'Fonseca',
+      isNewForCustomer: true,
+    });
+  });
+
+  // Enviar mensaje
+  container.querySelector('#crmSendForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('crmMsgInput');
+    const text = input.value.trim();
+    if (!text || !currentActiveConvId) return;
+
+    const conv = cachedConversations.find((c) => c.id === currentActiveConvId);
+    if (!conv) return;
+
+    input.value = '';
+    input.focus();
+
+    try {
+      const res = await api.sendCrmMessage(conv.remoteJid, text, {
+        contactName: conv.contactName,
+        customerId: conv.customerId,
+      });
+
+      if (res && res.message) {
+        cachedMessages.push(res.message);
+        appendMessageToChat(res.message);
+        scrollToBottom();
+      }
+    } catch (err) {
+      showToast(err.message || 'Error al enviar mensaje', 'danger');
+    }
+  });
+
+  // Scroll infinito hacia arriba para cargar historial antiguo
+  const messagesBox = container.querySelector('#crmChatMessages');
+  messagesBox?.addEventListener('scroll', async () => {
+    if (messagesBox.scrollTop === 0 && hasMoreOldMessages && !isLoadingOldMessages && cachedMessages.length > 0) {
+      isLoadingOldMessages = true;
+      const oldestMsg = cachedMessages[0];
+      const prevScrollHeight = messagesBox.scrollHeight;
+
+      try {
+        const olderMessages = await api.getCrmMessages(currentActiveConvId, {
+          limit: 50,
+          beforeId: oldestMsg.id,
+        });
+
+        if (olderMessages && olderMessages.length > 0) {
+          cachedMessages = [...olderMessages, ...cachedMessages];
+          renderMessagesList(false);
+          messagesBox.scrollTop = messagesBox.scrollHeight - prevScrollHeight;
+        } else {
+          hasMoreOldMessages = false;
+        }
+      } catch (err) {
+        console.error('Error loading older messages:', err);
+      } finally {
+        isLoadingOldMessages = false;
+      }
+    }
+  });
+}
+
+/**
+ * Cargar y renderizar lista de conversaciones
+ */
+async function loadConversations() {
+  const listEl = document.getElementById('crmConvList');
+  if (!listEl) return;
+
   try {
-    const res = await api.getCrmConversations(searchQuery);
-    cachedConversations = res || [];
+    cachedConversations = await api.getCrmConversations(searchQuery, currentTagFilter);
     renderConversationList();
   } catch (err) {
     console.error('Error fetching CRM conversations:', err);
-    const convList = document.getElementById('crmConvList');
-    if (convList) {
-      convList.innerHTML = `
-        <li style="padding: 24px 16px; text-align: center; color: var(--danger); font-size: 0.85rem;">
-          ❌ Error al cargar conversaciones. Intenta nuevamente.
-        </li>
-      `;
-    }
+    listEl.innerHTML = `
+      <li style="padding: 24px 16px; text-align: center; color: var(--danger); font-size: 0.88rem;">
+        Error al cargar conversaciones ⚠️
+      </li>
+    `;
   }
 }
 
-/**
- * Actualiza los badges de estado en el header y barra superior del chat
- */
-function updateStatusUI() {
-  const badge = document.getElementById('crmStatusBadge');
-  const label = document.getElementById('crmStatusLabel');
-  const btnConnect = document.getElementById('btnWhatsAppConnect');
-  const headerStatusBtn = document.getElementById('btnWpStatusChatHeader');
-  const headerStatusDot = document.getElementById('crmHeaderStatusDot');
-  const headerStatusText = document.getElementById('crmHeaderStatusText');
-
-  if (badge && label) {
-    badge.className = 'crm-status-indicator';
-
-    if (wpStatus.status === 'CONNECTED') {
-      badge.classList.add('connected');
-      label.textContent = wpStatus.phoneNumber ? `Conectado (${wpStatus.phoneNumber})` : 'Conectado';
-      if (btnConnect) {
-        btnConnect.textContent = '⚙️ WhatsApp Conectado';
-        btnConnect.className = 'btn btn-sm btn-outline';
-      }
-    } else if (wpStatus.status === 'CONNECTING') {
-      badge.classList.add('connecting');
-      label.textContent = wpStatus.qr ? 'QR Listo para Escanear' : 'Conectando...';
-      if (btnConnect) {
-        btnConnect.textContent = wpStatus.qr ? '📷 Escanear QR' : '⏳ Ver QR';
-        btnConnect.className = 'btn btn-sm btn-warning';
-      }
-    } else {
-      badge.classList.add('disconnected');
-      label.textContent = 'Desconectado';
-      if (btnConnect) {
-        btnConnect.textContent = '📱 Conectar QR';
-        btnConnect.className = 'btn btn-sm btn-primary';
-      }
-    }
-  }
-
-  // Sincronizar botón de estado en la cabecera del chat (visible en móvil y desktop)
-  if (headerStatusBtn) {
-    if (wpStatus.status === 'CONNECTED') {
-      headerStatusBtn.className = 'btn btn-sm btn-outline crm-header-status-btn connected';
-      if (headerStatusDot) headerStatusDot.style.background = '#16A34A';
-      if (headerStatusText) headerStatusText.textContent = wpStatus.phoneNumber ? `+${wpStatus.phoneNumber}` : 'WhatsApp Activo';
-    } else if (wpStatus.status === 'CONNECTING') {
-      headerStatusBtn.className = 'btn btn-sm btn-warning crm-header-status-btn connecting';
-      if (headerStatusDot) headerStatusDot.style.background = '#D97706';
-      if (headerStatusText) headerStatusText.textContent = wpStatus.qr ? 'Escanear QR' : 'Conectando';
-    } else {
-      headerStatusBtn.className = 'btn btn-sm btn-outline crm-header-status-btn disconnected';
-      if (headerStatusDot) headerStatusDot.style.background = '#DC2626';
-      if (headerStatusText) headerStatusText.textContent = 'Desconectado';
-    }
-  }
-}
-
-/**
- * Renderiza la lista de conversaciones en el sidebar izquierdo
- */
 function renderConversationList() {
   const listEl = document.getElementById('crmConvList');
   if (!listEl) return;
 
   if (cachedConversations.length === 0) {
     listEl.innerHTML = `
-      <li style="padding: 30px 16px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
-        No hay conversaciones aún.<br><small>Los chats aparecerán aquí cuando los clientes escriban a tu WhatsApp o puedes hacer clic en <strong>➕ Nuevo</strong> arriba.</small>
+      <li style="padding: 36px 16px; text-align: center; color: var(--text-muted); font-size: 0.88rem;">
+        No hay conversaciones en esta sección 📭
       </li>
     `;
     return;
   }
 
-  const query = searchQuery.toLowerCase().trim();
-  const filtered = cachedConversations.filter((c) => {
-    const name = (c.contactName || '').toLowerCase();
-    const phone = (c.phoneNumber || '').toLowerCase();
-    const lastMsg = (c.lastMessageText || '').toLowerCase();
-    return name.includes(query) || phone.includes(query) || lastMsg.includes(query);
-  });
+  listEl.innerHTML = cachedConversations
+    .map((c) => {
+      const isActive = c.id === currentActiveConvId;
+      const name = c.contactName || (c.customer ? c.customer.fullName : c.phoneNumber || 'Desconocido');
+      const initial = name.charAt(0).toUpperCase();
+      const timeStr = c.lastMessageTimestamp ? formatConvTime(c.lastMessageTimestamp) : '';
+      const previewText = c.lastMessageText || 'Sin mensajes';
+      const unreadBadge = c.unreadCount > 0 ? `<span class="crm-unread-badge">${c.unreadCount}</span>` : '';
+      const tag = c.tag || 'NUEVO';
 
-  if (filtered.length === 0) {
-    listEl.innerHTML = `
-      <li style="padding: 20px 16px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
-        No se encontraron chats con "${escapeHtml(searchQuery)}"
-      </li>
-    `;
-    return;
-  }
-
-  listEl.innerHTML = filtered
-    .map((conv) => {
-      const isActive = conv.id === currentActiveConvId;
-      const initial = (conv.contactName || conv.phoneNumber || '?').charAt(0).toUpperCase();
-      const timeStr = conv.lastMessageTimestamp ? formatTimeAgo(conv.lastMessageTimestamp) : '';
-      const isFromMe = conv.lastMessageFromMe;
-      const snippet = conv.lastMessageText || 'Sin mensajes';
+      let tagLabel = '🆕 Nuevo';
+      if (tag === 'INTERESADO') tagLabel = '⭐ Interesado';
+      if (tag === 'PEDIDO_ACTIVO') tagLabel = '🥛 Pedido';
+      if (tag === 'CLIENTE_FRECUENTE') tagLabel = '👑 Fiel';
+      if (tag === 'SEGUIMIENTO') tagLabel = '🔔 Seguimiento';
 
       return `
-        <li class="crm-conv-item ${isActive ? 'active' : ''}" data-id="${conv.id}">
-          <div class="crm-conv-avatar">
-            ${conv.profilePicUrl ? `<img src="${conv.profilePicUrl}" alt="" />` : initial}
+      <li class="crm-conv-item ${isActive ? 'active' : ''}" data-conv-id="${c.id}">
+        <div class="crm-conv-avatar">${initial}</div>
+        <div class="crm-conv-info">
+          <div class="crm-conv-header-row">
+            <span class="crm-conv-name">${escapeHtml(name)}</span>
+            <span class="crm-conv-time">${timeStr}</span>
           </div>
-          <div class="crm-conv-info">
-            <div class="crm-conv-top">
-              <span class="crm-conv-name">${escapeHtml(conv.contactName || conv.phoneNumber || 'Desconocido')}</span>
-              <span class="crm-conv-time">${timeStr}</span>
-            </div>
-            <div class="crm-conv-bottom">
-              <span class="crm-conv-snippet">
-                ${isFromMe ? '<span style="color: var(--primary); font-weight: 700;">Tú: </span>' : ''}
-                ${escapeHtml(snippet)}
-              </span>
-              ${conv.unreadCount > 0 ? `<span class="crm-conv-unread">${conv.unreadCount}</span>` : ''}
+          <div class="crm-conv-preview-row">
+            <span class="crm-conv-preview">${c.lastMessageFromMe ? '✓ ' : ''}${escapeHtml(previewText)}</span>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span class="crm-tag-badge ${tag}" style="font-size: 0.65rem; padding: 1px 5px;">${tagLabel}</span>
+              ${unreadBadge}
             </div>
           </div>
-        </li>
-      `;
+        </div>
+      </li>
+    `;
     })
     .join('');
 
-  // Click en una conversación
   listEl.querySelectorAll('.crm-conv-item').forEach((item) => {
-    item.addEventListener('click', (e) => {
-      const convId = Number(e.currentTarget.dataset.id);
-      openConversation(convId);
+    item.addEventListener('click', () => {
+      const convId = Number(item.dataset.convId);
+      selectConversation(convId);
     });
   });
 }
 
 /**
- * Abre y carga los mensajes de una conversación
+ * Seleccionar y abrir un chat
  */
-async function openConversation(convId) {
+async function selectConversation(convId) {
   currentActiveConvId = convId;
-  const layout = document.getElementById('crmLayout');
-  if (layout) layout.classList.add('viewing-chat');
-
-  // Actualizar item activo en lista
-  renderConversationList();
-
-  const emptyState = document.getElementById('crmEmptyState');
-  const activeChatContainer = document.getElementById('crmActiveChatContainer');
-  const messagesArea = document.getElementById('crmChatMessages');
-
-  if (emptyState) emptyState.style.display = 'none';
-  if (activeChatContainer) activeChatContainer.style.display = 'flex';
-
-  const conv = cachedConversations.find((c) => c.id === convId);
-  if (conv) {
-    document.getElementById('activeChatName').textContent = conv.contactName || conv.phoneNumber || 'Cliente';
-    document.getElementById('activeChatPhone').textContent = conv.phoneNumber ? (conv.phoneNumber.startsWith('57') ? `+${conv.phoneNumber}` : `+57 ${conv.phoneNumber}`) : '';
-    document.getElementById('activeChatAvatar').textContent = (conv.contactName || conv.phoneNumber || '?').charAt(0).toUpperCase();
-
-    // Actualizar sidebar del cliente
-    updateCustomerPanel(conv);
-  }
-
-  // Marcar como leído
-  if (conv && conv.unreadCount > 0) {
-    conv.unreadCount = 0;
-    api.markCrmConversationAsRead(convId).catch(console.error);
-    renderConversationList();
-  }
-
-  // Cargar mensajes con paginación optimizada
   hasMoreOldMessages = true;
   isLoadingOldMessages = false;
 
-  if (messagesArea) {
-    messagesArea.innerHTML = `
-      <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 20px;">
-        Cargando mensajes... ⏳
-      </div>
-    `;
+  const conv = cachedConversations.find((c) => c.id === convId);
+  if (!conv) return;
+
+  conv.unreadCount = 0;
+  renderConversationList();
+
+  // Cambiar vista en móvil
+  const layout = document.getElementById('crmLayout');
+  layout?.classList.add('viewing-chat');
+
+  const emptyState = document.getElementById('crmEmptyState');
+  const activeContainer = document.getElementById('crmActiveChatContainer');
+  if (emptyState) emptyState.style.display = 'none';
+  if (activeContainer) activeContainer.style.display = 'flex';
+
+  const name = conv.contactName || (conv.customer ? conv.customer.fullName : conv.phoneNumber || 'Desconocido');
+  const titleEl = document.getElementById('activeChatName');
+  const phoneEl = document.getElementById('activeChatPhone');
+  const avatarEl = document.getElementById('activeChatAvatar');
+  const tagBadgeEl = document.getElementById('activeChatTagBadge');
+
+  if (titleEl) titleEl.textContent = name;
+  if (phoneEl) phoneEl.textContent = conv.phoneNumber ? `+${conv.phoneNumber}` : conv.remoteJid;
+  if (avatarEl) avatarEl.textContent = name.charAt(0).toUpperCase();
+
+  const tag = conv.tag || 'NUEVO';
+  if (tagBadgeEl) {
+    tagBadgeEl.className = `crm-tag-badge ${tag}`;
+    let tagLabel = '🆕 Nuevo';
+    if (tag === 'INTERESADO') tagLabel = '⭐ Interesado';
+    if (tag === 'PEDIDO_ACTIVO') tagLabel = '🥛 Pedido Activo';
+    if (tag === 'CLIENTE_FRECUENTE') tagLabel = '👑 Cliente Fiel';
+    if (tag === 'SEGUIMIENTO') tagLabel = '🔔 Seguimiento';
+    tagBadgeEl.textContent = tagLabel;
+  }
+
+  // Cargar ficha de cliente lateral
+  renderCustomerDetails(conv);
+
+  // Cargar mensajes
+  const messagesBox = document.getElementById('crmChatMessages');
+  if (messagesBox) {
+    messagesBox.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">Cargando historial de mensajes... ⏳</div>';
   }
 
   try {
-    const res = await api.getCrmMessages(convId, { limit: 50 });
-    cachedMessages = res || [];
-    if (cachedMessages.length < 50) {
-      hasMoreOldMessages = false;
-    }
-    renderChatMessages();
-    scrollToBottom();
+    cachedMessages = await api.getCrmMessages(convId, { limit: 50 });
+    renderMessagesList(true);
   } catch (err) {
-    console.error('Error fetching messages:', err);
-    if (messagesArea) {
-      messagesArea.innerHTML = `
-        <div style="text-align: center; color: var(--danger); font-size: 0.85rem; padding: 20px;">
-          ❌ Error al cargar los mensajes.
-        </div>
-      `;
+    console.error('Error loading messages:', err);
+    if (messagesBox) {
+      messagesBox.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger);">Error al cargar mensajes ⚠️</div>';
     }
   }
 }
 
 /**
- * Helper para renderizar el contenido visual de un mensaje (Texto, Sticker o Imagen)
+ * Renderizar mensajes dentro del chat
  */
-function renderMessageBubbleContent(msg) {
-  if (msg.messageType === 'STICKER') {
-    if (msg.mediaUrl) {
-      return `
-        <div class="crm-sticker-wrapper" data-media-msg-id="${msg.messageId || ''}">
-          <img 
-            src="${msg.mediaUrl}" 
-            alt="Sticker" 
-            class="crm-sticker-img" 
-            loading="lazy" 
-            decoding="async" 
-            onload="this.classList.add('loaded')" 
-            onerror="this.onerror=null;this.parentElement.innerHTML='✨ <em>Sticker</em>'" 
-          />
-        </div>
-      `;
-    }
-    return `
-      <div class="crm-sticker-loading" data-media-msg-id="${msg.messageId || ''}" title="Cargando sticker...">
-        <span style="font-size: 1.4rem;">✨</span>
-      </div>
-    `;
-  }
-
-  if (msg.messageType === 'IMAGE') {
-    let imgHtml = '';
-    if (msg.mediaUrl) {
-      imgHtml = `
-        <img 
-          src="${msg.mediaUrl}" 
-          alt="Foto" 
-          class="crm-media-img" 
-          loading="lazy" 
-          decoding="async" 
-          onclick="window.open(this.src)" 
-          onload="this.classList.add('loaded')" 
-          onerror="this.onerror=null;this.style.display='none'" 
-        />
-      `;
-    } else {
-      imgHtml = `
-        <div class="crm-sticker-loading" data-media-msg-id="${msg.messageId || ''}" title="Cargando imagen..." style="width: 180px; height: 120px;">
-          <span style="font-size: 1.4rem;">📷</span>
-        </div>
-      `;
-    }
-    const caption = msg.text && msg.text !== '📷 Imagen' ? `<div class="crm-msg-text">${escapeHtml(msg.text)}</div>` : '';
-    return `${imgHtml}${caption}`;
-  }
-
-  return `<div class="crm-msg-text">${escapeHtml(msg.text || '')}</div>`;
-}
-
-/**
- * Renderiza los mensajes del chat activo
- */
-function renderChatMessages() {
-  const messagesArea = document.getElementById('crmChatMessages');
-  if (!messagesArea) return;
+function renderMessagesList(autoScrollToBottom = true) {
+  const box = document.getElementById('crmChatMessages');
+  if (!box) return;
 
   if (cachedMessages.length === 0) {
-    messagesArea.innerHTML = `
-      <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 30px;">
-        No hay mensajes en esta conversación aún. Escribe el primer mensaje abajo 👇
+    box.innerHTML = `
+      <div style="text-align: center; padding: 30px 10px; color: var(--text-muted); font-size: 0.88rem;">
+        No hay mensajes previos en esta conversación.<br>¡Escribe el primer mensaje para comenzar! 👋✨
       </div>
     `;
     return;
   }
 
-  let html = '';
-  let lastDateStr = '';
+  box.innerHTML = cachedMessages.map((m) => renderSingleMessageHtml(m)).join('');
 
-  cachedMessages.forEach((msg) => {
-    const msgDate = new Date(msg.timestamp);
-    const dateStr = msgDate.toLocaleDateString('es-CO', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    });
-
-    if (dateStr !== lastDateStr) {
-      html += `<div class="crm-date-divider">${dateStr}</div>`;
-      lastDateStr = dateStr;
-    }
-
-    const timeStr = msgDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const isOutgoing = msg.fromMe;
-    const senderName = isOutgoing ? (msg.senderName || 'YogurArte') : '';
-    const isSticker = msg.messageType === 'STICKER';
-
-    html += `
-      <div class="crm-msg-row ${isOutgoing ? 'outgoing' : 'incoming'}" id="msg-${msg.id}">
-        <div class="crm-msg-bubble" style="${isSticker ? 'background: transparent; box-shadow: none; padding: 2px;' : ''}">
-          ${isOutgoing && senderName && !isSticker ? `<div class="crm-msg-sender">${escapeHtml(senderName)}</div>` : ''}
-          ${renderMessageBubbleContent(msg)}
-          <div class="crm-msg-meta" style="${isSticker ? 'justify-content: flex-end; background: rgba(255,255,255,0.7); border-radius: 6px; padding: 2px 6px; width: fit-content; margin-left: auto;' : ''}">
-            <span>${timeStr}</span>
-            ${isOutgoing ? `<span class="crm-msg-status ${msg.status === 'READ' ? 'read' : ''}">${getStatusIcon(msg.status)}</span>` : ''}
-          </div>
-        </div>
-      </div>
-    `;
-  });
-
-  messagesArea.innerHTML = html;
+  if (autoScrollToBottom) {
+    scrollToBottom();
+  }
 }
 
-/**
- * Agrega un único mensaje al final del chat activo sin re-renderizar todo
- */
-function appendMessageToChat(msg) {
-  const messagesArea = document.getElementById('crmChatMessages');
-  if (!messagesArea) return;
+function appendMessageToChat(message) {
+  const box = document.getElementById('crmChatMessages');
+  if (!box) return;
 
-  const msgDate = new Date(msg.timestamp);
-  const timeStr = msgDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
-  const isOutgoing = msg.fromMe;
-  const senderName = isOutgoing ? (msg.senderName || 'YogurArte') : '';
-  const isSticker = msg.messageType === 'STICKER';
+  const msgHtml = renderSingleMessageHtml(message);
+  box.insertAdjacentHTML('beforeend', msgHtml);
+}
 
-  const msgDiv = document.createElement('div');
-  msgDiv.className = `crm-msg-row ${isOutgoing ? 'outgoing' : 'incoming'}`;
-  msgDiv.id = `msg-${msg.id}`;
-  msgDiv.innerHTML = `
-    <div class="crm-msg-bubble" style="${isSticker ? 'background: transparent; box-shadow: none; padding: 2px;' : ''}">
-      ${isOutgoing && senderName && !isSticker ? `<div class="crm-msg-sender">${escapeHtml(senderName)}</div>` : ''}
-      ${renderMessageBubbleContent(msg)}
-      <div class="crm-msg-meta" style="${isSticker ? 'justify-content: flex-end; background: rgba(255,255,255,0.7); border-radius: 6px; padding: 2px 6px; width: fit-content; margin-left: auto;' : ''}">
-        <span>${timeStr}</span>
-        ${isOutgoing ? `<span class="crm-msg-status ${msg.status === 'READ' ? 'read' : ''}">${getStatusIcon(msg.status)}</span>` : ''}
+function renderSingleMessageHtml(m) {
+  const isMe = m.fromMe;
+  const timeStr = m.timestamp ? formatMsgTime(m.timestamp) : '';
+  let contentHtml = '';
+
+  if (m.messageType === 'IMAGE') {
+    if (m.mediaUrl) {
+      contentHtml = `
+        <img src="${m.mediaUrl}" alt="Foto" class="crm-msg-image loaded" loading="lazy" decoding="async" data-media-msg-id="${m.messageId}" onclick="window.open('${m.mediaUrl}', '_blank')" />
+      `;
+    } else {
+      contentHtml = `<div class="crm-msg-placeholder" data-media-msg-id="${m.messageId}">📷 Foto (Cargando...)</div>`;
+    }
+  } else if (m.messageType === 'AUDIO') {
+    if (m.mediaUrl) {
+      contentHtml = `
+        <div class="crm-audio-player" data-media-msg-id="${m.messageId}">
+          <audio controls preload="metadata" style="max-width: 220px; height: 36px;">
+            <source src="${m.mediaUrl}" type="${m.mediaMimeType || 'audio/ogg'}" />
+          </audio>
+        </div>
+      `;
+    } else {
+      contentHtml = `<div class="crm-msg-placeholder" data-media-msg-id="${m.messageId}">🎵 Nota de voz</div>`;
+    }
+  } else if (m.messageType === 'STICKER') {
+    if (m.mediaUrl) {
+      contentHtml = `
+        <div class="crm-sticker-wrapper" data-media-msg-id="${m.messageId}">
+          <img src="${m.mediaUrl}" alt="Sticker" class="crm-sticker-img loaded" loading="lazy" decoding="async" />
+        </div>
+      `;
+    } else {
+      contentHtml = `<div class="crm-msg-placeholder" data-media-msg-id="${m.messageId}">✨ Sticker</div>`;
+    }
+  }
+
+  if (m.text) {
+    contentHtml += `<div class="crm-msg-text">${formatWhatsAppText(m.text)}</div>`;
+  }
+
+  return `
+    <div class="crm-msg-bubble ${isMe ? 'outgoing' : 'incoming'}">
+      ${contentHtml}
+      <div class="crm-msg-time">
+        ${timeStr} ${isMe ? '<span style="color: #6D28D9; font-size: 0.75rem;">✓✓</span>' : ''}
       </div>
     </div>
   `;
-
-  messagesArea.appendChild(msgDiv);
 }
 
-/**
- * Ícono de estado del mensaje
- */
-function getStatusIcon(status) {
-  if (status === 'READ') return '✓✓';
-  if (status === 'DELIVERED') return '✓✓';
-  if (status === 'SENT') return '✓';
-  return '⏳';
-}
-
-/**
- * Scroll automático al último mensaje
- */
 function scrollToBottom() {
-  const messagesArea = document.getElementById('crmChatMessages');
-  if (messagesArea) {
-    messagesArea.scrollTop = messagesArea.scrollHeight;
+  const box = document.getElementById('crmChatMessages');
+  if (box) {
+    box.scrollTop = box.scrollHeight;
   }
 }
 
 /**
- * Actualiza el panel lateral derecho de información del cliente
+ * Renderizar la ficha del cliente en el lateral derecho
  */
-function updateCustomerPanel(conv) {
-  const placeholder = document.getElementById('crmCustomerInfoPlaceholder');
-  const content = document.getElementById('crmCustomerInfoContent');
+function renderCustomerDetails(conv) {
+  const body = document.getElementById('crmCustomerBody');
+  if (!body) return;
 
-  if (!conv || !content) return;
+  const customer = conv.customer;
+  const tag = conv.tag || 'NUEVO';
 
-  if (placeholder) placeholder.style.display = 'none';
-  content.style.display = 'flex';
+  // Cálculo de fidelización
+  let loyaltyHtml = '';
+  if (customer) {
+    const orders = customer.orders || [];
+    const totalBottles = orders.reduce((sum, o) => sum + (o.quantityBottles || 1), 0);
+    const redeemed = customer.loyaltyRedeemedCount || 0;
+    const netBottles = Math.max(0, totalBottles - redeemed * 10);
+    const currentCycle = netBottles % 10;
+    const rewardsAvailable = Math.floor(netBottles / 10);
+    const progressPercent = Math.min(100, Math.round((currentCycle / 10) * 100));
 
-  const cust = conv.customer;
-  activeCustomer = cust || null;
+    loyaltyHtml = `
+      <div style="background: #FAF5FF; border: 1.5px solid #D8B4FE; border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="font-size: 0.82rem; font-weight: 800; color: #7E22CE;">🎁 Fidelización (10+1)</span>
+          <span style="font-size: 0.76rem; font-weight: 800; color: #7E22CE;">${currentCycle} / 10 Botellas</span>
+        </div>
+        <div class="crm-progress-track" style="margin-bottom: 8px;">
+          <div class="crm-progress-fill ${rewardsAvailable > 0 ? 'ready' : ''}" style="width: ${progressPercent}%;"></div>
+        </div>
+        ${
+          rewardsAvailable > 0
+            ? `
+          <div style="display: flex; gap: 6px; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.76rem; font-weight: 800; color: #15803D;">⭐ ¡${rewardsAvailable}L Gratis Disponible!</span>
+            <button class="btn btn-sm btn-accent" id="btnRedeemLoyaltyChat" style="font-size: 0.72rem; padding: 3px 8px; font-weight: 800;">
+              🎁 Canjear Premio
+            </button>
+          </div>
+        `
+            : `
+          <div style="font-size: 0.72rem; color: #6B21A8; text-align: center;">
+            Faltan <strong>${10 - currentCycle} botellas</strong> para ganar 1L gratis
+          </div>
+        `
+        }
+      </div>
+    `;
+  }
 
-  const avatar = document.getElementById('custPanelAvatar');
-  const nameEl = document.getElementById('custPanelName');
-  const phoneEl = document.getElementById('custPanelPhone');
-  const addrEl = document.getElementById('custPanelAddress');
-  const statOrders = document.getElementById('custStatOrders');
-  const statDebt = document.getElementById('custStatDebt');
-  const recentOrdersList = document.getElementById('custRecentOrdersList');
+  body.innerHTML = `
+    <!-- Selector de Etiqueta de Embudo -->
+    <div style="margin-bottom: 12px;">
+      <label style="font-size: 0.74rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Etiqueta / Estado</label>
+      <select id="crmTagSelect" class="orders-select-item" style="height: 34px; font-size: 0.82rem; font-weight: 700; width: 100%; margin-top: 4px;">
+        <option value="NUEVO" ${tag === 'NUEVO' ? 'selected' : ''}>🆕 Nuevo Contacto</option>
+        <option value="INTERESADO" ${tag === 'INTERESADO' ? 'selected' : ''}>⭐ Interesado</option>
+        <option value="PEDIDO_ACTIVO" ${tag === 'PEDIDO_ACTIVO' ? 'selected' : ''}>🥛 Pedido en Proceso</option>
+        <option value="CLIENTE_FRECUENTE" ${tag === 'CLIENTE_FRECUENTE' ? 'selected' : ''}>👑 Cliente Frecuente</option>
+        <option value="SEGUIMIENTO" ${tag === 'SEGUIMIENTO' ? 'selected' : ''}>🔔 En Seguimiento</option>
+      </select>
+    </div>
 
-  if (cust) {
-    if (avatar) avatar.textContent = cust.fullName.charAt(0).toUpperCase();
-    if (nameEl) nameEl.textContent = cust.fullName;
-    if (phoneEl) phoneEl.textContent = cust.phone ? `+${cust.phone}` : conv.phoneNumber || 'Sin teléfono';
-    if (addrEl) addrEl.textContent = cust.address ? `📍 ${cust.address}` : '📍 Sin dirección registrada';
+    ${loyaltyHtml}
 
-    const orders = cust.orders || [];
-    if (statOrders) statOrders.textContent = orders.length;
+    ${
+      customer
+        ? `
+      <div style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px;">
+        <div style="font-size: 0.95rem; font-weight: 800; color: var(--text-main); margin-bottom: 4px;">
+          ${escapeHtml(customer.fullName)}
+        </div>
+        <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 2px;">
+          📞 ${escapeHtml(customer.phone)}
+        </div>
+        <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 8px;">
+          📍 ${escapeHtml(customer.address || 'Fonseca')}
+        </div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button class="btn btn-sm btn-outline" id="btnScheduleRecurringFromChat" style="font-size: 0.74rem; padding: 4px 8px; font-weight: 700; color: #0369A1; border-color: #BAE6FD;">
+            🔁 Programar Compra Frecuente
+          </button>
+        </div>
+      </div>
 
-    // Calcular deuda acumulada del cliente
-    let totalDebt = 0;
-    orders.forEach((o) => {
-      const orderTotal = Number(o.finalTotal || o.totalAmount || 0);
-      const paid = (o.payments || []).reduce((acc, p) => acc + Number(p.amount || 0), 0);
-      if (orderTotal > paid && o.status !== 'CANCELLED') {
-        totalDebt += (orderTotal - paid);
-      }
-    });
-
-    if (statDebt) {
-      statDebt.textContent = formatCOP(totalDebt);
-      statDebt.style.color = totalDebt > 0 ? 'var(--danger)' : 'var(--success)';
-    }
-
-    // Lista de últimos pedidos
-    if (recentOrdersList) {
-      if (orders.length === 0) {
-        recentOrdersList.innerHTML = '<span style="font-size: 0.78rem; color: var(--text-muted);">Sin pedidos previos.</span>';
-      } else {
-        recentOrdersList.innerHTML = orders
-          .slice(0, 4)
-          .map((o) => `
-            <div style="background: var(--bg-subtle); padding: 8px 10px; border-radius: var(--radius-sm); font-size: 0.78rem; display: flex; justify-content: space-between; align-items: center;">
+      <!-- Pedidos Recientes -->
+      <div style="font-size: 0.82rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">
+        Últimos Pedidos
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        ${
+          customer.orders && customer.orders.length > 0
+            ? customer.orders
+                .map(
+                  (o) => `
+            <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center;">
               <div>
-                <strong style="color: var(--primary);">#${o.orderNumber || o.id}</strong>
-                <span style="color: var(--text-muted); display: block; font-size: 0.7rem;">${formatDate(o.deliveryDate)}</span>
+                <strong style="color: var(--primary);">${escapeHtml(o.orderNumber)}</strong>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">${formatDate(o.deliveryDate || o.orderDate || new Date())}</div>
               </div>
               <div style="text-align: right;">
-                <span style="font-weight: 700; color: var(--text-main);">${formatCOP(o.finalTotal || o.totalAmount)}</span>
-                <span style="display: block; font-size: 0.68rem; color: ${o.paymentStatus === 'PAID' ? 'var(--success)' : 'var(--danger)'}; font-weight: 700;">
-                  ${o.paymentStatus === 'PAID' ? 'Pagado' : 'Pendiente'}
+                <div style="font-weight: 800; color: #15803D;">${formatCOP(o.totalAmount)}</div>
+                <span class="badge ${o.paymentStatus === 'PAID' ? 'badge-success' : 'badge-danger'}" style="font-size: 0.65rem;">
+                  ${o.paymentStatus === 'PAID' ? 'Al Día' : 'Pendiente'}
                 </span>
               </div>
             </div>
-          `)
-          .join('');
-      }
-    }
-  } else {
-    // Cliente no vinculado a la base de datos de YogurArte
-    if (avatar) avatar.textContent = '?';
-    if (nameEl) nameEl.textContent = conv.contactName || conv.phoneNumber || 'Prospecto / Nuevo Contacto';
-    if (phoneEl) phoneEl.textContent = conv.phoneNumber ? `+${conv.phoneNumber}` : '';
-    if (addrEl) addrEl.textContent = '⚠️ Contacto de WhatsApp no vinculado a Cliente';
-    if (statOrders) statOrders.textContent = '0';
-    if (statDebt) {
-      statDebt.textContent = '$0';
-      statDebt.style.color = 'var(--text-muted)';
-    }
-    if (recentOrdersList) {
-      recentOrdersList.innerHTML = `
-        <div style="background: #FFFBEB; border: 1px dashed #FCD34D; padding: 10px; border-radius: var(--radius-sm); font-size: 0.75rem; color: #92400E;">
-          Este contacto aún no está registrado como cliente en YogurArte. Puedes crearle un pedido directo o vincularlo arriba.
-        </div>
-      `;
-    }
-  }
-}
-
-/**
- * Event Listeners de la vista CRM
- */
-function attachCrmEvents() {
-  // Búsqueda de chats
-  const searchInput = document.getElementById('crmSearchInput');
-  searchInput?.addEventListener('input', (e) => {
-    searchQuery = e.target.value;
-    renderConversationList();
-  });
-
-  // Botón Nuevo Chat (Header y Estado Vacío)
-  document.getElementById('btnStartNewChat')?.addEventListener('click', () => {
-    openNewChatModal();
-  });
-  document.getElementById('btnEmptyStateNewChat')?.addEventListener('click', () => {
-    openNewChatModal();
-  });
-
-  // Botón Volver a la lista en Móvil
-  document.getElementById('btnBackToConvList')?.addEventListener('click', () => {
-    const layout = document.getElementById('crmLayout');
-    if (layout) layout.classList.remove('viewing-chat');
-  });
-
-  // Toggle y Cierre de Sidebar del Cliente en Móvil y Tablets
-  const sidebar = document.getElementById('crmCustomerSidebar');
-  const sidebarOverlay = document.getElementById('crmCustomerSidebarOverlay');
-
-  const closeCustomerSidebar = () => {
-    if (sidebar) sidebar.classList.remove('mobile-open');
-    if (sidebarOverlay) sidebarOverlay.classList.remove('active');
-  };
-
-  const toggleCustomerSidebar = () => {
-    if (sidebar) {
-      const isOpen = sidebar.classList.toggle('mobile-open');
-      if (sidebarOverlay) {
-        if (isOpen) sidebarOverlay.classList.add('active');
-        else sidebarOverlay.classList.remove('active');
-      }
-    }
-  };
-
-  document.getElementById('btnToggleCustomerDrawer')?.addEventListener('click', toggleCustomerSidebar);
-  document.getElementById('crmChatHeaderDetails')?.addEventListener('click', toggleCustomerSidebar);
-  document.getElementById('btnCloseCustomerSidebar')?.addEventListener('click', closeCustomerSidebar);
-  document.getElementById('btnBottomCloseCustomerSidebar')?.addEventListener('click', closeCustomerSidebar);
-  sidebarOverlay?.addEventListener('click', closeCustomerSidebar);
-
-  // Scroll superior para cargar historial antiguo de mensajes (Lazy Loading / Paginación)
-  const messagesArea = document.getElementById('crmChatMessages');
-  messagesArea?.addEventListener('scroll', async () => {
-    if (messagesArea.scrollTop < 40 && hasMoreOldMessages && !isLoadingOldMessages && currentActiveConvId) {
-      isLoadingOldMessages = true;
-      const oldestMsg = cachedMessages[0];
-      if (!oldestMsg) {
-        isLoadingOldMessages = false;
-        return;
-      }
-
-      const prevScrollHeight = messagesArea.scrollHeight;
-      const prevScrollTop = messagesArea.scrollTop;
-
-      try {
-        const olderMessages = await api.getCrmMessages(currentActiveConvId, {
-          limit: 40,
-          beforeId: oldestMsg.id,
-        });
-
-        if (!olderMessages || olderMessages.length === 0) {
-          hasMoreOldMessages = false;
-        } else {
-          if (olderMessages.length < 40) hasMoreOldMessages = false;
-          cachedMessages = [...olderMessages, ...cachedMessages];
-          renderChatMessages();
-          const newScrollHeight = messagesArea.scrollHeight;
-          messagesArea.scrollTop = newScrollHeight - prevScrollHeight + prevScrollTop;
+          `
+                )
+                .join('')
+            : '<div style="font-size: 0.8rem; color: var(--text-muted); text-align: center; padding: 12px;">Sin pedidos registrados aún</div>'
         }
-      } catch (err) {
-        console.warn('Error cargando historial de mensajes antiguos:', err);
-      } finally {
-        isLoadingOldMessages = false;
-      }
-    }
-  });
-
-  // Botones y Badges de Conectar / Gestionar Sesión de WhatsApp
-  document.getElementById('btnWhatsAppConnect')?.addEventListener('click', () => {
-    openWhatsAppQRModal();
-  });
-  document.getElementById('crmStatusBadge')?.addEventListener('click', () => {
-    openWhatsAppQRModal();
-  });
-  document.getElementById('btnWpStatusChatHeader')?.addEventListener('click', () => {
-    openWhatsAppQRModal();
-  });
-
-  // Envío de mensajes
-  const sendForm = document.getElementById('crmSendForm');
-  const msgInput = document.getElementById('crmMsgInput');
-  const btnSend = document.getElementById('btnSendCrmMsg');
-
-  // Ajuste automático de altura de textarea
-  msgInput?.addEventListener('input', () => {
-    msgInput.style.height = 'auto';
-    msgInput.style.height = `${Math.min(msgInput.scrollHeight, 120)}px`;
-  });
-
-  // Enviar con Enter (sin Shift)
-  msgInput?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendForm?.dispatchEvent(new Event('submit'));
-    }
-  });
-
-  sendForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!currentActiveConvId) return;
-
-    const text = msgInput.value.trim();
-    if (!text) return;
-
-    const conv = cachedConversations.find((c) => c.id === currentActiveConvId);
-    if (!conv) return;
-
-    try {
-      if (btnSend) btnSend.disabled = true;
-      msgInput.value = '';
-      msgInput.style.height = 'auto';
-
-      await api.sendCrmMessage(conv.remoteJid, text);
-    } catch (err) {
-      showToast(err.message || 'Error al enviar mensaje por WhatsApp', 'error');
-    } finally {
-      if (btnSend) btnSend.disabled = false;
-      msgInput.focus();
-    }
-  });
-
-  // Respuestas Rápidas (Chips)
-  document.querySelectorAll('.crm-quick-chip').forEach((chip) => {
-    chip.addEventListener('click', (e) => {
-      const type = e.currentTarget.dataset.reply;
-      let text = '';
-
-      if (type === 'sabores') {
-        text = '¡Hola! 🥛✨ En YogurArte ofrecemos delicioso Yogur 100% Natural Artesanal:\n\n🍶 *Presentaciones y Precios:*\n• 1 Litro: $12.000\n• 2 Litros: $24.000\n\n¿Te gustaría hacer un pedido para hoy?';
-      } else if (type === 'saludo') {
-        text = '¡Hola! Bienvenido a YogurArte Fonseca 🥛✨. ¿En qué podemos colaborarte el día de hoy?';
-      } else if (type === 'camino') {
-        text = '🛵 ¡Hola! Te informamos que tu pedido de YogurArte ya va en camino con nuestro domiciliario. ¡Pronto estará en tu puerta!';
-      } else if (type === 'pago') {
-        text = '💳 Puedes realizar tu pago mediante transferencia a:\n- Nequi / Bancolombia: 302 458 1882\n- Titular: Edier / YogurArte\nPor favor nos envías el comprobante por aquí. ¡Muchas gracias! 🙏';
-      } else if (type === 'direccion') {
-        text = '🏡 Para asegurar que tu pedido llegue a tiempo, por favor confírmanos:\n- Dirección exacta y barrio:\n- Nombre de quien recibe:\n- Teléfono de contacto:\n- Método de pago (Efectivo / Nequi / Bancolombia):';
-      }
-
-      if (msgInput && text) {
-        msgInput.value = text;
-        msgInput.style.height = 'auto';
-        msgInput.style.height = `${Math.min(msgInput.scrollHeight, 120)}px`;
-        msgInput.focus();
-      }
-    });
-  });
-
-  // Botón Crear Pedido Rápido (Header del Chat)
-  document.getElementById('btnFastOrder')?.addEventListener('click', () => {
-    triggerFastOrder();
-  });
-
-  // Botón Crear Pedido (Panel del Cliente)
-  document.getElementById('btnCustPanelNewOrder')?.addEventListener('click', () => {
-    triggerFastOrder();
-  });
-
-  // Botón Vincular Cliente Manualmente
-  document.getElementById('btnLinkCustomerModal')?.addEventListener('click', () => {
-    openLinkCustomerModal();
-  });
-}
-
-/**
- * Modal para Iniciar Nuevo Chat desde cero con buscador reactivo de clientes y sugerencias
- */
-export async function openNewChatModal() {
-  const modalContainer = document.getElementById('modalContainer');
-  if (!modalContainer) return;
-
-  let customers = [];
-  try {
-    customers = await api.getCustomers();
-  } catch (err) {
-    console.error('Error fetching customers for new chat:', err);
-  }
-
-  modalContainer.innerHTML = `
-    <div class="modal-overlay active" id="newChatModalOverlay">
-      <div class="modal-card" style="max-width: 500px;">
-        <div class="modal-header">
-          <h3 class="modal-title">💬 Iniciar Nuevo Chat de WhatsApp</h3>
-          <button class="modal-close" id="btnCloseNewChatModal">✕</button>
-        </div>
-        <div class="modal-body" style="padding: 18px 20px;">
-          <!-- Pestañas de Selección -->
-          <div style="display: flex; gap: 8px; margin-bottom: 16px; background: var(--bg-subtle); padding: 4px; border-radius: var(--radius-md);">
-            <button type="button" class="btn btn-sm filter-chip active" id="tabNewChatCustomer" style="flex: 1; text-align: center; border-radius: var(--radius-sm);">
-              👤 Buscar Cliente Registrado
-            </button>
-            <button type="button" class="btn btn-sm filter-chip" id="tabNewChatDirect" style="flex: 1; text-align: center; border-radius: var(--radius-sm);">
-              📱 Número Nuevo Directo
-            </button>
-          </div>
-
-          <form id="formNewChat">
-            <!-- Sección A: Buscador con Sugerencias -->
-            <div id="sectionCustomerSelect" class="form-group" style="position: relative;">
-              <label class="form-label" style="font-weight: 700;">Buscar Cliente por Nombre, Teléfono o Barrio *</label>
-              <div class="input-with-icon" style="width: 100%;">
-                <span class="input-icon">🔍</span>
-                <input 
-                  type="text" 
-                  id="inputCustSearchAutocomplete" 
-                  class="form-input" 
-                  placeholder="Escribe para ver sugerencias (ej: Yeilin, Edier...)" 
-                  autocomplete="off"
-                  style="font-weight: 700;"
-                />
-              </div>
-
-              <!-- Lista flotante de sugerencias -->
-              <div id="custSuggestionsDropdown" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #FFFFFF; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); max-height: 220px; overflow-y: auto; box-shadow: var(--shadow-lg); z-index: 60; display: none;">
-              </div>
-
-              <!-- Tarjeta de cliente seleccionado -->
-              <div id="selectedCustPreviewCard" style="display: none; margin-top: 10px; background: var(--primary-light); border: 1.5px solid var(--primary); padding: 10px 14px; border-radius: var(--radius-md); justify-content: space-between; align-items: center;">
-                <div>
-                  <strong id="selectedCustPreviewName" style="color: var(--primary); font-size: 0.95rem; display: block;">Cliente</strong>
-                  <span id="selectedCustPreviewPhone" style="font-size: 0.8rem; color: var(--text-main); font-weight: 600;">📱 300 000 0000</span>
-                  <span id="selectedCustPreviewAddr" style="font-size: 0.74rem; color: var(--text-muted); display: block;">📍 Dirección</span>
-                </div>
-                <button type="button" id="btnRemoveSelectedCust" class="btn btn-sm btn-outline" style="padding: 4px 8px; font-size: 0.75rem; border-color: var(--danger); color: var(--danger); font-weight: 700;">
-                  Cambiar ✕
-                </button>
-              </div>
-            </div>
-
-            <!-- Sección B: Entrada de Número Directo -->
-            <div id="sectionDirectPhone" style="display: none; flex-direction: column; gap: 12px;">
-              <div class="form-group">
-                <label class="form-label" style="font-weight: 700;">Número de WhatsApp (con o sin +57) *</label>
-                <div class="input-with-icon" style="width: 100%;">
-                  <span class="input-icon">📱</span>
-                  <input 
-                    type="tel" 
-                    id="inputNewChatPhone" 
-                    class="form-input" 
-                    placeholder="Ej: 314 746 4663" 
-                    style="font-weight: 700;"
-                  />
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" style="font-weight: 700;">Nombre del Contacto (Opcional)</label>
-                <input 
-                  type="text" 
-                  id="inputNewChatName" 
-                  class="form-input" 
-                  placeholder="Ej: Yeilin" 
-                />
-              </div>
-            </div>
-
-            <!-- Mensaje Inicial -->
-            <div class="form-group" style="margin-top: 14px;">
-              <label class="form-label" style="font-weight: 700;">Mensaje Inicial *</label>
-              
-              <!-- Plantillas rápidas -->
-              <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px;">
-                <button type="button" class="crm-quick-chip" id="chipNewChatHello">👋 Saludo Inicial</button>
-                <button type="button" class="crm-quick-chip" id="chipNewChatFlavors">🥛 Sabores y Precios</button>
-                <button type="button" class="crm-quick-chip" id="chipNewChatConfirm">📦 Confirmar Pedido</button>
-              </div>
-
-              <textarea 
-                id="inputNewChatMessage" 
-                class="form-input" 
-                rows="3" 
-                placeholder="Escribe el mensaje que recibirá el cliente..." 
-                required
-                style="resize: vertical; font-size: 0.9rem;"
-              >¡Hola! Te escribo de YogurArte Fonseca 🥛✨. ¿Cómo estás?</textarea>
-            </div>
-
-            <div class="modal-footer" style="padding: 14px 0 0 0; display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; border-top: 1px solid var(--border-color);">
-              <button type="button" class="btn btn-outline" id="btnCancelNewChat">Cancelar</button>
-              <button type="submit" class="btn btn-primary" id="btnSubmitNewChat" style="font-weight: 800;">
-                🚀 Enviar y Abrir Chat
-              </button>
-            </div>
-          </form>
-        </div>
       </div>
-    </div>
+    `
+        : `
+      <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: var(--radius-md); padding: 12px; text-align: center;">
+        <div style="font-size: 0.85rem; font-weight: 700; color: #B45309; margin-bottom: 6px;">
+          Número no vinculado a un cliente
+        </div>
+        <p style="font-size: 0.78rem; color: #92400E; margin-bottom: 10px;">
+          Vincula esta conversación con un cliente existente o regístralo para activar el programa de fidelización y pedidos frecuentes.
+        </p>
+        <button class="btn btn-sm btn-primary" id="btnLinkCustomerChat" style="font-size: 0.78rem; font-weight: 700; width: 100%;">
+          🤝 Vincular con Cliente
+        </button>
+      </div>
+    `
+    }
   `;
 
-  let currentMode = 'customer'; // 'customer' | 'direct'
-  let selectedCustomerObj = null;
-
-  const tabCust = document.getElementById('tabNewChatCustomer');
-  const tabDir = document.getElementById('tabNewChatDirect');
-  const secCust = document.getElementById('sectionCustomerSelect');
-  const secDir = document.getElementById('sectionDirectPhone');
-  const searchInput = document.getElementById('inputCustSearchAutocomplete');
-  const suggestionsBox = document.getElementById('custSuggestionsDropdown');
-  const previewCard = document.getElementById('selectedCustPreviewCard');
-  const previewName = document.getElementById('selectedCustPreviewName');
-  const previewPhone = document.getElementById('selectedCustPreviewPhone');
-  const previewAddr = document.getElementById('selectedCustPreviewAddr');
-  const btnRemoveCust = document.getElementById('btnRemoveSelectedCust');
-  const inputPhone = document.getElementById('inputNewChatPhone');
-  const inputName = document.getElementById('inputNewChatName');
-  const inputMsg = document.getElementById('inputNewChatMessage');
-
-  // Función para mostrar sugerencias de clientes
-  function renderSuggestions(query) {
-    if (!suggestionsBox) return;
-    const q = (query || '').toLowerCase().trim();
-    const matches = customers.filter((c) => {
-      const name = (c.fullName || '').toLowerCase();
-      const phone = (c.phone || '').toLowerCase();
-      const addr = (c.address || '').toLowerCase();
-      return name.includes(q) || phone.includes(q) || addr.includes(q);
-    });
-
-    if (matches.length === 0) {
-      suggestionsBox.innerHTML = `
-        <div style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
-          No se encontraron clientes con "${escapeHtml(query)}"
-        </div>
-      `;
-      suggestionsBox.style.display = 'block';
-      return;
-    }
-
-    suggestionsBox.innerHTML = matches
-      .slice(0, 8)
-      .map((c) => `
-        <div class="cust-suggestion-item" data-id="${c.id}" style="padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.15s ease;">
-          <div style="width: 34px; height: 34px; border-radius: 50%; background: var(--primary-light); color: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0;">
-            ${c.fullName.charAt(0).toUpperCase()}
-          </div>
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: 700; color: var(--text-main); font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              ${escapeHtml(c.fullName)}
-            </div>
-            <div style="font-size: 0.76rem; color: var(--text-muted); display: flex; gap: 8px;">
-              <span>📱 ${escapeHtml(c.phone || 'Sin tel')}</span>
-              ${c.address ? `<span>📍 ${escapeHtml(c.address)}</span>` : ''}
-            </div>
-          </div>
-        </div>
-      `)
-      .join('');
-
-    suggestionsBox.style.display = 'block';
-
-    // Click en una sugerencia
-    suggestionsBox.querySelectorAll('.cust-suggestion-item').forEach((item) => {
-      item.addEventListener('click', (e) => {
-        const id = Number(e.currentTarget.dataset.id);
-        const cust = customers.find((c) => c.id === id);
-        if (cust) {
-          selectCustomer(cust);
-        }
-      });
-    });
-  }
-
-  function selectCustomer(cust) {
-    selectedCustomerObj = cust;
-    if (searchInput) searchInput.style.display = 'none';
-    if (suggestionsBox) suggestionsBox.style.display = 'none';
-    if (previewCard) previewCard.style.display = 'flex';
-    if (previewName) previewName.textContent = cust.fullName;
-    if (previewPhone) previewPhone.textContent = `📱 ${cust.phone || 'Sin teléfono'}`;
-    if (previewAddr) previewAddr.textContent = cust.address ? `📍 ${cust.address}` : '📍 Sin dirección registrada';
-  }
-
-  btnRemoveCust?.addEventListener('click', () => {
-    selectedCustomerObj = null;
-    if (searchInput) {
-      searchInput.style.display = 'block';
-      searchInput.value = '';
-      searchInput.focus();
-    }
-    if (previewCard) previewCard.style.display = 'none';
-  });
-
-  searchInput?.addEventListener('input', (e) => {
-    renderSuggestions(e.target.value);
-  });
-
-  searchInput?.addEventListener('focus', () => {
-    renderSuggestions(searchInput.value);
-  });
-
-  document.addEventListener('click', (e) => {
-    if (suggestionsBox && !secCust?.contains(e.target)) {
-      suggestionsBox.style.display = 'none';
-    }
-  });
-
-  // Control de pestañas
-  tabCust?.addEventListener('click', () => {
-    currentMode = 'customer';
-    tabCust.classList.add('active');
-    tabDir?.classList.remove('active');
-    secCust.style.display = 'block';
-    secDir.style.display = 'none';
-  });
-
-  tabDir?.addEventListener('click', () => {
-    currentMode = 'direct';
-    tabDir.classList.add('active');
-    tabCust?.classList.remove('active');
-    secCust.style.display = 'none';
-    secDir.style.display = 'flex';
-    inputPhone?.focus();
-  });
-
-  // Chips de plantillas
-  document.getElementById('chipNewChatHello')?.addEventListener('click', () => {
-    if (inputMsg) inputMsg.value = '¡Hola! Te escribo de YogurArte Fonseca 🥛✨. ¿Cómo estás?';
-  });
-  document.getElementById('chipNewChatFlavors')?.addEventListener('click', () => {
-    if (inputMsg) inputMsg.value = '¡Hola! 🥛✨ En YogurArte ofrecemos delicioso Yogur 100% Natural Artesanal:\n\n🍶 *Presentaciones y Precios:*\n• 1 Litro: $12.000\n• 2 Litros: $24.000\n\n¿Te gustaría hacer un pedido para hoy?';
-  });
-  document.getElementById('chipNewChatConfirm')?.addEventListener('click', () => {
-    if (inputMsg) inputMsg.value = '¡Hola! Te escribo de YogurArte para confirmar los detalles de tu entrega de yogur artesanal 🥛🏡.';
-  });
-
-  // Cerrar modal
-  const closeModal = () => {
-    modalContainer.innerHTML = '';
-  };
-  document.getElementById('btnCloseNewChatModal')?.addEventListener('click', closeModal);
-  document.getElementById('btnCancelNewChat')?.addEventListener('click', closeModal);
-  document.getElementById('newChatModalOverlay')?.addEventListener('click', (e) => {
-    if (e.target.id === 'newChatModalOverlay') closeModal();
-  });
-
-  // Enviar formulario
-  document.getElementById('formNewChat')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const text = inputMsg ? inputMsg.value.trim() : '';
-    if (!text) {
-      showToast('Por favor escribe un mensaje inicial', 'warning');
-      return;
-    }
-
-    let phone = '';
-    let contactName = '';
-    let customerId = null;
-
-    if (currentMode === 'customer') {
-      if (!selectedCustomerObj) {
-        showToast('Por favor selecciona un cliente de las sugerencias', 'warning');
-        return;
-      }
-      customerId = selectedCustomerObj.id;
-      phone = selectedCustomerObj.phone || '';
-      contactName = selectedCustomerObj.fullName || '';
-      if (!phone) {
-        showToast('Este cliente no tiene un teléfono registrado', 'warning');
-        return;
-      }
-    } else {
-      phone = inputPhone ? inputPhone.value.trim() : '';
-      contactName = inputName ? inputName.value.trim() : '';
-      if (!phone || phone.replace(/\D/g, '').length < 7) {
-        showToast('Por favor ingresa un número de teléfono válido', 'warning');
-        return;
-      }
-    }
-
-    const btnSubmit = document.getElementById('btnSubmitNewChat');
+  // Cambiar etiqueta de conversación
+  body.querySelector('#crmTagSelect')?.addEventListener('change', async (e) => {
+    const newTag = e.target.value;
     try {
-      if (btnSubmit) {
-        btnSubmit.disabled = true;
-        btnSubmit.textContent = 'Enviando mensaje... ⏳';
+      await api.updateCrmConversationTag(conv.id, newTag);
+      conv.tag = newTag;
+      renderConversationList();
+      const badge = document.getElementById('activeChatTagBadge');
+      if (badge) {
+        badge.className = `crm-tag-badge ${newTag}`;
+        let tagLabel = '🆕 Nuevo';
+        if (newTag === 'INTERESADO') tagLabel = '⭐ Interesado';
+        if (newTag === 'PEDIDO_ACTIVO') tagLabel = '🥛 Pedido Activo';
+        if (newTag === 'CLIENTE_FRECUENTE') tagLabel = '👑 Cliente Fiel';
+        if (newTag === 'SEGUIMIENTO') tagLabel = '🔔 Seguimiento';
+        badge.textContent = tagLabel;
       }
-
-      const res = await api.sendCrmMessage(phone, text, {
-        contactName: contactName || undefined,
-        customerId: customerId || undefined,
-      });
-
-      showToast('¡Chat iniciado con éxito! 💬✨');
-      closeModal();
-
-      // Recargar lista y abrir la conversación inmediatamente
-      await loadStatusAndConversations();
-      if (res?.conversation?.id) {
-        openConversation(res.conversation.id);
-      }
+      showToast('Etiqueta actualizada exitosamente ✨', 'success');
     } catch (err) {
-      showToast(err.message || 'Error al iniciar chat de WhatsApp', 'error');
-      if (btnSubmit) {
-        btnSubmit.disabled = false;
-        btnSubmit.textContent = '🚀 Enviar y Abrir Chat';
-      }
+      showToast('Error al actualizar etiqueta', 'danger');
     }
+  });
+
+  // Botón canjear premio desde chat
+  body.querySelector('#btnRedeemLoyaltyChat')?.addEventListener('click', () => {
+    if (customer) {
+      openOrderModal({
+        customer: { fullName: customer.fullName, phone: customer.phone, address: customer.address },
+        customerId: customer.id,
+        deliveryAddress: customer.address,
+        isNewForCustomer: true,
+        isLoyaltyReward: true,
+        discount: 12000,
+        notes: '[🎁 Recompensa 10+1: 1L Gratis Canjeado]',
+      });
+    }
+  });
+
+  // Botón programar compra frecuente desde chat
+  body.querySelector('#btnScheduleRecurringFromChat')?.addEventListener('click', () => {
+    if (customer) {
+      openRecurringModal(null, customer);
+    }
+  });
+
+  // Botón vincular cliente
+  body.querySelector('#btnLinkCustomerChat')?.addEventListener('click', () => {
+    openLinkCustomerModal(conv);
   });
 }
 
-/**
- * Dispara el modal de pedido con la información del cliente actual
- */
-function triggerFastOrder() {
-  if (!currentActiveConvId) return;
-  const conv = cachedConversations.find((c) => c.id === currentActiveConvId);
-  if (!conv) return;
+// ==========================================
+// 🎁 SUBMÓDULO 2: FIDELIZACIÓN (10+1 GRATIS)
+// ==========================================
 
-  const cust = conv.customer;
-  if (cust) {
-    openOrderModal({
-      customer: {
-        fullName: cust.fullName,
-        phone: cust.phone,
-        address: cust.address,
-      },
-      customerId: cust.id,
-      deliveryAddress: cust.address,
-      isNewForCustomer: true,
-    });
-  } else {
-    // Cliente aún no registrado formalmente, pasar datos pre-llenados desde WhatsApp
-    openOrderModal({
-      customer: {
-        fullName: conv.contactName || '',
-        phone: conv.phoneNumber || '',
-        address: '',
-      },
-      deliveryAddress: '',
-      isNewForCustomer: true,
-    });
-  }
-}
-
-/**
- * Modal para vincular conversación con un cliente existente usando buscador reactivo
- */
-async function openLinkCustomerModal() {
-  if (!currentActiveConvId) return;
-  const conv = cachedConversations.find((c) => c.id === currentActiveConvId);
-  if (!conv) return;
-
-  const modalContainer = document.getElementById('modalContainer');
-  if (!modalContainer) return;
-
-  let customers = [];
-  try {
-    customers = await api.getCustomers();
-  } catch (err) {
-    console.error('Error fetching customers:', err);
-  }
-
-  modalContainer.innerHTML = `
-    <div class="modal-overlay active" id="linkCustomerModalOverlay">
-      <div class="modal-card" style="max-width: 460px;">
-        <div class="modal-header">
-          <h3 class="modal-title">🔗 Vincular Chat a Cliente</h3>
-          <button class="modal-close" id="btnCloseLinkCustModal">✕</button>
-        </div>
-        <div class="modal-body" style="padding: 18px 20px;">
-          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
-            Vincula esta conversación de WhatsApp (${escapeHtml(conv.contactName || conv.phoneNumber || 'Chat')}) con la ficha de cliente en YogurArte para sincronizar sus pedidos y saldos.
+async function renderLoyaltySubmodule(container) {
+  container.innerHTML = `
+    <div style="background: #FFFFFF; border-radius: var(--radius-lg); border: 1px solid var(--border-color); padding: 18px; box-shadow: var(--shadow-sm);">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <h3 style="font-weight: 800; color: var(--primary); margin: 0; font-size: 1.15rem;">
+            🎁 Programa de Fidelización "10 + 1 Yogur Gratis"
+          </h3>
+          <p style="font-size: 0.84rem; color: var(--text-muted); margin: 4px 0 0 0;">
+            Recompensa automática: por cada 10 botellas compradas, el cliente gana 1 botella de 1L totalmente gratis.
           </p>
-
-          <div class="form-group" style="position: relative;">
-            <label class="form-label" style="font-weight: 700;">Buscar Cliente por Nombre o Teléfono *</label>
-            <div class="input-with-icon" style="width: 100%;">
-              <span class="input-icon">🔍</span>
-              <input 
-                type="text" 
-                id="inputLinkCustSearch" 
-                class="form-input" 
-                placeholder="Escribe el nombre del cliente..." 
-                autocomplete="off"
-                style="font-weight: 700;"
-              />
-            </div>
-
-            <!-- Sugerencias -->
-            <div id="linkCustSuggestionsDropdown" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #FFFFFF; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); max-height: 200px; overflow-y: auto; box-shadow: var(--shadow-lg); z-index: 60; display: none;">
-            </div>
-
-            <!-- Seleccionado -->
-            <div id="linkSelectedCustCard" style="display: none; margin-top: 10px; background: var(--primary-light); border: 1.5px solid var(--primary); padding: 10px 14px; border-radius: var(--radius-md); justify-content: space-between; align-items: center;">
-              <div>
-                <strong id="linkSelectedCustName" style="color: var(--primary); font-size: 0.95rem; display: block;">Cliente</strong>
-                <span id="linkSelectedCustPhone" style="font-size: 0.78rem; color: var(--text-muted);">📱 300 000 0000</span>
-              </div>
-              <button type="button" id="btnRemoveLinkSelectedCust" class="btn btn-sm btn-outline" style="padding: 4px 8px; font-size: 0.75rem; border-color: var(--danger); color: var(--danger); font-weight: 700;">
-                Cambiar ✕
-              </button>
-            </div>
-          </div>
         </div>
-        <div class="modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px;">
-          <button class="btn btn-outline" id="btnCancelLinkCust">Cancelar</button>
-          <button class="btn btn-primary" id="btnConfirmLinkCust" style="font-weight: 800;">💾 Guardar Vínculo</button>
+        <div class="search-box input-with-icon" style="min-width: 240px;">
+          <span class="input-icon">🔍</span>
+          <input type="text" id="loyaltySearchInput" class="form-input" placeholder="Buscar cliente..." style="height: 38px;" />
+        </div>
+      </div>
+
+      <div id="loyaltyListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px;">
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
+          Cargando datos de fidelización... ⏳
         </div>
       </div>
     </div>
   `;
 
-  let selectedLinkCustId = conv.customerId || null;
-  const linkSearchInput = document.getElementById('inputLinkCustSearch');
-  const linkSuggestions = document.getElementById('linkCustSuggestionsDropdown');
-  const selectedCard = document.getElementById('linkSelectedCustCard');
-  const selectedName = document.getElementById('linkSelectedCustName');
-  const selectedPhone = document.getElementById('linkSelectedCustPhone');
-  const btnRemove = document.getElementById('btnRemoveLinkSelectedCust');
-
-  // Si ya tiene un cliente vinculado, mostrarlo seleccionado
-  if (conv.customer) {
-    selectLinkCust(conv.customer);
-  }
-
-  function renderLinkSuggestions(query) {
-    if (!linkSuggestions) return;
-    const q = (query || '').toLowerCase().trim();
-    const matches = customers.filter((c) => (c.fullName || '').toLowerCase().includes(q) || (c.phone || '').includes(q));
-
-    if (matches.length === 0) {
-      linkSuggestions.innerHTML = `<div style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">No se encontraron clientes</div>`;
-      linkSuggestions.style.display = 'block';
-      return;
-    }
-
-    linkSuggestions.innerHTML = matches
-      .slice(0, 6)
-      .map((c) => `
-        <div class="link-suggestion-item" data-id="${c.id}" style="padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; display: flex; align-items: center; gap: 8px;">
-          <strong style="color: var(--text-main); font-size: 0.88rem;">${escapeHtml(c.fullName)}</strong>
-          <span style="font-size: 0.78rem; color: var(--text-muted); margin-left: auto;">📱 ${c.phone || 'Sin tel'}</span>
-        </div>
-      `)
-      .join('');
-
-    linkSuggestions.style.display = 'block';
-
-    linkSuggestions.querySelectorAll('.link-suggestion-item').forEach((item) => {
-      item.addEventListener('click', (e) => {
-        const id = Number(e.currentTarget.dataset.id);
-        const cust = customers.find((c) => c.id === id);
-        if (cust) selectLinkCust(cust);
-      });
-    });
-  }
-
-  function selectLinkCust(cust) {
-    selectedLinkCustId = cust.id;
-    if (linkSearchInput) linkSearchInput.style.display = 'none';
-    if (linkSuggestions) linkSuggestions.style.display = 'none';
-    if (selectedCard) selectedCard.style.display = 'flex';
-    if (selectedName) selectedName.textContent = cust.fullName;
-    if (selectedPhone) selectedPhone.textContent = `📱 ${cust.phone || 'Sin teléfono'}`;
-  }
-
-  btnRemove?.addEventListener('click', () => {
-    selectedLinkCustId = null;
-    if (linkSearchInput) {
-      linkSearchInput.style.display = 'block';
-      linkSearchInput.value = '';
-      linkSearchInput.focus();
-    }
-    if (selectedCard) selectedCard.style.display = 'none';
+  const searchInput = container.querySelector('#loyaltySearchInput');
+  searchInput?.addEventListener('input', (e) => {
+    loadLoyaltyList(container, e.target.value);
   });
 
-  linkSearchInput?.addEventListener('input', (e) => renderLinkSuggestions(e.target.value));
-  linkSearchInput?.addEventListener('focus', () => renderLinkSuggestions(linkSearchInput.value));
-
-  document.getElementById('btnCloseLinkCustModal')?.addEventListener('click', () => {
-    modalContainer.innerHTML = '';
-  });
-  document.getElementById('btnCancelLinkCust')?.addEventListener('click', () => {
-    modalContainer.innerHTML = '';
-  });
-
-  document.getElementById('btnConfirmLinkCust')?.addEventListener('click', async () => {
-    if (!selectedLinkCustId) {
-      showToast('Por favor selecciona un cliente de la lista', 'warning');
-      return;
-    }
-
-    try {
-      await api.linkCrmCustomer(currentActiveConvId, selectedLinkCustId);
-      showToast('Cliente vinculado exitosamente 🔗✨');
-      modalContainer.innerHTML = '';
-      
-      // Recargar conversaciones
-      await loadStatusAndConversations();
-      if (currentActiveConvId) {
-        openConversation(currentActiveConvId);
-      }
-    } catch (err) {
-      showToast(err.message || 'Error vinculando cliente', 'error');
-    }
-  });
+  await loadLoyaltyList(container);
 }
 
-/**
- * Modal para Escanear Código QR de WhatsApp
- */
-export async function openWhatsAppQRModal() {
+async function loadLoyaltyList(container, search = '') {
+  const listEl = container.querySelector('#loyaltyListContainer');
+  if (!listEl) return;
+
+  try {
+    const data = await api.getCrmLoyalty(search);
+
+    if (!data || data.length === 0) {
+      listEl.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
+          No se encontraron clientes registrados en el programa 📭
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = data
+      .map((c) => {
+        const hasReward = c.hasAvailableReward;
+        return `
+        <div class="crm-loyalty-card" style="${hasReward ? 'border-color: #86EFAC; background: #F0FDF4;' : ''}">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <strong style="font-size: 0.95rem; color: var(--text-main);">${escapeHtml(c.fullName)}</strong>
+              <div style="font-size: 0.78rem; color: var(--text-muted);">📞 ${escapeHtml(c.phone)}</div>
+            </div>
+            ${
+              hasReward
+                ? `<span style="background: #15803D; color: #FFFFFF; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 999px;">⭐ ¡${c.rewardsAvailable}L GRATIS!</span>`
+                : `<span style="background: #EDE9FE; color: #6D28D9; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 999px;">${c.currentCycleBottles}/10</span>`
+            }
+          </div>
+
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.76rem; font-weight: 700; color: var(--text-muted); margin-bottom: 4px;">
+              <span>Progreso de Ciclo</span>
+              <span>${c.currentCycleBottles} de 10 botellas</span>
+            </div>
+            <div class="crm-progress-track">
+              <div class="crm-progress-fill ${hasReward ? 'ready' : ''}" style="width: ${c.progressPercent}%;"></div>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: var(--text-muted); border-top: 1px dashed var(--border-color); padding-top: 8px;">
+            <span>Total Compradas: <strong>${c.totalBottles}</strong></span>
+            <span>Premios Canjeados: <strong>${c.redeemedCount}</strong></span>
+          </div>
+
+          <div style="display: flex; gap: 6px; margin-top: 4px;">
+            ${
+              hasReward
+                ? `
+              <button class="btn btn-sm btn-accent btn-redeem-card" data-id="${c.id}" data-name="${escapeHtml(c.fullName)}" data-phone="${escapeHtml(c.phone)}" data-address="${escapeHtml(c.address || 'Fonseca')}" style="flex: 1; font-weight: 800; font-size: 0.78rem;">
+                🎉 Canjear 1L Gratis
+              </button>
+            `
+                : `
+              <button class="btn btn-sm btn-outline btn-notify-loyalty-card" data-name="${escapeHtml(c.fullName)}" data-phone="${escapeHtml(c.phone)}" data-bottles="${c.currentCycleBottles}" style="flex: 1; font-size: 0.76rem; font-weight: 700; color: #7E22CE; border-color: #D8B4FE;">
+                💬 Avisar Progreso por WhatsApp
+              </button>
+            `
+            }
+          </div>
+        </div>
+      `;
+      })
+      .join('');
+
+    // Attach card actions
+    listEl.querySelectorAll('.btn-redeem-card').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const { id, name, phone, address } = e.currentTarget.dataset;
+        openOrderModal({
+          customer: { fullName: name, phone, address },
+          customerId: Number(id),
+          deliveryAddress: address,
+          isNewForCustomer: true,
+          isLoyaltyReward: true,
+          discount: 12000,
+          notes: '[🎁 Recompensa 10+1: 1L Gratis Canjeado]',
+        });
+      });
+    });
+
+    listEl.querySelectorAll('.btn-notify-loyalty-card').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const { name, phone, bottles } = e.currentTarget.dataset;
+        const faltan = 10 - Number(bottles);
+        const msg = `¡Hola *${name}*! 🥛✨ En *YogurArte* premiamos tu preferencia. Llevas *${bottles} de 10 botellas* acumuladas. ¡Solo te faltan *${faltan} botellas* para ganar tu próximo yogur de 1 Litro totalmente gratis! 🍓🎁 ¿Te gustaría encargar hoy?`;
+        await dispatchSmartWhatsApp({
+          phone,
+          text: msg,
+          successToast: '✅ Recordatorio de fidelización enviado',
+        });
+      });
+    });
+  } catch (err) {
+    console.error('Error fetching loyalty overview:', err);
+    listEl.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--danger);">
+        Error al cargar programa de fidelización ⚠️
+      </div>
+    `;
+  }
+}
+
+// ==========================================
+// 🔁 SUBMÓDULO 3: COMPRAS FRECUENTES
+// ==========================================
+
+async function renderRecurringSubmodule(container) {
+  container.innerHTML = `
+    <div style="background: #FFFFFF; border-radius: var(--radius-lg); border: 1px solid var(--border-color); padding: 18px; box-shadow: var(--shadow-sm);">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <h3 style="font-weight: 800; color: var(--primary); margin: 0; font-size: 1.15rem;">
+            🔁 Compras Frecuentes y Recordatorios Automáticos
+          </h3>
+          <p style="font-size: 0.84rem; color: var(--text-muted); margin: 4px 0 0 0;">
+            Programa entregas rutinarias (cada 7, 15 o 30 días) y avisa o crea el pedido de tus clientes con 1 solo clic.
+          </p>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <select id="recurringFilterSelect" class="orders-select-item" style="height: 38px; font-weight: 700;">
+            <option value="ALL">📋 Todas las Programaciones</option>
+            <option value="TODAY">🚨 Para Hoy / Vencidas</option>
+            <option value="UPCOMING">📅 Próximos 3 Días</option>
+          </select>
+          <button class="btn btn-primary" id="btnNewRecurringSchedule" style="font-weight: 800; height: 38px; white-space: nowrap;">
+            + Programar Compra Frecuente
+          </button>
+        </div>
+      </div>
+
+      <div id="recurringListContainer" class="crm-recurring-grid">
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
+          Cargando programaciones... ⏳
+        </div>
+      </div>
+    </div>
+  `;
+
+  const filterSelect = container.querySelector('#recurringFilterSelect');
+  filterSelect?.addEventListener('change', (e) => {
+    loadRecurringList(container, e.target.value);
+  });
+
+  container.querySelector('#btnNewRecurringSchedule')?.addEventListener('click', () => {
+    openRecurringModal();
+  });
+
+  await loadRecurringList(container);
+}
+
+async function loadRecurringList(container, filter = 'ALL') {
+  const listEl = container.querySelector('#recurringListContainer');
+  if (!listEl) return;
+
+  try {
+    const schedules = await api.getCrmRecurring(filter);
+
+    if (!schedules || schedules.length === 0) {
+      listEl.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
+          No hay compras frecuentes programadas en esta vista 📭
+        </div>
+      `;
+      return;
+    }
+
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    listEl.innerHTML = schedules
+      .map((s) => {
+        const nextDateStr = String(s.nextDate).slice(0, 10);
+        const isDue = nextDateStr <= todayStr;
+        const customer = s.customer;
+
+        return `
+        <div class="crm-recurring-card ${isDue ? 'is-due' : ''}">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+              <div>
+                <strong style="font-size: 0.95rem; color: var(--text-main);">${escapeHtml(customer?.fullName || 'Cliente')}</strong>
+                <div style="font-size: 0.78rem; color: var(--text-muted);">📞 ${escapeHtml(customer?.phone || '')}</div>
+              </div>
+              <span style="background: ${isDue ? '#DC2626' : '#EDE9FE'}; color: ${isDue ? '#FFFFFF' : '#6D28D9'}; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 999px;">
+                ${isDue ? '🚨 Toca Hoy' : `Cada ${s.frequencyDays} días`}
+              </span>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.03); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 0.82rem; margin-bottom: 8px;">
+              <div>🥛 <strong>${s.quantity}x Botella ${s.bottleSize} (${escapeHtml(s.preferredFlavor)})</strong></div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                Próxima entrega: <strong>${formatDate(s.nextDate)}</strong>
+              </div>
+              ${s.notes ? `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; font-style: italic;">📝 ${escapeHtml(s.notes)}</div>` : ''}
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button class="btn btn-sm btn-whatsapp btn-remind-recurring" data-id="${s.id}" data-name="${escapeHtml(customer?.fullName || '')}" data-phone="${escapeHtml(customer?.phone || '')}" data-flavor="${escapeHtml(s.preferredFlavor)}" data-size="${s.bottleSize}" data-qty="${s.quantity}" style="flex: 1; font-weight: 700; font-size: 0.76rem;">
+              💬 Recordar WhatsApp
+            </button>
+            <button class="btn btn-sm btn-primary btn-trigger-recurring" data-id="${s.id}" style="flex: 1; font-weight: 800; font-size: 0.76rem;">
+              🥛 Crear Pedido
+            </button>
+            <button class="btn btn-sm btn-outline btn-delete-recurring" data-id="${s.id}" title="Eliminar programación" style="color: var(--danger); padding: 4px 8px;">
+              🗑️
+            </button>
+          </div>
+        </div>
+      `;
+      })
+      .join('');
+
+    // Attach actions
+    listEl.querySelectorAll('.btn-remind-recurring').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const { name, phone, flavor, size, qty } = e.currentTarget.dataset;
+        const msg = `¡Hola *${name}*! 🥛🍓 Te saludamos de *YogurArte*. Hoy te corresponde tu entrega habitual de *${qty}x Botella ${size} de ${flavor}*. ¿Te lo preparamos para envío hoy? ✨🛵`;
+        await dispatchSmartWhatsApp({
+          phone,
+          text: msg,
+          successToast: '✅ Recordatorio de compra frecuente enviado',
+        });
+      });
+    });
+
+    listEl.querySelectorAll('.btn-trigger-recurring').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const id = Number(e.currentTarget.dataset.id);
+        try {
+          const res = await api.triggerCrmRecurringOrder(id);
+          showToast(`¡${res.message || 'Pedido creado exitosamente'}! 🥛✨`, 'success');
+          loadRecurringList(container, filter);
+        } catch (err) {
+          showToast(err.message || 'Error al crear pedido', 'danger');
+        }
+      });
+    });
+
+    listEl.querySelectorAll('.btn-delete-recurring').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const id = Number(e.currentTarget.dataset.id);
+        if (confirm('¿Deseas eliminar esta programación de compra frecuente?')) {
+          try {
+            await api.deleteCrmRecurring(id);
+            showToast('Programación eliminada exitosamente', 'success');
+            loadRecurringList(container, filter);
+          } catch (err) {
+            showToast('Error al eliminar', 'danger');
+          }
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Error loading recurring schedules:', err);
+    listEl.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--danger);">
+        Error al cargar compras frecuentes ⚠️
+      </div>
+    `;
+  }
+}
+
+// ==========================================
+// ⚡ SUBMÓDULO 4: PLANTILLAS Y RESPUESTAS
+// ==========================================
+
+async function renderQuickRepliesSubmodule(container) {
+  container.innerHTML = `
+    <div style="background: #FFFFFF; border-radius: var(--radius-lg); border: 1px solid var(--border-color); padding: 18px; box-shadow: var(--shadow-sm);">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <h3 style="font-weight: 800; color: var(--primary); margin: 0; font-size: 1.15rem;">
+            ⚡ Plantillas y Respuestas Rápidas
+          </h3>
+          <p style="font-size: 0.84rem; color: var(--text-muted); margin: 4px 0 0 0;">
+            Crea atajos para responder en 1 solo clic dudas frecuentes sobre precios, sabores, medios de pago y catálogos.
+          </p>
+        </div>
+        <button class="btn btn-primary" id="btnNewQuickReply" style="font-weight: 800; height: 38px;">
+          + Nueva Plantilla
+        </button>
+      </div>
+
+      <div id="quickRepliesListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px;">
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
+          Cargando plantillas... ⏳
+        </div>
+      </div>
+    </div>
+  `;
+
+  container.querySelector('#btnNewQuickReply')?.addEventListener('click', () => {
+    openQuickReplyModal();
+  });
+
+  await loadQuickRepliesList(container);
+}
+
+async function loadQuickRepliesList(container) {
+  const listEl = container.querySelector('#quickRepliesListContainer');
+  if (!listEl) return;
+
+  try {
+    const replies = await api.getCrmQuickReplies();
+    cachedQuickReplies = replies || [];
+
+    if (cachedQuickReplies.length === 0) {
+      listEl.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
+          No hay plantillas creadas aún. Haz clic en <strong>+ Nueva Plantilla</strong>.
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = cachedQuickReplies
+      .map(
+        (r) => `
+      <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; box-shadow: var(--shadow-sm);">
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <strong style="font-size: 0.92rem; color: var(--primary);">${escapeHtml(r.title)}</strong>
+            <span style="background: #EDE9FE; color: #6D28D9; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 4px;">
+              ${escapeHtml(r.shortcut)}
+            </span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-main); white-space: pre-line; background: var(--bg-app); padding: 8px 10px; border-radius: var(--radius-sm); line-height: 1.4; max-height: 140px; overflow-y: auto;">
+            ${escapeHtml(r.content)}
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 6px; border-top: 1px dashed var(--border-color); padding-top: 8px;">
+          <button class="btn btn-sm btn-outline btn-edit-reply" data-id="${r.id}" style="font-size: 0.75rem; padding: 3px 8px;">
+            ✏️ Editar
+          </button>
+          <button class="btn btn-sm btn-outline btn-delete-reply" data-id="${r.id}" style="font-size: 0.75rem; padding: 3px 8px; color: var(--danger);">
+            🗑️ Eliminar
+          </button>
+        </div>
+      </div>
+    `
+      )
+      .join('');
+
+    listEl.querySelectorAll('.btn-edit-reply').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = Number(e.currentTarget.dataset.id);
+        const reply = cachedQuickReplies.find((r) => r.id === id);
+        if (reply) openQuickReplyModal(reply);
+      });
+    });
+
+    listEl.querySelectorAll('.btn-delete-reply').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const id = Number(e.currentTarget.dataset.id);
+        if (confirm('¿Deseas eliminar esta plantilla rápida?')) {
+          try {
+            await api.deleteCrmQuickReply(id);
+            showToast('Plantilla eliminada exitosamente', 'success');
+            loadQuickRepliesList(container);
+          } catch (err) {
+            showToast('Error al eliminar plantilla', 'danger');
+          }
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Error loading quick replies:', err);
+    listEl.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--danger);">
+        Error al cargar plantillas ⚠️
+      </div>
+    `;
+  }
+}
+
+// ==========================================
+// 🛠️ MODALES (QR, NUEVO CHAT, RECURRENTES, PLANTILLAS, VINCULAR CLIENTE)
+// ==========================================
+
+function openQRModal() {
   const modalContainer = document.getElementById('modalContainer');
   if (!modalContainer) return;
 
   modalContainer.innerHTML = `
-    <div class="modal-overlay active" id="qrModalOverlay">
-      <div class="modal-card" style="max-width: 480px; text-align: center;">
-        <div class="modal-header" style="justify-content: center; position: relative;">
-          <h3 class="modal-title" style="font-size: 1.15rem;">📱 Conexión de WhatsApp YogurArte</h3>
-          <button class="modal-close" id="btnCloseQrModal" style="position: absolute; right: 16px;">✕</button>
+    <div class="modal-backdrop">
+      <div class="modal-card" style="max-width: 420px; text-align: center;">
+        <div class="modal-header">
+          <h3 class="modal-title" style="font-size: 1.1rem; font-weight: 800;">📱 Conexión de WhatsApp</h3>
+          <button class="modal-close" id="btnCloseQrModal">✕</button>
         </div>
-        <div class="modal-body" style="padding: 20px;" id="qrModalBody">
-          <!-- Contenido reactivo -->
+        <div class="modal-body" id="crmQrModalBody">
+          <div style="padding: 20px;">Cargando estado... ⏳</div>
         </div>
       </div>
     </div>
   `;
+  modalContainer.style.display = 'flex';
 
-  document.getElementById('btnCloseQrModal')?.addEventListener('click', () => {
-    if (qrModalInterval) clearInterval(qrModalInterval);
-    modalContainer.innerHTML = '';
-  });
-
-  document.getElementById('qrModalOverlay')?.addEventListener('click', (e) => {
-    if (e.target.id === 'qrModalOverlay') {
-      if (qrModalInterval) clearInterval(qrModalInterval);
-      modalContainer.innerHTML = '';
-    }
-  });
-
-  // Mostrar estado actual inmediatamente
   updateQRModalContent();
 
-  // Consultar estado de inmediato por si el QR ya está listo
-  try {
-    const statusData = await api.getWhatsAppStatus();
-    wpStatus = statusData;
-    updateStatusUI();
-    updateQRModalContent();
-  } catch (err) {
-    console.warn('Error consultando estado en openWhatsAppQRModal:', err);
-  }
-
-  // Polling auxiliar cada 2s
   if (qrModalInterval) clearInterval(qrModalInterval);
   qrModalInterval = setInterval(async () => {
     try {
-      const statusData = await api.getWhatsAppStatus();
-      wpStatus = statusData;
+      wpStatus = await api.getWhatsAppStatus();
       updateStatusUI();
       updateQRModalContent();
-    } catch (err) {
-      console.warn('Polling status error:', err);
-    }
-  }, 2000);
+    } catch (e) {}
+  }, 4000);
+
+  modalContainer.querySelector('#btnCloseQrModal')?.addEventListener('click', () => {
+    modalContainer.style.display = 'none';
+    if (qrModalInterval) clearInterval(qrModalInterval);
+  });
 }
 
-/**
- * Actualiza el contenido visual del modal QR según el estado
- */
 function updateQRModalContent() {
-  const body = document.getElementById('qrModalBody');
+  const body = document.getElementById('crmQrModalBody');
   if (!body) return;
 
   if (wpStatus.status === 'CONNECTED') {
     body.innerHTML = `
-      <div style="font-size: 3rem; color: #16A34A; margin-bottom: 8px;">✅</div>
-      <h4 style="font-size: 1.1rem; font-weight: 800; color: var(--text-main); margin-bottom: 4px;">
-        ¡WhatsApp Conectado y Listo!
-      </h4>
-      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
-        El número <strong>+${wpStatus.phoneNumber || 'YogurArte'}</strong> está vinculado y funcionando.
-      </p>
-
-      <div style="background: var(--bg-subtle); padding: 12px; border-radius: var(--radius-md); font-size: 0.8rem; color: var(--text-main); margin-bottom: 20px; text-align: left; line-height: 1.45;">
-        ✨ <strong>Multi-Agente Activo:</strong> Todo el equipo puede responder mensajes y gestionar pedidos desde este aplicativo sin necesidad de tener la app de WhatsApp abierta.
-      </div>
-
-      <button class="btn btn-danger" id="btnLogoutWpBtn" style="font-weight: 700; width: 100%; padding: 10px;">
-        🚪 Desvincular este Número de WhatsApp
-      </button>
-    `;
-
-    document.getElementById('btnLogoutWpBtn')?.addEventListener('click', async () => {
-      if (confirm('¿Seguro que deseas desvincular este número de WhatsApp? Tendrás que volver a escanear el QR para recibir mensajes.')) {
-        try {
-          await api.logoutWhatsApp();
-          showToast('WhatsApp desvinculado correctamente');
-          wpStatus = { status: 'DISCONNECTED', qr: null, phoneNumber: null };
-          updateStatusUI();
-          updateQRModalContent();
-        } catch (err) {
-          showToast(err.message || 'Error al desvincular WhatsApp', 'error');
-        }
-      }
-    });
-    return;
-  }
-
-  if (wpStatus.qr) {
-    body.innerHTML = `
-      <div style="display: flex; justify-content: center; margin-bottom: 16px;">
-        <div style="background: #FFFFFF; padding: 12px; border-radius: var(--radius-md); box-shadow: var(--shadow-md); border: 2px solid var(--border-color);">
-          <img src="${wpStatus.qr}" alt="Código QR de WhatsApp" style="width: 240px; height: 240px; display: block;" />
-        </div>
-      </div>
-
-      <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--text-main); margin-bottom: 8px;">
-        Pasos para Vincular en tu Celular:
-      </h4>
-
-      <ol style="text-align: left; font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; padding-left: 20px; margin-bottom: 16px;">
-        <li>Abre <strong>WhatsApp</strong> en tu teléfono.</li>
-        <li>Toca en <strong>Ajustes / Configuración</strong> > <strong>Dispositivos vinculados</strong>.</li>
-        <li>Toca en <strong>Vincular un dispositivo</strong> y apunta tu cámara a este código QR.</li>
-      </ol>
-
-      <div style="display: flex; justify-content: center; gap: 10px; align-items: center; margin-top: 12px;">
-        <button class="btn btn-sm btn-outline" id="btnRefreshQrAction" style="font-size: 0.78rem; font-weight: 700; padding: 6px 12px;">
-          🔄 Regenerar Código QR
+      <div style="padding: 20px; text-align: center;">
+        <div style="font-size: 3.5rem; margin-bottom: 10px;">🟢</div>
+        <h4 style="font-weight: 800; color: #15803D; margin-bottom: 6px;">¡WhatsApp Conectado!</h4>
+        <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 16px;">
+          Línea oficial activa: <strong>${wpStatus.phoneNumber || wpStatus.user?.id || 'YogurArte'}</strong>
+        </p>
+        <button class="btn btn-outline" id="btnModalWpLogout" style="color: var(--danger); border-color: var(--danger); font-weight: 700;">
+          Desconectar Sesión
         </button>
       </div>
     `;
-
-    document.getElementById('btnRefreshQrAction')?.addEventListener('click', async (e) => {
-      e.currentTarget.disabled = true;
-      e.currentTarget.textContent = 'Generando... ⏳';
-      try {
-        const res = await api.refreshCrmQR();
-        wpStatus = res;
+    body.querySelector('#btnModalWpLogout')?.addEventListener('click', async () => {
+      if (confirm('¿Deseas cerrar la sesión de WhatsApp de YogurArte?')) {
+        await api.logoutWhatsApp();
+        wpStatus.status = 'DISCONNECTED';
         updateStatusUI();
         updateQRModalContent();
-        showToast('Nuevo código QR generado 📷✨');
-      } catch (err) {
-        showToast(err.message || 'Error al regenerar QR', 'error');
       }
     });
+  } else if (wpStatus.qr) {
+    body.innerHTML = `
+      <div style="padding: 10px; text-align: center;">
+        <p style="font-size: 0.84rem; color: var(--text-main); margin-bottom: 12px;">
+          Abre <strong>WhatsApp</strong> en tu teléfono > Menú / Ajustes > <strong>Dispositivos vinculados</strong> y escanea este código:
+        </p>
+        <div style="background: #FFFFFF; padding: 12px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #E2E8F0;">
+          <img src="${wpStatus.qr}" alt="Código QR WhatsApp" style="width: 220px; height: 220px; display: block;" />
+        </div>
+        <div style="margin-top: 14px;">
+          <button class="btn btn-sm btn-outline" id="btnRefreshQr" style="font-size: 0.8rem; font-weight: 700;">
+            🔄 Regenerar QR
+          </button>
+        </div>
+      </div>
+    `;
+    body.querySelector('#btnRefreshQr')?.addEventListener('click', async () => {
+      showToast('Regenerando código QR...', 'info');
+      await api.refreshCrmQR();
+    });
+  } else {
+    body.innerHTML = `
+      <div style="padding: 24px; text-align: center;">
+        <div style="font-size: 2.8rem; margin-bottom: 10px;">⏳</div>
+        <h4 style="font-weight: 800; color: var(--text-main); margin-bottom: 6px;">Iniciando WhatsApp...</h4>
+        <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 16px;">
+          Generando código de vinculación seguro. Un momento por favor...
+        </p>
+        <button class="btn btn-sm btn-primary" id="btnForceStartWp">
+          🔄 Generar Código QR
+        </button>
+      </div>
+    `;
+    body.querySelector('#btnForceStartWp')?.addEventListener('click', async () => {
+      await api.refreshCrmQR();
+    });
+  }
+}
 
-    return;
+function updateStatusUI() {
+  const badge = document.getElementById('crmStatusBadge');
+  const label = document.getElementById('crmStatusLabel');
+  const headerBtn = document.getElementById('btnWpStatusChatHeader');
+  const headerDot = document.getElementById('crmHeaderStatusDot');
+  const headerText = document.getElementById('crmHeaderStatusText');
+
+  const status = wpStatus.status;
+
+  if (badge && label) {
+    badge.className = `crm-status-indicator ${status.toLowerCase()}`;
+    if (status === 'CONNECTED') label.textContent = 'En Línea';
+    else if (status === 'CONNECTING') label.textContent = 'Conectando...';
+    else label.textContent = 'Desconectado';
   }
 
-  // Estado conectando / esperando generación de QR
-  body.innerHTML = `
-    <div style="padding: 24px 0;">
-      <div style="font-size: 2.5rem; margin-bottom: 12px; animation: pulse 1.5s infinite;">⏳</div>
-      <h4 style="font-weight: 800; color: var(--text-main); margin-bottom: 6px;">Iniciando WhatsApp...</h4>
-      <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 16px;">
-        Estamos generando el código QR seguro de conexión. Si tarda unos segundos, haz clic en el botón de abajo.
-      </p>
-      <button class="btn btn-sm btn-primary" id="btnForceQrAction" style="font-weight: 700; padding: 8px 16px;">
-        🔄 Generar Código QR Ahora
-      </button>
+  if (headerBtn) {
+    headerBtn.className = `btn btn-sm btn-outline crm-header-status-btn ${status.toLowerCase()}`;
+  }
+
+  if (headerText) {
+    if (status === 'CONNECTED') headerText.textContent = 'En Línea';
+    else if (status === 'CONNECTING') headerText.textContent = 'Conectando';
+    else headerText.textContent = 'Desconectado';
+  }
+}
+
+function openNewChatModal() {
+  const modalContainer = document.getElementById('modalContainer');
+  if (!modalContainer) return;
+
+  modalContainer.innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal-card" style="max-width: 400px;">
+        <div class="modal-header">
+          <h3 class="modal-title" style="font-size: 1.05rem; font-weight: 800;">➕ Iniciar Nuevo Chat</h3>
+          <button class="modal-close" id="btnCloseNewChatModal">✕</button>
+        </div>
+        <form id="formNewChat" style="padding: 16px;">
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" style="font-size: 0.8rem;">Número de WhatsApp *</label>
+            <input type="tel" id="newChatPhone" class="form-input" placeholder="Ej: 3001234567" required style="font-weight: 700;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label class="form-label" style="font-size: 0.8rem;">Nombre del Contacto (Opcional)</label>
+            <input type="text" id="newChatName" class="form-input" placeholder="Ej: María Gómez" />
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" style="font-size: 0.8rem;">Primer Mensaje</label>
+            <textarea id="newChatInitialMsg" class="form-input" rows="2" placeholder="¡Hola! Te saludamos de YogurArte..."></textarea>
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button type="button" class="btn btn-outline" id="btnCancelNewChat">Cancelar</button>
+            <button type="submit" class="btn btn-primary" style="font-weight: 800;">🚀 Enviar y Abrir Chat</button>
+          </div>
+        </form>
+      </div>
     </div>
   `;
+  modalContainer.style.display = 'flex';
 
-  document.getElementById('btnForceQrAction')?.addEventListener('click', async (e) => {
-    e.currentTarget.disabled = true;
-    e.currentTarget.textContent = 'Generando... ⏳';
+  modalContainer.querySelector('#btnCloseNewChatModal')?.addEventListener('click', () => {
+    modalContainer.style.display = 'none';
+  });
+  modalContainer.querySelector('#btnCancelNewChat')?.addEventListener('click', () => {
+    modalContainer.style.display = 'none';
+  });
+
+  modalContainer.querySelector('#formNewChat')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const phone = document.getElementById('newChatPhone').value.trim();
+    const name = document.getElementById('newChatName').value.trim();
+    const initialMsg = document.getElementById('newChatInitialMsg').value.trim() || '¡Hola! Te saludamos de YogurArte 🥛✨';
+
     try {
-      const res = await api.refreshCrmQR();
-      wpStatus = res;
-      updateStatusUI();
-      updateQRModalContent();
+      const res = await api.sendCrmMessage(phone, initialMsg, { contactName: name });
+      modalContainer.style.display = 'none';
+      showToast('¡Chat iniciado exitosamente! ✨', 'success');
+      await loadConversations();
+      if (res && res.conversation) {
+        selectConversation(res.conversation.id);
+      }
     } catch (err) {
-      showToast(err.message || 'Error al iniciar QR', 'error');
-      e.currentTarget.disabled = false;
-      e.currentTarget.textContent = '🔄 Generar Código QR Ahora';
+      showToast(err.message || 'Error al iniciar chat', 'danger');
     }
   });
 }
 
-/**
- * Formateador de tiempo relativo ("hace 5m", "10:30 am", "Ayer")
- */
-function formatTimeAgo(dateStr) {
+function openRecurringModal(schedule = null, prefillCustomer = null) {
+  const modalContainer = document.getElementById('modalContainer');
+  if (!modalContainer) return;
+
+  const isEdit = !!schedule;
+
+  modalContainer.innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal-card" style="max-width: 440px;">
+        <div class="modal-header">
+          <h3 class="modal-title" style="font-size: 1.05rem; font-weight: 800;">
+            ${isEdit ? '✏️ Editar Compra Frecuente' : '🔁 Programar Compra Frecuente'}
+          </h3>
+          <button class="modal-close" id="btnCloseRecModal">✕</button>
+        </div>
+        <form id="formRecurringSchedule" style="padding: 16px;">
+          ${
+            !isEdit && !prefillCustomer
+              ? `
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label class="form-label" style="font-size: 0.8rem;">Seleccionar Cliente *</label>
+              <select id="recCustomerId" class="orders-select-item" required style="width: 100%; height: 38px;">
+                <option value="">Cargando clientes...</option>
+              </select>
+            </div>
+          `
+              : ''
+          }
+
+          <div class="form-row" style="margin-bottom: 12px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.8rem;">Frecuencia *</label>
+              <select id="recFrequencyDays" class="orders-select-item" style="width: 100%; height: 38px; font-weight: 700;">
+                <option value="7" ${schedule?.frequencyDays === 7 ? 'selected' : ''}>Cada 7 días (Semanal)</option>
+                <option value="15" ${schedule?.frequencyDays === 15 || !schedule ? 'selected' : ''}>Cada 15 días (Quincenal)</option>
+                <option value="30" ${schedule?.frequencyDays === 30 ? 'selected' : ''}>Cada 30 días (Mensual)</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.8rem;">Tamaño Envase *</label>
+              <select id="recBottleSize" class="orders-select-item" style="width: 100%; height: 38px; font-weight: 700;">
+                <option value="1L" ${schedule?.bottleSize === '1L' || !schedule ? 'selected' : ''}>1 Litro ($12.000)</option>
+                <option value="2L" ${schedule?.bottleSize === '2L' ? 'selected' : ''}>2 Litros ($22.000)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-bottom: 12px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.8rem;">Sabor Habitual *</label>
+              <input type="text" id="recFlavor" class="form-input" value="${schedule?.preferredFlavor || 'Fresa'}" required style="font-weight: 700;" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.8rem;">Cantidad *</label>
+              <input type="number" id="recQuantity" class="form-input" min="1" value="${schedule?.quantity || 1}" required style="font-weight: 700;" />
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" style="font-size: 0.8rem;">Próxima Fecha de Entrega *</label>
+            <input type="date" id="recNextDate" class="form-input" value="${schedule?.nextDate ? String(schedule.nextDate).slice(0, 10) : new Date().toISOString().slice(0, 10)}" required style="font-weight: 700;" />
+          </div>
+
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" style="font-size: 0.8rem;">Notas / Indicaciones</label>
+            <input type="text" id="recNotes" class="form-input" value="${schedule?.notes || ''}" placeholder="Ej: Entregar después de las 3 PM" />
+          </div>
+
+          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button type="button" class="btn btn-outline" id="btnCancelRec">Cancelar</button>
+            <button type="submit" class="btn btn-primary" style="font-weight: 800;">
+              💾 ${isEdit ? 'Guardar Cambios' : 'Crear Programación'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  modalContainer.style.display = 'flex';
+
+  modalContainer.querySelector('#btnCloseRecModal')?.addEventListener('click', () => {
+    modalContainer.style.display = 'none';
+  });
+  modalContainer.querySelector('#btnCancelRec')?.addEventListener('click', () => {
+    modalContainer.style.display = 'none';
+  });
+
+  // Si no está pre-llenado, cargar selector de clientes
+  const selectCust = modalContainer.querySelector('#recCustomerId');
+  if (selectCust) {
+    api.getCustomers({ lite: 'true' }).then((custs) => {
+      selectCust.innerHTML =
+        '<option value="">Selecciona un cliente...</option>' +
+        (custs || []).map((c) => `<option value="${c.id}">${escapeHtml(c.fullName)} (${escapeHtml(c.phone)})</option>`).join('');
+    });
+  }
+
+  modalContainer.querySelector('#formRecurringSchedule')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const customerId = prefillCustomer ? prefillCustomer.id : (schedule?.customerId || Number(document.getElementById('recCustomerId')?.value));
+    const frequencyDays = Number(document.getElementById('recFrequencyDays').value);
+    const bottleSize = document.getElementById('recBottleSize').value;
+    const preferredFlavor = document.getElementById('recFlavor').value.trim();
+    const quantity = Number(document.getElementById('recQuantity').value);
+    const nextDate = document.getElementById('recNextDate').value;
+    const notes = document.getElementById('recNotes').value.trim();
+
+    if (!customerId) {
+      showToast('Debes seleccionar un cliente', 'warning');
+      return;
+    }
+
+    try {
+      if (isEdit) {
+        await api.updateCrmRecurring(schedule.id, { frequencyDays, bottleSize, preferredFlavor, quantity, nextDate, notes });
+        showToast('Compra frecuente actualizada ✨', 'success');
+      } else {
+        await api.createCrmRecurring({ customerId, frequencyDays, bottleSize, preferredFlavor, quantity, nextDate, notes });
+        showToast('Compra frecuente programada exitosamente ✨', 'success');
+      }
+      modalContainer.style.display = 'none';
+      if (crmCurrentSubmodule === 'recurring') {
+        const subContainer = document.getElementById('crmSubmoduleContainer');
+        if (subContainer) renderRecurringSubmodule(subContainer);
+      }
+    } catch (err) {
+      showToast(err.message || 'Error al guardar programación', 'danger');
+    }
+  });
+}
+
+function openQuickReplyModal(reply = null) {
+  const modalContainer = document.getElementById('modalContainer');
+  if (!modalContainer) return;
+
+  const isEdit = !!reply;
+
+  modalContainer.innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal-card" style="max-width: 440px;">
+        <div class="modal-header">
+          <h3 class="modal-title" style="font-size: 1.05rem; font-weight: 800;">
+            ${isEdit ? '✏️ Editar Plantilla' : '⚡ Nueva Respuesta Rápida'}
+          </h3>
+          <button class="modal-close" id="btnCloseReplyModal">✕</button>
+        </div>
+        <form id="formQuickReply" style="padding: 16px;">
+          <div class="form-row" style="margin-bottom: 12px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.8rem;">Atajo (ej: /sabores) *</label>
+              <input type="text" id="replyShortcut" class="form-input" value="${reply?.shortcut || '/'}" required style="font-weight: 700;" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.8rem;">Categoría</label>
+              <select id="replyCategory" class="orders-select-item" style="width: 100%; height: 38px; font-weight: 700;">
+                <option value="VENTAS" ${reply?.category === 'VENTAS' ? 'selected' : ''}>Ventas</option>
+                <option value="PAGOS" ${reply?.category === 'PAGOS' ? 'selected' : ''}>Pagos / Nequi</option>
+                <option value="GENERAL" ${reply?.category === 'GENERAL' ? 'selected' : ''}>General / Saludos</option>
+                <option value="INFO" ${reply?.category === 'INFO' ? 'selected' : ''}>Información</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" style="font-size: 0.8rem;">Título / Nombre de la Plantilla *</label>
+            <input type="text" id="replyTitle" class="form-input" value="${reply?.title || ''}" placeholder="Ej: Catálogo de Precios" required style="font-weight: 700;" />
+          </div>
+
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" style="font-size: 0.8rem;">Contenido del Mensaje *</label>
+            <textarea id="replyContent" class="form-input" rows="5" placeholder="Escribe el texto que se enviará al cliente..." required style="line-height: 1.4;">${reply?.content || ''}</textarea>
+          </div>
+
+          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button type="button" class="btn btn-outline" id="btnCancelReply">Cancelar</button>
+            <button type="submit" class="btn btn-primary" style="font-weight: 800;">
+              💾 ${isEdit ? 'Guardar Cambios' : 'Crear Plantilla'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  modalContainer.style.display = 'flex';
+
+  modalContainer.querySelector('#btnCloseReplyModal')?.addEventListener('click', () => {
+    modalContainer.style.display = 'none';
+  });
+  modalContainer.querySelector('#btnCancelReply')?.addEventListener('click', () => {
+    modalContainer.style.display = 'none';
+  });
+
+  modalContainer.querySelector('#formQuickReply')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const shortcut = document.getElementById('replyShortcut').value.trim();
+    const category = document.getElementById('replyCategory').value;
+    const title = document.getElementById('replyTitle').value.trim();
+    const content = document.getElementById('replyContent').value.trim();
+
+    try {
+      if (isEdit) {
+        await api.updateCrmQuickReply(reply.id, { shortcut, category, title, content });
+        showToast('Plantilla actualizada ✨', 'success');
+      } else {
+        await api.createCrmQuickReply({ shortcut, category, title, content });
+        showToast('Plantilla creada exitosamente ✨', 'success');
+      }
+      modalContainer.style.display = 'none';
+      if (crmCurrentSubmodule === 'quickReplies') {
+        const subContainer = document.getElementById('crmSubmoduleContainer');
+        if (subContainer) renderQuickRepliesSubmodule(subContainer);
+      }
+    } catch (err) {
+      showToast(err.message || 'Error al guardar plantilla', 'danger');
+    }
+  });
+}
+
+function openLinkCustomerModal(conv) {
+  const modalContainer = document.getElementById('modalContainer');
+  if (!modalContainer) return;
+
+  modalContainer.innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal-card" style="max-width: 420px;">
+        <div class="modal-header">
+          <h3 class="modal-title" style="font-size: 1.05rem; font-weight: 800;">🤝 Vincular con Cliente</h3>
+          <button class="modal-close" id="btnCloseLinkModal">✕</button>
+        </div>
+        <div style="padding: 16px;">
+          <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 12px;">
+            Selecciona el cliente al que pertenece el número <strong>${conv.phoneNumber || conv.remoteJid}</strong>:
+          </p>
+          <select id="linkCustomerIdSelect" class="orders-select-item" style="width: 100%; height: 38px; margin-bottom: 16px;">
+            <option value="">Cargando clientes...</option>
+          </select>
+          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button type="button" class="btn btn-outline" id="btnCancelLink">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnConfirmLink" style="font-weight: 800;">
+              Confirmar Vinculación
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  modalContainer.style.display = 'flex';
+
+  modalContainer.querySelector('#btnCloseLinkModal')?.addEventListener('click', () => {
+    modalContainer.style.display = 'none';
+  });
+  modalContainer.querySelector('#btnCancelLink')?.addEventListener('click', () => {
+    modalContainer.style.display = 'none';
+  });
+
+  const select = modalContainer.querySelector('#linkCustomerIdSelect');
+  api.getCustomers({ lite: 'true' }).then((custs) => {
+    select.innerHTML =
+      '<option value="">Selecciona un cliente...</option>' +
+      (custs || []).map((c) => `<option value="${c.id}">${escapeHtml(c.fullName)} (${escapeHtml(c.phone)})</option>`).join('');
+  });
+
+  modalContainer.querySelector('#btnConfirmLink')?.addEventListener('click', async () => {
+    const customerId = select.value ? Number(select.value) : null;
+    if (!customerId) {
+      showToast('Selecciona un cliente de la lista', 'warning');
+      return;
+    }
+
+    try {
+      const updated = await api.linkCrmCustomer(conv.id, customerId);
+      conv.customerId = updated.customerId;
+      conv.customer = updated.customer;
+      conv.contactName = updated.contactName;
+      modalContainer.style.display = 'none';
+      showToast('¡Cliente vinculado exitosamente! ✨', 'success');
+      renderConversationList();
+      renderCustomerDetails(conv);
+    } catch (err) {
+      showToast(err.message || 'Error al vincular cliente', 'danger');
+    }
+  });
+}
+
+// ==========================================
+// 🛠️ UTILIDADES DE TEXTO Y FECHA
+// ==========================================
+
+function formatConvTime(dateStr) {
   if (!dateStr) return '';
-  const date = new Date(dateStr);
+  const d = new Date(dateStr);
   const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
+  const isToday = d.toDateString() === now.toDateString();
 
-  if (diffMins < 1) return 'Ahora';
-  if (diffMins < 60) return `${diffMins}m`;
-
-  const isToday = date.toDateString() === now.toDateString();
   if (isToday) {
-    return date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
   }
+  return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' });
+}
 
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) {
-    return 'Ayer';
-  }
+function formatMsgTime(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
 
-  return date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+function formatWhatsAppText(text) {
+  if (!text) return '';
+  let formatted = escapeHtml(text);
+  formatted = formatted.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
+  formatted = formatted.replace(/_([^_]+)_/g, '<em>$1</em>');
+  formatted = formatted.replace(/~([^~]+)~/g, '<del>$1</del>');
+  formatted = formatted.replace(/\n/g, '<br>');
+  return formatted;
 }

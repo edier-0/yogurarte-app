@@ -582,9 +582,12 @@ export const api = {
     });
   },
 
-  async getCrmConversations(search = '') {
-    const query = search ? `?search=${encodeURIComponent(search)}` : '';
-    return apiFetch(`/crm/conversations${query}`);
+  async getCrmConversations(search = '', tag = 'ALL') {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (tag && tag !== 'ALL') params.set('tag', tag);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return apiFetch(`/crm/conversations${qs}`);
   },
 
   async getCrmMessages(conversationId, options = {}) {
@@ -598,7 +601,7 @@ export const api = {
   async sendCrmMessage(to, text, extra = {}) {
     return apiFetch('/crm/send', {
       method: 'POST',
-      body: JSON.stringify({ to, text, ...extra }),
+      body: JSON.stringify({ recipient: to, to, text, ...extra }),
     });
   },
 
@@ -608,11 +611,92 @@ export const api = {
     });
   },
 
+  async updateCrmConversationTag(conversationId, tag) {
+    return apiFetch(`/crm/conversations/${conversationId}/tag`, {
+      method: 'PUT',
+      body: JSON.stringify({ tag }),
+    });
+  },
+
   async linkCrmCustomer(conversationId, customerId) {
     return apiFetch(`/crm/conversations/${conversationId}/link-customer`, {
       method: 'POST',
       body: JSON.stringify({ customerId }),
     });
   },
+
+  // 🎁 Programa de Fidelización (10+1)
+  async getCrmLoyalty(search = '') {
+    const query = search ? `?search=${encodeURIComponent(search)}` : '';
+    return apiFetch(`/crm/loyalty${query}`);
+  },
+
+  async redeemCrmLoyalty(customerId) {
+    return apiFetch('/crm/loyalty/redeem', {
+      method: 'POST',
+      body: JSON.stringify({ customerId }),
+    });
+  },
+
+  // 🔁 Compras Frecuentes y Recordatorios
+  async getCrmRecurring(filter = 'ALL', search = '') {
+    const params = new URLSearchParams();
+    if (filter && filter !== 'ALL') params.set('filter', filter);
+    if (search) params.set('search', search);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return apiFetch(`/crm/recurring${qs}`);
+  },
+
+  async createCrmRecurring(data) {
+    return apiFetch('/crm/recurring', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateCrmRecurring(id, data) {
+    return apiFetch(`/crm/recurring/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteCrmRecurring(id) {
+    return apiFetch(`/crm/recurring/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async triggerCrmRecurringOrder(id) {
+    return apiFetch(`/crm/recurring/${id}/create-order`, {
+      method: 'POST',
+    });
+  },
+
+  // ⚡ Respuestas Rápidas (Plantillas)
+  async getCrmQuickReplies() {
+    return apiFetch('/crm/quick-replies');
+  },
+
+  async createCrmQuickReply(data) {
+    return apiFetch('/crm/quick-replies', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateCrmQuickReply(id, data) {
+    return apiFetch(`/crm/quick-replies/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteCrmQuickReply(id) {
+    return apiFetch(`/crm/quick-replies/${id}`, {
+      method: 'DELETE',
+    });
+  },
 };
+
 

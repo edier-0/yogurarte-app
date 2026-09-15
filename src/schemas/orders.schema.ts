@@ -27,6 +27,7 @@ export const createOrderSchema = z.object({
   deliveryDriverName: z.string().optional().nullable(),
   deliveryFee: z.coerce.number().min(0).optional().default(0),
   discount: z.coerce.number().min(0).optional().default(0),
+  isLoyaltyReward: z.boolean().optional(),
   deliveryStatus: z.enum(['PENDING', 'PREPARING', 'READY_FOR_DISPATCH', 'IN_ROUTE', 'DELIVERED', 'CANCELLED']).optional().default('PENDING'),
   orderDate: z.string().optional(),
   deliveryDate: z.string().optional().nullable().or(z.literal('')),

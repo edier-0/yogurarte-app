@@ -30,3 +30,19 @@ export const apiLimiter = rateLimit({
     code: 'RATE_LIMIT_EXCEEDED',
   },
 });
+
+/**
+ * Limitador específico para envío de mensajes de WhatsApp
+ * Protege la línea telefónica contra bloqueos de Meta por ráfagas excesivas
+ */
+export const crmSendLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // Ventana de 1 minuto
+  max: 40, // Máximo 40 mensajes por minuto por usuario/IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Has enviado demasiados mensajes en poco tiempo. Por seguridad de la línea de WhatsApp, espera un momento.',
+    code: 'CRM_RATE_LIMIT_EXCEEDED',
+  },
+});
+

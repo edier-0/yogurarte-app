@@ -1583,3 +1583,192 @@
   }
 }
 
+/* ==================== CRM SUITE: SUBMÓDULOS, FIDELIZACIÓN, RECURRENTES ==================== */
+.crm-submodule-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.crm-submodule-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: 1.5px solid var(--border-color);
+  background: #FFFFFF;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+
+.crm-submodule-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #FAF5FF;
+}
+
+.crm-submodule-btn.active {
+  background: var(--primary);
+  color: #FFFFFF;
+  border-color: var(--primary);
+  box-shadow: 0 2px 6px rgba(109, 40, 217, 0.25);
+}
+
+.crm-tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.crm-tag-badge.NUEVO {
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border: 1px solid #BFDBFE;
+}
+
+.crm-tag-badge.INTERESADO {
+  background: #FEF3C7;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+}
+
+.crm-tag-badge.PEDIDO_ACTIVO {
+  background: #F0FDF4;
+  color: #15803D;
+  border: 1px solid #86EFAC;
+}
+
+.crm-tag-badge.CLIENTE_FRECUENTE {
+  background: #FAF5FF;
+  color: #7E22CE;
+  border: 1px solid #D8B4FE;
+}
+
+.crm-tag-badge.SEGUIMIENTO {
+  background: #FFF1F2;
+  color: #BE123C;
+  border: 1px solid #FECDD3;
+}
+
+/* Barra de Atajos Rápidos en el Chat */
+.crm-quick-replies-bar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #F8FAFC;
+  border-top: 1px solid var(--border-color);
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.crm-quick-replies-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.crm-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: var(--radius-full);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.crm-quick-chip:hover {
+  background: #EDE9FE;
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+/* Tarjetas de Fidelización y Progreso */
+.crm-loyalty-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.crm-loyalty-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.crm-progress-track {
+  width: 100%;
+  height: 10px;
+  background: #E2E8F0;
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.crm-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8B5CF6, #EC4899);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.crm-progress-fill.ready {
+  background: linear-gradient(90deg, #10B981, #059669);
+}
+
+/* Tarjetas de Compras Frecuentes */
+.crm-recurring-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.crm-recurring-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  position: relative;
+}
+
+.crm-recurring-card.is-due {
+  border-color: #F87171;
+  background: #FEF2F2;
+}
+
+.crm-recurring-card.is-upcoming {
+  border-color: #FDE68A;
+  background: #FFFBEB;
+}
+
+
