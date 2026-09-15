@@ -579,8 +579,15 @@ function renderConversationList() {
       const name = c.contactName || (c.customer ? c.customer.fullName : c.phoneNumber || 'Desconocido');
       const initial = name.charAt(0).toUpperCase();
       const timeStr = c.lastMessageTimestamp ? formatConvTime(c.lastMessageTimestamp) : '';
-      const previewText = c.lastMessageText || 'Sin mensajes';
-      const unreadBadge = c.unreadCount > 0 ? `<span class="crm-unread-badge">${c.unreadCount}</span>` : '';
+      
+      // Limpiar texto de vista previa para evitar saltos de línea y longitud desmedida
+      const rawPreview = c.lastMessageText || 'Sin mensajes';
+      const cleanPreview = rawPreview
+        .replace(/[\r\n\t]+/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+      const unreadBadge = c.unreadCount > 0 ? `<span class="crm-conv-unread">${c.unreadCount}</span>` : '';
       const tag = c.tag || 'NUEVO';
 
       let tagLabel = '🆕 Nuevo';
@@ -594,12 +601,12 @@ function renderConversationList() {
         <div class="crm-conv-avatar">${initial}</div>
         <div class="crm-conv-info">
           <div class="crm-conv-header-row">
-            <span class="crm-conv-name">${escapeHtml(name)}</span>
+            <span class="crm-conv-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
             <span class="crm-conv-time">${timeStr}</span>
           </div>
           <div class="crm-conv-preview-row">
-            <span class="crm-conv-preview">${c.lastMessageFromMe ? '✓ ' : ''}${escapeHtml(previewText)}</span>
-            <div style="display: flex; align-items: center; gap: 4px;">
+            <span class="crm-conv-preview" title="${escapeHtml(cleanPreview)}">${c.lastMessageFromMe ? '<span class="crm-preview-check">✓</span> ' : ''}${escapeHtml(cleanPreview)}</span>
+            <div class="crm-conv-badges">
               <span class="crm-tag-badge ${tag}" style="font-size: 0.65rem; padding: 1px 5px;">${tagLabel}</span>
               ${unreadBadge}
             </div>
@@ -755,10 +762,13 @@ function renderSingleMessageHtml(m) {
   }
 
   return `
-    <div class="crm-msg-bubble ${isMe ? 'outgoing' : 'incoming'}">
-      ${contentHtml}
-      <div class="crm-msg-time">
-        ${timeStr} ${isMe ? '<span style="color: #6D28D9; font-size: 0.75rem;">✓✓</span>' : ''}
+    <div class="crm-msg-row ${isMe ? 'outgoing' : 'incoming'}">
+      <div class="crm-msg-bubble ${isMe ? 'outgoing' : 'incoming'}">
+        ${contentHtml}
+        <div class="crm-msg-meta">
+          <span class="crm-msg-time">${timeStr}</span>
+          ${isMe ? '<span class="crm-msg-check" title="Entregado">✓✓</span>' : ''}
+        </div>
       </div>
     </div>
   `;
