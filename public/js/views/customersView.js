@@ -1,5 +1,6 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, showToast, buildWhatsAppUrl } from '../store.js';
+import { formatCOP, formatDate, showToast, buildWhatsAppUrl, escapeHtml } from '../store.js';
+import { dispatchSmartWhatsApp } from '../utils/whatsappDispatch.js';
 import { openOrderModal } from './ordersView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
@@ -167,11 +168,10 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// Función generadora del link de WhatsApp con recordatorio contextual
-function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0, inProcessPendingAmount = 0, isPaidInProcess = false, mode = 'DEFAULT') {
-  if (!phone) return '#';
+// Función generadora del mensaje de WhatsApp con recordatorio contextual
+function generateCustomerWhatsAppMessage(phone, fullName, deliveredPendingDebt = 0, inProcessPendingAmount = 0, isPaidInProcess = false, mode = 'DEFAULT') {
+  if (!phone) return { phone: '', message: '', fallbackUrl: '#' };
   const rawPhone = phone.trim();
-  const isUsername = rawPhone.startsWith('@') || /[a-zA-Z]/.test(rawPhone);
 
   const nequiNum = cachedSettings.nequiNumber || '3024581882';
   const bankName = cachedSettings.bankName || 'Nequi / Bancolombia';
@@ -180,7 +180,7 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
   const instagramLine = `\n\n📸 *Síguenos en Instagram:*\n${instagramUrl}`;
 
   let msg = '';
-  if (deliveredPendingDebt > 0) {
+  if (deliveredPendingDebt > 0 || mode === 'DEBT') {
     // Pedido ya entregado y no pagado (deuda real)
     msg = `🥛 *YogurArte | Recordatorio de Pago*\n\n` +
           `Hola *${fullName}*, esperamos que estés disfrutando tu yogur artesanal 100% natural. 🥛🍓\n\n` +
@@ -210,7 +210,7 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
           `💰 *Estado:* Totalmente Pagado (✅ Paz y Salvo)\n` +
           `Tu yogur 100% natural está en preparación y te avisaremos apenas vaya en camino. ¡Muchas gracias por tu compra y confianza! 🙌🥛✨` +
           instagramLine;
-  } else if (inProcessPendingAmount > 0) {
+  } else if (inProcessPendingAmount > 0 || mode === 'INFO') {
     // Pedido en proceso / encargado (aún no se entrega)
     msg = `🥛 *YogurArte | Info de tu Encargo*\n\n` +
           `Hola *${fullName}*, tu encargo de yogur artesanal está en proceso. 🥣🍓\n\n` +
@@ -225,7 +225,15 @@ function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0,
           instagramLine;
   }
 
-  return buildWhatsAppUrl(rawPhone, msg);
+  return {
+    phone: rawPhone,
+    message: msg,
+    fallbackUrl: buildWhatsAppUrl(rawPhone, msg),
+  };
+}
+
+function generateCustomerWhatsAppLink(phone, fullName, deliveredPendingDebt = 0, inProcessPendingAmount = 0, isPaidInProcess = false, mode = 'DEFAULT') {
+  return generateCustomerWhatsAppMessage(phone, fullName, deliveredPendingDebt, inProcessPendingAmount, isPaidInProcess, mode).fallbackUrl;
 }
 
 async function loadCustomersList(container) {
@@ -422,56 +430,86 @@ async function loadCustomersList(container) {
                   ${
                     isPaidInProcess
                       ? `
-                      <a 
-                        href="${waLink}" 
-                        target="_blank" 
-                        class="btn btn-whatsapp btn-sm" 
+                      <button 
+                        type="button"
+                        class="btn btn-whatsapp btn-sm btn-customer-wa-action" 
+                        data-id="${c.id}"
+                        data-phone="${escapeHtml(rawPhone)}"
+                        data-name="${escapeHtml(c.fullName)}"
+                        data-delivered-debt="${deliveredDebt}"
+                        data-in-process-amount="${inProcessAmount}"
+                        data-is-paid-in-process="true"
+                        data-mode="DEFAULT"
                         style="padding: 4px 8px; font-weight: 700; font-size: 0.78rem; white-space: nowrap;"
                         title="Notificar recepción del pago y agradecer al estilo YogurArte"
                       >
                         ${WA_ICON_SVG} Agradecer Pago
-                      </a>
-                      <a 
-                        href="${generateCustomerWhatsAppLink(rawPhone, c.fullName, deliveredDebt, inProcessAmount, isPaidInProcess, 'INFO')}" 
-                        target="_blank" 
-                        class="btn btn-outline btn-sm" 
+                      </button>
+                      <button 
+                        type="button"
+                        class="btn btn-outline btn-sm btn-customer-wa-action" 
+                        data-id="${c.id}"
+                        data-phone="${escapeHtml(rawPhone)}"
+                        data-name="${escapeHtml(c.fullName)}"
+                        data-delivered-debt="${deliveredDebt}"
+                        data-in-process-amount="${inProcessAmount}"
+                        data-is-paid-in-process="true"
+                        data-mode="INFO"
                         style="padding: 3px 6px; font-weight: 700; font-size: 0.74rem; white-space: nowrap; color: var(--primary); border-color: var(--primary);"
                         title="Enviar información y estado actual del pedido"
                       >
                         ${WA_ICON_SVG} Info Pedido
-                      </a>
+                      </button>
                     `
                       : isPaidDelivered
                       ? `
-                      <a 
-                        href="${generateCustomerWhatsAppLink(rawPhone, c.fullName, 0, 0, false, 'THANK_DELIVERED')}" 
-                        target="_blank" 
-                        class="btn btn-whatsapp btn-sm" 
+                      <button 
+                        type="button"
+                        class="btn btn-whatsapp btn-sm btn-customer-wa-action" 
+                        data-id="${c.id}"
+                        data-phone="${escapeHtml(rawPhone)}"
+                        data-name="${escapeHtml(c.fullName)}"
+                        data-delivered-debt="0"
+                        data-in-process-amount="0"
+                        data-is-paid-in-process="false"
+                        data-mode="THANK_DELIVERED"
                         style="padding: 4px 8px; font-weight: 700; font-size: 0.78rem; white-space: nowrap;"
                         title="Enviar agradecimiento por pago de pedido entregado"
                       >
                         ${WA_ICON_SVG} Agradecer Pago
-                      </a>
-                      <a 
-                        href="${waLink}" 
-                        target="_blank" 
-                        class="btn btn-outline btn-sm" 
+                      </button>
+                      <button 
+                        type="button"
+                        class="btn btn-outline btn-sm btn-customer-wa-action" 
+                        data-id="${c.id}"
+                        data-phone="${escapeHtml(rawPhone)}"
+                        data-name="${escapeHtml(c.fullName)}"
+                        data-delivered-debt="0"
+                        data-in-process-amount="0"
+                        data-is-paid-in-process="false"
+                        data-mode="DEFAULT"
                         style="padding: 3px 6px; font-weight: 700; font-size: 0.74rem; white-space: nowrap;"
                         title="Contactar por WhatsApp"
                       >
                         ${WA_ICON_SVG} Saludar / Pedido
-                      </a>
+                      </button>
                     `
                       : `
-                      <a 
-                        href="${waLink}" 
-                        target="_blank" 
-                        class="btn ${waBtnClass} btn-sm" 
+                      <button 
+                        type="button"
+                        class="btn ${waBtnClass} btn-sm btn-customer-wa-action" 
+                        data-id="${c.id}"
+                        data-phone="${escapeHtml(rawPhone)}"
+                        data-name="${escapeHtml(c.fullName)}"
+                        data-delivered-debt="${deliveredDebt}"
+                        data-in-process-amount="${inProcessAmount}"
+                        data-is-paid-in-process="${isPaidInProcess}"
+                        data-mode="${hasDeliveredDebt ? 'DEBT' : hasInProcessOrder ? 'INFO' : 'DEFAULT'}"
                         style="padding: 5px 10px; font-weight: 700; font-size: 0.8rem; white-space: nowrap;"
                         title="${hasDeliveredDebt ? `Enviar recordatorio de cobro de ${formatCOP(deliveredDebt)} por WhatsApp` : 'Contactar por WhatsApp'}"
                       >
                         ${waBtnText}
-                      </a>
+                      </button>
                     `
                   }
 
@@ -551,6 +589,31 @@ async function loadCustomersList(container) {
     );
 
     // Asignar eventos
+    // WhatsApp Direct Action (Enrutador Inteligente por Rol: CRM Baileys oficial o WhatsApp Móvil)
+    gridContainer.querySelectorAll('.btn-customer-wa-action').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const { id, phone, name, deliveredDebt, inProcessAmount, isPaidInProcess, mode } = btn.dataset;
+        const msgData = generateCustomerWhatsAppMessage(
+          phone,
+          name,
+          Number(deliveredDebt || 0),
+          Number(inProcessAmount || 0),
+          isPaidInProcess === 'true',
+          mode || 'DEFAULT'
+        );
+        await dispatchSmartWhatsApp({
+          phone: msgData.phone,
+          text: msgData.message,
+          contactName: name,
+          customerId: id ? Number(id) : undefined,
+          fallbackUrl: msgData.fallbackUrl,
+          successToast: '✅ Notificación enviada por WhatsApp oficial de YogurArte',
+        });
+      });
+    });
+
     gridContainer.querySelectorAll('.btn-create-order-for-cust').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const id = Number(e.currentTarget.dataset.id);
@@ -1047,15 +1110,14 @@ async function openCustomerPaymentModal(customerOrId) {
                 Se ha registrado el pago de <strong>${formatCOP(amount)}</strong> para <strong>${escapeHtml(custData.fullName)}</strong>.
               </p>
               <div style="display: flex; flex-direction: column; gap: 10px;">
-                <a 
-                  href="${waThankLink}" 
-                  target="_blank" 
+                <button 
+                  type="button" 
                   class="btn btn-whatsapp" 
                   style="padding: 10px 16px; font-weight: 800; font-size: 0.95rem; justify-content: center;"
                   id="btnSendWaThank"
                 >
                   ${WA_ICON_SVG} Enviar Agradecimiento por WhatsApp
-                </a>
+                </button>
                 <button type="button" class="btn btn-outline" id="btnFinishPaySuccess">
                   Cerrar
                 </button>
@@ -1069,7 +1131,23 @@ async function openCustomerPaymentModal(customerOrId) {
           renderCustomers(document.getElementById('contentContainer'));
         });
 
-        document.getElementById('btnSendWaThank')?.addEventListener('click', () => {
+        document.getElementById('btnSendWaThank')?.addEventListener('click', async () => {
+          const msgData = generateCustomerWhatsAppMessage(
+            custData.phone,
+            custData.fullName,
+            0,
+            0,
+            !isDeliveredPayment,
+            isDeliveredPayment ? 'THANK_DELIVERED' : 'DEFAULT'
+          );
+          await dispatchSmartWhatsApp({
+            phone: msgData.phone,
+            text: msgData.message,
+            contactName: custData.fullName,
+            customerId: custData.id,
+            fallbackUrl: msgData.fallbackUrl,
+            successToast: '✅ Agradecimiento enviado por WhatsApp oficial',
+          });
           setTimeout(() => {
             modalOverlay.innerHTML = '';
             renderCustomers(document.getElementById('contentContainer'));

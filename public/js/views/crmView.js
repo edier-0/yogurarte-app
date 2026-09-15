@@ -1375,11 +1375,11 @@ async function loadQuickRepliesList(container) {
           </div>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 6px; border-top: 1px dashed var(--border-color); padding-top: 8px;">
-          <button class="btn btn-sm btn-outline btn-edit-reply" data-id="${r.id}" style="font-size: 0.75rem; padding: 3px 8px;">
+        <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px dashed var(--border-color); padding-top: 10px; margin-top: auto;">
+          <button type="button" class="btn btn-sm btn-outline btn-edit-reply" data-id="${r.id}" style="font-size: 0.82rem; padding: 6px 12px; font-weight: 700; min-height: 36px; display: inline-flex; align-items: center; gap: 4px;">
             ✏️ Editar
           </button>
-          <button class="btn btn-sm btn-outline btn-delete-reply" data-id="${r.id}" style="font-size: 0.75rem; padding: 3px 8px; color: var(--danger);">
+          <button type="button" class="btn btn-sm btn-outline btn-delete-reply" data-id="${r.id}" style="font-size: 0.82rem; padding: 6px 12px; color: var(--danger); font-weight: 700; min-height: 36px; display: inline-flex; align-items: center; gap: 4px;">
             🗑️ Eliminar
           </button>
         </div>
@@ -1390,6 +1390,8 @@ async function loadQuickRepliesList(container) {
 
     listEl.querySelectorAll('.btn-edit-reply').forEach((btn) => {
       btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const id = Number(e.currentTarget.dataset.id);
         const reply = cachedQuickReplies.find((r) => r.id === id);
         if (reply) openQuickReplyModal(reply);
@@ -1398,6 +1400,8 @@ async function loadQuickRepliesList(container) {
 
     listEl.querySelectorAll('.btn-delete-reply').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const id = Number(e.currentTarget.dataset.id);
         if (confirm('¿Deseas eliminar esta plantilla rápida?')) {
           try {
@@ -1428,12 +1432,18 @@ function openQRModal() {
   const modalContainer = document.getElementById('modalContainer');
   if (!modalContainer) return;
 
+  const closeQRModal = () => {
+    modalContainer.innerHTML = '';
+    modalContainer.style.display = '';
+    if (qrModalInterval) clearInterval(qrModalInterval);
+  };
+
   modalContainer.innerHTML = `
-    <div class="modal-backdrop">
+    <div class="modal-overlay active modal-backdrop" id="crmQrModalOverlay">
       <div class="modal-card" style="max-width: 420px; text-align: center;">
         <div class="modal-header">
           <h3 class="modal-title" style="font-size: 1.1rem; font-weight: 800;">📱 Conexión de WhatsApp</h3>
-          <button class="modal-close" id="btnCloseQrModal">✕</button>
+          <button type="button" class="modal-close-btn" id="btnCloseQrModal">✕</button>
         </div>
         <div class="modal-body" id="crmQrModalBody">
           <div style="padding: 20px;">Cargando estado... ⏳</div>
@@ -1441,7 +1451,6 @@ function openQRModal() {
       </div>
     </div>
   `;
-  modalContainer.style.display = 'flex';
 
   updateQRModalContent();
 
@@ -1454,9 +1463,9 @@ function openQRModal() {
     } catch (e) {}
   }, 4000);
 
-  modalContainer.querySelector('#btnCloseQrModal')?.addEventListener('click', () => {
-    modalContainer.style.display = 'none';
-    if (qrModalInterval) clearInterval(qrModalInterval);
+  modalContainer.querySelector('#btnCloseQrModal')?.addEventListener('click', closeQRModal);
+  modalContainer.querySelector('#crmQrModalOverlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'crmQrModalOverlay') closeQRModal();
   });
 }
 
@@ -1555,12 +1564,17 @@ function openNewChatModal() {
   const modalContainer = document.getElementById('modalContainer');
   if (!modalContainer) return;
 
+  const closeNewChatModal = () => {
+    modalContainer.innerHTML = '';
+    modalContainer.style.display = '';
+  };
+
   modalContainer.innerHTML = `
-    <div class="modal-backdrop">
+    <div class="modal-overlay active modal-backdrop" id="crmNewChatModalOverlay">
       <div class="modal-card" style="max-width: 400px;">
         <div class="modal-header">
           <h3 class="modal-title" style="font-size: 1.05rem; font-weight: 800;">➕ Iniciar Nuevo Chat</h3>
-          <button class="modal-close" id="btnCloseNewChatModal">✕</button>
+          <button type="button" class="modal-close-btn" id="btnCloseNewChatModal">✕</button>
         </div>
         <form id="formNewChat" style="padding: 16px;">
           <div class="form-group" style="margin-bottom: 12px;">
@@ -1583,13 +1597,11 @@ function openNewChatModal() {
       </div>
     </div>
   `;
-  modalContainer.style.display = 'flex';
 
-  modalContainer.querySelector('#btnCloseNewChatModal')?.addEventListener('click', () => {
-    modalContainer.style.display = 'none';
-  });
-  modalContainer.querySelector('#btnCancelNewChat')?.addEventListener('click', () => {
-    modalContainer.style.display = 'none';
+  modalContainer.querySelector('#btnCloseNewChatModal')?.addEventListener('click', closeNewChatModal);
+  modalContainer.querySelector('#btnCancelNewChat')?.addEventListener('click', closeNewChatModal);
+  modalContainer.querySelector('#crmNewChatModalOverlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'crmNewChatModalOverlay') closeNewChatModal();
   });
 
   modalContainer.querySelector('#formNewChat')?.addEventListener('submit', async (e) => {
@@ -1600,7 +1612,7 @@ function openNewChatModal() {
 
     try {
       const res = await api.sendCrmMessage(phone, initialMsg, { contactName: name });
-      modalContainer.style.display = 'none';
+      closeNewChatModal();
       showToast('¡Chat iniciado exitosamente! ✨', 'success');
       await loadConversations();
       if (res && res.conversation) {
@@ -1618,14 +1630,19 @@ function openRecurringModal(schedule = null, prefillCustomer = null) {
 
   const isEdit = !!schedule;
 
+  const closeRecModal = () => {
+    modalContainer.innerHTML = '';
+    modalContainer.style.display = '';
+  };
+
   modalContainer.innerHTML = `
-    <div class="modal-backdrop">
+    <div class="modal-overlay active modal-backdrop" id="crmRecModalOverlay">
       <div class="modal-card" style="max-width: 440px;">
         <div class="modal-header">
           <h3 class="modal-title" style="font-size: 1.05rem; font-weight: 800;">
             ${isEdit ? '✏️ Editar Compra Frecuente' : '🔁 Programar Compra Frecuente'}
           </h3>
-          <button class="modal-close" id="btnCloseRecModal">✕</button>
+          <button type="button" class="modal-close-btn" id="btnCloseRecModal">✕</button>
         </div>
         <form id="formRecurringSchedule" style="padding: 16px;">
           ${
@@ -1690,13 +1707,11 @@ function openRecurringModal(schedule = null, prefillCustomer = null) {
       </div>
     </div>
   `;
-  modalContainer.style.display = 'flex';
 
-  modalContainer.querySelector('#btnCloseRecModal')?.addEventListener('click', () => {
-    modalContainer.style.display = 'none';
-  });
-  modalContainer.querySelector('#btnCancelRec')?.addEventListener('click', () => {
-    modalContainer.style.display = 'none';
+  modalContainer.querySelector('#btnCloseRecModal')?.addEventListener('click', closeRecModal);
+  modalContainer.querySelector('#btnCancelRec')?.addEventListener('click', closeRecModal);
+  modalContainer.querySelector('#crmRecModalOverlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'crmRecModalOverlay') closeRecModal();
   });
 
   // Si no está pre-llenado, cargar selector de clientes
@@ -1732,7 +1747,7 @@ function openRecurringModal(schedule = null, prefillCustomer = null) {
         await api.createCrmRecurring({ customerId, frequencyDays, bottleSize, preferredFlavor, quantity, nextDate, notes });
         showToast('Compra frecuente programada exitosamente ✨', 'success');
       }
-      modalContainer.style.display = 'none';
+      closeRecModal();
       if (crmCurrentSubmodule === 'recurring') {
         const subContainer = document.getElementById('crmSubmoduleContainer');
         if (subContainer) renderRecurringSubmodule(subContainer);
@@ -1749,20 +1764,25 @@ function openQuickReplyModal(reply = null) {
 
   const isEdit = !!reply;
 
+  const closeReplyModal = () => {
+    modalContainer.innerHTML = '';
+    modalContainer.style.display = '';
+  };
+
   modalContainer.innerHTML = `
-    <div class="modal-backdrop">
+    <div class="modal-overlay active modal-backdrop" id="crmReplyModalOverlay">
       <div class="modal-card" style="max-width: 440px;">
         <div class="modal-header">
           <h3 class="modal-title" style="font-size: 1.05rem; font-weight: 800;">
             ${isEdit ? '✏️ Editar Plantilla' : '⚡ Nueva Respuesta Rápida'}
           </h3>
-          <button class="modal-close" id="btnCloseReplyModal">✕</button>
+          <button type="button" class="modal-close-btn" id="btnCloseReplyModal">✕</button>
         </div>
         <form id="formQuickReply" style="padding: 16px;">
           <div class="form-row" style="margin-bottom: 12px;">
             <div class="form-group" style="margin-bottom: 0;">
               <label class="form-label" style="font-size: 0.8rem;">Atajo (ej: /sabores) *</label>
-              <input type="text" id="replyShortcut" class="form-input" value="${reply?.shortcut || '/'}" required style="font-weight: 700;" />
+              <input type="text" id="replyShortcut" class="form-input" value="${escapeHtml(reply?.shortcut || '/')}" required style="font-weight: 700;" />
             </div>
             <div class="form-group" style="margin-bottom: 0;">
               <label class="form-label" style="font-size: 0.8rem;">Categoría</label>
@@ -1777,12 +1797,12 @@ function openQuickReplyModal(reply = null) {
 
           <div class="form-group" style="margin-bottom: 12px;">
             <label class="form-label" style="font-size: 0.8rem;">Título / Nombre de la Plantilla *</label>
-            <input type="text" id="replyTitle" class="form-input" value="${reply?.title || ''}" placeholder="Ej: Catálogo de Precios" required style="font-weight: 700;" />
+            <input type="text" id="replyTitle" class="form-input" value="${escapeHtml(reply?.title || '')}" placeholder="Ej: Catálogo de Precios" required style="font-weight: 700;" />
           </div>
 
           <div class="form-group" style="margin-bottom: 16px;">
             <label class="form-label" style="font-size: 0.8rem;">Contenido del Mensaje *</label>
-            <textarea id="replyContent" class="form-input" rows="5" placeholder="Escribe el texto que se enviará al cliente..." required style="line-height: 1.4;">${reply?.content || ''}</textarea>
+            <textarea id="replyContent" class="form-input" rows="5" placeholder="Escribe el texto que se enviará al cliente..." required style="line-height: 1.4;">${escapeHtml(reply?.content || '')}</textarea>
           </div>
 
           <div style="display: flex; gap: 8px; justify-content: flex-end;">
@@ -1795,13 +1815,11 @@ function openQuickReplyModal(reply = null) {
       </div>
     </div>
   `;
-  modalContainer.style.display = 'flex';
 
-  modalContainer.querySelector('#btnCloseReplyModal')?.addEventListener('click', () => {
-    modalContainer.style.display = 'none';
-  });
-  modalContainer.querySelector('#btnCancelReply')?.addEventListener('click', () => {
-    modalContainer.style.display = 'none';
+  modalContainer.querySelector('#btnCloseReplyModal')?.addEventListener('click', closeReplyModal);
+  modalContainer.querySelector('#btnCancelReply')?.addEventListener('click', closeReplyModal);
+  modalContainer.querySelector('#crmReplyModalOverlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'crmReplyModalOverlay') closeReplyModal();
   });
 
   modalContainer.querySelector('#formQuickReply')?.addEventListener('submit', async (e) => {
@@ -1819,7 +1837,7 @@ function openQuickReplyModal(reply = null) {
         await api.createCrmQuickReply({ shortcut, category, title, content });
         showToast('Plantilla creada exitosamente ✨', 'success');
       }
-      modalContainer.style.display = 'none';
+      closeReplyModal();
       if (crmCurrentSubmodule === 'quickReplies') {
         const subContainer = document.getElementById('crmSubmoduleContainer');
         if (subContainer) renderQuickRepliesSubmodule(subContainer);
@@ -1834,12 +1852,17 @@ function openLinkCustomerModal(conv) {
   const modalContainer = document.getElementById('modalContainer');
   if (!modalContainer) return;
 
+  const closeLinkModal = () => {
+    modalContainer.innerHTML = '';
+    modalContainer.style.display = '';
+  };
+
   modalContainer.innerHTML = `
-    <div class="modal-backdrop">
+    <div class="modal-overlay active modal-backdrop" id="crmLinkModalOverlay">
       <div class="modal-card" style="max-width: 440px;">
         <div class="modal-header">
           <h3 class="modal-title" style="font-size: 1.05rem; font-weight: 800;">🤝 Vincular con Cliente</h3>
-          <button class="modal-close" id="btnCloseLinkModal">✕</button>
+          <button type="button" class="modal-close-btn" id="btnCloseLinkModal">✕</button>
         </div>
         <div style="padding: 18px;">
           <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 14px; line-height: 1.4;">
@@ -1885,14 +1908,12 @@ function openLinkCustomerModal(conv) {
       </div>
     </div>
   `;
-  modalContainer.style.display = 'flex';
-
-  const closeLinkModal = () => {
-    modalContainer.style.display = 'none';
-  };
 
   modalContainer.querySelector('#btnCloseLinkModal')?.addEventListener('click', closeLinkModal);
   modalContainer.querySelector('#btnCancelLink')?.addEventListener('click', closeLinkModal);
+  modalContainer.querySelector('#crmLinkModalOverlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'crmLinkModalOverlay') closeLinkModal();
+  });
 
   const searchInput = modalContainer.querySelector('#linkCustomerSearchInput');
   const suggestionsBox = modalContainer.querySelector('#linkCustomerSuggestions');
@@ -2012,7 +2033,7 @@ function openLinkCustomerModal(conv) {
       conv.customerId = updated.customerId;
       conv.customer = updated.customer;
       conv.contactName = updated.contactName;
-      modalContainer.style.display = 'none';
+      closeLinkModal();
       showToast('¡Cliente vinculado exitosamente! ✨', 'success');
       renderConversationList();
       renderCustomerDetails(conv);

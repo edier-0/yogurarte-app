@@ -214,7 +214,7 @@ export const getCustomerWhatsAppLink = async (req: Request, res: Response) => {
 
     const whatsappUrl = buildWhatsAppUrl(rawPhone, msg);
 
-    res.json({ whatsappUrl, message: msg, deliveredPendingDebt, inProcessPendingAmount });
+    res.json({ whatsappUrl, rawMessage: msg, message: msg, phone: rawPhone, deliveredPendingDebt, inProcessPendingAmount });
   } catch (error) {
     console.error('Error generating customer whatsapp link:', error);
     res.status(500).json({ error: 'Error al generar enlace de WhatsApp' });

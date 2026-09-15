@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { formatCOP, formatDate, formatDateTime, formatPaymentBadge, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { dispatchSmartWhatsApp } from '../utils/whatsappDispatch.js';
 import { openBankSettingsModal } from './customersView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
@@ -720,11 +721,16 @@ function attachStaffEvents(container, staffList, allPayments, usersList = []) {
       const id = e.currentTarget.dataset.id;
       try {
         const res = await api.getStaffPaymentWhatsAppLink(id);
-        if (res.whatsappUrl) {
-          window.open(res.whatsappUrl, '_blank');
+        if (res) {
+          await dispatchSmartWhatsApp({
+            phone: res.phone,
+            text: res.message,
+            fallbackUrl: res.whatsappUrl,
+            successToast: '✅ Comprobante enviado por WhatsApp oficial',
+          });
         }
       } catch (err) {
-        showToast(err.message || 'Error al generar enlace de WhatsApp', 'danger');
+        showToast(err.message || 'Error al generar comprobante de WhatsApp', 'danger');
       }
     });
   });
@@ -1162,9 +1168,16 @@ export function openStaffPaymentModal(staffList = [], preselectedStaffId = null,
         if (confirm(`¿Deseas enviar el comprobante de pago por WhatsApp a ${staffName}?`)) {
           try {
             const res = await api.getStaffPaymentWhatsAppLink(savedPaymentId);
-            if (res.whatsappUrl) window.open(res.whatsappUrl, '_blank');
+            if (res) {
+              await dispatchSmartWhatsApp({
+                phone: res.phone,
+                text: res.message,
+                fallbackUrl: res.whatsappUrl,
+                successToast: '✅ Comprobante enviado por WhatsApp oficial',
+              });
+            }
           } catch (e) {
-            console.error('Error opening whatsapp link:', e);
+            console.error('Error sending whatsapp voucher:', e);
           }
         }
       }, 300);
