@@ -137,8 +137,7 @@ class WhatsAppService {
 
       this.sock.ev.on('messages.upsert', async (m) => {
         try {
-          if (m.type !== 'notify') return;
-
+          // Procesar mensajes tanto 'notify' (entrantes) como 'append' (enviados desde el teléfono WhatsApp Business)
           for (const msg of m.messages) {
             await this.processIncomingMessage(msg);
           }
