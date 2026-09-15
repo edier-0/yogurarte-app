@@ -224,35 +224,93 @@ export const linkCustomer = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    // Si ya existía otra conversación para este cliente, fusionar los mensajes
-    const existingOtherConv = await prisma.chatConversation.findFirst({
+    const cleanCustPhone = customer.phone ? customer.phone.replace(/\D/g, '') : null;
+    const last10 = cleanCustPhone && cleanCustPhone.length >= 7 ? cleanCustPhone.slice(-10) : null;
+
+    // Buscar TODAS las demás conversaciones asociadas a este cliente (por customerId o por su teléfono)
+    const otherConvs = await prisma.chatConversation.findMany({
       where: {
-        customerId: targetCustId,
         id: { not: conversationId },
+        OR: [
+          { customerId: targetCustId },
+          ...(cleanCustPhone ? [{ phoneNumber: cleanCustPhone }] : []),
+          ...(last10 ? [{ phoneNumber: { contains: last10 } }] : []),
+          ...(last10 ? [{ remoteJid: { contains: last10 } }] : []),
+        ],
       },
+      include: { messages: true },
     });
 
-    if (existingOtherConv) {
+    const deletedIds: number[] = [];
+    for (const other of otherConvs) {
+      // Reasignar mensajes a la conversación principal activa
       await prisma.chatMessage.updateMany({
-        where: { conversationId: existingOtherConv.id },
+        where: { conversationId: other.id },
         data: { conversationId },
       });
+
+      // Eliminar conversación duplicada
       await prisma.chatConversation.delete({
-        where: { id: existingOtherConv.id },
+        where: { id: other.id },
       });
+      deletedIds.push(other.id);
     }
+
+    // Obtener el último mensaje cronológico para dejar la conversación con la previsualización y hora correctas
+    const lastMsg = await prisma.chatMessage.findFirst({
+      where: { conversationId },
+      orderBy: { timestamp: 'desc' },
+    });
 
     const conversation = await prisma.chatConversation.update({
       where: { id: conversationId },
       data: {
         customerId: targetCustId,
         contactName: customer.fullName,
-        phoneNumber: customer.phone ? customer.phone.replace(/\D/g, '') : undefined,
+        phoneNumber: cleanCustPhone || undefined,
+        lastMessageText: lastMsg ? lastMsg.text : undefined,
+        lastMessageTimestamp: lastMsg ? lastMsg.timestamp : undefined,
+        lastMessageFromMe: lastMsg ? lastMsg.fromMe : undefined,
       },
       include: {
-        customer: true,
+        customer: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            address: true,
+            loyaltyRedeemedCount: true,
+            orders: {
+              select: {
+                id: true,
+                orderNumber: true,
+                quantityBottles: true,
+                totalAmount: true,
+                paymentStatus: true,
+                deliveryStatus: true,
+                deliveryDate: true,
+                payments: {
+                  select: { amount: true },
+                },
+              },
+              orderBy: { createdAt: 'desc' },
+              take: 5,
+            },
+          },
+        },
       },
     });
+
+    // Notificar a todos los clientes vía Socket.IO
+    if (whatsappService.io) {
+      for (const delId of deletedIds) {
+        whatsappService.io.emit('whatsapp:conversation_deleted', { conversationId: delId });
+      }
+      whatsappService.io.emit('whatsapp:conversations_merged', {
+        targetId: conversationId,
+        mergedIds: deletedIds,
+      });
+    }
 
     res.json(conversation);
   } catch (error) {

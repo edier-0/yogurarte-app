@@ -139,6 +139,18 @@ function initSocket() {
     }
   });
 
+  socketInstance.on('whatsapp:conversation_deleted', ({ conversationId }) => {
+    cachedConversations = cachedConversations.filter((c) => c.id !== conversationId);
+    if (crmCurrentSubmodule === 'chats') renderConversationList();
+  });
+
+  socketInstance.on('whatsapp:conversations_merged', async ({ targetId }) => {
+    await loadConversations();
+    if (currentActiveConvId === targetId) {
+      selectConversation(targetId);
+    }
+  });
+
   return socketInstance;
 }
 
@@ -1910,19 +1922,19 @@ function openLinkCustomerModal(conv) {
 
   modalContainer.innerHTML = `
     <div class="modal-overlay active modal-backdrop" id="crmLinkModalOverlay">
-      <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-card" style="max-width: 520px; width: 95%; overflow: visible; box-shadow: var(--shadow-lg);">
         <div class="modal-header">
-          <h3 class="modal-title" style="font-size: 1.05rem; font-weight: 800;">🤝 Vincular con Cliente</h3>
+          <h3 class="modal-title" style="font-size: 1.1rem; font-weight: 800;">🤝 Vincular Chat con Cliente</h3>
           <button type="button" class="modal-close-btn" id="btnCloseLinkModal">✕</button>
         </div>
-        <div style="padding: 18px;">
-          <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 14px; line-height: 1.4;">
-            Busca y selecciona el cliente al que pertenece el número <strong>${escapeHtml(conv.phoneNumber || conv.remoteJid)}</strong>:
+        <div style="padding: 20px; overflow: visible;">
+          <p style="font-size: 0.86rem; color: var(--text-muted); margin-bottom: 14px; line-height: 1.45;">
+            Asocia el número <strong>${escapeHtml(conv.phoneNumber || conv.remoteJid)}</strong> a un cliente registrado. Si ya existía otro chat previo para este cliente, sus mensajes se unificarán automáticamente en esta conversación.
           </p>
 
           <!-- Input con Autocomplete y Sugerencias -->
-          <div class="form-group autocomplete-wrapper" style="margin-bottom: 14px;">
-            <label class="form-label" style="font-size: 0.8rem; font-weight: 700; margin-bottom: 5px;">
+          <div class="form-group autocomplete-wrapper" style="margin-bottom: 14px; position: relative;">
+            <label class="form-label" style="font-size: 0.82rem; font-weight: 700; margin-bottom: 6px;">
               Buscar Cliente por Nombre o Teléfono *
             </label>
             <div class="input-with-icon">
@@ -1931,27 +1943,31 @@ function openLinkCustomerModal(conv) {
                 type="text" 
                 id="linkCustomerSearchInput" 
                 class="form-input" 
-                placeholder="Escribe el nombre o teléfono del cliente..." 
+                placeholder="Escribe el nombre o teléfono (ej: Augusto, 300...)" 
                 autocomplete="off" 
-                style="height: 40px; font-size: 0.88rem;"
+                style="height: 42px; font-size: 0.95rem;"
               />
             </div>
             <input type="hidden" id="selectedLinkCustomerId" value="" />
-            <div id="linkCustomerSuggestions" class="autocomplete-dropdown"></div>
+            <div 
+              id="linkCustomerSuggestions" 
+              class="autocomplete-dropdown"
+              style="max-height: 280px; overflow-y: auto; z-index: 10000; border: 2px solid var(--primary); box-shadow: 0 14px 36px rgba(0, 0, 0, 0.22); border-radius: 10px; background: #FFFFFF;"
+            ></div>
           </div>
 
           <!-- Tarjeta de confirmación del cliente seleccionado -->
-          <div id="selectedCustomerCard" style="display: none; background: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 16px; align-items: center; justify-content: space-between;">
-            <div style="min-width: 0;">
-              <div id="selectedCustName" style="font-weight: 800; font-size: 0.88rem; color: #166534; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Cliente</div>
-              <div id="selectedCustDetails" style="font-size: 0.76rem; color: #15803D; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">📞 Teléfono • 📍 Dirección</div>
+          <div id="selectedCustomerCard" style="display: none; background: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="min-width: 0; flex: 1 1 auto;">
+              <div id="selectedCustName" style="font-weight: 800; font-size: 0.95rem; color: #166534; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Cliente</div>
+              <div id="selectedCustDetails" style="font-size: 0.8rem; color: #15803D; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;">📞 Teléfono • 📍 Dirección</div>
             </div>
-            <button type="button" id="btnClearSelectedCust" class="btn btn-sm" style="background: none; border: none; font-size: 1.1rem; color: #166534; cursor: pointer; padding: 2px 6px; font-weight: 800;" title="Cambiar cliente">✕</button>
+            <button type="button" id="btnClearSelectedCust" class="btn btn-sm" style="background: none; border: none; font-size: 1.2rem; color: #166534; cursor: pointer; padding: 4px 8px; font-weight: 800; flex: 0 0 auto;" title="Cambiar cliente">✕</button>
           </div>
 
           <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px;">
             <button type="button" class="btn btn-outline" id="btnCancelLink">Cancelar</button>
-            <button type="button" class="btn btn-primary" id="btnConfirmLink" style="font-weight: 800;">
+            <button type="submit" class="btn btn-primary" id="btnConfirmLink" style="font-weight: 800; padding: 10px 20px;">
               Confirmar Vinculación
             </button>
           </div>
@@ -1982,12 +1998,19 @@ function openLinkCustomerModal(conv) {
     console.error('Error fetching customers for link modal:', err);
   });
 
+  const normalizeStr = (str) =>
+    (str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
   const selectCustomer = (customer) => {
     if (!customer) return;
     hiddenIdInput.value = customer.id;
     searchInput.value = customer.fullName;
     cardNameEl.textContent = `👤 ${customer.fullName}`;
-    cardDetailsEl.textContent = `📞 ${customer.phone || 'Sin teléfono'} • 📍 ${customer.address || 'Fonseca'}`;
+    cardDetailsEl.textContent = `📞 ${customer.phone || 'Sin teléfono'} • 📍 ${customer.address || 'Fonseca'}${customer.neighborhood ? ` (${customer.neighborhood})` : ''}`;
     cardEl.style.display = 'flex';
     suggestionsBox.innerHTML = '';
     suggestionsBox.classList.remove('active');
@@ -2002,28 +2025,61 @@ function openLinkCustomerModal(conv) {
 
   btnClear?.addEventListener('click', clearSelection);
 
-  searchInput?.addEventListener('input', (e) => {
-    const query = e.target.value.trim().toLowerCase();
+  searchInput?.addEventListener('input', async (e) => {
+    const rawVal = e.target.value;
+    const query = normalizeStr(rawVal);
     hiddenIdInput.value = '';
     cardEl.style.display = 'none';
 
-    if (!query || query.length < 1 || allCustomers.length === 0) {
+    if (!query || query.length < 1) {
       suggestionsBox.innerHTML = '';
       suggestionsBox.classList.remove('active');
       return;
     }
 
-    const matches = allCustomers.filter((c) => {
-      const nameMatch = c.fullName && c.fullName.toLowerCase().includes(query);
-      const phoneMatch = c.phone && c.phone.replace(/\D/g, '').includes(query.replace(/\D/g, ''));
-      const addressMatch = c.address && c.address.toLowerCase().includes(query);
-      return nameMatch || phoneMatch || addressMatch;
+    const queryWords = query.split(/\s+/).filter(Boolean);
+    const queryDigits = rawVal.replace(/\D/g, '');
+
+    let matches = (allCustomers || []).filter((c) => {
+      const nameNorm = normalizeStr(c.fullName);
+      const phoneDigits = (c.phone || '').replace(/\D/g, '');
+      const addrNorm = normalizeStr(c.address);
+      const neighNorm = normalizeStr(c.neighborhood);
+
+      // Si buscó por números de teléfono
+      if (queryDigits.length >= 3 && phoneDigits.includes(queryDigits)) {
+        return true;
+      }
+
+      // Si todas las palabras buscadas están en el nombre, dirección o barrio
+      const allWordsMatch = queryWords.every(
+        (w) => nameNorm.includes(w) || addrNorm.includes(w) || neighNorm.includes(w)
+      );
+      if (allWordsMatch) return true;
+
+      // Coincidencia inversa (si escribió "Augusto Mejía" y el cliente está registrado como "Augusto")
+      if (query.includes(nameNorm) && nameNorm.length >= 3) return true;
+
+      return false;
     });
+
+    // Búsqueda remota si localmente no hubo resultados
+    if (matches.length === 0 && rawVal.trim().length >= 2) {
+      try {
+        const remote = await api.getCustomers({ search: rawVal.trim(), lite: 'true' });
+        if (remote && remote.length > 0) {
+          matches = remote;
+          remote.forEach((rc) => {
+            if (!allCustomers.some((c) => c.id === rc.id)) allCustomers.push(rc);
+          });
+        }
+      } catch (err) {}
+    }
 
     if (matches.length === 0) {
       suggestionsBox.innerHTML = `
-        <div style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 0.8rem;">
-          No se encontraron clientes con "${escapeHtml(e.target.value)}"
+        <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+          No se encontraron clientes con "<strong>${escapeHtml(rawVal)}</strong>".
         </div>
       `;
       suggestionsBox.classList.add('active');
@@ -2031,12 +2087,23 @@ function openLinkCustomerModal(conv) {
     }
 
     suggestionsBox.innerHTML = matches
-      .slice(0, 6)
+      .slice(0, 10)
       .map(
         (c) => `
-        <div class="autocomplete-item" data-id="${c.id}">
-          <span class="autocomplete-item-name" style="font-weight: 700; color: var(--text-main); font-size: 0.85rem;">👤 ${escapeHtml(c.fullName)}</span>
-          <span class="autocomplete-item-details" style="font-size: 0.74rem; color: var(--text-muted);">📞 ${escapeHtml(c.phone || 'Sin teléfono')} • 📍 ${escapeHtml(c.address || 'Fonseca')}</span>
+        <div class="autocomplete-item" data-id="${c.id}" style="padding: 12px 14px; cursor: pointer; border-bottom: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; transition: background 0.15s ease;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+            <span style="font-weight: 800; color: var(--primary); font-size: 0.95rem; line-height: 1.2;">
+              👤 ${escapeHtml(c.fullName)}
+            </span>
+            <span style="background: #F0FDF4; color: #166534; border: 1px solid #BBF7D0; font-size: 0.72rem; font-weight: 800; padding: 2px 7px; border-radius: 6px; white-space: nowrap;">
+              Cliente #${c.id}
+            </span>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; font-size: 0.8rem; color: var(--text-muted); line-height: 1.3;">
+            <span style="font-weight: 600; color: var(--text-main);">📞 ${escapeHtml(c.phone || 'Sin teléfono')}</span>
+            <span>•</span>
+            <span>📍 ${escapeHtml(c.address || 'Fonseca')}${c.neighborhood ? ` (${escapeHtml(c.neighborhood)})` : ''}</span>
+          </div>
         </div>
       `
       )
@@ -2047,7 +2114,7 @@ function openLinkCustomerModal(conv) {
     suggestionsBox.querySelectorAll('.autocomplete-item').forEach((item) => {
       item.addEventListener('click', () => {
         const id = Number(item.dataset.id);
-        const found = allCustomers.find((cust) => cust.id === id);
+        const found = allCustomers.find((cust) => cust.id === id) || matches.find((cust) => cust.id === id);
         if (found) selectCustomer(found);
       });
     });
@@ -2063,10 +2130,10 @@ function openLinkCustomerModal(conv) {
   modalContainer.querySelector('#btnConfirmLink')?.addEventListener('click', async () => {
     let customerId = hiddenIdInput.value ? Number(hiddenIdInput.value) : null;
 
-    // Si el usuario escribió un nombre exacto pero no hizo click en la sugerencia
     if (!customerId && searchInput.value.trim()) {
+      const qNorm = normalizeStr(searchInput.value);
       const exactMatch = allCustomers.find(
-        (c) => c.fullName.toLowerCase() === searchInput.value.trim().toLowerCase()
+        (c) => normalizeStr(c.fullName) === qNorm
       );
       if (exactMatch) {
         customerId = exactMatch.id;
@@ -2079,16 +2146,27 @@ function openLinkCustomerModal(conv) {
       return;
     }
 
+    const confirmBtn = modalContainer.querySelector('#btnConfirmLink');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Vinculando y unificando chats... ⏳';
+    }
+
     try {
       const updated = await api.linkCrmCustomer(conv.id, customerId);
-      conv.customerId = updated.customerId;
-      conv.customer = updated.customer;
-      conv.contactName = updated.contactName;
       closeLinkModal();
-      showToast('¡Cliente vinculado exitosamente! ✨', 'success');
-      renderConversationList();
-      renderCustomerDetails(conv);
+      showToast(`¡Cliente ${updated.contactName || ''} vinculado y chats unificados exitosamente! ✨`, 'success');
+
+      // 1. Recargar lista completa de conversaciones desde el servidor (los chats duplicados desaparecen)
+      await loadConversations();
+
+      // 2. Si este chat está activo, seleccionarlo para recargar sus mensajes fusionados
+      selectConversation(conv.id);
     } catch (err) {
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirmar Vinculación';
+      }
       showToast(err.message || 'Error al vincular cliente', 'danger');
     }
   });

@@ -19,7 +19,7 @@ export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED';
 
 class WhatsAppService {
   private sock: WASocket | null = null;
-  private io: SocketIOServer | null = null;
+  public io: SocketIOServer | null = null;
   private status: ConnectionStatus = 'DISCONNECTED';
   private qrCodeDataUrl: string | null = null;
   private isInitializing: boolean = false;
@@ -29,6 +29,12 @@ class WhatsAppService {
 
   public setSocketServer(io: SocketIOServer) {
     this.io = io;
+  }
+
+  public emitSocket(event: string, data: any) {
+    if (this.io) {
+      this.io.emit(event, data);
+    }
   }
 
   public getStatus() {
@@ -352,11 +358,65 @@ class WhatsAppService {
       include: { customer: true },
     });
 
-    // 2. Si no existe por remoteJid, intentar identificar al cliente
-    let matchingCustomer: any = null;
+    // 2. Si es un LID, intentar resolver el número de teléfono real usando el mapeo que Baileys guarda en WhatsAppAuthSession
+    let mappedPhoneNumber: string | null = null;
+    if (isLid) {
+      try {
+        const lidRecord = await prisma.whatsAppAuthSession.findUnique({
+          where: { id: `main:lid-mapping-${cleanNumber}_reverse` },
+        });
+        if (lidRecord && lidRecord.value) {
+          const parsed = JSON.parse(lidRecord.value);
+          if (parsed && typeof parsed === 'string') {
+            mappedPhoneNumber = parsed.replace(/\D/g, '');
+          }
+        }
+      } catch (e) {
+        console.warn('Aviso: error al buscar lid-mapping en BD:', e);
+      }
+    }
 
-    // A. Si el mensaje contiene plantilla con saludo (ej: "Hola *Arieth Robles*"), extraer nombre del cliente
-    if (text) {
+    // 3. Si el mensaje cita/responde a un mensaje previo (quoted message), encontrar la conversación original
+    if (!conversation) {
+      const contextInfo =
+        (msg.message as any)?.extendedTextMessage?.contextInfo ||
+        (msg.message as any)?.imageMessage?.contextInfo ||
+        (msg.message as any)?.audioMessage?.contextInfo ||
+        (msg.message as any)?.videoMessage?.contextInfo ||
+        (msg.message as any)?.documentMessage?.contextInfo ||
+        (msg.message as any)?.stickerMessage?.contextInfo;
+
+      if (contextInfo?.stanzaId) {
+        const quotedMsg = await prisma.chatMessage.findUnique({
+          where: { messageId: contextInfo.stanzaId },
+          include: { conversation: { include: { customer: true } } },
+        });
+        if (quotedMsg?.conversation) {
+          conversation = quotedMsg.conversation;
+        }
+      }
+    }
+
+    // 4. Si aún no hay conversación, intentar identificar al cliente
+    let matchingCustomer: any = conversation?.customer || null;
+
+    // A. Buscar por número telefónico mapeado o directo (si no es LID o si se resolvió el LID)
+    const phoneToSearch = mappedPhoneNumber || (!isLid ? cleanNumber : null);
+    if (!matchingCustomer && phoneToSearch && phoneToSearch.length >= 7) {
+      const last10 = phoneToSearch.slice(-10);
+      matchingCustomer = await prisma.customer.findFirst({
+        where: {
+          OR: [
+            { phone: phoneToSearch },
+            { phone: last10 },
+            { phone: { contains: last10 } },
+          ],
+        },
+      });
+    }
+
+    // B. Si no, buscar por saludo en plantilla (ej: "Hola *Augusto*")
+    if (!matchingCustomer && text) {
       const greetingMatch = text.match(/Hola\s+\*?([A-Za-zÁÉÍÓÚáéíóúñÑ\s]{3,35}?)\*?[,!\n]/i);
       if (greetingMatch && greetingMatch[1]) {
         const potentialName = greetingMatch[1].trim();
@@ -368,65 +428,79 @@ class WhatsAppService {
       }
     }
 
-    // B. Si es número estándar (no LID), buscar por teléfono
-    if (!matchingCustomer && !isLid && cleanNumber.length >= 7) {
-      const last10 = cleanNumber.slice(-10);
+    // C. Si es mensaje entrante y tenemos pushName, buscar por palabras del pushName (ej: "AugustoMejia" -> "Augusto")
+    if (!matchingCustomer && !fromMe && pushName && pushName.trim().length >= 3) {
+      const cleanPush = pushName.trim();
+      const pushWords = cleanPush
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .split(/[\s_-]+/)
+        .filter((w) => w.length >= 3);
+
       matchingCustomer = await prisma.customer.findFirst({
         where: {
           OR: [
-            { phone: cleanNumber },
-            { phone: last10 },
-            { phone: { contains: last10 } },
+            { fullName: { contains: cleanPush, mode: 'insensitive' } },
+            ...pushWords.map((w) => ({ fullName: { contains: w, mode: 'insensitive' as const } })),
           ],
         },
       });
+
+      if (!matchingCustomer) {
+        const allCusts = await prisma.customer.findMany({
+          where: { isActive: true },
+          select: { id: true, fullName: true, phone: true, address: true },
+        });
+        const cleanPushLower = cleanPush.toLowerCase();
+        matchingCustomer = allCusts.find((c) => {
+          const fn = c.fullName.toLowerCase().trim();
+          return fn.length >= 3 && cleanPushLower.includes(fn);
+        });
+      }
     }
 
-    // C. Si es mensaje entrante del cliente (fromMe === false), usar pushName para buscar cliente
-    if (!matchingCustomer && !fromMe && pushName && pushName.trim().length >= 3) {
-      matchingCustomer = await prisma.customer.findFirst({
+    // 5. Si encontramos un cliente o un teléfono pero no teníamos conversación por remoteJid exacto,
+    // buscar si ya existe una conversación previa para este cliente o teléfono
+    if (!conversation && (matchingCustomer || phoneToSearch)) {
+      const existingConv = await prisma.chatConversation.findFirst({
         where: {
-          fullName: { contains: pushName.trim(), mode: 'insensitive' },
-        },
-      });
-    }
-
-    // 3. Si encontramos un cliente, verificar si ya tiene una conversación existente
-    if (!conversation && matchingCustomer) {
-      const existingCustConv = await prisma.chatConversation.findFirst({
-        where: {
-          customerId: matchingCustomer.id,
+          OR: [
+            ...(matchingCustomer ? [{ customerId: matchingCustomer.id }] : []),
+            ...(phoneToSearch ? [{ phoneNumber: phoneToSearch }] : []),
+            ...(phoneToSearch ? [{ remoteJid: `${phoneToSearch}@s.whatsapp.net` }] : []),
+          ],
         },
         include: { customer: true },
       });
 
-      if (existingCustConv) {
-        conversation = existingCustConv;
+      if (existingConv) {
+        conversation = existingConv;
       }
     }
 
-    // 4. Determinar nombre de contacto y teléfono de forma segura
-    let contactName = matchingCustomer?.fullName;
+    // 6. Determinar nombre de contacto y teléfono de forma segura
+    let contactName = matchingCustomer?.fullName || conversation?.contactName;
     if (!contactName) {
       if (!fromMe && pushName) {
         contactName = pushName;
-      } else if (!isLid) {
-        contactName = cleanNumber;
+      } else if (phoneToSearch) {
+        contactName = phoneToSearch;
       } else {
         contactName = `Chat WhatsApp (${cleanNumber.slice(-4)})`;
       }
     }
 
-    const convPhoneNumber = matchingCustomer?.phone
-      ? matchingCustomer.phone.replace(/\D/g, '')
-      : (!isLid ? cleanNumber : cleanNumber);
+    const effectivePhone =
+      matchingCustomer?.phone?.replace(/\D/g, '') ||
+      phoneToSearch ||
+      conversation?.phoneNumber ||
+      cleanNumber;
 
-    // 5. Crear o actualizar conversación
+    // 7. Crear o actualizar conversación
     if (!conversation) {
       conversation = await prisma.chatConversation.create({
         data: {
           remoteJid,
-          phoneNumber: convPhoneNumber,
+          phoneNumber: effectivePhone,
           contactName,
           unreadCount: fromMe ? 0 : 1,
           lastMessageText: text || (messageType === 'STICKER' ? '✨ Sticker' : '📷 Imagen'),
@@ -437,9 +511,13 @@ class WhatsAppService {
         include: { customer: true },
       });
     } else {
+      const shouldUpdateJid = isLid && !conversation.remoteJid.includes('@lid');
+
       conversation = await prisma.chatConversation.update({
         where: { id: conversation.id },
         data: {
+          remoteJid: shouldUpdateJid ? remoteJid : conversation.remoteJid,
+          phoneNumber: effectivePhone,
           contactName: (!conversation.customerId && matchingCustomer)
             ? matchingCustomer.fullName
             : conversation.contactName,
