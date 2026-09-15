@@ -222,7 +222,11 @@ class WhatsAppService {
       return `/uploads/chat-media/${filename}`;
     } catch (e) {
       console.warn('Aviso: guardando en Base64 por error al escribir archivo:', e);
-      return `data:image/${ext === 'webp' ? 'webp' : 'jpeg'};base64,${buffer.toString('base64')}`;
+      let mime = 'image/jpeg';
+      if (ext === 'webp') mime = 'image/webp';
+      else if (ext === 'ogg') mime = 'audio/ogg';
+      else if (ext === 'm4a') mime = 'audio/mp4';
+      return `data:${mime};base64,${buffer.toString('base64')}`;
     }
   }
 
@@ -296,6 +300,26 @@ class WhatsAppService {
     } else if (msg.message.audioMessage) {
       messageType = 'AUDIO';
       text = '🎵 Nota de voz / Audio';
+      mediaMimeType = msg.message.audioMessage.mimetype || 'audio/ogg; codecs=opus';
+      const ext = mediaMimeType.includes('mp4') ? 'm4a' : 'ogg';
+      try {
+        if (this.sock) {
+          const buffer = (await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            {
+              logger: pino({ level: 'silent' }),
+              reuploadRequest: this.sock.updateMediaMessage,
+            }
+          )) as Buffer;
+          if (buffer) {
+            mediaUrl = await this.saveMediaBuffer(messageId, ext, buffer);
+          }
+        }
+      } catch (err) {
+        console.warn('Aviso: no se pudo descargar nota de voz:', err);
+      }
     } else if (msg.message.videoMessage) {
       messageType = 'VIDEO';
       text = msg.message.videoMessage.caption || '🎥 Video';
@@ -450,13 +474,25 @@ class WhatsAppService {
           timestamp: messageDate,
         },
       });
-    }
 
-    if (this.io && savedMessage) {
-      this.io.emit('whatsapp:message', {
-        conversation,
-        message: savedMessage,
+      if (this.io && savedMessage) {
+        this.io.emit('whatsapp:message', {
+          conversation,
+          message: savedMessage,
+        });
+      }
+    } else if (mediaUrl && !existingMsg.mediaUrl) {
+      savedMessage = await prisma.chatMessage.update({
+        where: { id: existingMsg.id },
+        data: { mediaUrl, mediaMimeType },
       });
+      if (this.io) {
+        this.io.emit('whatsapp:media_updated', {
+          messageId,
+          mediaUrl,
+          mediaMimeType,
+        });
+      }
     }
   }
 

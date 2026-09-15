@@ -67,7 +67,13 @@ function initSocket() {
 
     // Si el chat actual está abierto y corresponde a este mensaje
     if (currentActiveConvId === conversation.id) {
-      if (!cachedMessages.some((m) => m.id === message.id)) {
+      const alreadyCached = cachedMessages.some(
+        (m) =>
+          (m.id && message.id && m.id === message.id) ||
+          (m.messageId && message.messageId && m.messageId === message.messageId)
+      );
+
+      if (!alreadyCached) {
         cachedMessages.push(message);
         appendMessageToChat(message);
         scrollToBottom();
@@ -112,8 +118,11 @@ function initSocket() {
         } else if (msg.messageType === 'AUDIO') {
           placeholderEl.outerHTML = `
             <div class="crm-audio-player" data-media-msg-id="${messageId}">
-              <audio controls preload="metadata" style="max-width: 220px; height: 36px;">
+              <audio controls preload="metadata" style="max-width: 250px; height: 38px; display: block;">
                 <source src="${mediaUrl}" type="${mediaMimeType || 'audio/ogg'}" />
+                <source src="${mediaUrl}" type="audio/ogg" />
+                <source src="${mediaUrl}" type="audio/mp4" />
+                Tu navegador no soporta reproducción de audio.
               </audio>
             </div>
           `;
@@ -481,6 +490,20 @@ function attachChatSubmoduleEvents(container) {
     });
   });
 
+  // Control de tecla Enter y autoajuste para el input de chat
+  const msgInput = container.querySelector('#crmMsgInput');
+  msgInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      container.querySelector('#crmSendForm')?.requestSubmit();
+    }
+  });
+
+  msgInput?.addEventListener('input', () => {
+    msgInput.style.height = 'auto';
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + 'px';
+  });
+
   // Enviar mensaje
   container.querySelector('#crmSendForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -492,6 +515,7 @@ function attachChatSubmoduleEvents(container) {
     if (!conv) return;
 
     input.value = '';
+    input.style.height = 'auto';
     input.focus();
 
     try {
@@ -501,9 +525,17 @@ function attachChatSubmoduleEvents(container) {
       });
 
       if (res && res.message) {
-        cachedMessages.push(res.message);
-        appendMessageToChat(res.message);
-        scrollToBottom();
+        const alreadyCached = cachedMessages.some(
+          (m) =>
+            (m.id && res.message.id && m.id === res.message.id) ||
+            (m.messageId && res.message.messageId && m.messageId === res.message.messageId)
+        );
+
+        if (!alreadyCached) {
+          cachedMessages.push(res.message);
+          appendMessageToChat(res.message);
+          scrollToBottom();
+        }
       }
     } catch (err) {
       showToast(err.message || 'Error al enviar mensaje', 'danger');
@@ -698,7 +730,7 @@ function renderMessagesList(autoScrollToBottom = true) {
 
   if (cachedMessages.length === 0) {
     box.innerHTML = `
-      <div style="text-align: center; padding: 30px 10px; color: var(--text-muted); font-size: 0.88rem;">
+      <div class="crm-empty-chat-placeholder" style="text-align: center; padding: 30px 10px; color: var(--text-muted); font-size: 0.88rem;">
         No hay mensajes previos en esta conversación.<br>¡Escribe el primer mensaje para comenzar! 👋✨
       </div>
     `;
@@ -715,6 +747,22 @@ function renderMessagesList(autoScrollToBottom = true) {
 function appendMessageToChat(message) {
   const box = document.getElementById('crmChatMessages');
   if (!box) return;
+
+  // Evitar duplicados si ya existe en el DOM por messageId o por id
+  const keyMsgId = message.messageId;
+  const keyId = message.id;
+  if (
+    (keyMsgId && box.querySelector(`.crm-msg-row[data-msg-id="${keyMsgId}"]`)) ||
+    (keyId && box.querySelector(`.crm-msg-row[data-id="${keyId}"]`))
+  ) {
+    return;
+  }
+
+  // Quitar placeholder de chat vacío si existe
+  const emptyNotice = box.querySelector('.crm-empty-chat-placeholder');
+  if (emptyNotice) {
+    emptyNotice.remove();
+  }
 
   const msgHtml = renderSingleMessageHtml(message);
   box.insertAdjacentHTML('beforeend', msgHtml);
@@ -737,13 +785,16 @@ function renderSingleMessageHtml(m) {
     if (m.mediaUrl) {
       contentHtml = `
         <div class="crm-audio-player" data-media-msg-id="${m.messageId}">
-          <audio controls preload="metadata" style="max-width: 220px; height: 36px;">
+          <audio controls preload="metadata" style="max-width: 250px; height: 38px; display: block;">
             <source src="${m.mediaUrl}" type="${m.mediaMimeType || 'audio/ogg'}" />
+            <source src="${m.mediaUrl}" type="audio/ogg" />
+            <source src="${m.mediaUrl}" type="audio/mp4" />
+            Tu navegador no soporta reproducción de audio.
           </audio>
         </div>
       `;
     } else {
-      contentHtml = `<div class="crm-msg-placeholder" data-media-msg-id="${m.messageId}">🎵 Nota de voz</div>`;
+      contentHtml = `<div class="crm-msg-placeholder" data-media-msg-id="${m.messageId}">🎵 Nota de voz (Sin archivo)</div>`;
     }
   } else if (m.messageType === 'STICKER') {
     if (m.mediaUrl) {
@@ -762,7 +813,7 @@ function renderSingleMessageHtml(m) {
   }
 
   return `
-    <div class="crm-msg-row ${isMe ? 'outgoing' : 'incoming'}">
+    <div class="crm-msg-row ${isMe ? 'outgoing' : 'incoming'}" data-msg-id="${escapeHtml(m.messageId || '')}" data-id="${m.id || ''}">
       <div class="crm-msg-bubble ${isMe ? 'outgoing' : 'incoming'}">
         ${contentHtml}
         <div class="crm-msg-meta">
