@@ -1,5 +1,4 @@
 import makeWASocket, {
-  useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
@@ -14,6 +13,7 @@ import path from 'path';
 import fs from 'fs';
 import { Server as SocketIOServer } from 'socket.io';
 import prisma from '../prisma.js';
+import { usePrismaAuthState, clearPrismaAuthSession } from './whatsappAuth.service.js';
 
 export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED';
 
@@ -22,15 +22,10 @@ class WhatsAppService {
   private io: SocketIOServer | null = null;
   private status: ConnectionStatus = 'DISCONNECTED';
   private qrCodeDataUrl: string | null = null;
-  private authFolder: string = path.join(process.cwd(), 'auth_info_baileys');
   private isInitializing: boolean = false;
   private reconnectAttempts: number = 0;
 
-  constructor() {
-    if (!fs.existsSync(this.authFolder)) {
-      fs.mkdirSync(this.authFolder, { recursive: true });
-    }
-  }
+  constructor() {}
 
   public setSocketServer(io: SocketIOServer) {
     this.io = io;
@@ -55,7 +50,8 @@ class WhatsAppService {
     this.broadcastStatus();
 
     try {
-      const { state, saveCreds } = await useMultiFileAuthState(this.authFolder);
+      // Carga de sesión persistente desde Neon PostgreSQL
+      const { state, saveCreds } = await usePrismaAuthState('main');
       let version: [number, number, number] = [2, 3000, 1043857760];
       try {
         const vRes = await fetchLatestBaileysVersion();
@@ -64,7 +60,7 @@ class WhatsAppService {
         console.warn('Usando versión Baileys de respaldo:', vErr);
       }
 
-      console.log(`📱 Iniciando WhatsApp Baileys v${version.join('.')}`);
+      console.log(`📱 Iniciando WhatsApp Baileys v${version.join('.')} con persistencia en Neon DB`);
 
       const logger = pino({ level: 'silent' });
 
@@ -113,8 +109,8 @@ class WhatsAppService {
           this.broadcastStatus();
 
           if (statusCode === DisconnectReason.loggedOut) {
-            console.log('🚪 Sesión cerrada por el usuario. Limpiando credenciales...');
-            this.clearAuthFolder();
+            console.log('🚪 Sesión cerrada por el usuario. Limpiando credenciales de Neon DB...');
+            await this.clearAuthData();
             this.isInitializing = false;
             setTimeout(() => this.init(), 2000);
           } else if (shouldReconnect) {
@@ -165,15 +161,8 @@ class WhatsAppService {
     }
   }
 
-  private clearAuthFolder() {
-    try {
-      if (fs.existsSync(this.authFolder)) {
-        fs.rmSync(this.authFolder, { recursive: true, force: true });
-        fs.mkdirSync(this.authFolder, { recursive: true });
-      }
-    } catch (err) {
-      console.error('Error limpiando carpeta de autenticación:', err);
-    }
+  private async clearAuthData() {
+    await clearPrismaAuthSession('main');
   }
 
   public async logout() {
@@ -184,7 +173,7 @@ class WhatsAppService {
     } catch (e) {
       console.warn('Aviso al cerrar socket de WhatsApp:', e);
     }
-    this.clearAuthFolder();
+    await this.clearAuthData();
     this.status = 'DISCONNECTED';
     this.qrCodeDataUrl = null;
     this.sock = null;
@@ -203,6 +192,12 @@ class WhatsAppService {
         } catch (e) {}
       }
     } catch (e) {}
+
+    // Limpiar claves incompletas previas si se fuerza nuevo QR
+    if (this.status !== 'CONNECTED') {
+      await this.clearAuthData();
+    }
+
     this.status = 'CONNECTING';
     this.qrCodeDataUrl = null;
     this.sock = null;

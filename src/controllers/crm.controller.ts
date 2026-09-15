@@ -98,20 +98,43 @@ export const getConversations = async (req: Request, res: Response) => {
 export const getConversationMessages = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const { limit = '50', beforeId } = req.query;
     const conversationId = Number(id);
 
     if (isNaN(conversationId)) {
       return res.status(400).json({ error: 'ID de conversación inválido' });
     }
 
-    const messages = await prisma.chatMessage.findMany({
-      where: { conversationId },
-      orderBy: { timestamp: 'asc' },
-      take: 150,
+    const takeCount = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const where: any = { conversationId };
+
+    if (beforeId) {
+      const targetId = Number(beforeId);
+      if (!isNaN(targetId)) {
+        const pivotMsg = await prisma.chatMessage.findUnique({
+          where: { id: targetId },
+          select: { timestamp: true },
+        });
+        if (pivotMsg) {
+          where.timestamp = { lt: pivotMsg.timestamp };
+        }
+      }
+    }
+
+    // Consulta indexada optimizada: toma los mensajes más recientes ordenados descendentemente
+    const rawMessages = await prisma.chatMessage.findMany({
+      where,
+      orderBy: { timestamp: 'desc' },
+      take: takeCount,
     });
 
-    // Marcar como leídos automáticamente al abrir
-    await whatsappService.markConversationAsRead(conversationId);
+    // Invertir para retornar en orden cronológico ascendente (de más antiguo a más nuevo)
+    const messages = rawMessages.reverse();
+
+    // Si es la carga inicial (sin beforeId), marcar conversación como leída
+    if (!beforeId) {
+      whatsappService.markConversationAsRead(conversationId).catch(() => {});
+    }
 
     res.json(messages);
   } catch (error) {

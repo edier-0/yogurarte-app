@@ -10,6 +10,8 @@ let socketInstance = null;
 let searchQuery = '';
 let wpStatus = { status: 'DISCONNECTED', qr: null, phoneNumber: null, user: null };
 let qrModalInterval = null;
+let hasMoreOldMessages = true;
+let isLoadingOldMessages = false;
 
 /**
  * Inicializar o reutilizar la conexión Socket.IO
@@ -511,7 +513,10 @@ async function openConversation(convId) {
     renderConversationList();
   }
 
-  // Cargar mensajes
+  // Cargar mensajes con paginación optimizada
+  hasMoreOldMessages = true;
+  isLoadingOldMessages = false;
+
   if (messagesArea) {
     messagesArea.innerHTML = `
       <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 20px;">
@@ -521,8 +526,11 @@ async function openConversation(convId) {
   }
 
   try {
-    const res = await api.getCrmMessages(convId);
+    const res = await api.getCrmMessages(convId, { limit: 50 });
     cachedMessages = res || [];
+    if (cachedMessages.length < 50) {
+      hasMoreOldMessages = false;
+    }
     renderChatMessages();
     scrollToBottom();
   } catch (err) {
@@ -838,6 +846,43 @@ function attachCrmEvents() {
   document.getElementById('btnCloseCustomerSidebar')?.addEventListener('click', closeCustomerSidebar);
   document.getElementById('btnBottomCloseCustomerSidebar')?.addEventListener('click', closeCustomerSidebar);
   sidebarOverlay?.addEventListener('click', closeCustomerSidebar);
+
+  // Scroll superior para cargar historial antiguo de mensajes (Lazy Loading / Paginación)
+  const messagesArea = document.getElementById('crmChatMessages');
+  messagesArea?.addEventListener('scroll', async () => {
+    if (messagesArea.scrollTop < 40 && hasMoreOldMessages && !isLoadingOldMessages && currentActiveConvId) {
+      isLoadingOldMessages = true;
+      const oldestMsg = cachedMessages[0];
+      if (!oldestMsg) {
+        isLoadingOldMessages = false;
+        return;
+      }
+
+      const prevScrollHeight = messagesArea.scrollHeight;
+      const prevScrollTop = messagesArea.scrollTop;
+
+      try {
+        const olderMessages = await api.getCrmMessages(currentActiveConvId, {
+          limit: 40,
+          beforeId: oldestMsg.id,
+        });
+
+        if (!olderMessages || olderMessages.length === 0) {
+          hasMoreOldMessages = false;
+        } else {
+          if (olderMessages.length < 40) hasMoreOldMessages = false;
+          cachedMessages = [...olderMessages, ...cachedMessages];
+          renderChatMessages();
+          const newScrollHeight = messagesArea.scrollHeight;
+          messagesArea.scrollTop = newScrollHeight - prevScrollHeight + prevScrollTop;
+        }
+      } catch (err) {
+        console.warn('Error cargando historial de mensajes antiguos:', err);
+      } finally {
+        isLoadingOldMessages = false;
+      }
+    }
+  });
 
   // Botones y Badges de Conectar / Gestionar Sesión de WhatsApp
   document.getElementById('btnWhatsAppConnect')?.addEventListener('click', () => {

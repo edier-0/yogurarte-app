@@ -471,9 +471,22 @@ model ChatMessage {
   createdAt      DateTime         @default(now())
 
   @@index([conversationId])
+  @@index([conversationId, timestamp(sort: Desc)])
   @@index([messageId])
   @@index([timestamp])
   @@index([fromMe])
+}
+
+model WhatsAppAuthSession {
+  id        String   @id // Formato: "main:creds", "main:pre-key-1"
+  sessionId String   @default("main")
+  keyId     String
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([sessionId, keyId])
+  @@index([sessionId])
 }
 
 

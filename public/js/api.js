@@ -587,8 +587,12 @@ export const api = {
     return apiFetch(`/crm/conversations${query}`);
   },
 
-  async getCrmMessages(conversationId) {
-    return apiFetch(`/crm/conversations/${conversationId}/messages`);
+  async getCrmMessages(conversationId, options = {}) {
+    const params = new URLSearchParams();
+    if (options.limit) params.set('limit', options.limit);
+    if (options.beforeId) params.set('beforeId', options.beforeId);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return apiFetch(`/crm/conversations/${conversationId}/messages${qs}`);
   },
 
   async sendCrmMessage(to, text, extra = {}) {
