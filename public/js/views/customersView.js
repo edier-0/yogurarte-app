@@ -895,6 +895,43 @@ async function openCustomerPaymentModal(customerOrId) {
       return { ...o, realPending };
     });
 
+    if (allOrders.length === 0) {
+      modalOverlay.innerHTML = `
+        <div class="modal-overlay active">
+          <div class="modal-card" style="max-width: 460px; text-align: center; padding: 24px;">
+            <div style="font-size: 2.8rem; margin-bottom: 8px;">🥛</div>
+            <h3 class="modal-title" style="margin-bottom: 8px; color: var(--primary);">Sin Pedidos Registrados</h3>
+            <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.45; margin-bottom: 20px;">
+              <strong>${escapeHtml(custData.fullName)}</strong> no tiene ningún pedido registrado en el sistema. Los pagos y abonos se asocian a un pedido específico.
+            </p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+              <button type="button" class="btn btn-outline" id="btnCloseNoOrdersModal">Cerrar</button>
+              <button type="button" class="btn btn-accent" id="btnCreateOrderForPayment">
+                + Crear Primer Pedido
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('btnCloseNoOrdersModal')?.addEventListener('click', () => {
+        modalOverlay.innerHTML = '';
+      });
+      document.getElementById('btnCreateOrderForPayment')?.addEventListener('click', () => {
+        modalOverlay.innerHTML = '';
+        openOrderModal({
+          customer: {
+            fullName: custData.fullName,
+            phone: custData.phone,
+            address: custData.address,
+          },
+          customerId: custData.id,
+          deliveryAddress: custData.address,
+          isNewForCustomer: true,
+        });
+      });
+      return;
+    }
+
     const pendingOrders = allOrders.filter((o) => o.realPending > 0 || o.paymentStatus !== 'PAID');
 
     const deliveredDebt = pendingOrders
@@ -1073,21 +1110,18 @@ async function openCustomerPaymentModal(customerOrId) {
         payload.orderId = 'AUTO';
       }
 
+      const submitBtn = document.getElementById('btnSubmitPay');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Registrando... ⏳';
+      }
+
       try {
         const res = await api.registerCustomerPayment(custData.id, payload);
 
         showToast(`¡Abono de ${formatCOP(amount)} registrado exitosamente para ${custData.fullName}! 💵`);
         
-        // Determinar link de agradecimiento por WhatsApp
         const isDeliveredPayment = deliveredDebt > 0;
-        const waThankLink = generateCustomerWhatsAppLink(
-          custData.phone,
-          custData.fullName,
-          0,
-          0,
-          !isDeliveredPayment,
-          isDeliveredPayment ? 'THANK_DELIVERED' : 'DEFAULT'
-        );
 
         modalOverlay.innerHTML = `
           <div class="modal-overlay active">
@@ -1145,6 +1179,10 @@ async function openCustomerPaymentModal(customerOrId) {
         });
 
       } catch (err) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = '✅ Confirmar Abono / Pago';
+        }
         showToast(err.message || 'Error al registrar pago', 'danger');
       }
     });

@@ -362,19 +362,8 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    // Calcular pendiente real de cada pedido
-    let pendingOrders = (customer.orders || []).filter((o) => {
-      const pending = o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0));
-      return pending > 0 || o.paymentStatus !== 'PAID';
-    });
-
-    if (customer.orders.length === 0) {
+    if (!customer.orders || customer.orders.length === 0) {
       return res.status(400).json({ error: 'Este cliente no tiene ningún pedido registrado en el sistema. Crea un pedido primero.' });
-    }
-
-    if (pendingOrders.length === 0) {
-      // Si todos están al día, usar los pedidos existentes (el más reciente) para aplicar el pago
-      pendingOrders = [customer.orders[customer.orders.length - 1]];
     }
 
     let remainingToPay = paymentAmount;
@@ -391,13 +380,8 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
         return res.status(404).json({ error: 'Pedido seleccionado no encontrado' });
       }
 
-      const currentPending = targetOrder.pendingAmount > 0 ? targetOrder.pendingAmount : Math.max(0, targetOrder.totalAmount - targetOrder.paidAmount);
-      if (currentPending <= 0 && targetOrder.paymentStatus === 'PAID') {
-        return res.status(400).json({ error: 'El pedido seleccionado ya está completamente pagado' });
-      }
-
-      const apply = Math.min(remainingToPay, currentPending > 0 ? currentPending : targetOrder.totalAmount);
-      const newPaid = targetOrder.paidAmount + apply;
+      const apply = remainingToPay;
+      const newPaid = (targetOrder.paidAmount || 0) + apply;
       const newPending = Math.max(0, targetOrder.totalAmount - newPaid);
       const newStatus = newPaid >= targetOrder.totalAmount ? 'PAID' : (newPaid > 0 ? 'PARTIAL' : 'PENDING');
 
@@ -427,26 +411,37 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
         },
       });
       updatedOrders.push(updated);
-      remainingToPay -= apply;
+      remainingToPay = 0;
     } else {
-      // Ordenar pedidos pendientes:
+      // Modo AUTOMÁTICO:
+      // 1. Filtrar pedidos que tienen deuda pendiente
+      const debtOrders = customer.orders.filter((o) => {
+        const ordPending = o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0));
+        return ordPending > 0;
+      });
+
+      // Ordenar con prioridad:
       // 1. Pedidos ENTREGADOS primero (deuda real prioritaria)
       // 2. Por fecha más antigua a más reciente
-      const sortedOrders = [...pendingOrders].sort((a, b) => {
+      const sortedDebtOrders = [...debtOrders].sort((a, b) => {
         if (a.deliveryStatus === 'DELIVERED' && b.deliveryStatus !== 'DELIVERED') return -1;
         if (b.deliveryStatus === 'DELIVERED' && a.deliveryStatus !== 'DELIVERED') return 1;
         return new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime();
       });
 
-      for (const ord of sortedOrders) {
+      for (const ord of sortedDebtOrders) {
         if (remainingToPay <= 0) break;
-        const ordPending = ord.pendingAmount > 0 ? ord.pendingAmount : Math.max(0, ord.totalAmount - ord.paidAmount);
+        const ordPending = ord.pendingAmount > 0 ? ord.pendingAmount : Math.max(0, ord.totalAmount - (ord.paidAmount || 0));
         if (ordPending <= 0) continue;
 
         const apply = Math.min(remainingToPay, ordPending);
-        const newPaid = ord.paidAmount + apply;
+        const newPaid = (ord.paidAmount || 0) + apply;
         const newPending = Math.max(0, ord.totalAmount - newPaid);
         const newStatus = newPaid >= ord.totalAmount ? 'PAID' : (newPaid > 0 ? 'PARTIAL' : 'PENDING');
+
+        // Actualizar datos del pedido en memoria
+        ord.paidAmount = newPaid;
+        ord.pendingAmount = newPending;
 
         const paymentNote = `Abono: $${new Intl.NumberFormat('es-CO').format(apply)} (${effectivePaymentMethod}) por ${effectiveRegisteredBy}`;
         const updatedNotes = notes ? `${ord.notes ? ord.notes + ' | ' : ''}${notes} [${paymentNote}]` : `${ord.notes ? ord.notes + ' | ' : ''}${paymentNote}`;
@@ -475,6 +470,53 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
         });
         updatedOrders.push(updated);
         remainingToPay -= apply;
+      }
+
+      // Si aún queda dinero por aplicar (abono extra o si el cliente estaba al día con deuda $0):
+      // Se aplica al pedido más reciente como anticipo / abono
+      if (remainingToPay > 0 && customer.orders.length > 0) {
+        const lastOrder = customer.orders[customer.orders.length - 1];
+        const apply = remainingToPay;
+        const currentPaid = lastOrder.paidAmount || 0;
+        const newPaid = currentPaid + apply;
+        const newPending = Math.max(0, lastOrder.totalAmount - newPaid);
+        const newStatus = newPaid >= lastOrder.totalAmount ? 'PAID' : (newPaid > 0 ? 'PARTIAL' : 'PENDING');
+
+        lastOrder.paidAmount = newPaid;
+        lastOrder.pendingAmount = newPending;
+
+        const paymentNote = `Abono / Anticipo: $${new Intl.NumberFormat('es-CO').format(apply)} (${effectivePaymentMethod}) por ${effectiveRegisteredBy}`;
+        const updatedNotes = notes ? `${lastOrder.notes ? lastOrder.notes + ' | ' : ''}${notes} [${paymentNote}]` : `${lastOrder.notes ? lastOrder.notes + ' | ' : ''}${paymentNote}`;
+
+        const newPayment = await prisma.orderPayment.create({
+          data: {
+            orderId: lastOrder.id,
+            amount: apply,
+            paymentMethod: effectivePaymentMethod,
+            paymentDate: now,
+            notes: notes ? String(notes).trim() : null,
+            registeredBy: effectiveRegisteredBy,
+          },
+        });
+        createdPayments.push(newPayment);
+
+        const existingIdx = updatedOrders.findIndex((o) => o.id === lastOrder.id);
+        const updated = await prisma.order.update({
+          where: { id: lastOrder.id },
+          data: {
+            paidAmount: newPaid,
+            pendingAmount: newPending,
+            paymentStatus: newStatus,
+            notes: updatedNotes,
+          },
+        });
+
+        if (existingIdx >= 0) {
+          updatedOrders[existingIdx] = updated;
+        } else {
+          updatedOrders.push(updated);
+        }
+        remainingToPay = 0;
       }
     }
 
