@@ -267,7 +267,9 @@ export const linkCustomer = async (req: Request, res: Response) => {
 
 export const getLoyaltyOverview = async (req: Request, res: Response) => {
   try {
-    const { search } = req.query;
+    const { search, page = '1', limit = '12' } = req.query;
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 12));
 
     const where: any = { isActive: true };
     if (search && typeof search === 'string' && search.trim()) {
@@ -331,7 +333,20 @@ export const getLoyaltyOverview = async (req: Request, res: Response) => {
       return b.currentCycleBottles - a.currentCycleBottles;
     });
 
-    res.json(loyaltyData);
+    const totalItems = loyaltyData.length;
+    const totalPages = Math.ceil(totalItems / limitNum) || 1;
+    const startIndex = (pageNum - 1) * limitNum;
+    const paginatedItems = loyaltyData.slice(startIndex, startIndex + limitNum);
+
+    res.json({
+      customers: paginatedItems,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        totalItems,
+        totalPages,
+      },
+    });
   } catch (error) {
     console.error('Error fetching loyalty overview:', error);
     res.status(500).json({ error: 'Error al consultar programa de fidelización' });

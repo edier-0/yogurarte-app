@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { formatCOP, formatDate, formatDateTime, showToast, store, escapeHtml, buildWhatsAppUrl } from '../store.js';
 import { dispatchSmartWhatsApp } from '../utils/whatsappDispatch.js';
 import { openOrderModal } from './ordersView.js';
+import { renderPaginationHtml, attachPaginationEvents } from '../components/pagination.js';
 
 let crmCurrentSubmodule = 'chats'; // 'chats' | 'loyalty' | 'recurring' | 'quickReplies'
 let currentActiveConvId = null;
@@ -16,6 +17,10 @@ let qrModalInterval = null;
 let hasMoreOldMessages = true;
 let isLoadingOldMessages = false;
 let cachedQuickReplies = [];
+
+// Estado de paginación para Fidelización
+let loyaltyCurrentPage = 1;
+let loyaltySearchQuery = '';
 
 /**
  * Inicializar o reutilizar la conexión Socket.IO
@@ -109,7 +114,6 @@ function initSocket() {
             <div class="crm-audio-player" data-media-msg-id="${messageId}">
               <audio controls preload="metadata" style="max-width: 220px; height: 36px;">
                 <source src="${mediaUrl}" type="${mediaMimeType || 'audio/ogg'}" />
-                Tu navegador no soporta reproducción de audio.
               </audio>
             </div>
           `;
@@ -315,19 +319,19 @@ async function renderChatsSubmodule(container) {
         </div>
       </section>
 
-      <!-- OVERLAY PARA CERRAR SIDEBAR EN MÓVIL -->
+      <!-- OVERLAY PARA CERRAR SIDEBAR EN MÓVIL AL TOCAR AFUERA -->
       <div class="crm-customer-sidebar-overlay" id="crmCustomerSidebarOverlay"></div>
 
       <!-- SIDEBAR DERECHO: DETALLES DEL CLIENTE, FIDELIZACIÓN Y PEDIDOS -->
       <aside class="crm-customer-sidebar" id="crmCustomerSidebar">
-        <div class="crm-cust-header">
+        <div class="crm-customer-sidebar-header">
           <h4 style="font-weight: 800; margin: 0; font-size: 0.95rem; color: var(--primary);">
             👤 Ficha del Cliente
           </h4>
-          <button class="crm-cust-close" id="btnCloseCustomerDrawer" title="Cerrar detalles">✕</button>
+          <button class="crm-btn-close-customer-sidebar" id="btnCloseCustomerDrawer" title="Cerrar detalles">✕</button>
         </div>
 
-        <div class="crm-cust-body" id="crmCustomerBody">
+        <div class="crm-customer-sidebar-body" id="crmCustomerBody">
           <!-- Inyectado dinámicamente -->
         </div>
       </aside>
@@ -441,18 +445,26 @@ function attachChatSubmoduleEvents(container) {
     document.getElementById('crmLayout')?.classList.remove('viewing-chat');
   });
 
-  // Toggle drawer de cliente en móvil/desktop
-  const toggleDrawer = () => {
+  // Toggle drawer de cliente en móvil/desktop (compatible con mobile-open y overlay active)
+  const toggleCustomerDrawer = (forceState = null) => {
     const sidebar = document.getElementById('crmCustomerSidebar');
     const overlay = document.getElementById('crmCustomerSidebarOverlay');
-    sidebar?.classList.toggle('open');
-    overlay?.classList.toggle('open');
+    if (!sidebar || !overlay) return;
+
+    const shouldOpen = forceState !== null ? forceState : !sidebar.classList.contains('mobile-open');
+    if (shouldOpen) {
+      sidebar.classList.add('mobile-open');
+      overlay.classList.add('active');
+    } else {
+      sidebar.classList.remove('mobile-open');
+      overlay.classList.remove('active');
+    }
   };
 
-  container.querySelector('#btnToggleCustomerDrawer')?.addEventListener('click', toggleDrawer);
-  container.querySelector('#crmChatHeaderDetails')?.addEventListener('click', toggleDrawer);
-  container.querySelector('#btnCloseCustomerDrawer')?.addEventListener('click', toggleDrawer);
-  container.querySelector('#crmCustomerSidebarOverlay')?.addEventListener('click', toggleDrawer);
+  container.querySelector('#btnToggleCustomerDrawer')?.addEventListener('click', () => toggleCustomerDrawer());
+  container.querySelector('#crmChatHeaderDetails')?.addEventListener('click', () => toggleCustomerDrawer(true));
+  container.querySelector('#btnCloseCustomerDrawer')?.addEventListener('click', () => toggleCustomerDrawer(false));
+  container.querySelector('#crmCustomerSidebarOverlay')?.addEventListener('click', () => toggleCustomerDrawer(false));
 
   // Botón crear pedido rápido desde chat
   container.querySelector('#btnFastOrder')?.addEventListener('click', () => {
@@ -941,10 +953,12 @@ function renderCustomerDetails(conv) {
 }
 
 // ==========================================
-// 🎁 SUBMÓDULO 2: FIDELIZACIÓN (10+1 GRATIS)
+// 🎁 SUBMÓDULO 2: FIDELIZACIÓN (10+1 GRATIS) CON PAGINACIÓN
 // ==========================================
 
 async function renderLoyaltySubmodule(container) {
+  loyaltyCurrentPage = 1;
+
   container.innerHTML = `
     <div style="background: #FFFFFF; border-radius: var(--radius-lg); border: 1px solid var(--border-color); padding: 18px; box-shadow: var(--shadow-sm);">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
@@ -958,7 +972,7 @@ async function renderLoyaltySubmodule(container) {
         </div>
         <div class="search-box input-with-icon" style="min-width: 240px;">
           <span class="input-icon">🔍</span>
-          <input type="text" id="loyaltySearchInput" class="form-input" placeholder="Buscar cliente..." style="height: 38px;" />
+          <input type="text" id="loyaltySearchInput" class="form-input" placeholder="Buscar cliente..." value="${loyaltySearchQuery}" style="height: 38px;" />
         </div>
       </div>
 
@@ -967,23 +981,36 @@ async function renderLoyaltySubmodule(container) {
           Cargando datos de fidelización... ⏳
         </div>
       </div>
+
+      <!-- Contenedor de Paginación -->
+      <div id="loyaltyPaginationWrapper" style="width: 100%;"></div>
     </div>
   `;
 
   const searchInput = container.querySelector('#loyaltySearchInput');
   searchInput?.addEventListener('input', (e) => {
-    loadLoyaltyList(container, e.target.value);
+    loyaltySearchQuery = e.target.value;
+    loyaltyCurrentPage = 1;
+    loadLoyaltyList(container);
   });
 
   await loadLoyaltyList(container);
 }
 
-async function loadLoyaltyList(container, search = '') {
+async function loadLoyaltyList(container) {
   const listEl = container.querySelector('#loyaltyListContainer');
+  const paginationWrapper = container.querySelector('#loyaltyPaginationWrapper');
   if (!listEl) return;
 
   try {
-    const data = await api.getCrmLoyalty(search);
+    const res = await api.getCrmLoyalty(loyaltySearchQuery, loyaltyCurrentPage, 12);
+    const data = Array.isArray(res) ? res : res.customers || [];
+    const pagination = res.pagination || {
+      page: loyaltyCurrentPage,
+      limit: 12,
+      totalItems: data.length,
+      totalPages: Math.ceil(data.length / 12) || 1,
+    };
 
     if (!data || data.length === 0) {
       listEl.innerHTML = `
@@ -991,6 +1018,7 @@ async function loadLoyaltyList(container, search = '') {
           No se encontraron clientes registrados en el programa 📭
         </div>
       `;
+      if (paginationWrapper) paginationWrapper.innerHTML = '';
       return;
     }
 
@@ -1046,6 +1074,28 @@ async function loadLoyaltyList(container, search = '') {
       })
       .join('');
 
+    // Renderizar paginación
+    if (paginationWrapper) {
+      paginationWrapper.innerHTML = renderPaginationHtml({
+        currentPage: pagination.page,
+        totalPages: pagination.totalPages,
+        totalItems: pagination.totalItems,
+        pageSize: pagination.limit,
+        itemName: 'clientes',
+        paginationId: 'loyaltyPaginationControls',
+      });
+
+      attachPaginationEvents(
+        paginationWrapper,
+        'loyaltyPaginationControls',
+        (newPage) => {
+          loyaltyCurrentPage = newPage;
+          loadLoyaltyList(container);
+        },
+        container
+      );
+    }
+
     // Attach card actions
     listEl.querySelectorAll('.btn-redeem-card').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -1081,6 +1131,7 @@ async function loadLoyaltyList(container, search = '') {
         Error al cargar programa de fidelización ⚠️
       </div>
     `;
+    if (paginationWrapper) paginationWrapper.innerHTML = '';
   }
 }
 

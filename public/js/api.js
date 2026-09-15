@@ -626,9 +626,13 @@ export const api = {
   },
 
   // 🎁 Programa de Fidelización (10+1)
-  async getCrmLoyalty(search = '') {
-    const query = search ? `?search=${encodeURIComponent(search)}` : '';
-    return apiFetch(`/crm/loyalty${query}`);
+  async getCrmLoyalty(search = '', page = 1, limit = 12) {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (page) params.set('page', page);
+    if (limit) params.set('limit', limit);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return apiFetch(`/crm/loyalty${qs}`);
   },
 
   async redeemCrmLoyalty(customerId) {
