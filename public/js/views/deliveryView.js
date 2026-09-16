@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store, buildWhatsAppUrl } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, toColombiaDateStr, showToast, store, buildWhatsAppUrl } from '../store.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
 let deliveryCurrentPage = 1;
@@ -31,11 +31,12 @@ export async function renderDelivery(container) {
 
     cachedDeliveryOrders = (await api.getOrders(params)) || [];
 
-    const overdueOrdersCount = cachedDeliveryOrders.filter(
-      (o) =>
-        o.deliveryStatus !== 'DELIVERED' &&
-        (o.deliveryDate ? o.deliveryDate.split('T')[0] < todayStr : o.orderDate && o.orderDate.split('T')[0] < todayStr)
-    ).length;
+    const overdueOrdersCount = cachedDeliveryOrders.filter((o) => {
+      if (o.deliveryStatus === 'DELIVERED') return false;
+      const dDate = toColombiaDateStr(o.deliveryDate);
+      const oDate = toColombiaDateStr(o.orderDate);
+      return (dDate && dDate < todayStr) || (!dDate && oDate && oDate < todayStr);
+    }).length;
 
     // Renderizar la estructura principal (toolbar, filtros, KPIs y contenedor de lista)
     container.innerHTML = `
@@ -181,24 +182,27 @@ function filterAndRenderDelivery(container) {
   // 2. Filtrar por alcance de fecha
   if (deliveryDateScope === 'TODAY') {
     scopedOrders = scopedOrders.filter((o) => {
-      const dDate = o.deliveryDate ? o.deliveryDate.split('T')[0] : '';
-      const oDate = o.orderDate ? o.orderDate.split('T')[0] : '';
-      return dDate === todayStr || (!dDate && oDate === todayStr);
+      const dDate = toColombiaDateStr(o.deliveryDate);
+      const oDate = toColombiaDateStr(o.orderDate);
+      const uDate = o.deliveryStatus === 'DELIVERED' ? toColombiaDateStr(o.updatedAt) : '';
+      return dDate === todayStr || uDate === todayStr || (!dDate && oDate === todayStr);
     });
   } else if (deliveryDateScope === 'SPECIFIC_DATE') {
     const targetDate = deliverySpecificDate;
     scopedOrders = scopedOrders.filter((o) => {
-      const dDate = o.deliveryDate ? o.deliveryDate.split('T')[0] : '';
-      const oDate = o.orderDate ? o.orderDate.split('T')[0] : '';
-      return dDate === targetDate || (!dDate && oDate === targetDate);
+      const dDate = toColombiaDateStr(o.deliveryDate);
+      const oDate = toColombiaDateStr(o.orderDate);
+      const uDate = toColombiaDateStr(o.updatedAt);
+      return dDate === targetDate || uDate === targetDate || (!dDate && oDate === targetDate);
     });
   } else if (deliveryDateScope === 'ALL_PENDING') {
     // Mostrar todos los pendientes por entregar (sin importar fecha), o los entregados hoy
     scopedOrders = scopedOrders.filter((o) => {
       if (o.deliveryStatus !== 'DELIVERED') return true;
-      const dDate = o.deliveryDate ? o.deliveryDate.split('T')[0] : '';
-      const oDate = o.orderDate ? o.orderDate.split('T')[0] : '';
-      return dDate === todayStr || oDate === todayStr;
+      const dDate = toColombiaDateStr(o.deliveryDate);
+      const uDate = toColombiaDateStr(o.updatedAt);
+      const oDate = toColombiaDateStr(o.orderDate);
+      return dDate === todayStr || uDate === todayStr || oDate === todayStr;
     });
   }
 

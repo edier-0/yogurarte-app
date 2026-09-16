@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma.js';
-import { getColombiaDateStr, parseColombiaDate } from '../utils/date.utils.js';
+import { getColombiaDateStr, parseColombiaDate, getColombiaStartOfDay, getColombiaEndOfDay } from '../utils/date.utils.js';
 
 export const getDashboardSummary = async (req: Request, res: Response) => {
   try {
@@ -41,8 +41,8 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     }
 
     if (activeFilterDate) {
-      const dayStart = new Date(`${activeFilterDate}T00:00:00.000Z`);
-      const dayEnd = new Date(`${activeFilterDate}T23:59:59.999Z`);
+      const dayStart = getColombiaStartOfDay(activeFilterDate);
+      const dayEnd = getColombiaEndOfDay(activeFilterDate);
       const dayRange = { gte: dayStart, lte: dayEnd };
 
       orderWhere.OR = [

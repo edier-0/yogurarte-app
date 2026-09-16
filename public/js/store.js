@@ -241,13 +241,29 @@ export const formatMovementTime = (m) => {
   }
 };
 
-// Obtener fecha actual en formato local YYYY-MM-DD
+// Formatear cualquier fecha (ISO, string o Date) en formato YYYY-MM-DD en la zona horaria de Colombia (America/Bogota, UTC-5)
+export const toColombiaDateStr = (dateInput) => {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
+  } catch (e) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+};
+
+// Obtener fecha actual en formato local de Colombia YYYY-MM-DD
 export const getTodayLocalDateStr = () => {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return toColombiaDateStr(new Date());
 };
 
 // Sistema de Notificaciones Toast

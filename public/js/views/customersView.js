@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, showToast, buildWhatsAppUrl, escapeHtml } from '../store.js';
+import { store, formatCOP, formatDate, showToast, buildWhatsAppUrl, escapeHtml } from '../store.js';
 import { dispatchSmartWhatsApp } from '../utils/whatsappDispatch.js';
 import { openOrderModal } from './ordersView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
@@ -932,18 +932,63 @@ async function openCustomerPaymentModal(customerOrId) {
       return;
     }
 
-    const pendingOrders = allOrders.filter((o) => o.realPending > 0 || o.paymentStatus !== 'PAID');
+    // Pedidos con deuda real > 0 ordenados del más antiguo al más reciente (el primer pedido que hizo primero)
+    const debtOrders = allOrders
+      .filter((o) => (o.realPending || 0) > 0)
+      .sort((a, b) => {
+        const timeDiff = new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return a.id - b.id;
+      });
 
-    const deliveredDebt = pendingOrders
+    const deliveredDebt = debtOrders
       .filter((o) => o.deliveryStatus === 'DELIVERED')
       .reduce((sum, o) => sum + (o.realPending || 0), 0);
 
-    const inProcessAmount = pendingOrders
+    const inProcessAmount = debtOrders
       .filter((o) => o.deliveryStatus !== 'DELIVERED')
       .reduce((sum, o) => sum + (o.realPending || 0), 0);
 
     const totalPending = deliveredDebt + inProcessAmount;
-    const defaultAmount = deliveredDebt > 0 ? deliveredDebt : (totalPending > 0 ? totalPending : 12000);
+    const defaultAmount = totalPending > 0 ? totalPending : (deliveredDebt > 0 ? deliveredDebt : 12000);
+    const oldestDebt = debtOrders.length > 0 ? debtOrders[0].realPending : 0;
+
+    let selectOptionsHtml = '';
+    if (debtOrders.length > 0) {
+      selectOptionsHtml = `
+        <option value="AUTO" selected>
+          ⚡ Pagar todos los pedidos en mora (${formatCOP(totalPending)}) - En cascada
+        </option>
+        ${debtOrders
+          .map((o, idx) => {
+            const isOldest = idx === 0 ? ' • 🕒 Más antiguo' : '';
+            const statusTxt = o.deliveryStatus === 'DELIVERED' ? '🛵 Entregado' : '🥣 En proceso';
+            const orderNum = o.orderNumber ? `#${escapeHtml(o.orderNumber)}` : `#${o.id}`;
+            const flavorTxt = escapeHtml(o.batch?.flavor || o.flavor) || 'Yogur';
+            return `<option value="${o.id}">
+              ${orderNum} (${flavorTxt}, ${o.totalLiters}L) • ${statusTxt} • Debe: ${formatCOP(o.realPending)}${isOldest}
+            </option>`;
+          })
+          .join('')}
+      `;
+    } else {
+      selectOptionsHtml = `
+        <option value="AUTO" selected>
+          💰 Anticipo / Saldo a Favor (Cliente al día)
+        </option>
+        ${allOrders
+          .slice(-3)
+          .map((o) => {
+            const statusTxt = o.deliveryStatus === 'DELIVERED' ? '🛵 Entregado' : '🥣 En proceso';
+            const orderNum = o.orderNumber ? `#${escapeHtml(o.orderNumber)}` : `#${o.id}`;
+            const flavorTxt = escapeHtml(o.batch?.flavor || o.flavor) || 'Yogur';
+            return `<option value="${o.id}">
+              ${orderNum} (${flavorTxt}, ${o.totalLiters}L) • ${statusTxt} • Al Día
+            </option>`;
+          })
+          .join('')}
+      `;
+    }
 
     modalOverlay.innerHTML = `
       <div class="modal-overlay active">
@@ -985,7 +1030,7 @@ async function openCustomerPaymentModal(customerOrId) {
                           🟢 Al Día (Sin deuda pendiente)
                         </div>`
                       : `<div style="background: #FFFFFF; border: 1px solid var(--border-color); color: var(--text-main); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 800;">
-                          💰 Saldo Total: ${formatCOP(totalPending)}
+                          💰 Saldo Total Mora: ${formatCOP(totalPending)}
                         </div>`
                   }
                 </div>
@@ -993,27 +1038,27 @@ async function openCustomerPaymentModal(customerOrId) {
 
               <!-- Seleccionar Pedido Destino -->
               <div class="form-group">
-                <label class="form-label">Aplicar Abono a: *</label>
-                <select id="custPayOrderId" class="form-select" style="font-size: 0.88rem; font-weight: 600;">
-                  <option value="AUTO" selected>⚡ Automático: Aplicar a la deuda más antigua / entregada</option>
-                  ${(allOrders.length > 0 ? allOrders : pendingOrders)
-                    .map(
-                      (o) =>
-                        `<option value="${o.id}">
-                          #${escapeHtml(o.orderNumber) || o.id} (${escapeHtml(o.batch?.flavor || o.flavor) || 'Yogur'}, ${o.totalLiters}L) • ${
-                          o.deliveryStatus === 'DELIVERED' ? '🛵 Entregado' : '🥣 En proceso'
-                        } • ${o.realPending > 0 ? `Pendiente: ${formatCOP(o.realPending)}` : '✅ Pagado'}
-                        </option>`
-                    )
-                    .join('')}
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label class="form-label" style="margin: 0;">Aplicar Abono a: *</label>
+                  <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700;">
+                    ${debtOrders.length > 0 ? `${debtOrders.length} pedido(s) con mora` : 'Sin mora'}
+                  </span>
+                </div>
+                <select id="custPayOrderId" class="form-select" style="font-size: 0.88rem; font-weight: 700; color: var(--primary);">
+                  ${selectOptionsHtml}
                 </select>
+                <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px;">
+                  💡 <em>En cascada: si abonas menos del total, se abona primero al pedido más viejo automáticamente.</em>
+                </div>
               </div>
 
               <!-- Monto a Abonar / Cobrar -->
               <div class="form-group">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                   <label class="form-label" style="margin: 0;">Monto a Abonar / Cobrar ($ COP) *</label>
-                  <span style="font-size: 0.76rem; color: var(--text-muted);">Sugerido: ${formatCOP(defaultAmount)}</span>
+                  <span id="custPaySuggestedAmount" style="font-size: 0.76rem; color: var(--text-muted); font-weight: 600;">
+                    Sugerido: ${formatCOP(defaultAmount)}
+                  </span>
                 </div>
                 <input 
                   type="number" 
@@ -1027,10 +1072,17 @@ async function openCustomerPaymentModal(customerOrId) {
                 />
                 
                 <!-- Botones rápidos de monto -->
-                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
-                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="${deliveredDebt > 0 ? deliveredDebt : totalPending}" style="font-size: 0.74rem; padding: 3px 8px;">
-                    Total (${formatCOP(deliveredDebt > 0 ? deliveredDebt : totalPending)})
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;" id="custQuickPayButtonsContainer">
+                  <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="${totalPending > 0 ? totalPending : 12000}" style="font-size: 0.74rem; padding: 3px 8px; font-weight: 700; color: var(--primary); border-color: var(--primary);">
+                    Total (${formatCOP(totalPending > 0 ? totalPending : 12000)})
                   </button>
+                  ${
+                    debtOrders.length > 1 && oldestDebt > 0 && oldestDebt < totalPending
+                      ? `<button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="${oldestDebt}" style="font-size: 0.74rem; padding: 3px 8px; font-weight: 700; color: #D97706; border-color: #FCD34D;">
+                          🕒 Más Antiguo (${formatCOP(oldestDebt)})
+                        </button>`
+                      : ''
+                  }
                   <button type="button" class="btn btn-outline btn-sm quick-pay-btn" data-val="12000" style="font-size: 0.74rem; padding: 3px 8px;">
                     $12.000
                   </button>
@@ -1073,11 +1125,37 @@ async function openCustomerPaymentModal(customerOrId) {
       </div>
     `;
 
-    const closeModal = () => (modalOverlay.innerHTML = '');
+    const closeModal = () => {
+      modalOverlay.innerHTML = '';
+      const contentContainer = document.getElementById('contentContainer');
+      if (contentContainer && contentContainer.querySelector('#customersGridContainer')) {
+        renderCustomers(contentContainer);
+      }
+    };
+
     document.getElementById('btnClosePayModal')?.addEventListener('click', closeModal);
     document.getElementById('btnCancelPayModal')?.addEventListener('click', closeModal);
 
+    const orderSelect = document.getElementById('custPayOrderId');
     const amountInput = document.getElementById('custPayAmount');
+    const suggestedAmountSpan = document.getElementById('custPaySuggestedAmount');
+
+    orderSelect?.addEventListener('change', (e) => {
+      const selectedVal = e.target.value;
+      if (selectedVal === 'AUTO') {
+        const autoAmt = totalPending > 0 ? totalPending : 12000;
+        if (amountInput) amountInput.value = autoAmt;
+        if (suggestedAmountSpan) suggestedAmountSpan.textContent = `Sugerido: ${formatCOP(autoAmt)} (Total deuda)`;
+      } else {
+        const selectedOrder = allOrders.find((o) => String(o.id) === String(selectedVal));
+        if (selectedOrder) {
+          const ordDebt = selectedOrder.realPending > 0 ? selectedOrder.realPending : selectedOrder.totalAmount;
+          if (amountInput) amountInput.value = ordDebt;
+          if (suggestedAmountSpan) suggestedAmountSpan.textContent = `Sugerido: ${formatCOP(ordDebt)} (Deuda pedido #${selectedOrder.orderNumber || selectedOrder.id})`;
+        }
+      }
+    });
+
     modalOverlay.querySelectorAll('.quick-pay-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const val = e.currentTarget.dataset.val;
@@ -1096,19 +1174,15 @@ async function openCustomerPaymentModal(customerOrId) {
       const orderIdVal = document.getElementById('custPayOrderId').value;
       const paymentMethod = document.getElementById('custPayMethod').value;
       const notes = document.getElementById('custPayNotes').value;
-      const registeredBy = store.authUser?.name || store.currentUser || 'Edier';
+      const registeredBy = store?.authUser?.name || store?.currentUser || 'Edier';
 
       const payload = {
         amount,
         paymentMethod,
         notes: notes ? notes.trim() : undefined,
         registeredBy,
+        orderId: orderIdVal === 'AUTO' ? 'AUTO' : Number(orderIdVal),
       };
-      if (orderIdVal && orderIdVal !== 'AUTO') {
-        payload.orderId = Number(orderIdVal);
-      } else {
-        payload.orderId = 'AUTO';
-      }
 
       const submitBtn = document.getElementById('btnSubmitPay');
       if (submitBtn) {
@@ -1152,7 +1226,8 @@ async function openCustomerPaymentModal(customerOrId) {
 
         document.getElementById('btnFinishPaySuccess')?.addEventListener('click', () => {
           modalOverlay.innerHTML = '';
-          renderCustomers(document.getElementById('contentContainer'));
+          const contentContainer = document.getElementById('contentContainer');
+          if (contentContainer) renderCustomers(contentContainer);
         });
 
         document.getElementById('btnSendWaThank')?.addEventListener('click', async () => {
@@ -1174,7 +1249,8 @@ async function openCustomerPaymentModal(customerOrId) {
           });
           setTimeout(() => {
             modalOverlay.innerHTML = '';
-            renderCustomers(document.getElementById('contentContainer'));
+            const contentContainer = document.getElementById('contentContainer');
+            if (contentContainer) renderCustomers(contentContainer);
           }, 600);
         });
 

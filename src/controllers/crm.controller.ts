@@ -74,24 +74,23 @@ export const getConversations = async (req: Request, res: Response) => {
                 orderNumber: true,
                 quantityBottles: true,
                 totalAmount: true,
+                paidAmount: true,
+                pendingAmount: true,
                 paymentStatus: true,
                 deliveryStatus: true,
                 deliveryDate: true,
-                payments: {
-                  select: {
-                    amount: true,
-                  },
-                },
+                orderDate: true,
               },
-              orderBy: { createdAt: 'desc' },
-              take: 5,
+              orderBy: { orderDate: 'desc' },
+              take: 10,
             },
           },
         },
       },
-      orderBy: {
-        lastMessageTimestamp: 'desc',
-      },
+      orderBy: [
+        { lastMessageTimestamp: { sort: 'desc', nulls: 'last' } },
+        { updatedAt: 'desc' },
+      ],
     });
 
     res.json(conversations);

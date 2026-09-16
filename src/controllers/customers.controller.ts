@@ -420,13 +420,11 @@ export const applyCustomerPayment = async (req: Request, res: Response) => {
         return ordPending > 0;
       });
 
-      // Ordenar con prioridad:
-      // 1. Pedidos ENTREGADOS primero (deuda real prioritaria)
-      // 2. Por fecha más antigua a más reciente
+      // Ordenar por el primer pedido que hizo (el más viejo primero)
       const sortedDebtOrders = [...debtOrders].sort((a, b) => {
-        if (a.deliveryStatus === 'DELIVERED' && b.deliveryStatus !== 'DELIVERED') return -1;
-        if (b.deliveryStatus === 'DELIVERED' && a.deliveryStatus !== 'DELIVERED') return 1;
-        return new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime();
+        const timeDiff = new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return a.id - b.id;
       });
 
       for (const ord of sortedDebtOrders) {

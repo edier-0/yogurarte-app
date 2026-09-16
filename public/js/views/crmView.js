@@ -53,16 +53,17 @@ function initSocket() {
       cachedConversations[existingIndex] = {
         ...cachedConversations[existingIndex],
         ...conversation,
+        customer: conversation.customer || cachedConversations[existingIndex].customer,
       };
     } else {
       cachedConversations.unshift(conversation);
     }
 
-    // Reordenar por último mensaje
+    // Reordenar por último mensaje (el más reciente siempre arriba)
     cachedConversations.sort(
       (a, b) =>
-        new Date(b.lastMessageTimestamp || 0).getTime() -
-        new Date(a.lastMessageTimestamp || 0).getTime()
+        new Date(b.lastMessageTimestamp || b.updatedAt || 0).getTime() -
+        new Date(a.lastMessageTimestamp || a.updatedAt || 0).getTime()
     );
 
     // Si el chat actual está abierto y corresponde a este mensaje
@@ -251,13 +252,14 @@ async function renderChatsSubmodule(container) {
             </button>
           </div>
 
-          <!-- Filtro de Etiquetas / Embudo -->
+          <!-- Filtro de Categorías y Estados Comerciales -->
           <div style="display: flex; gap: 4px; overflow-x: auto; width: 100%; padding-bottom: 2px; scrollbar-width: none;">
             <button class="filter-chip ${currentTagFilter === 'ALL' ? 'active' : ''}" data-tag="ALL" style="font-size: 0.72rem; padding: 2px 8px;">Todos</button>
-            <button class="filter-chip ${currentTagFilter === 'NUEVO' ? 'active' : ''}" data-tag="NUEVO" style="font-size: 0.72rem; padding: 2px 8px;">🆕 Nuevos</button>
-            <button class="filter-chip ${currentTagFilter === 'INTERESADO' ? 'active' : ''}" data-tag="INTERESADO" style="font-size: 0.72rem; padding: 2px 8px;">⭐ Interesados</button>
-            <button class="filter-chip ${currentTagFilter === 'PEDIDO_ACTIVO' ? 'active' : ''}" data-tag="PEDIDO_ACTIVO" style="font-size: 0.72rem; padding: 2px 8px;">🥛 Pedidos</button>
-            <button class="filter-chip ${currentTagFilter === 'CLIENTE_FRECUENTE' ? 'active' : ''}" data-tag="CLIENTE_FRECUENTE" style="font-size: 0.72rem; padding: 2px 8px;">👑 Fieles</button>
+            <button class="filter-chip ${currentTagFilter === 'DEBT' ? 'active' : ''}" data-tag="DEBT" style="font-size: 0.72rem; padding: 2px 8px; color: #DC2626; border-color: #FECACA;">🚨 Con Deuda</button>
+            <button class="filter-chip ${currentTagFilter === 'ORDERS' ? 'active' : ''}" data-tag="ORDERS" style="font-size: 0.72rem; padding: 2px 8px; color: #D97706; border-color: #FDE68A;">🥣 Con Pedido</button>
+            <button class="filter-chip ${currentTagFilter === 'UP_TO_DATE' ? 'active' : ''}" data-tag="UP_TO_DATE" style="font-size: 0.72rem; padding: 2px 8px; color: #166534; border-color: #BBF7D0;">🟢 Al Día</button>
+            <button class="filter-chip ${currentTagFilter === 'NEW_CLIENTS' ? 'active' : ''}" data-tag="NEW_CLIENTS" style="font-size: 0.72rem; padding: 2px 8px; color: #0284C7; border-color: #BAE6FD;">🆕 Nuevos</button>
+            <button class="filter-chip ${currentTagFilter === 'REPLIED' ? 'active' : ''}" data-tag="REPLIED" style="font-size: 0.72rem; padding: 2px 8px; color: #2563EB; border-color: #BFDBFE;">💬 Respondieron</button>
           </div>
         </div>
 
@@ -548,6 +550,18 @@ function attachChatSubmoduleEvents(container) {
           appendMessageToChat(res.message);
           scrollToBottom();
         }
+
+        // Actualizar conversación activa y moverla inmediatamente al primer lugar
+        conv.lastMessageText = text;
+        conv.lastMessageTimestamp = res.message.timestamp || new Date().toISOString();
+        conv.lastMessageFromMe = true;
+
+        cachedConversations.sort(
+          (a, b) =>
+            new Date(b.lastMessageTimestamp || b.updatedAt || 0).getTime() -
+            new Date(a.lastMessageTimestamp || a.updatedAt || 0).getTime()
+        );
+        renderConversationList();
       }
     } catch (err) {
       showToast(err.message || 'Error al enviar mensaje', 'danger');
@@ -592,7 +606,12 @@ async function loadConversations() {
   if (!listEl) return;
 
   try {
-    cachedConversations = await api.getCrmConversations(searchQuery, currentTagFilter);
+    cachedConversations = (await api.getCrmConversations(searchQuery, 'ALL')) || [];
+    cachedConversations.sort(
+      (a, b) =>
+        new Date(b.lastMessageTimestamp || b.updatedAt || 0).getTime() -
+        new Date(a.lastMessageTimestamp || a.updatedAt || 0).getTime()
+    );
     renderConversationList();
   } catch (err) {
     console.error('Error fetching CRM conversations:', err);
@@ -608,7 +627,44 @@ function renderConversationList() {
   const listEl = document.getElementById('crmConvList');
   if (!listEl) return;
 
-  if (cachedConversations.length === 0) {
+  // Filtrar según el chip de estado seleccionado
+  let displayList = cachedConversations;
+  if (currentTagFilter === 'DEBT') {
+    displayList = displayList.filter((c) => {
+      const orders = c.customer?.orders || [];
+      const deliveredDebt = orders
+        .filter((o) => o.deliveryStatus === 'DELIVERED')
+        .reduce(
+          (sum, o) => sum + (o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0))),
+          0
+        );
+      return deliveredDebt > 0;
+    });
+  } else if (currentTagFilter === 'ORDERS') {
+    displayList = displayList.filter((c) => {
+      const orders = c.customer?.orders || [];
+      return orders.some((o) => o.deliveryStatus !== 'DELIVERED');
+    });
+  } else if (currentTagFilter === 'UP_TO_DATE') {
+    displayList = displayList.filter((c) => {
+      if (!c.customerId || !c.customer) return false;
+      const orders = c.customer.orders || [];
+      if (orders.length === 0) return false;
+      const hasPendingDelivery = orders.some((o) => o.deliveryStatus !== 'DELIVERED');
+      const hasDebt = orders.some(
+        (o) => (o.pendingAmount > 0 || Math.max(0, o.totalAmount - (o.paidAmount || 0)) > 0)
+      );
+      return !hasPendingDelivery && !hasDebt;
+    });
+  } else if (currentTagFilter === 'NEW_CLIENTS') {
+    displayList = displayList.filter((c) => {
+      return !c.customerId || !c.customer || !c.customer.orders || c.customer.orders.length === 0;
+    });
+  } else if (currentTagFilter === 'REPLIED') {
+    displayList = displayList.filter((c) => !c.lastMessageFromMe || c.unreadCount > 0);
+  }
+
+  if (displayList.length === 0) {
     listEl.innerHTML = `
       <li style="padding: 36px 16px; text-align: center; color: var(--text-muted); font-size: 0.88rem;">
         No hay conversaciones en esta sección 📭
@@ -617,13 +673,13 @@ function renderConversationList() {
     return;
   }
 
-  listEl.innerHTML = cachedConversations
+  listEl.innerHTML = displayList
     .map((c) => {
       const isActive = c.id === currentActiveConvId;
       const name = c.contactName || (c.customer ? c.customer.fullName : c.phoneNumber || 'Desconocido');
       const initial = name.charAt(0).toUpperCase();
       const timeStr = c.lastMessageTimestamp ? formatConvTime(c.lastMessageTimestamp) : '';
-      
+
       // Limpiar texto de vista previa para evitar saltos de línea y longitud desmedida
       const rawPreview = c.lastMessageText || 'Sin mensajes';
       const cleanPreview = rawPreview
@@ -632,26 +688,61 @@ function renderConversationList() {
         .trim();
 
       const unreadBadge = c.unreadCount > 0 ? `<span class="crm-conv-unread">${c.unreadCount}</span>` : '';
-      const tag = c.tag || 'NUEVO';
 
-      let tagLabel = '🆕 Nuevo';
-      if (tag === 'INTERESADO') tagLabel = '⭐ Interesado';
-      if (tag === 'PEDIDO_ACTIVO') tagLabel = '🥛 Pedido';
-      if (tag === 'CLIENTE_FRECUENTE') tagLabel = '👑 Fiel';
-      if (tag === 'SEGUIMIENTO') tagLabel = '🔔 Seguimiento';
+      // Indicador de si el cliente respondió (para que se distingan y suban en atención)
+      const repliedIndicator = !c.lastMessageFromMe && c.lastMessageText
+        ? `<span style="background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; font-size: 0.65rem; font-weight: 800; padding: 1px 5px; border-radius: 4px; margin-left: 4px; display: inline-flex; align-items: center; gap: 2px;">💬 Respondió</span>`
+        : '';
+
+      // Insignia de estado comercial y financiero del cliente
+      let statusBadgeHtml = '';
+      if (!c.customerId || !c.customer) {
+        statusBadgeHtml = `<span class="crm-client-status-badge" style="background: #F3F4F6; color: #4B5563; border: 1px solid #E5E7EB; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">⚪ No Vinculado</span>`;
+      } else {
+        const custOrders = c.customer.orders || [];
+        const deliveredOrders = custOrders.filter((o) => o.deliveryStatus === 'DELIVERED');
+        const deliveredDebt = deliveredOrders.reduce(
+          (sum, o) => sum + (o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0))),
+          0
+        );
+
+        const inProcessOrders = custOrders.filter((o) => o.deliveryStatus !== 'DELIVERED');
+        const inProcessPaidOrders = inProcessOrders.filter(
+          (o) => o.paymentStatus === 'PAID' || (o.pendingAmount <= 0 && o.totalAmount > 0)
+        );
+        const inProcessPendingOrders = inProcessOrders.filter(
+          (o) => o.pendingAmount > 0 || Math.max(0, o.totalAmount - (o.paidAmount || 0)) > 0
+        );
+        const inProcessPendingAmount = inProcessPendingOrders.reduce(
+          (sum, o) => sum + (o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0))),
+          0
+        );
+
+        if (deliveredDebt > 0) {
+          statusBadgeHtml = `<span class="crm-client-status-badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 4px;">🚨 Debe ${formatCOP(deliveredDebt)}</span>`;
+        } else if (inProcessPaidOrders.length > 0) {
+          statusBadgeHtml = `<span class="crm-client-status-badge" style="background: #ECFDF5; color: #059669; border: 1px solid #A7F3D0; font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 4px;">📦 Pagado (Por entregar)</span>`;
+        } else if (inProcessPendingOrders.length > 0) {
+          statusBadgeHtml = `<span class="crm-client-status-badge" style="background: #FFEDD5; color: #C2410C; border: 1px solid #FED7AA; font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 4px;">🥣 En Prep. (${formatCOP(inProcessPendingAmount)})</span>`;
+        } else if (custOrders.length > 0) {
+          statusBadgeHtml = `<span class="crm-client-status-badge" style="background: #F0FDF4; color: #166534; border: 1px solid #BBF7D0; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">🟢 Al Día</span>`;
+        } else {
+          statusBadgeHtml = `<span class="crm-client-status-badge" style="background: #E0F2FE; color: #0284C7; border: 1px solid #BAE6FD; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">🆕 Cliente Nuevo</span>`;
+        }
+      }
 
       return `
       <li class="crm-conv-item ${isActive ? 'active' : ''}" data-conv-id="${c.id}">
         <div class="crm-conv-avatar">${initial}</div>
         <div class="crm-conv-info">
           <div class="crm-conv-header-row">
-            <span class="crm-conv-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-            <span class="crm-conv-time">${timeStr}</span>
+            <span class="crm-conv-name" title="${escapeHtml(name)}" style="${!c.lastMessageFromMe && c.unreadCount > 0 ? 'font-weight: 800; color: var(--text-main);' : ''}">${escapeHtml(name)}</span>
+            <span class="crm-conv-time" style="display: inline-flex; align-items: center;">${timeStr} ${repliedIndicator}</span>
           </div>
           <div class="crm-conv-preview-row">
-            <span class="crm-conv-preview" title="${escapeHtml(cleanPreview)}">${c.lastMessageFromMe ? '<span class="crm-preview-check">✓</span> ' : ''}${escapeHtml(cleanPreview)}</span>
+            <span class="crm-conv-preview" title="${escapeHtml(cleanPreview)}" style="${!c.lastMessageFromMe && c.unreadCount > 0 ? 'font-weight: 700; color: var(--text-main);' : ''}">${c.lastMessageFromMe ? '<span class="crm-preview-check">✓</span> ' : ''}${escapeHtml(cleanPreview)}</span>
             <div class="crm-conv-badges">
-              <span class="crm-tag-badge ${tag}" style="font-size: 0.65rem; padding: 1px 5px;">${tagLabel}</span>
+              ${statusBadgeHtml}
               ${unreadBadge}
             </div>
           </div>
@@ -922,9 +1013,15 @@ function renderCustomerDetails(conv) {
         <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 8px;">
           📍 ${escapeHtml(customer.address || 'Fonseca')}
         </div>
-        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
           <button class="btn btn-sm btn-outline" id="btnScheduleRecurringFromChat" style="font-size: 0.74rem; padding: 4px 8px; font-weight: 700; color: #0369A1; border-color: #BAE6FD;">
-            🔁 Programar Compra Frecuente
+            🔁 Programar Frecuente
+          </button>
+          <button class="btn btn-sm btn-outline" id="btnRelinkCustomerChat" style="font-size: 0.74rem; padding: 4px 8px; font-weight: 700; color: #166534; border-color: #BBF7D0;" title="Reasignar a otro cliente o fusionar chats">
+            🔄 Cambiar o Unificar
+          </button>
+          <button class="btn btn-sm btn-outline" id="btnUnlinkCustomerChat" style="font-size: 0.74rem; padding: 4px 8px; font-weight: 700; color: #DC2626; border-color: #FECACA;" title="Desvincular este chat de este cliente">
+            🔓 Desvincular
           </button>
         </div>
       </div>
@@ -1019,7 +1116,29 @@ function renderCustomerDetails(conv) {
     }
   });
 
-  // Botón vincular cliente
+  // Botón desvincular cliente
+  body.querySelector('#btnUnlinkCustomerChat')?.addEventListener('click', async () => {
+    const custName = customer?.fullName || 'este cliente';
+    if (confirm(`¿Deseas desvincular este chat de "${custName}"?\n\nEl chat pasará a ser un contacto no vinculado y podrás volver a asociarlo a cualquier cliente o fusionarlo.`)) {
+      try {
+        await api.linkCrmCustomer(conv.id, null);
+        conv.customerId = null;
+        conv.customer = null;
+        showToast(`Chat desvinculado de ${custName} 🔓`, 'info');
+        await loadConversations();
+        selectConversation(conv.id);
+      } catch (err) {
+        showToast(err.message || 'Error al desvincular cliente', 'danger');
+      }
+    }
+  });
+
+  // Botón re-vincular o unificar cliente
+  body.querySelector('#btnRelinkCustomerChat')?.addEventListener('click', () => {
+    openLinkCustomerModal(conv);
+  });
+
+  // Botón vincular cliente (cuando no está vinculado)
   body.querySelector('#btnLinkCustomerChat')?.addEventListener('click', () => {
     openLinkCustomerModal(conv);
   });
