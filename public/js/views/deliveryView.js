@@ -184,25 +184,22 @@ function filterAndRenderDelivery(container) {
     scopedOrders = scopedOrders.filter((o) => {
       const dDate = toColombiaDateStr(o.deliveryDate);
       const oDate = toColombiaDateStr(o.orderDate);
-      const uDate = o.deliveryStatus === 'DELIVERED' ? toColombiaDateStr(o.updatedAt) : '';
-      return dDate === todayStr || uDate === todayStr || (!dDate && oDate === todayStr);
+      return dDate === todayStr || (!dDate && oDate === todayStr);
     });
   } else if (deliveryDateScope === 'SPECIFIC_DATE') {
     const targetDate = deliverySpecificDate;
     scopedOrders = scopedOrders.filter((o) => {
       const dDate = toColombiaDateStr(o.deliveryDate);
       const oDate = toColombiaDateStr(o.orderDate);
-      const uDate = toColombiaDateStr(o.updatedAt);
-      return dDate === targetDate || uDate === targetDate || (!dDate && oDate === targetDate);
+      return dDate === targetDate || (!dDate && oDate === targetDate);
     });
   } else if (deliveryDateScope === 'ALL_PENDING') {
     // Mostrar todos los pendientes por entregar (sin importar fecha), o los entregados hoy
     scopedOrders = scopedOrders.filter((o) => {
       if (o.deliveryStatus !== 'DELIVERED') return true;
       const dDate = toColombiaDateStr(o.deliveryDate);
-      const uDate = toColombiaDateStr(o.updatedAt);
       const oDate = toColombiaDateStr(o.orderDate);
-      return dDate === todayStr || uDate === todayStr || oDate === todayStr;
+      return dDate === todayStr || (!dDate && oDate === todayStr);
     });
   }
 
@@ -244,14 +241,34 @@ function filterAndRenderDelivery(container) {
     .filter((o) => o.deliveryStatus !== 'DELIVERED' && o.pendingAmount > 0)
     .reduce((sum, o) => sum + (o.pendingAmount || 0), 0);
 
-  // Recaudado total de los pedidos en este alcance (tanto entregados como pagados por anticipado / en preparación / en ruta)
-  const totalCollectedToday = scopedOrders
-    .reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+  // Recaudado real: sumar únicamente pagos y abonos efectivamente recibidos en la fecha de consulta
+  const queryTargetDate = deliveryDateScope === 'SPECIFIC_DATE' ? deliverySpecificDate : todayStr;
 
-  const deliveredPaid = deliveredOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
-  const inProcessPaid = scopedOrders
-    .filter((o) => o.deliveryStatus !== 'DELIVERED')
-    .reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+  const calculateCollectedForOrders = (orderList) => {
+    return orderList.reduce((sum, o) => {
+      if (o.payments && o.payments.length > 0) {
+        const paymentsOnTarget = o.payments
+          .filter((p) => toColombiaDateStr(p.paymentDate) === queryTargetDate)
+          .reduce((pSum, p) => pSum + (p.amount || 0), 0);
+        if (paymentsOnTarget > 0) {
+          return sum + paymentsOnTarget;
+        }
+      }
+
+      // Si no tiene pagos registrados en esa fecha o no tiene desglose de payments,
+      // solo sumar paidAmount si el pedido fue entregado o creado en esa fecha exacta
+      const dDate = toColombiaDateStr(o.deliveryDate);
+      const oDate = toColombiaDateStr(o.orderDate);
+      if (dDate === queryTargetDate || (!dDate && oDate === queryTargetDate)) {
+        return sum + (o.paidAmount || 0);
+      }
+      return sum;
+    }, 0);
+  };
+
+  const totalCollectedToday = calculateCollectedForOrders(scopedOrders);
+  const deliveredPaid = calculateCollectedForOrders(deliveredOrders);
+  const inProcessPaid = calculateCollectedForOrders(scopedOrders.filter((o) => o.deliveryStatus !== 'DELIVERED'));
 
   // 5. Actualizar chips de estado
   const chipsContainer = document.getElementById('deliveryStatusChipsContainer');
@@ -394,8 +411,15 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
             itemsText = `<strong>${order.quantityBottles}x</strong> ${order.flavor} (${order.bottleSize})`;
           }
 
-          const deliveryDateStr = order.deliveryDate ? order.deliveryDate.split('T')[0] : '';
-          const orderDateStr = order.orderDate ? order.orderDate.split('T')[0] : '';
+          const deliveryDateStr = order.deliveryDate ? toColombiaDateStr(order.deliveryDate) : '';
+          const orderDateStr = order.orderDate ? toColombiaDateStr(order.orderDate) : '';
+          const updatedDateStr = order.updatedAt ? toColombiaDateStr(order.updatedAt) : '';
+
+          let updatedBadge = '';
+          if (order.updatedAt) {
+            const isTodayMod = updatedDateStr === todayStr;
+            updatedBadge = `<span style="background: ${isTodayMod ? '#F0FDFA' : '#F8FAFC'}; color: ${isTodayMod ? '#0F766E' : '#64748B'}; border: 1px solid ${isTodayMod ? '#99F6E4' : '#CBD5E1'}; padding: 2px 6px; border-radius: var(--radius-sm); font-weight: 700; font-size: 0.72rem;" title="Última modificación del pedido">✏️ Modificado: ${formatDateTime(order.updatedAt)}</span>`;
+          }
 
           let deliveryDateBadge = '';
           if (deliveryDateStr) {
@@ -445,7 +469,7 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
                   <div>
                     <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-muted);">
-                      #${order.orderNumber}
+                       #${order.orderNumber}
                     </span>
                     <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin: 2px 0 0;">
                       ${order.customer?.fullName || 'Cliente'}
@@ -458,7 +482,10 @@ function renderDeliveryOrdersListHtml(orders, todayStr, isAdmin = false) {
                 </div>
 
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
-                  ${deliveryDateBadge}
+                  <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                    ${deliveryDateBadge}
+                    ${updatedBadge}
+                  </div>
                   ${modeBadge}
                 </div>
 
