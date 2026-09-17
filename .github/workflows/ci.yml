@@ -1,0 +1,63 @@
+name: Continuous Integration & Quality Gate
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test-and-build:
+    name: Lint, Tests & Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: yogurarte_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Código Fuente
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar Dependencias
+        run: npm ci
+
+      - name: Generar Cliente Prisma
+        run: npx prisma generate
+
+      - name: Verificación Estricta de Tipos TypeScript
+        run: npx tsc --noEmit
+
+      - name: Sincronizar Esquema en Base de Datos de Pruebas
+        env:
+          DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/yogurarte_test?schema=public
+        run: npx prisma db push --skip-generate
+
+
+
+      - name: Ejecutar Suite Completa de Pruebas Vitest
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/yogurarte_test?schema=public
+          JWT_SECRET: ci-pipeline-secure-test-jwt-secret-key-32chars
+        run: npm test
+
+      - name: Compilar Proyecto para Producción
+        run: npm run build

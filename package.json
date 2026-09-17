@@ -16,7 +16,9 @@
     "backup": "node scripts/backup_cloud.cjs",
     "backup:cloud": "node scripts/backup_cloud.cjs",
     "backup:local": "scripts\\backup_db.bat",
-    "sync:local": "node scripts/sync_neon_to_local.cjs"
+    "sync:local": "node scripts/sync_neon_to_local.cjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "yogur",
@@ -54,9 +56,12 @@
     "@types/nodemailer": "^8.0.1",
     "@types/pino": "^7.0.4",
     "@types/qrcode": "^1.5.6",
+    "@types/supertest": "^7.2.1",
     "prisma": "^5.19.1",
     "rimraf": "^6.0.1",
+    "supertest": "^7.2.2",
     "tsx": "^4.19.1",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vitest": "^4.1.11"
   }
 }

@@ -9,6 +9,7 @@ export const authLimiter = rateLimit({
   max: 10, // Máximo 10 intentos por IP
   standardHeaders: true, // Retorna cabeceras RateLimit-* estándar
   legacyHeaders: false, // Deshabilita cabeceras X-RateLimit-*
+  skip: () => process.env.NODE_ENV === 'test',
   message: {
     error: 'Demasiados intentos fallidos de inicio de sesión. Por favor espera 15 minutos antes de volver a intentar.',
     code: 'TOO_MANY_AUTH_ATTEMPTS',
@@ -25,6 +26,7 @@ export const apiLimiter = rateLimit({
   max: 300, // Máximo 300 peticiones por minuto por IP
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
   message: {
     error: 'Has excedido el límite de peticiones por minuto. Por favor reduce la velocidad.',
     code: 'RATE_LIMIT_EXCEEDED',
@@ -40,6 +42,7 @@ export const crmSendLimiter = rateLimit({
   max: 40, // Máximo 40 mensajes por minuto por usuario/IP
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
   message: {
     error: 'Has enviado demasiados mensajes en poco tiempo. Por seguridad de la línea de WhatsApp, espera un momento.',
     code: 'CRM_RATE_LIMIT_EXCEEDED',

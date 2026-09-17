@@ -550,63 +550,77 @@ export const createOrder = async (req: Request, res: Response) => {
       initialDeliveryDate = new Date();
     }
 
-    const order = await prisma.order.create({
-      data: {
-        orderNumber,
-        customerId: finalCustomerId,
-        batchId: finalOrderBatchId,
-        bottleSize: bottleSizeSummary,
-        quantityBottles: totalQuantityBottles,
-        totalLiters: totalLitersCalculated,
-        flavor: flavorSummary,
-        unitPrice: parsedItems[0]?.unitPrice || 12000,
-        totalAmount: calculatedTotalAmount,
-        paidAmount: paid,
-        pendingAmount: pending,
-        paymentStatus: calculatedPaymentStatus,
-        paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
-        deliveryStatus: deliveryStatus || 'PENDING',
-        deliveryType: deliveryType ? String(deliveryType).toUpperCase() : 'PROPIO',
-        deliveryDriverId: deliveryDriverId ? Number(deliveryDriverId) : null,
-        deliveryDriverName: deliveryDriverName ? String(deliveryDriverName).trim() : null,
-        deliveryFee: parsedDeliveryFee,
-        discount: parsedDiscount,
-        orderDate: dateObj,
-        deliveryDate: initialDeliveryDate,
-        deliveryAddress: deliveryAddress ? deliveryAddress.trim() : (customerAddress ? customerAddress.trim() : 'Fonseca'),
-        notes: notes ? notes.trim() : null,
-        registeredBy: registeredBy || 'Edier',
-        items: {
-          create: parsedItems.map((i) => ({
-            batchId: i.batchId || null,
-            bottleSize: i.bottleSize,
-            flavor: i.flavor,
-            quantity: i.quantity,
-            litersPerUnit: i.litersPerUnit,
-            totalLiters: i.totalLiters,
-            unitPrice: i.unitPrice,
-            totalPrice: i.totalPrice,
-          })),
-        },
-        payments: paid > 0 ? {
-          create: [{
-            amount: paid,
-            paymentDate: dateObj,
+    let order: any = null;
+    let attempts = 0;
+    while (!order && attempts < 10) {
+      attempts++;
+      try {
+        order = await prisma.order.create({
+          data: {
+            orderNumber,
+            customerId: finalCustomerId,
+            batchId: finalOrderBatchId,
+            bottleSize: bottleSizeSummary,
+            quantityBottles: totalQuantityBottles,
+            totalLiters: totalLitersCalculated,
+            flavor: flavorSummary,
+            unitPrice: parsedItems[0]?.unitPrice || 12000,
+            totalAmount: calculatedTotalAmount,
+            paidAmount: paid,
+            pendingAmount: pending,
+            paymentStatus: calculatedPaymentStatus,
             paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
-            notes: notes ? `Abono inicial (${notes.trim()})` : 'Abono inicial al crear pedido',
+            deliveryStatus: deliveryStatus || 'PENDING',
+            deliveryType: deliveryType ? String(deliveryType).toUpperCase() : 'PROPIO',
+            deliveryDriverId: deliveryDriverId ? Number(deliveryDriverId) : null,
+            deliveryDriverName: deliveryDriverName ? String(deliveryDriverName).trim() : null,
+            deliveryFee: parsedDeliveryFee,
+            discount: parsedDiscount,
+            orderDate: dateObj,
+            deliveryDate: initialDeliveryDate,
+            deliveryAddress: deliveryAddress ? deliveryAddress.trim() : (customerAddress ? customerAddress.trim() : 'Fonseca'),
+            notes: notes ? notes.trim() : null,
             registeredBy: registeredBy || 'Edier',
-          }],
-        } : undefined,
-      },
-      include: {
-        customer: true,
-        items: true,
-        batch: true,
-        payments: {
-          orderBy: { paymentDate: 'asc' },
-        },
-      },
-    });
+            items: {
+              create: parsedItems.map((i) => ({
+                batchId: i.batchId || null,
+                bottleSize: i.bottleSize,
+                flavor: i.flavor,
+                quantity: i.quantity,
+                litersPerUnit: i.litersPerUnit,
+                totalLiters: i.totalLiters,
+                unitPrice: i.unitPrice,
+                totalPrice: i.totalPrice,
+              })),
+            },
+            payments: paid > 0 ? {
+              create: [{
+                amount: paid,
+                paymentDate: dateObj,
+                paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
+                notes: notes ? `Abono inicial (${notes.trim()})` : 'Abono inicial al crear pedido',
+                registeredBy: registeredBy || 'Edier',
+              }],
+            } : undefined,
+          },
+          include: {
+            customer: true,
+            items: true,
+            batch: true,
+            payments: {
+              orderBy: { paymentDate: 'asc' },
+            },
+          },
+        });
+      } catch (err: any) {
+        if (err.code === 'P2002' && err.meta?.target?.includes('orderNumber') && attempts < 10) {
+          nextSeq++;
+          orderNumber = `PED-${dateStr}-${String(nextSeq).padStart(3, '0')}`;
+          continue;
+        }
+        throw err;
+      }
+    }
 
     if (isLoyaltyReward && finalCustomerId) {
       await prisma.customer.update({
@@ -665,18 +679,7 @@ export const updateOrder = async (req: Request, res: Response) => {
 
     let parsedBatchId = batchId !== undefined ? (batchId ? Number(batchId) : null) : currentOrder.batchId;
 
-    // 1. Actualizar cliente si se proporcionaron datos
-    if (customerName || customerPhone || customerAddress) {
-      await prisma.customer.update({
-        where: { id: currentOrder.customerId },
-        data: {
-          fullName: customerName ? customerName.trim() : undefined,
-          phone: customerPhone ? customerPhone.trim() : undefined,
-          address: customerAddress ? customerAddress.trim() : undefined,
-          neighborhood: customerNeighborhood ? customerNeighborhood.trim() : undefined,
-        },
-      });
-    }
+
 
     // 2. Si vienen ítems múltiples, procesar y reemplazar
     const updatedDeliveryFee = deliveryFee !== undefined ? Number(deliveryFee) : currentOrder.deliveryFee;
@@ -793,25 +796,6 @@ export const updateOrder = async (req: Request, res: Response) => {
 
       const uniqueBatchIds = Array.from(new Set(parsedItems.map((i) => i.batchId).filter(Boolean))) as number[];
       parsedBatchId = uniqueBatchIds.length === 1 ? uniqueBatchIds[0] : null;
-
-      // Reemplazar ítems en base de datos
-      await prisma.orderItem.deleteMany({
-        where: { orderId: Number(id) },
-      });
-
-      await prisma.orderItem.createMany({
-        data: parsedItems.map((i) => ({
-          orderId: Number(id),
-          batchId: i.batchId || null,
-          bottleSize: i.bottleSize,
-          flavor: i.flavor,
-          quantity: i.quantity,
-          litersPerUnit: i.litersPerUnit,
-          totalLiters: i.totalLiters,
-          unitPrice: i.unitPrice,
-          totalPrice: i.totalPrice,
-        })),
-      });
     } else if (totalAmount !== undefined || quantityBottles !== undefined) {
       updatedTotal = totalAmount !== undefined ? Number(totalAmount) : currentOrder.totalAmount;
       updatedQuantity = quantityBottles !== undefined ? Number(quantityBottles) : currentOrder.quantityBottles;
@@ -845,85 +829,124 @@ export const updateOrder = async (req: Request, res: Response) => {
 
     const targetPaymentMethod = paymentMethod !== undefined ? paymentMethod.trim() : currentOrder.paymentMethod;
 
-    const updated = await prisma.order.update({
-      where: { id: Number(id) },
-      data: {
-        batchId: parsedBatchId,
-        bottleSize: updatedBottleSize,
-        quantityBottles: updatedQuantity,
-        totalLiters: updatedLiters,
-        flavor: updatedFlavor,
-        unitPrice: (parsedItemsList && parsedItemsList.length > 0 ? parsedItemsList[0].unitPrice : (unitPrice !== undefined ? Number(unitPrice) : currentOrder.unitPrice)),
-        totalAmount: updatedTotal,
-        paidAmount: finalPaid,
-        pendingAmount: finalPending,
-        paymentStatus: finalPaymentStatus,
-        paymentMethod: targetPaymentMethod,
-        deliveryStatus: deliveryStatus || currentOrder.deliveryStatus,
-        deliveryType: deliveryType !== undefined ? String(deliveryType).toUpperCase() : currentOrder.deliveryType,
-        deliveryDriverId: deliveryDriverId !== undefined ? (deliveryDriverId ? Number(deliveryDriverId) : null) : currentOrder.deliveryDriverId,
-        deliveryDriverName: deliveryDriverName !== undefined ? deliveryDriverName : currentOrder.deliveryDriverName,
-        deliveryFee: updatedDeliveryFee,
-        discount: updatedDiscount,
-        orderDate: orderDate ? parseColombiaDate(orderDate) : currentOrder.orderDate,
-        deliveryDate: finalDeliveryDate,
-        deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : (customerAddress ? customerAddress.trim() : currentOrder.deliveryAddress),
-        notes: notes !== undefined ? notes : currentOrder.notes,
-      },
-      include: {
-        customer: true,
-        items: true,
-        batch: true,
-        payments: {
-          orderBy: { paymentDate: 'asc' },
-        },
-      },
-    });
-
-    // 3. Sincronizar registros en OrderPayment para que se reflejen exactamente en Caja y Dashboard
-    const existingPayments = await prisma.orderPayment.findMany({
-      where: { orderId: Number(id) },
-      orderBy: { paymentDate: 'asc' },
-    });
-
-    if (finalPaid === 0 && existingPayments.length > 0) {
-      // Si el pedido quedó en $0 pagado, eliminar abonos registrados
-      await prisma.orderPayment.deleteMany({
-        where: { orderId: Number(id) },
-      });
-    } else if (finalPaid > 0) {
-      if (existingPayments.length === 0) {
-        // No había abono previo registrado, crear el registro de abono
-        const pDate = orderDate ? parseColombiaDate(orderDate) : currentOrder.orderDate;
-        await prisma.orderPayment.create({
+    const updated = await prisma.$transaction(async (tx) => {
+      // 1. Actualizar cliente si se proporcionaron datos
+      if (customerName || customerPhone || customerAddress) {
+        await tx.customer.update({
+          where: { id: currentOrder.customerId },
           data: {
-            orderId: Number(id),
-            amount: finalPaid,
-            paymentDate: pDate,
-            paymentMethod: targetPaymentMethod || 'EFECTIVO',
-            notes: 'Abono registrado al actualizar pedido',
-            registeredBy: registeredBy || 'Edier',
-          },
-        });
-      } else if (existingPayments.length === 1) {
-        // Un solo pago: sincronizar su monto y su medio de pago
-        await prisma.orderPayment.update({
-          where: { id: existingPayments[0].id },
-          data: {
-            amount: finalPaid,
-            paymentMethod: targetPaymentMethod || 'EFECTIVO',
-          },
-        });
-      } else if (paymentMethod !== undefined) {
-        // Si hay varios abonos y el usuario cambió el método general, actualizar los abonos para que coincidan
-        await prisma.orderPayment.updateMany({
-          where: { orderId: Number(id) },
-          data: {
-            paymentMethod: targetPaymentMethod || 'EFECTIVO',
+            fullName: customerName ? customerName.trim() : undefined,
+            phone: customerPhone ? customerPhone.trim() : undefined,
+            address: customerAddress ? customerAddress.trim() : undefined,
+            neighborhood: customerNeighborhood ? customerNeighborhood.trim() : undefined,
           },
         });
       }
-    }
+
+      // 2. Reemplazar ítems en base de datos si cambiaron
+      if (parsedItemsList && parsedItemsList.length > 0) {
+        await tx.orderItem.deleteMany({
+          where: { orderId: Number(id) },
+        });
+
+        await tx.orderItem.createMany({
+          data: parsedItemsList.map((i) => ({
+            orderId: Number(id),
+            batchId: i.batchId || null,
+            bottleSize: i.bottleSize,
+            flavor: i.flavor,
+            quantity: i.quantity,
+            litersPerUnit: i.litersPerUnit,
+            totalLiters: i.totalLiters,
+            unitPrice: i.unitPrice,
+            totalPrice: i.totalPrice,
+          })),
+        });
+      }
+
+      // 3. Actualizar la orden principal
+      const updatedOrder = await tx.order.update({
+        where: { id: Number(id) },
+        data: {
+          batchId: parsedBatchId,
+          bottleSize: updatedBottleSize,
+          quantityBottles: updatedQuantity,
+          totalLiters: updatedLiters,
+          flavor: updatedFlavor,
+          unitPrice: (parsedItemsList && parsedItemsList.length > 0 ? parsedItemsList[0].unitPrice : (unitPrice !== undefined ? Number(unitPrice) : currentOrder.unitPrice)),
+          totalAmount: updatedTotal,
+          paidAmount: finalPaid,
+          pendingAmount: finalPending,
+          paymentStatus: finalPaymentStatus,
+          paymentMethod: targetPaymentMethod,
+          deliveryStatus: deliveryStatus || currentOrder.deliveryStatus,
+          deliveryType: deliveryType !== undefined ? String(deliveryType).toUpperCase() : currentOrder.deliveryType,
+          deliveryDriverId: deliveryDriverId !== undefined ? (deliveryDriverId ? Number(deliveryDriverId) : null) : currentOrder.deliveryDriverId,
+          deliveryDriverName: deliveryDriverName !== undefined ? deliveryDriverName : currentOrder.deliveryDriverName,
+          deliveryFee: updatedDeliveryFee,
+          discount: updatedDiscount,
+          orderDate: orderDate ? parseColombiaDate(orderDate) : currentOrder.orderDate,
+          deliveryDate: finalDeliveryDate,
+          deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : (customerAddress ? customerAddress.trim() : currentOrder.deliveryAddress),
+          notes: notes !== undefined ? notes : currentOrder.notes,
+        },
+        include: {
+          customer: true,
+          items: true,
+          batch: true,
+          payments: {
+            orderBy: { paymentDate: 'asc' },
+          },
+        },
+      });
+
+      // 4. Sincronizar registros en OrderPayment para que se reflejen exactamente en Caja y Dashboard
+      const existingPayments = await tx.orderPayment.findMany({
+        where: { orderId: Number(id) },
+        orderBy: { paymentDate: 'asc' },
+      });
+
+      if (finalPaid === 0 && existingPayments.length > 0) {
+        // Si el pedido quedó en $0 pagado, eliminar abonos registrados
+        await tx.orderPayment.deleteMany({
+          where: { orderId: Number(id) },
+        });
+      } else if (finalPaid > 0) {
+        if (existingPayments.length === 0) {
+          // No había abono previo registrado, crear el registro de abono
+          const pDate = orderDate ? parseColombiaDate(orderDate) : currentOrder.orderDate;
+          await tx.orderPayment.create({
+            data: {
+              orderId: Number(id),
+              amount: finalPaid,
+              paymentDate: pDate,
+              paymentMethod: targetPaymentMethod || 'EFECTIVO',
+              notes: 'Abono registrado al actualizar pedido',
+              registeredBy: registeredBy || 'Edier',
+            },
+          });
+        } else if (existingPayments.length === 1) {
+          // Un solo pago: sincronizar su monto y su medio de pago
+          await tx.orderPayment.update({
+            where: { id: existingPayments[0].id },
+            data: {
+              amount: finalPaid,
+              paymentMethod: targetPaymentMethod || 'EFECTIVO',
+            },
+          });
+        } else if (paymentMethod !== undefined) {
+          // Si hay varios abonos y el usuario cambió el método general, actualizar los abonos para que coincidan
+          await tx.orderPayment.updateMany({
+            where: { orderId: Number(id) },
+            data: {
+              paymentMethod: targetPaymentMethod || 'EFECTIVO',
+            },
+          });
+        }
+      }
+
+      return updatedOrder;
+    });
 
     res.json(updated);
   } catch (error) {
@@ -1119,42 +1142,46 @@ export const addOrderPayment = async (req: Request, res: Response) => {
 
     const paymentDate = parseColombiaDate(req.body.paymentDate);
 
-    const newPayment = await prisma.orderPayment.create({
-      data: {
-        orderId,
-        amount: payAmount,
-        paymentMethod: paymentMethod ? String(paymentMethod).trim() : (order.paymentMethod || 'EFECTIVO'),
-        paymentDate,
-        notes: notes ? String(notes).trim() : null,
-        registeredBy: registeredBy || 'Edier',
-      },
-    });
-
-    const allPayments = await prisma.orderPayment.findMany({ where: { orderId } });
-    const newPaidAmount = allPayments.reduce((sum, p) => sum + p.amount, 0);
-    const newPendingAmount = Math.max(0, order.totalAmount - newPaidAmount);
-    let newPaymentStatus = 'PENDING';
-    if (newPaidAmount >= order.totalAmount) {
-      newPaymentStatus = 'PAID';
-    } else if (newPaidAmount > 0) {
-      newPaymentStatus = 'PARTIAL';
-    }
-
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        paidAmount: newPaidAmount,
-        pendingAmount: newPendingAmount,
-        paymentStatus: newPaymentStatus,
-      },
-      include: {
-        customer: true,
-        items: true,
-        batch: true,
-        payments: {
-          orderBy: { paymentDate: 'asc' },
+    const { newPayment, updatedOrder } = await prisma.$transaction(async (tx) => {
+      const createdPayment = await tx.orderPayment.create({
+        data: {
+          orderId,
+          amount: payAmount,
+          paymentMethod: paymentMethod ? String(paymentMethod).trim() : (order.paymentMethod || 'EFECTIVO'),
+          paymentDate,
+          notes: notes ? String(notes).trim() : null,
+          registeredBy: registeredBy || 'Edier',
         },
-      },
+      });
+
+      const allPayments = await tx.orderPayment.findMany({ where: { orderId } });
+      const newPaidAmount = allPayments.reduce((sum, p) => sum + p.amount, 0);
+      const newPendingAmount = Math.max(0, order.totalAmount - newPaidAmount);
+      let newPaymentStatus = 'PENDING';
+      if (newPaidAmount >= order.totalAmount) {
+        newPaymentStatus = 'PAID';
+      } else if (newPaidAmount > 0) {
+        newPaymentStatus = 'PARTIAL';
+      }
+
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          paidAmount: newPaidAmount,
+          pendingAmount: newPendingAmount,
+          paymentStatus: newPaymentStatus,
+        },
+        include: {
+          customer: true,
+          items: true,
+          batch: true,
+          payments: {
+            orderBy: { paymentDate: 'asc' },
+          },
+        },
+      });
+
+      return { newPayment: createdPayment, updatedOrder: updated };
     });
 
     res.json({
@@ -1196,41 +1223,43 @@ export const updateOrderPayment = async (req: Request, res: Response) => {
     if (notes !== undefined) updateData.notes = notes ? String(notes).trim() : null;
     if (registeredBy) updateData.registeredBy = String(registeredBy).trim();
 
-    await prisma.orderPayment.update({
-      where: { id: pId },
-      data: updateData,
-    });
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      await tx.orderPayment.update({
+        where: { id: pId },
+        data: updateData,
+      });
 
-    const allPayments = await prisma.orderPayment.findMany({
-      where: { orderId },
-      orderBy: { paymentDate: 'asc' },
-    });
+      const allPayments = await tx.orderPayment.findMany({
+        where: { orderId },
+        orderBy: { paymentDate: 'asc' },
+      });
 
-    const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
-    const pendingAmount = Math.max(0, order.totalAmount - totalPaid);
+      const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
+      const pendingAmount = Math.max(0, order.totalAmount - totalPaid);
 
-    let paymentStatus = 'PENDING';
-    if (totalPaid >= order.totalAmount) {
-      paymentStatus = 'PAID';
-    } else if (totalPaid > 0) {
-      paymentStatus = 'PARTIAL';
-    }
+      let paymentStatus = 'PENDING';
+      if (totalPaid >= order.totalAmount) {
+        paymentStatus = 'PAID';
+      } else if (totalPaid > 0) {
+        paymentStatus = 'PARTIAL';
+      }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        paidAmount: totalPaid,
-        pendingAmount,
-        paymentStatus,
-      },
-      include: {
-        customer: true,
-        items: true,
-        batch: true,
-        payments: {
-          orderBy: { paymentDate: 'asc' },
+      return tx.order.update({
+        where: { id: orderId },
+        data: {
+          paidAmount: totalPaid,
+          pendingAmount,
+          paymentStatus,
         },
-      },
+        include: {
+          customer: true,
+          items: true,
+          batch: true,
+          payments: {
+            orderBy: { paymentDate: 'asc' },
+          },
+        },
+      });
     });
 
     res.json(updatedOrder);
@@ -1255,43 +1284,45 @@ export const deleteOrderPayment = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Abono no encontrado en este pedido' });
     }
 
-    await prisma.orderPayment.delete({
-      where: { id: pId },
-    });
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      await tx.orderPayment.delete({
+        where: { id: pId },
+      });
 
-    const remainingPayments = await prisma.orderPayment.findMany({
-      where: { orderId },
-    });
+      const remainingPayments = await tx.orderPayment.findMany({
+        where: { orderId },
+      });
 
-    const totalPaid = remainingPayments.reduce((sum, p) => sum + p.amount, 0);
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) {
-      return res.status(404).json({ error: 'Pedido no encontrado' });
-    }
+      const totalPaid = remainingPayments.reduce((sum, p) => sum + p.amount, 0);
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order) {
+        throw new Error('Pedido no encontrado');
+      }
 
-    const newPending = Math.max(0, order.totalAmount - totalPaid);
-    let newStatus = 'PENDING';
-    if (totalPaid >= order.totalAmount) {
-      newStatus = 'PAID';
-    } else if (totalPaid > 0) {
-      newStatus = 'PARTIAL';
-    }
+      const newPending = Math.max(0, order.totalAmount - totalPaid);
+      let newStatus = 'PENDING';
+      if (totalPaid >= order.totalAmount) {
+        newStatus = 'PAID';
+      } else if (totalPaid > 0) {
+        newStatus = 'PARTIAL';
+      }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        paidAmount: totalPaid,
-        pendingAmount: newPending,
-        paymentStatus: newStatus,
-      },
-      include: {
-        customer: true,
-        items: true,
-        batch: true,
-        payments: {
-          orderBy: { paymentDate: 'asc' },
+      return tx.order.update({
+        where: { id: orderId },
+        data: {
+          paidAmount: totalPaid,
+          pendingAmount: newPending,
+          paymentStatus: newStatus,
         },
-      },
+        include: {
+          customer: true,
+          items: true,
+          batch: true,
+          payments: {
+            orderBy: { paymentDate: 'asc' },
+          },
+        },
+      });
     });
 
     res.json({
