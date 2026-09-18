@@ -19,4 +19,13 @@ describe('Health and System Endpoints', () => {
     expect(res.body).toHaveProperty('error');
     expect(res.body.error).toContain('no encontrada');
   });
+
+  it('Ruta de /uploads inexistente debe responder con placeholder SVG y NUNCA con HTML index.html', async () => {
+    const res = await request(app).get('/uploads/chat-media/archivo-inexistente.webp');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('image/svg+xml');
+    const content = res.text || (res.body && res.body.toString ? res.body.toString() : '');
+    expect(content).toContain('<svg');
+  });
 });

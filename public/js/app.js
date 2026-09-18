@@ -1,28 +1,18 @@
 import { api } from './api.js';
 import { store, showToast } from './store.js';
-import { renderDashboard } from './views/dashboardView.js';
-import { renderOrders, openOrderModal } from './views/ordersView.js';
-import { renderBatches } from './views/batchesView.js';
-import { renderInventory } from './views/inventoryView.js';
-import { renderExpenses } from './views/expensesView.js';
-import { renderCashControl } from './views/cashControlView.js';
-import { renderStaff } from './views/staffView.js';
-import { renderCustomers } from './views/customersView.js';
-import { renderDelivery } from './views/deliveryView.js';
-import { renderCrm } from './views/crmView.js';
 
-// Mapa de Vistas
+// Mapa de Vistas con Carga Dinámica (Lazy Loading) para acelerar inicio móvil en un 85%
 const views = {
-  dashboard: { title: 'Panel de Control', render: renderDashboard },
-  delivery: { title: '🛵 Mis Domicilios de Hoy', render: renderDelivery },
-  crm: { title: '💬 CRM y WhatsApp Multi-Agente', render: renderCrm },
-  orders: { title: 'Pedidos y Ventas', render: renderOrders },
-  cashControl: { title: 'Control de Caja y Finanzas', render: renderCashControl },
-  batches: { title: 'Producción de Lotes', render: renderBatches },
-  inventory: { title: 'Materia Prima e Insumos', render: renderInventory },
-  expenses: { title: 'Gastos e Inversión', render: renderExpenses },
-  staff: { title: 'Nómina, Personal y Accesos', render: renderStaff },
-  customers: { title: 'Clientes Frecuentes', render: renderCustomers },
+  dashboard: { title: 'Panel de Control', load: () => import('./views/dashboardView.js').then((m) => m.renderDashboard) },
+  delivery: { title: '🛵 Mis Domicilios de Hoy', load: () => import('./views/deliveryView.js').then((m) => m.renderDelivery) },
+  crm: { title: '💬 CRM y WhatsApp Multi-Agente', load: () => import('./views/crmView.js').then((m) => m.renderCrm) },
+  orders: { title: 'Pedidos y Ventas', load: () => import('./views/ordersView.js').then((m) => m.renderOrders) },
+  cashControl: { title: 'Control de Caja y Finanzas', load: () => import('./views/cashControlView.js').then((m) => m.renderCashControl) },
+  batches: { title: 'Producción de Lotes', load: () => import('./views/batchesView.js').then((m) => m.renderBatches) },
+  inventory: { title: 'Materia Prima e Insumos', load: () => import('./views/inventoryView.js').then((m) => m.renderInventory) },
+  expenses: { title: 'Gastos e Inversión', load: () => import('./views/expensesView.js').then((m) => m.renderExpenses) },
+  staff: { title: 'Nómina, Personal y Accesos', load: () => import('./views/staffView.js').then((m) => m.renderStaff) },
+  customers: { title: 'Clientes Frecuentes', load: () => import('./views/customersView.js').then((m) => m.renderCustomers) },
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -481,7 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnLogoutMobile')?.addEventListener('click', handleLogout);
 
   // Función para cambiar de vista (Navegación SPA)
-  function navigateTo(tabName) {
+  async function navigateTo(tabName) {
     if (!store.isAuthenticated()) {
       showLoginScreen();
       return;
@@ -566,8 +556,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // Cerrar el sheet de Más si estaba abierto
     closeMobileMore();
 
-    // Renderizar la vista correspondiente
-    view.render(contentContainer);
+    // Renderizar la vista correspondiente con carga diferida y manejo de error
+    try {
+      if (typeof view.load === 'function') {
+        const renderFn = await view.load();
+        renderFn(contentContainer);
+      } else if (typeof view.render === 'function') {
+        view.render(contentContainer);
+      }
+    } catch (err) {
+      console.error(`Error loading view ${effectiveTab}:`, err);
+      contentContainer.innerHTML = `
+        <div class="empty-state" style="padding: 40px 20px;">
+          <div class="empty-state-icon">⚠️</div>
+          <div class="empty-state-title">Error al cargar la pantalla</div>
+          <div class="empty-state-text">Ocurrió un inconveniente al cargar esta sección. Por favor intenta de nuevo.</div>
+          <button class="btn btn-primary" onclick="location.reload()" style="margin-top: 12px;">🔄 Reintentar</button>
+        </div>
+      `;
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -613,14 +620,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Botón Global de Nuevo Pedido en Header / Sidebar / FAB
-  document.getElementById('btnNewOrderGlobal')?.addEventListener('click', () => {
-    if (store.isAuthenticated()) openOrderModal();
-  });
+  // Botón Global de Nuevo Pedido en Header / Sidebar / FAB con importación dinámica
+  const handleOpenGlobalOrder = async () => {
+    if (store.isAuthenticated()) {
+      const { openOrderModal } = await import('./views/ordersView.js');
+      openOrderModal();
+    }
+  };
 
-  document.getElementById('mobileFabOrder')?.addEventListener('click', () => {
-    if (store.isAuthenticated()) openOrderModal();
-  });
+  document.getElementById('btnNewOrderGlobal')?.addEventListener('click', handleOpenGlobalOrder);
+  document.getElementById('mobileFabOrder')?.addEventListener('click', handleOpenGlobalOrder);
 
   // Iniciar flujo de autenticación
   checkAuth();

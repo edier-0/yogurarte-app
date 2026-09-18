@@ -103,6 +103,17 @@ app.use(
   })
 );
 
+// Fallback para /uploads: Si el archivo no existe en disco (reinicio de Render), servir placeholder SVG y evitar index.html
+app.use('/uploads', (req: Request, res: Response) => {
+  const placeholderPath = path.join(publicPath, 'assets', 'media-placeholder.svg');
+  if (fs.existsSync(placeholderPath)) {
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.sendFile(placeholderPath);
+  }
+  return res.status(404).json({ error: 'Archivo multimedia no encontrado', code: 'MEDIA_NOT_FOUND' });
+});
+
 // 7. Servir archivos estáticos del frontend con caché controlada
 const publicPath = path.join(__dirname, '../public');
 app.use(

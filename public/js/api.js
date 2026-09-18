@@ -1,11 +1,32 @@
 // API Client Seguro para YogurArte
 const API_BASE = '/api';
 
+// In-memory Cache para navegación instantánea (0ms) entre apartados y móviles
+const apiCache = new Map();
+const CACHE_TTL_MS = 25000; // 25 segundos de validez
+
+export function clearApiCache() {
+  apiCache.clear();
+}
+
 /**
  * Función central para realizar peticiones HTTP a la API
  * Adjunta automáticamente el token JWT y maneja expiración de sesión (401)
  */
 async function apiFetch(endpoint, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+  const useCache = isGet && !options.noCache;
+  const cacheKey = endpoint;
+
+  if (useCache && apiCache.has(cacheKey)) {
+    const cached = apiCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return JSON.parse(JSON.stringify(cached.data));
+    }
+    apiCache.delete(cacheKey);
+  }
+
   const token = localStorage.getItem('yogurarte_token');
   const headers = {
     'Content-Type': 'application/json',
@@ -25,6 +46,7 @@ async function apiFetch(endpoint, options = {}) {
   if (res.status === 401 && !endpoint.includes('/users/login') && !endpoint.includes('/users/public-list')) {
     localStorage.removeItem('yogurarte_token');
     localStorage.removeItem('yogurarte_auth_user');
+    apiCache.clear();
     window.dispatchEvent(new CustomEvent('session-expired'));
     const errData = await res.json().catch(() => ({ error: 'Sesión expirada' }));
     throw new Error(errData.error || 'Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
@@ -35,10 +57,20 @@ async function apiFetch(endpoint, options = {}) {
     throw new Error(errData.error || errData.message || `Error en la petición (${res.status})`);
   }
 
-  return res.json();
+  const data = await res.json();
+
+  if (useCache) {
+    apiCache.set(cacheKey, { timestamp: Date.now(), data });
+  } else if (!isGet) {
+    // Si se realizó una mutación (POST, PUT, DELETE), invalidar caché para sincronizar datos frescos
+    apiCache.clear();
+  }
+
+  return data;
 }
 
 export const api = {
+  clearCache: clearApiCache,
   // Dashboard
   async getDashboardSummary(params = {}) {
     let query = '';

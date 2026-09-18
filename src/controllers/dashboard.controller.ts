@@ -4,7 +4,7 @@ import { getColombiaDateStr, parseColombiaDate, getColombiaStartOfDay, getColomb
 
 export const getDashboardSummary = async (req: Request, res: Response) => {
   try {
-    const { period, date, startDate, endDate, month } = req.query;
+    const { period, date, startDate, endDate, month, includeOrders } = req.query;
     const now = new Date();
     const todayStr = getColombiaDateStr(now);
 
@@ -976,7 +976,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         activeCredits: activeCreditObligations,
       },
       recentOrders: orders.slice(0, 8),
-      periodOrders: orders,
+      periodOrders: includeOrders === 'true' ? orders : [],
       inventorySummary: rawMaterials,
     });
   } catch (error) {

@@ -19,18 +19,23 @@ let cachedSettings = {
 
 export async function renderCustomers(container) {
   try {
-    const batchesRes = await api.getBatches({ lite: 'true' });
-    availableBatches = batchesRes || [];
-  } catch (err) {
-    console.error('Error loading batches in customersView:', err);
-    availableBatches = [];
-  }
+    const [batchesSettled, settingsSettled] = await Promise.allSettled([
+      api.getBatches({ lite: 'true' }),
+      api.getSettings(),
+    ]);
 
-  try {
-    const settingsRes = await api.getSettings();
-    if (settingsRes) cachedSettings = { ...cachedSettings, ...settingsRes };
+    if (batchesSettled.status === 'fulfilled') {
+      availableBatches = batchesSettled.value || [];
+    } else {
+      console.error('Error loading batches in customersView:', batchesSettled.reason);
+      availableBatches = [];
+    }
+
+    if (settingsSettled.status === 'fulfilled' && settingsSettled.value) {
+      cachedSettings = { ...cachedSettings, ...settingsSettled.value };
+    }
   } catch (err) {
-    console.warn('Could not load settings in customersView:', err);
+    console.error('Error loading initial data in customersView:', err);
   }
 
   container.innerHTML = `

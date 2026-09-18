@@ -438,11 +438,15 @@ function renderQuickChips() {
  * Asignar eventos del submódulo de chats
  */
 function attachChatSubmoduleEvents(container) {
-  // Búsqueda en chats
+  // Búsqueda en chats con debounce para no saturar Neon en móviles
   const searchInput = container.querySelector('#crmSearchInput');
+  let crmSearchDebounceTimer;
   searchInput?.addEventListener('input', (e) => {
-    searchQuery = e.target.value;
-    loadConversations();
+    clearTimeout(crmSearchDebounceTimer);
+    crmSearchDebounceTimer = setTimeout(() => {
+      searchQuery = e.target.value;
+      loadConversations();
+    }, 300);
   });
 
   // Filtros de etiqueta de embudo
@@ -879,7 +883,7 @@ function renderSingleMessageHtml(m) {
   if (m.messageType === 'IMAGE') {
     if (m.mediaUrl) {
       contentHtml = `
-        <img src="${m.mediaUrl}" alt="Foto" class="crm-msg-image loaded" loading="lazy" decoding="async" data-media-msg-id="${m.messageId}" onclick="window.open('${m.mediaUrl}', '_blank')" />
+        <img src="${m.mediaUrl}" alt="Foto" class="crm-msg-image loaded" loading="lazy" decoding="async" onerror="this.onerror=null; this.src='/assets/media-placeholder.svg';" data-media-msg-id="${m.messageId}" onclick="window.open('${m.mediaUrl}', '_blank')" />
       `;
     } else {
       contentHtml = `<div class="crm-msg-placeholder" data-media-msg-id="${m.messageId}">📷 Foto (Cargando...)</div>`;
@@ -903,7 +907,7 @@ function renderSingleMessageHtml(m) {
     if (m.mediaUrl) {
       contentHtml = `
         <div class="crm-sticker-wrapper" data-media-msg-id="${m.messageId}">
-          <img src="${m.mediaUrl}" alt="Sticker" class="crm-sticker-img loaded" loading="lazy" decoding="async" />
+          <img src="${m.mediaUrl}" alt="Sticker" class="crm-sticker-img loaded" loading="lazy" decoding="async" onerror="this.onerror=null; this.src='/assets/media-placeholder.svg';" />
         </div>
       `;
     } else {

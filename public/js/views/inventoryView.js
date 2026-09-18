@@ -226,14 +226,6 @@ async function loadInventoryData(container) {
   const purchasesContainer = container.querySelector('#purchasesTableContainer');
 
   try {
-    let materials = await api.getMaterials();
-    const preparations = await api.getPreparations();
-    
-    // Filtrar por categoría si no es ALL
-    if (selectedCategory !== 'ALL') {
-      materials = materials.filter((m) => m.category === selectedCategory);
-    }
-
     // Parámetros de filtro de compras
     const purchaseParams = {};
     if (purchaseDateFilter) {
@@ -242,7 +234,28 @@ async function loadInventoryData(container) {
       const lastDay = new Date(year, month, 0).getDate();
       purchaseParams.endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
     }
-    const purchases = await api.getPurchasesHistory(purchaseParams);
+
+    const adjParams = {};
+    if (adjustmentDateFilter) {
+      const [year, month] = adjustmentDateFilter.split('-').map(Number);
+      adjParams.startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      adjParams.endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+    }
+
+    // Ejecutar las 4 consultas simultáneamente en paralelo
+    const [materialsRes, preparations, purchases, adjustments] = await Promise.all([
+      api.getMaterials(),
+      api.getPreparations(),
+      api.getPurchasesHistory(purchaseParams),
+      api.getInventoryAdjustments(adjParams),
+    ]);
+    let materials = materialsRes || [];
+    
+    // Filtrar por categoría si no es ALL
+    if (selectedCategory !== 'ALL') {
+      materials = materials.filter((m) => m.category === selectedCategory);
+    }
 
     // 1. Renderizar tarjetas de insumos
     if (gridContainer) {
@@ -606,16 +619,6 @@ async function loadInventoryData(container) {
     // 4. Renderizar historial de ajustes de inventario y mermas
     const adjustmentsKpisContainer = container.querySelector('#adjustmentsKpisContainer');
     const adjustmentsContainer = container.querySelector('#adjustmentsTableContainer');
-
-    const adjParams = {};
-    if (adjustmentDateFilter) {
-      const [year, month] = adjustmentDateFilter.split('-').map(Number);
-      adjParams.startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-      const lastDay = new Date(year, month, 0).getDate();
-      adjParams.endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
-    }
-
-    const adjustments = await api.getInventoryAdjustments(adjParams);
 
     // Calcular métricas de ajustes
     const totalAdjustmentsCount = (adjustments || []).length;

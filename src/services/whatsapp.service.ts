@@ -297,7 +297,12 @@ class WhatsAppService {
             }
           )) as Buffer;
           if (buffer) {
-            mediaUrl = await this.saveMediaBuffer(messageId, 'webp', buffer);
+            // Opción B: Persistencia directa en Base64 para stickers (15-50 KB) para que no dependan del disco efímero de Render
+            if (buffer.length <= 120 * 1024) {
+              mediaUrl = `data:image/webp;base64,${buffer.toString('base64')}`;
+            } else {
+              mediaUrl = await this.saveMediaBuffer(messageId, 'webp', buffer);
+            }
           }
         }
       } catch (err) {

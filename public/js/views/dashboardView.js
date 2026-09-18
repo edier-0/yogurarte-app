@@ -491,129 +491,22 @@ export async function renderDashboard(container) {
 
       </div>
 
-      <!-- Listado de Ventas del Periodo Seleccionado -->
-      <div class="table-container" style="padding: 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+      <!-- Acceso directo a Gestión de Pedidos -->
+      <div class="orders-toolbar-card" style="padding: 18px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 8px;">
+        <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+          <span style="font-size: 2rem;">📦</span>
           <div>
-            <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--primary); margin: 0;">
-              📋 Ventas del Periodo: ${activeFilterLabel}
-            </h3>
-            <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">
-              Mostrando ${ordersList.length} venta(s) • Total: ${formatCOP(ordersList.reduce((s, o) => s + (o.totalAmount || 0), 0))} (${ordersList.reduce((s, o) => s + (o.totalLiters || 0), 0)} L)
+            <h4 style="font-weight: 800; color: var(--primary); margin: 0 0 2px 0; font-size: 1.05rem;">
+              Detalle Individual de Pedidos y Ventas
+            </h4>
+            <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">
+              Total: <strong>${kpis.totalOrdersCount || 0} pedidos</strong> en este período (${activeFilterLabel}). Para consultar ítems, clientes, estados y cobros detallados:
             </span>
           </div>
-          <button class="btn btn-outline btn-sm" id="btnGoToOrders">Ir a Gestión de Pedidos ➡️</button>
         </div>
-
-        ${
-          ordersList && ordersList.length > 0
-            ? (() => {
-                const { pageItems: pageOrders, totalPages: orderPages, totalItems: orderTotal, currentPage: orderCurr } = paginateArray(ordersList, dashOrdersCurrentPage, 15);
-                dashOrdersCurrentPage = orderCurr;
-                return `
-              <div style="overflow-x: auto;">
-                <table class="app-table">
-                  <thead>
-                    <tr>
-                      <th>Pedido #</th>
-                      <th>Cliente & Teléfono</th>
-                      <th>Lote / Sabor</th>
-                      <th>Litros / Envases</th>
-                      <th>Total Venta</th>
-                      <th>Pago & Cobro</th>
-                      <th>Entrega</th>
-                      <th>Fecha</th>
-                      <th style="text-align: right;">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${pageOrders
-                      .map((o) => {
-                        let payBadge = '<span class="badge badge-pending">🔴 Pendiente</span>';
-                        if (o.paymentStatus === 'PAID') payBadge = '<span class="badge badge-paid">🟢 Pagado</span>';
-                        if (o.paymentStatus === 'PARTIAL')
-                          payBadge = `<span class="badge badge-partial">🟡 Abono: ${formatCOP(o.paidAmount)}</span>`;
-
-                        const isUsername = o.customer?.phone && (o.customer.phone.startsWith('@') || /[a-zA-Z]/.test(o.customer.phone));
-                        const contactDisplay = isUsername && !o.customer.phone.startsWith('@') ? `@${o.customer.phone}` : (o.customer?.phone || '');
-
-                        return `
-                        <tr>
-                          <td>
-                            <strong style="color: var(--primary);">${o.orderNumber}</strong>
-                          </td>
-                          <td>
-                            <div><strong>${o.customer?.fullName || 'Cliente'}</strong></div>
-                            <small style="color: var(--text-muted);">${contactDisplay ? `📞 ${contactDisplay}` : ''}</small>
-                          </td>
-                          <td>
-                            ${
-                              o.batch
-                                ? `<span class="badge" style="background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-weight: 800; font-size: 0.72rem;">🍶 ${o.batch.batchCode}</span>
-                                   <div style="font-size: 0.75rem; color: var(--accent); font-weight: 700;">${o.batch.flavor}</div>`
-                                : `<small style="color: var(--text-muted);">${o.flavor || 'Estándar'}</small>`
-                            }
-                          </td>
-                          <td>
-                            <strong>${o.totalLiters} L</strong>
-                            <div style="font-size: 0.72rem; color: var(--text-muted);">${o.bottleSize || '1L'} • ${o.quantityBottles || 1} bot</div>
-                          </td>
-                          <td>
-                            <strong style="color: var(--primary); font-size: 0.95rem;">${formatCOP(o.totalAmount)}</strong>
-                          </td>
-                          <td>
-                            <div>${payBadge}</div>
-                            ${o.pendingAmount > 0 ? `<div style="font-size: 0.73rem; color: var(--danger); font-weight: 700; margin-top: 2px;">Debe: ${formatCOP(o.pendingAmount)}</div>` : ''}
-                          </td>
-                          <td>
-                            <span class="badge ${o.deliveryStatus === 'DELIVERED' ? 'badge-delivered' : o.deliveryStatus === 'IN_ROUTE' ? 'badge-partial' : o.deliveryStatus === 'PREPARING' ? 'badge-preparing' : 'badge-pending'}">
-                              ${o.deliveryStatus === 'DELIVERED' ? '✅ Entregado' : o.deliveryStatus === 'IN_ROUTE' ? '🛵 En Ruta' : o.deliveryStatus === 'PREPARING' ? '🥣 En Preparación' : '🕒 Pendiente'}
-                            </span>
-                          </td>
-                          <td>
-                            <div style="font-size: 0.8rem; font-weight: 600;">${formatDate(o.orderDate)}</div>
-                            ${o.deliveryDate ? `<div style="font-size: 0.72rem; color: var(--primary); font-weight: 700;">🛵 ${formatDate(o.deliveryDate)}</div>` : ''}
-                          </td>
-                          <td style="text-align: right;">
-                            <div style="display: inline-flex; gap: 4px;">
-                              <button class="btn btn-whatsapp btn-sm btn-dash-whatsapp" data-id="${o.id}" style="padding: 3px 6px; font-size: 0.75rem;" title="Enviar WhatsApp">
-                                ${WA_ICON_SVG}
-                              </button>
-                              ${
-                                o.pendingAmount > 0
-                                  ? `<button class="btn btn-primary btn-sm btn-dash-pay" data-id="${o.id}" data-total="${o.totalAmount}" data-paid="${o.paidAmount}" data-pending="${o.pendingAmount}" style="padding: 3px 8px; font-size: 0.75rem;" title="Registrar Cobro">
-                                      💵 Cobrar
-                                     </button>`
-                                  : ''
-                              }
-                            </div>
-                          </td>
-                        </tr>
-                      `;
-                      })
-                      .join('')}
-                  </tbody>
-                </table>
-              </div>
-              ${renderPaginationHtml({
-                currentPage: dashOrdersCurrentPage,
-                totalPages: orderPages,
-                totalItems: orderTotal,
-                pageSize: 15,
-                itemName: 'ventas',
-                paginationId: 'dashOrdersPagination',
-              })}
-            `;
-              })()
-            : `
-          <div class="empty-state" style="padding: 30px 20px;">
-            <div class="empty-state-icon">📅</div>
-            <div class="empty-state-title">No hay ventas registradas para este periodo</div>
-            <div class="empty-state-text">Selecciona otra fecha o rango en la barra superior o registra un nuevo pedido.</div>
-            <button class="btn btn-accent" id="btnNewOrderFromDash" style="margin-top: 10px;">+ Registrar Pedido</button>
-          </div>
-        `
-        }
+        <button class="btn btn-primary" id="btnGoToOrders" style="font-weight: 800; font-size: 0.9rem; padding: 10px 18px; box-shadow: var(--shadow-sm);">
+          Ver Pedidos y Ventas ➡️
+        </button>
       </div>
     `;
 
@@ -706,15 +599,6 @@ export async function renderDashboard(container) {
       'deliveredUnpaidPagination',
       (newPage) => {
         deliveredUnpaidCurrentPage = newPage;
-        renderDashboard(container);
-      }
-    );
-
-    attachPaginationEvents(
-      container,
-      'dashOrdersPagination',
-      (newPage) => {
-        dashOrdersCurrentPage = newPage;
         renderDashboard(container);
       }
     );
