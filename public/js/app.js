@@ -11,7 +11,7 @@ const views = {
   batches: { title: 'Producción de Lotes', load: () => import('./views/batchesView.js').then((m) => m.renderBatches) },
   inventory: { title: 'Materia Prima e Insumos', load: () => import('./views/inventoryView.js').then((m) => m.renderInventory) },
   expenses: { title: 'Gastos e Inversión', load: () => import('./views/expensesView.js').then((m) => m.renderExpenses) },
-  staff: { title: 'Nómina, Personal y Accesos', load: () => import('./views/staffView.js').then((m) => m.renderStaff) },
+  staff: { title: 'Nómina, Personal y Accesos', load: () => import('./views/staffView.js?v=20260918_v24_focus_fix').then((m) => m.renderStaff) },
   customers: { title: 'Clientes Frecuentes', load: () => import('./views/customersView.js').then((m) => m.renderCustomers) },
 };
 

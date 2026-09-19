@@ -120,6 +120,11 @@ app.use(
   express.static(publicPath, {
     maxAge: process.env.NODE_ENV === 'production' ? '1h' : '0',
     etag: true,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    },
   })
 );
 
@@ -155,6 +160,7 @@ app.use(notFoundHandler);
 
 // 11. Fallback para SPA: cualquier ruta no-API sirve index.html
 app.get('*', (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(publicPath, 'index.html'));
 });
 

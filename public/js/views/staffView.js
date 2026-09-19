@@ -189,6 +189,10 @@ export async function renderStaff(container, forceFetch = true) {
               class="form-input" 
               placeholder="🔍 Buscar por nombre o cargo..." 
               value="${escapeHtml(staffFilters.searchTerm)}"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
               style="max-width: 250px; font-size: 0.85rem; padding: 6px 10px;"
             />
             <button class="btn btn-sm btn-outline" id="btnClearStaffFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros de personal">
@@ -305,11 +309,27 @@ function attachToolbarEvents(container) {
     paymentsCurrentPage = 1;
     usersCurrentPage = 1;
 
-    // Micro debounce para máxima respuesta y mantener el foco completamente estable
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(() => {
+      const wasFocused = document.activeElement === searchInput;
+      let cursorStart = null;
+      let cursorEnd = null;
+      try {
+        cursorStart = searchInput.selectionStart;
+        cursorEnd = searchInput.selectionEnd;
+      } catch (_) {}
+
       renderStaffContentOnly();
-    }, 50);
+
+      if (wasFocused && document.activeElement !== searchInput) {
+        searchInput.focus();
+        try {
+          if (cursorStart !== null && cursorEnd !== null) {
+            searchInput.setSelectionRange(cursorStart, cursorEnd);
+          }
+        } catch (_) {}
+      }
+    }, 120);
   });
 
   container.querySelector('#btnClearStaffFilters')?.addEventListener('click', () => {
@@ -340,57 +360,59 @@ function renderStaffContentOnly() {
   const isUsersTab = staffFilters.tab === 'usuarios';
   const isHistorialTab = staffFilters.tab === 'historial';
 
-  // KPIs Financieros (solo cuando no es la pestaña de usuarios)
+  // KPIs Financieros: Solo renderizar si aún no existen para evitar reflows molestos durante la escritura
   if (!isUsersTab) {
-    const totalPayroll = cachedAllPayments
-      .filter((p) => p.paymentType !== 'RETIRO_SOCIO')
-      .reduce((sum, p) => sum + (p.netAmount || 0), 0);
-    const totalOwnerDraws = cachedAllPayments
-      .filter((p) => p.paymentType === 'RETIRO_SOCIO')
-      .reduce((sum, p) => sum + (p.netAmount || 0), 0);
+    if (!kpisContainer.querySelector('.kpi-card')) {
+      const totalPayroll = cachedAllPayments
+        .filter((p) => p.paymentType !== 'RETIRO_SOCIO')
+        .reduce((sum, p) => sum + (p.netAmount || 0), 0);
+      const totalOwnerDraws = cachedAllPayments
+        .filter((p) => p.paymentType === 'RETIRO_SOCIO')
+        .reduce((sum, p) => sum + (p.netAmount || 0), 0);
 
-    kpisContainer.innerHTML = `
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 22px;">
-        <div class="kpi-card" style="border: 1.5px solid var(--border-color); background: #FFFFFF;">
-          <div class="kpi-header">
-            <span class="kpi-title" style="color: var(--primary); font-weight: 800;">👥 Equipo Activo</span>
-            <div class="kpi-icon" style="background: var(--primary-light); color: var(--primary);">👤</div>
+      kpisContainer.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 22px;">
+          <div class="kpi-card" style="border: 1.5px solid var(--border-color); background: #FFFFFF;">
+            <div class="kpi-header">
+              <span class="kpi-title" style="color: var(--primary); font-weight: 800;">👥 Equipo Activo</span>
+              <div class="kpi-icon" style="background: var(--primary-light); color: var(--primary);">👤</div>
+            </div>
+            <div class="kpi-value" style="color: var(--primary); font-size: 1.8rem;">
+              ${cachedStaffList.length} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">integrantes</span>
+            </div>
+            <div class="kpi-subtitle">
+              ${cachedStaffList.filter((s) => s.type === 'SOCIO').length} socio(s) • ${cachedStaffList.filter((s) => s.type === 'EMPLEADO').length} colaborador(es)
+            </div>
           </div>
-          <div class="kpi-value" style="color: var(--primary); font-size: 1.8rem;">
-            ${cachedStaffList.length} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">integrantes</span>
+
+          <div class="kpi-card" style="border: 1.5px solid #BBF7D0; background: #F0FDF4;">
+            <div class="kpi-header">
+              <span class="kpi-title" style="color: #15803D; font-weight: 800;">💵 Nómina Total Pagada</span>
+              <div class="kpi-icon" style="background: #DCFCE7; color: #15803D;">💰</div>
+            </div>
+            <div class="kpi-value" style="color: #16A34A; font-size: 1.8rem;">
+              ${formatCOP(totalPayroll)}
+            </div>
+            <div class="kpi-subtitle" style="color: #15803D;">
+              Costo operativo de mano de obra
+            </div>
           </div>
-          <div class="kpi-subtitle">
-            ${cachedStaffList.filter((s) => s.type === 'SOCIO').length} socio(s) • ${cachedStaffList.filter((s) => s.type === 'EMPLEADO').length} colaborador(es)
+
+          <div class="kpi-card" style="border: 1.5px solid #DDD6FE; background: #FAF5FF;">
+            <div class="kpi-header">
+              <span class="kpi-title" style="color: #6D28D9; font-weight: 800;">🤝 Retiros de Socios</span>
+              <div class="kpi-icon" style="background: #EDE9FE; color: #6D28D9;">👑</div>
+            </div>
+            <div class="kpi-value" style="color: #7C3AED; font-size: 1.8rem;">
+              ${formatCOP(totalOwnerDraws)}
+            </div>
+            <div class="kpi-subtitle" style="color: #6D28D9;">
+              Utilidades y retiros personales de dueños
+            </div>
           </div>
         </div>
-
-        <div class="kpi-card" style="border: 1.5px solid #BBF7D0; background: #F0FDF4;">
-          <div class="kpi-header">
-            <span class="kpi-title" style="color: #15803D; font-weight: 800;">💵 Nómina Total Pagada</span>
-            <div class="kpi-icon" style="background: #DCFCE7; color: #15803D;">💰</div>
-          </div>
-          <div class="kpi-value" style="color: #16A34A; font-size: 1.8rem;">
-            ${formatCOP(totalPayroll)}
-          </div>
-          <div class="kpi-subtitle" style="color: #15803D;">
-            Costo operativo de mano de obra
-          </div>
-        </div>
-
-        <div class="kpi-card" style="border: 1.5px solid #DDD6FE; background: #FAF5FF;">
-          <div class="kpi-header">
-            <span class="kpi-title" style="color: #6D28D9; font-weight: 800;">🤝 Retiros de Socios</span>
-            <div class="kpi-icon" style="background: #EDE9FE; color: #6D28D9;">👑</div>
-          </div>
-          <div class="kpi-value" style="color: #7C3AED; font-size: 1.8rem;">
-            ${formatCOP(totalOwnerDraws)}
-          </div>
-          <div class="kpi-subtitle" style="color: #6D28D9;">
-            Utilidades y retiros personales de dueños
-          </div>
-        </div>
-      </div>
-    `;
+      `;
+    }
   } else {
     kpisContainer.innerHTML = '';
   }
