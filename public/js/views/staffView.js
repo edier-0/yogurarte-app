@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatDateTime, formatPaymentBadge, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, formatPaymentBadge, getTodayLocalDateStr, showToast, store, escapeHtml } from '../store.js';
 import { dispatchSmartWhatsApp } from '../utils/whatsappDispatch.js';
 import { openBankSettingsModal } from './customersView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
@@ -16,53 +16,149 @@ let staffFilters = {
   month: '',
 };
 
-export async function renderStaff(container) {
-  container.innerHTML = `
-    <div style="display: flex; justify-content: center; padding: 40px;">
-      <span style="color: var(--primary); font-weight: 700;">Cargando nómina, personal y accesos de YogurArte... 🥛</span>
-    </div>
-  `;
+let cachedStaffList = [];
+let cachedAllPayments = [];
+let cachedUsersList = [];
+let activeStaffContainer = null;
+let searchDebounceTimer = null;
 
-  try {
-    const promises = [
-      api.getStaff({ includeInactive: 'false' }),
-      api.getStaffPayments(),
-    ];
+function normalizeText(val) {
+  return String(val || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
 
-    if (store.isAdmin()) {
-      promises.push(api.getUsers());
+function getFilteredStaff() {
+  let list = cachedStaffList || [];
+  if (staffFilters.tab === 'socios') {
+    list = list.filter((s) => s.type === 'SOCIO');
+  } else if (staffFilters.tab === 'empleados') {
+    list = list.filter((s) => s.type === 'EMPLEADO');
+  }
+
+  const term = normalizeText(staffFilters.searchTerm);
+  if (!term) return list;
+
+  return list.filter((s) => {
+    const fullName = normalizeText(s.fullName);
+    const role = normalizeText(s.role);
+    const phone = normalizeText(s.phone);
+    const bankInfo = normalizeText(s.bankInfo);
+    const scheme = normalizeText(s.paymentScheme);
+
+    return (
+      fullName.includes(term) ||
+      role.includes(term) ||
+      phone.includes(term) ||
+      bankInfo.includes(term) ||
+      (term === 'socio' && s.type === 'SOCIO') ||
+      (term === 'empleado' && s.type === 'EMPLEADO') ||
+      scheme.includes(term)
+    );
+  });
+}
+
+function getFilteredPayments() {
+  let list = cachedAllPayments || [];
+  const term = normalizeText(staffFilters.searchTerm);
+  if (!term) return list;
+
+  return list.filter((p) => {
+    const staffName = normalizeText(p.staff?.fullName);
+    const staffRole = normalizeText(p.staff?.role);
+    const details = normalizeText(p.calculationDetails);
+    const notes = normalizeText(p.notes);
+    const method = normalizeText(p.paymentMethod);
+    const type = normalizeText(p.paymentType);
+    const dateStr = formatDate(p.paymentDate).toLowerCase();
+
+    return (
+      staffName.includes(term) ||
+      staffRole.includes(term) ||
+      details.includes(term) ||
+      notes.includes(term) ||
+      method.includes(term) ||
+      type.includes(term) ||
+      ((term.includes('retiro') || term.includes('socio')) && p.paymentType === 'RETIRO_SOCIO') ||
+      ((term.includes('nomina') || term.includes('salario') || term.includes('empleado')) && p.paymentType !== 'RETIRO_SOCIO') ||
+      dateStr.includes(term)
+    );
+  });
+}
+
+function getFilteredUsers() {
+  let list = cachedUsersList || [];
+  const term = normalizeText(staffFilters.searchTerm);
+  if (!term) return list;
+
+  return list.filter((u) => {
+    const name = normalizeText(u.name);
+    const username = normalizeText(u.username);
+    const role = normalizeText(u.role);
+    const phone = normalizeText(u.phone);
+    const email = normalizeText(u.email);
+    const bankInfo = normalizeText(u.bankInfo);
+
+    return (
+      name.includes(term) ||
+      username.includes(term) ||
+      role.includes(term) ||
+      phone.includes(term) ||
+      email.includes(term) ||
+      bankInfo.includes(term) ||
+      (term === 'activo' && u.isActive) ||
+      (term === 'inactivo' && !u.isActive)
+    );
+  });
+}
+
+export async function renderStaff(container, forceFetch = true) {
+  activeStaffContainer = container;
+
+  if (forceFetch || !cachedStaffList.length) {
+    if (!container.querySelector('#staffMainContent')) {
+      container.innerHTML = `
+        <div style="display: flex; justify-content: center; padding: 40px;">
+          <span style="color: var(--primary); font-weight: 700;">Cargando nómina, personal y accesos de YogurArte... 🥛</span>
+        </div>
+      `;
     }
 
-    const [staffList, paymentsData, usersData] = await Promise.all(promises);
+    try {
+      const promises = [
+        api.getStaff({ includeInactive: 'false' }),
+        api.getStaffPayments(),
+      ];
 
-    const allPayments = paymentsData?.payments || [];
-    const usersList = usersData || [];
-    const totalPayroll = allPayments
-      .filter((p) => p.paymentType !== 'RETIRO_SOCIO')
-      .reduce((sum, p) => sum + (p.netAmount || 0), 0);
-    const totalOwnerDraws = allPayments
-      .filter((p) => p.paymentType === 'RETIRO_SOCIO')
-      .reduce((sum, p) => sum + (p.netAmount || 0), 0);
+      if (store.isAdmin()) {
+        promises.push(api.getUsers());
+      }
 
-    let filteredStaff = staffList || [];
-    if (staffFilters.tab === 'socios') {
-      filteredStaff = filteredStaff.filter((s) => s.type === 'SOCIO');
-    } else if (staffFilters.tab === 'empleados') {
-      filteredStaff = filteredStaff.filter((s) => s.type === 'EMPLEADO');
+      const [staffList, paymentsData, usersData] = await Promise.all(promises);
+
+      cachedStaffList = staffList || [];
+      cachedAllPayments = paymentsData?.payments || [];
+      cachedUsersList = usersData || [];
+    } catch (error) {
+      console.error('Error rendering staff view:', error);
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">⚠️</div>
+          <div class="empty-state-title">Error al cargar la sección de nómina</div>
+          <div class="empty-state-text">${error.message || 'Verifica la conexión con el servidor.'}</div>
+        </div>
+      `;
+      return;
     }
+  }
 
-    if (staffFilters.searchTerm.trim()) {
-      const q = staffFilters.searchTerm.toLowerCase();
-      filteredStaff = filteredStaff.filter(
-        (s) => s.fullName.toLowerCase().includes(q) || (s.role && s.role.toLowerCase().includes(q))
-      );
-    }
-
-    const isUsersTab = staffFilters.tab === 'usuarios';
-
+  // Si la estructura del contenedor no existe, renderizar el armazón fijo
+  if (!container.querySelector('#staffToolbarCard')) {
     container.innerHTML = `
       <!-- Toolbar y Acciones Principales -->
-      <div class="orders-toolbar-card" style="padding: 16px 20px; margin-bottom: 20px;">
+      <div id="staffToolbarCard" class="orders-toolbar-card" style="padding: 16px 20px; margin-bottom: 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
           <div>
             <h2 style="font-size: 1.3rem; font-weight: 800; color: var(--primary); margin: 0;">
@@ -73,29 +169,8 @@ export async function renderStaff(container) {
             </span>
           </div>
 
-          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            ${
-              isUsersTab && store.isAdmin()
-                ? `
-              <button class="btn btn-outline" id="btnOpenBankSettingsStaff" style="border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: #FAF5FF;" title="Configurar cuenta bancaria / Nequi de cobro">
-                ⚙️ Cuenta de Cobro (Nequi)
-              </button>
-              <button class="btn btn-primary" id="btnNewUserGlobal" style="font-weight: 800; padding: 8px 18px;">
-                🔐 + Crear Usuario del Sistema
-              </button>
-            `
-                : `
-              <button class="btn btn-outline" id="btnOpenBankSettingsStaff" style="border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: #FAF5FF;" title="Configurar cuenta bancaria / Nequi de cobro">
-                ⚙️ Cuenta de Cobro (Nequi)
-              </button>
-              <button class="btn btn-outline" id="btnNewStaffMember">
-                👤 + Registrar Integrante
-              </button>
-              <button class="btn btn-accent" id="btnNewPaymentGlobal" style="font-weight: 800; padding: 8px 18px;">
-                💵 + Registrar Pago / Retiro
-              </button>
-            `
-            }
+          <div id="staffTopActionsContainer" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <!-- Botones de acción dinámicos -->
           </div>
         </div>
 
@@ -103,28 +178,8 @@ export async function renderStaff(container) {
 
         <!-- Filtros y Pastillas Rápidas -->
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-          <div class="filter-chip-group">
-            <button class="filter-chip ${staffFilters.tab === 'all' ? 'active' : ''}" data-tab-filter="all">
-              Todos (${staffList.length})
-            </button>
-            <button class="filter-chip ${staffFilters.tab === 'socios' ? 'active' : ''}" data-tab-filter="socios">
-              👑 Socios / Dueños (${staffList.filter((s) => s.type === 'SOCIO').length})
-            </button>
-            <button class="filter-chip ${staffFilters.tab === 'empleados' ? 'active' : ''}" data-tab-filter="empleados">
-              👷 Colaboradores (${staffList.filter((s) => s.type === 'EMPLEADO').length})
-            </button>
-            <button class="filter-chip ${staffFilters.tab === 'historial' ? 'active' : ''}" data-tab-filter="historial">
-              📜 Historial de Pagos (${allPayments.length})
-            </button>
-            ${
-              store.isAdmin()
-                ? `
-              <button class="filter-chip ${staffFilters.tab === 'usuarios' ? 'active' : ''}" data-tab-filter="usuarios" style="${staffFilters.tab === 'usuarios' ? 'background: #0284C7; color: white;' : 'color: #0284C7; border-color: #BAE6FD; font-weight: 700;'}">
-                🔐 Usuarios y Accesos (${usersList.length})
-              </button>
-            `
-                : ''
-            }
+          <div id="staffTabChipsContainer" class="filter-chip-group">
+            <!-- Chips dinámicos -->
           </div>
 
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
@@ -133,7 +188,7 @@ export async function renderStaff(container) {
               id="staffSearchInput" 
               class="form-input" 
               placeholder="🔍 Buscar por nombre o cargo..." 
-              value="${staffFilters.searchTerm}"
+              value="${escapeHtml(staffFilters.searchTerm)}"
               style="max-width: 250px; font-size: 0.85rem; padding: 6px 10px;"
             />
             <button class="btn btn-sm btn-outline" id="btnClearStaffFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros de personal">
@@ -143,10 +198,158 @@ export async function renderStaff(container) {
         </div>
       </div>
 
-      <!-- Tarjetas de Resumen Financiero de Personal (si no está en usuarios) -->
+      <!-- Tarjetas de Resumen Financiero -->
+      <div id="staffKpisContainer"></div>
+
+      <!-- Contenido Principal Dinámico -->
+      <div id="staffMainContent"></div>
+    `;
+
+    attachToolbarEvents(container);
+  }
+
+  updateToolbarControls(container);
+  renderStaffContentOnly();
+}
+
+function updateToolbarControls(container) {
+  const isUsersTab = staffFilters.tab === 'usuarios';
+  const actionsContainer = container.querySelector('#staffTopActionsContainer');
+  if (actionsContainer) {
+    actionsContainer.innerHTML = isUsersTab && store.isAdmin()
+      ? `
+        <button class="btn btn-outline" id="btnOpenBankSettingsStaff" style="border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: #FAF5FF;" title="Configurar cuenta bancaria / Nequi de cobro">
+          ⚙️ Cuenta de Cobro (Nequi)
+        </button>
+        <button class="btn btn-primary" id="btnNewUserGlobal" style="font-weight: 800; padding: 8px 18px;">
+          🔐 + Crear Usuario del Sistema
+        </button>
+      `
+      : `
+        <button class="btn btn-outline" id="btnOpenBankSettingsStaff" style="border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: #FAF5FF;" title="Configurar cuenta bancaria / Nequi de cobro">
+          ⚙️ Cuenta de Cobro (Nequi)
+        </button>
+        <button class="btn btn-outline" id="btnNewStaffMember">
+          👤 + Registrar Integrante
+        </button>
+        <button class="btn btn-accent" id="btnNewPaymentGlobal" style="font-weight: 800; padding: 8px 18px;">
+          💵 + Registrar Pago / Retiro
+        </button>
+      `;
+
+    actionsContainer.querySelector('#btnOpenBankSettingsStaff')?.addEventListener('click', () => {
+      openBankSettingsModal();
+    });
+    actionsContainer.querySelector('#btnNewStaffMember')?.addEventListener('click', () => {
+      openStaffModal();
+    });
+    actionsContainer.querySelector('#btnNewPaymentGlobal')?.addEventListener('click', () => {
+      openStaffPaymentModal(cachedStaffList);
+    });
+    actionsContainer.querySelector('#btnNewUserGlobal')?.addEventListener('click', () => {
+      openUserModal();
+    });
+  }
+
+  const chipsContainer = container.querySelector('#staffTabChipsContainer');
+  if (chipsContainer) {
+    const sociosCount = cachedStaffList.filter((s) => s.type === 'SOCIO').length;
+    const empleadosCount = cachedStaffList.filter((s) => s.type === 'EMPLEADO').length;
+    chipsContainer.innerHTML = `
+      <button class="filter-chip ${staffFilters.tab === 'all' ? 'active' : ''}" data-tab-filter="all">
+        Todos (${cachedStaffList.length})
+      </button>
+      <button class="filter-chip ${staffFilters.tab === 'socios' ? 'active' : ''}" data-tab-filter="socios">
+        👑 Socios / Dueños (${sociosCount})
+      </button>
+      <button class="filter-chip ${staffFilters.tab === 'empleados' ? 'active' : ''}" data-tab-filter="empleados">
+        👷 Colaboradores (${empleadosCount})
+      </button>
+      <button class="filter-chip ${staffFilters.tab === 'historial' ? 'active' : ''}" data-tab-filter="historial">
+        📜 Historial de Pagos (${cachedAllPayments.length})
+      </button>
       ${
-        !isUsersTab
+        store.isAdmin()
           ? `
+        <button class="filter-chip ${staffFilters.tab === 'usuarios' ? 'active' : ''}" data-tab-filter="usuarios" style="${staffFilters.tab === 'usuarios' ? 'background: #0284C7; color: white;' : 'color: #0284C7; border-color: #BAE6FD; font-weight: 700;'}">
+          🔐 Usuarios y Accesos (${cachedUsersList.length})
+        </button>
+      `
+          : ''
+      }
+    `;
+
+    chipsContainer.querySelectorAll('[data-tab-filter]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        staffFilters.tab = e.currentTarget.dataset.tabFilter;
+        staffCurrentPage = 1;
+        paymentsCurrentPage = 1;
+        usersCurrentPage = 1;
+        updateToolbarControls(container);
+        renderStaffContentOnly();
+      });
+    });
+  }
+
+  const searchInput = container.querySelector('#staffSearchInput');
+  if (searchInput && searchInput.value !== staffFilters.searchTerm) {
+    searchInput.value = staffFilters.searchTerm;
+  }
+}
+
+function attachToolbarEvents(container) {
+  const searchInput = container.querySelector('#staffSearchInput');
+  searchInput?.addEventListener('input', (e) => {
+    staffFilters.searchTerm = e.target.value;
+    staffCurrentPage = 1;
+    paymentsCurrentPage = 1;
+    usersCurrentPage = 1;
+
+    // Micro debounce para máxima respuesta y mantener el foco completamente estable
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      renderStaffContentOnly();
+    }, 50);
+  });
+
+  container.querySelector('#btnClearStaffFilters')?.addEventListener('click', () => {
+    staffFilters.tab = 'all';
+    staffFilters.searchTerm = '';
+    staffFilters.month = '';
+    staffCurrentPage = 1;
+    paymentsCurrentPage = 1;
+    usersCurrentPage = 1;
+    const input = container.querySelector('#staffSearchInput');
+    if (input) input.value = '';
+    updateToolbarControls(container);
+    renderStaffContentOnly();
+  });
+}
+
+function renderStaffContentOnly() {
+  const container = activeStaffContainer || document.getElementById('contentContainer');
+  if (!container) return;
+
+  const kpisContainer = container.querySelector('#staffKpisContainer');
+  const mainContent = container.querySelector('#staffMainContent');
+  if (!kpisContainer || !mainContent) {
+    renderStaff(container, false);
+    return;
+  }
+
+  const isUsersTab = staffFilters.tab === 'usuarios';
+  const isHistorialTab = staffFilters.tab === 'historial';
+
+  // KPIs Financieros (solo cuando no es la pestaña de usuarios)
+  if (!isUsersTab) {
+    const totalPayroll = cachedAllPayments
+      .filter((p) => p.paymentType !== 'RETIRO_SOCIO')
+      .reduce((sum, p) => sum + (p.netAmount || 0), 0);
+    const totalOwnerDraws = cachedAllPayments
+      .filter((p) => p.paymentType === 'RETIRO_SOCIO')
+      .reduce((sum, p) => sum + (p.netAmount || 0), 0);
+
+    kpisContainer.innerHTML = `
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 22px;">
         <div class="kpi-card" style="border: 1.5px solid var(--border-color); background: #FFFFFF;">
           <div class="kpi-header">
@@ -154,10 +357,10 @@ export async function renderStaff(container) {
             <div class="kpi-icon" style="background: var(--primary-light); color: var(--primary);">👤</div>
           </div>
           <div class="kpi-value" style="color: var(--primary); font-size: 1.8rem;">
-            ${staffList.length} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">integrantes</span>
+            ${cachedStaffList.length} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">integrantes</span>
           </div>
           <div class="kpi-subtitle">
-            ${staffList.filter((s) => s.type === 'SOCIO').length} socio(s) • ${staffList.filter((s) => s.type === 'EMPLEADO').length} colaborador(es)
+            ${cachedStaffList.filter((s) => s.type === 'SOCIO').length} socio(s) • ${cachedStaffList.filter((s) => s.type === 'EMPLEADO').length} colaborador(es)
           </div>
         </div>
 
@@ -187,37 +390,41 @@ export async function renderStaff(container) {
           </div>
         </div>
       </div>
-      `
-          : ''
-      }
-
-      <!-- Contenido Principal: Directorio, Historial o Usuarios -->
-      ${
-        isUsersTab
-          ? renderUsersTableHtml(usersList)
-          : staffFilters.tab === 'historial'
-          ? renderPaymentsHistoryTableHtml(allPayments)
-          : renderStaffGridHtml(filteredStaff)
-      }
     `;
-
-    // Conectar eventos
-    attachStaffEvents(container, staffList, allPayments, usersList);
-  } catch (error) {
-    console.error('Error rendering staff view:', error);
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state-icon">⚠️</div>
-        <div class="empty-state-title">Error al cargar la sección de nómina</div>
-        <div class="empty-state-text">${error.message || 'Verifica la conexión con el servidor.'}</div>
-      </div>
-    `;
+  } else {
+    kpisContainer.innerHTML = '';
   }
+
+  // Contenido principal
+  if (isUsersTab) {
+    const filteredUsers = getFilteredUsers();
+    mainContent.innerHTML = renderUsersTableHtml(filteredUsers, cachedUsersList.length, staffFilters.searchTerm);
+  } else if (isHistorialTab) {
+    const filteredPayments = getFilteredPayments();
+    mainContent.innerHTML = renderPaymentsHistoryTableHtml(filteredPayments, cachedAllPayments.length, staffFilters.searchTerm);
+  } else {
+    const filteredStaff = getFilteredStaff();
+    mainContent.innerHTML = renderStaffGridHtml(filteredStaff, cachedStaffList.length, staffFilters.searchTerm);
+  }
+
+  attachContentEvents(mainContent);
 }
 
 // Renderizar cuadrícula de tarjetas de integrantes
-function renderStaffGridHtml(staffList) {
+function renderStaffGridHtml(staffList, totalUnfilteredCount = 0, searchTerm = '') {
   if (!staffList || staffList.length === 0) {
+    if (searchTerm.trim()) {
+      return `
+        <div class="empty-state" style="padding: 40px 20px; background: #FFFFFF; border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+          <div class="empty-state-icon">🔍</div>
+          <div class="empty-state-title">No se encontraron integrantes con "${escapeHtml(searchTerm)}"</div>
+          <div class="empty-state-text">No hay socios ni colaboradores que coincidan con este nombre o cargo.</div>
+          <button class="btn btn-outline btn-sm" id="btnResetStaffSearch" style="margin-top: 12px; font-weight: 700;">
+            <span>🧹</span> Limpiar Búsqueda
+          </button>
+        </div>
+      `;
+    }
     return `
       <div class="empty-state" style="padding: 40px 20px; background: #FFFFFF; border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
         <div class="empty-state-icon">👥</div>
@@ -260,10 +467,10 @@ function renderStaffGridHtml(staffList) {
                   </div>
                   <div>
                     <h3 style="font-size: 1.05rem; font-weight: 800; color: var(--text-main); margin: 0;">
-                      ${s.fullName}
+                      ${escapeHtml(s.fullName)}
                     </h3>
                     <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
-                      ${s.role || (isSocio ? 'Socio' : 'Producción')}
+                      ${escapeHtml(s.role || (isSocio ? 'Socio' : 'Producción'))}
                     </span>
                   </div>
                 </div>
@@ -279,7 +486,7 @@ function renderStaffGridHtml(staffList) {
                   s.phone
                     ? `<div style="display: flex; justify-content: space-between;">
                         <span style="color: var(--text-muted); font-weight: 600;">Teléfono / WA:</span>
-                        <strong style="color: var(--primary);">📞 ${s.phone}</strong>
+                        <strong style="color: var(--primary);">📞 ${escapeHtml(s.phone)}</strong>
                        </div>`
                     : ''
                 }
@@ -287,7 +494,7 @@ function renderStaffGridHtml(staffList) {
                   s.bankInfo
                     ? `<div style="display: flex; justify-content: space-between;">
                         <span style="color: var(--text-muted); font-weight: 600;">Cuenta / Pago:</span>
-                        <strong style="color: var(--accent);">${s.bankInfo}</strong>
+                        <strong style="color: var(--accent);">${escapeHtml(s.bankInfo)}</strong>
                        </div>`
                     : ''
                 }
@@ -295,13 +502,13 @@ function renderStaffGridHtml(staffList) {
             </div>
 
             <div style="display: flex; gap: 8px; margin-top: 8px;">
-              <button class="btn btn-accent btn-sm btn-pay-staff" data-id="${s.id}" data-name="${s.fullName}" data-type="${s.type}" style="flex: 1; font-weight: 800; font-size: 0.82rem;">
+              <button class="btn btn-accent btn-sm btn-pay-staff" data-id="${s.id}" data-name="${escapeHtml(s.fullName)}" data-type="${s.type}" style="flex: 1; font-weight: 800; font-size: 0.82rem;">
                 ${isSocio ? '🤝 Retiro / Pago' : '💵 Pagar Nómina'}
               </button>
               <button class="btn btn-outline btn-sm btn-edit-staff" data-id="${s.id}" style="padding: 4px 10px;" title="Editar integrante">
                 ✏️
               </button>
-              <button class="btn btn-outline btn-sm btn-delete-staff" data-id="${s.id}" data-name="${s.fullName}" style="padding: 4px 10px; color: var(--danger); border-color: #FECACA;" title="Eliminar integrante">
+              <button class="btn btn-outline btn-sm btn-delete-staff" data-id="${s.id}" data-name="${escapeHtml(s.fullName)}" style="padding: 4px 10px; color: var(--danger); border-color: #FECACA;" title="Eliminar integrante">
                 🗑️
               </button>
             </div>
@@ -321,9 +528,21 @@ function renderStaffGridHtml(staffList) {
   `;
 }
 
-// Renderizar tabla de historial de pagos
-function renderPaymentsHistoryTableHtml(payments) {
+// Renderizar tabla de historial de pagos y retiros
+function renderPaymentsHistoryTableHtml(payments, totalUnfilteredCount = 0, searchTerm = '') {
   if (!payments || payments.length === 0) {
+    if (searchTerm.trim()) {
+      return `
+        <div class="empty-state" style="padding: 40px 20px; background: #FFFFFF; border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+          <div class="empty-state-icon">🔍</div>
+          <div class="empty-state-title">No se encontraron pagos con "${escapeHtml(searchTerm)}"</div>
+          <div class="empty-state-text">No hay registros de nómina o retiros que coincidan con este nombre o criterio de búsqueda.</div>
+          <button class="btn btn-outline btn-sm" id="btnResetHistorySearch" style="margin-top: 12px; font-weight: 700;">
+            <span>🧹</span> Limpiar Búsqueda
+          </button>
+        </div>
+      `;
+    }
     return `
       <div class="empty-state" style="padding: 40px 20px; background: #FFFFFF; border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
         <div class="empty-state-icon">📜</div>
@@ -333,18 +552,91 @@ function renderPaymentsHistoryTableHtml(payments) {
     `;
   }
 
+  // Cálculos totales para los pagos actualmente filtrados
+  const totalFilteredNet = payments.reduce((sum, p) => sum + (p.netAmount || 0), 0);
+  const totalFilteredPayroll = payments
+    .filter((p) => p.paymentType !== 'RETIRO_SOCIO')
+    .reduce((sum, p) => sum + (p.netAmount || 0), 0);
+  const totalFilteredDraws = payments
+    .filter((p) => p.paymentType === 'RETIRO_SOCIO')
+    .reduce((sum, p) => sum + (p.netAmount || 0), 0);
+  const totalFilteredDeductions = payments.reduce((sum, p) => sum + (p.deductions || 0), 0);
+
   const { pageItems, totalPages, totalItems, currentPage } = paginateArray(payments, paymentsCurrentPage, 15);
   paymentsCurrentPage = currentPage;
 
+  const isFiltered = searchTerm.trim().length > 0;
+
   return `
     <div class="table-container" style="padding: 20px; background: #FFFFFF;">
+      
+      <!-- Resumen Destacado de Pagos Filtrados (Total Pagado a la Persona o Búsqueda) -->
+      ${
+        isFiltered
+          ? `
+        <div style="background: linear-gradient(135deg, #FAF5FF 0%, #F3E8FF 100%); border: 1.5px solid #D8B4FE; border-radius: var(--radius-md); padding: 16px 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; box-shadow: var(--shadow-sm);">
+          <div>
+            <div style="font-size: 0.82rem; font-weight: 800; color: #6D28D9; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+              <span>🔍</span> Total Pagado / Retirado para: <span style="background: #EDE9FE; color: #581C87; padding: 2px 8px; border-radius: 6px; font-weight: 800;">"${escapeHtml(searchTerm)}"</span>
+            </div>
+            <div style="font-size: 1.8rem; font-weight: 900; color: #581C87; margin-top: 4px; display: flex; align-items: baseline; gap: 8px;">
+              <span>${formatCOP(totalFilteredNet)}</span>
+              <span style="font-size: 0.85rem; font-weight: 700; color: #7E22CE;">(Neto total acumulado)</span>
+            </div>
+            <div style="font-size: 0.82rem; color: #7E22CE; font-weight: 600; margin-top: 2px;">
+              Mostrando ${payments.length} movimiento(s) registrado(s) para esta búsqueda
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            ${
+              totalFilteredPayroll > 0
+                ? `
+              <div style="background: #FFFFFF; border: 1px solid #BBF7D0; border-radius: var(--radius-sm); padding: 8px 14px; box-shadow: var(--shadow-sm);">
+                <span style="font-size: 0.72rem; color: #15803D; font-weight: 800; display: block;">💵 Nómina / Salarios</span>
+                <strong style="color: #16A34A; font-size: 1.05rem; font-weight: 800;">${formatCOP(totalFilteredPayroll)}</strong>
+              </div>
+            `
+                : ''
+            }
+            ${
+              totalFilteredDraws > 0
+                ? `
+              <div style="background: #FFFFFF; border: 1px solid #DDD6FE; border-radius: var(--radius-sm); padding: 8px 14px; box-shadow: var(--shadow-sm);">
+                <span style="font-size: 0.72rem; color: #6D28D9; font-weight: 800; display: block;">👑 Retiros de Socio</span>
+                <strong style="color: #7C3AED; font-size: 1.05rem; font-weight: 800;">${formatCOP(totalFilteredDraws)}</strong>
+              </div>
+            `
+                : ''
+            }
+            ${
+              totalFilteredDeductions > 0
+                ? `
+              <div style="background: #FFFFFF; border: 1px solid #FECACA; border-radius: var(--radius-sm); padding: 8px 14px; box-shadow: var(--shadow-sm);">
+                <span style="font-size: 0.72rem; color: var(--danger); font-weight: 800; display: block;">🔴 Descuentos</span>
+                <strong style="color: var(--danger); font-size: 1.05rem; font-weight: 800;">-${formatCOP(totalFilteredDeductions)}</strong>
+              </div>
+            `
+                : ''
+            }
+          </div>
+        </div>
+      `
+          : ''
+      }
+
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
-        <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin: 0;">
-          📜 Historial de Pagos de Nómina y Retiros
-        </h3>
-        <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">
-          Mostrando ${totalItems} movimiento(s)
-        </span>
+        <div>
+          <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin: 0;">
+            📜 Historial de Pagos de Nómina y Retiros
+          </h3>
+          <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">
+            Mostrando ${totalItems} movimiento(s) ${isFiltered ? `(de ${totalUnfilteredCount} en total)` : ''}
+          </span>
+        </div>
+        <div style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 6px 12px; font-size: 0.85rem; font-weight: 700; color: var(--text-main);">
+          Total en este listado: <strong style="color: var(--primary); font-size: 0.95rem;">${formatCOP(totalFilteredNet)}</strong>
+        </div>
       </div>
 
       <div style="overflow-x: auto;">
@@ -380,13 +672,13 @@ function renderPaymentsHistoryTableHtml(payments) {
                 <tr>
                   <td><strong>${formatDate(p.paymentDate)}</strong></td>
                   <td>
-                    <div><strong>${p.staff?.fullName || 'Personal'}</strong></div>
-                    <small style="color: var(--text-muted);">${p.staff?.role || ''}</small>
+                    <div><strong>${escapeHtml(p.staff?.fullName || 'Personal')}</strong></div>
+                    <small style="color: var(--text-muted);">${escapeHtml(p.staff?.role || '')}</small>
                   </td>
                   <td>${typeBadge}</td>
                   <td>
-                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">${p.calculationDetails || 'Pago acordado'}</div>
-                    ${p.notes ? `<small style="color: var(--text-muted);">📝 ${p.notes}</small>` : ''}
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">${escapeHtml(p.calculationDetails || 'Pago acordado')}</div>
+                    ${p.notes ? `<small style="color: var(--text-muted);">📝 ${escapeHtml(p.notes)}</small>` : ''}
                   </td>
                   <td><small>${periodStr}</small></td>
                   <td>${formatCOP(p.amount)}</td>
@@ -432,8 +724,20 @@ function renderPaymentsHistoryTableHtml(payments) {
 }
 
 // Renderizar tabla de gestión de usuarios del sistema
-function renderUsersTableHtml(usersList) {
+function renderUsersTableHtml(usersList, totalUnfilteredCount = 0, searchTerm = '') {
   if (!usersList || usersList.length === 0) {
+    if (searchTerm.trim()) {
+      return `
+        <div class="empty-state" style="padding: 40px 20px; background: #FFFFFF; border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+          <div class="empty-state-icon">🔍</div>
+          <div class="empty-state-title">No se encontraron usuarios con "${escapeHtml(searchTerm)}"</div>
+          <div class="empty-state-text">No hay cuentas de usuario que coincidan con este nombre, usuario, rol o teléfono.</div>
+          <button class="btn btn-outline btn-sm" id="btnResetUsersSearch" style="margin-top: 12px; font-weight: 700;">
+            <span>🧹</span> Limpiar Búsqueda
+          </button>
+        </div>
+      `;
+    }
     return `
       <div class="empty-state" style="padding: 40px 20px; background: #FFFFFF; border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
         <div class="empty-state-icon">🔐</div>
@@ -455,7 +759,7 @@ function renderUsersTableHtml(usersList) {
             <span>🔐</span> Usuarios y Accesos al Sistema
           </h3>
           <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">
-            Administra los roles, contraseñas, números de contacto y cuentas de cobro de cada usuario.
+            Administra los roles, contraseñas, números de contacto y cuentas de cobro de cada usuario. (${totalItems} ${searchTerm ? `encontrados de ${totalUnfilteredCount}` : 'registrados'})
           </span>
         </div>
         <button class="btn btn-primary btn-sm" id="btnNewUserFromTable" style="font-weight: 800; padding: 6px 14px;">
@@ -489,7 +793,7 @@ function renderUsersTableHtml(usersList) {
                 } else if (u.role === 'REPARTIDOR') {
                   roleBadge = `<span class="badge" style="background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: 800;">🛵 Domiciliario</span>`;
                 } else {
-                  roleBadge = `<span class="badge" style="background: var(--bg-subtle); color: var(--text-muted);">${u.role}</span>`;
+                  roleBadge = `<span class="badge" style="background: var(--bg-subtle); color: var(--text-muted);">${escapeHtml(u.role)}</span>`;
                 }
 
                 const statusBadge = u.isActive
@@ -499,28 +803,28 @@ function renderUsersTableHtml(usersList) {
                 return `
                 <tr>
                   <td>
-                    <strong>${u.name}</strong>
-                    <div><small style="color: var(--text-muted); font-weight: 700;">@${u.username}</small></div>
+                    <strong>${escapeHtml(u.name)}</strong>
+                    <div><small style="color: var(--text-muted); font-weight: 700;">@${escapeHtml(u.username)}</small></div>
                   </td>
                   <td>${roleBadge}</td>
                   <td>
                     ${
                       u.phone
-                        ? `<span style="font-size: 0.85rem; color: var(--primary); font-weight: 700;">📞 ${u.phone}</span>`
+                        ? `<span style="font-size: 0.85rem; color: var(--primary); font-weight: 700;">📞 ${escapeHtml(u.phone)}</span>`
                         : `<span style="color: var(--text-muted); font-size: 0.82rem;">No registrado</span>`
                     }
                   </td>
                   <td>
                     ${
                       u.email
-                        ? `<span style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">✉️ ${u.email}</span>`
+                        ? `<span style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">✉️ ${escapeHtml(u.email)}</span>`
                         : `<span style="color: var(--text-muted); font-size: 0.82rem;">No registrado</span>`
                     }
                   </td>
                   <td>
                     ${
                       u.bankInfo
-                        ? `<span style="font-size: 0.85rem; font-weight: 700; color: var(--accent);">🏦 ${u.bankInfo}</span>`
+                        ? `<span style="font-size: 0.85rem; font-weight: 700; color: var(--accent);">🏦 ${escapeHtml(u.bankInfo)}</span>`
                         : `<span style="color: var(--text-muted); font-size: 0.82rem;">No registrado</span>`
                     }
                   </td>
@@ -533,7 +837,7 @@ function renderUsersTableHtml(usersList) {
                       ${
                         u.username !== 'edier' && u.username !== 'yeilin'
                           ? `
-                        <button class="btn btn-outline btn-sm btn-delete-user" data-id="${u.id}" data-name="${u.name}" style="padding: 4px 8px; color: var(--danger); border-color: #FECACA;" title="Eliminar usuario">
+                        <button class="btn btn-outline btn-sm btn-delete-user" data-id="${u.id}" data-name="${escapeHtml(u.name)}" style="padding: 4px 8px; color: var(--danger); border-color: #FECACA;" title="Eliminar usuario">
                           🗑️
                         </button>
                       `
@@ -560,133 +864,58 @@ function renderUsersTableHtml(usersList) {
   `;
 }
 
-// Conectar eventos del módulo
-function attachStaffEvents(container, staffList, allPayments, usersList = []) {
-  // Filtros de pestaña
-  container.querySelectorAll('[data-tab-filter]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      staffFilters.tab = e.currentTarget.dataset.tabFilter;
-      staffCurrentPage = 1;
-      paymentsCurrentPage = 1;
-      usersCurrentPage = 1;
-      renderStaff(container);
-    });
-  });
-
-  // Búsqueda en tiempo real
-  const searchInput = container.querySelector('#staffSearchInput');
-  searchInput?.addEventListener('input', (e) => {
-    staffFilters.searchTerm = e.target.value;
-    staffCurrentPage = 1;
-    paymentsCurrentPage = 1;
-    usersCurrentPage = 1;
-    renderStaff(container);
-  });
-
-  // Limpiar filtros
-  container.querySelector('#btnClearStaffFilters')?.addEventListener('click', () => {
-    staffFilters = {
-      tab: 'all',
-      searchTerm: '',
-      month: '',
-    };
-    staffCurrentPage = 1;
-    paymentsCurrentPage = 1;
-    usersCurrentPage = 1;
-    renderStaff(container);
-  });
+// Conectar eventos internos del contenido
+function attachContentEvents(mainContent) {
+  const container = activeStaffContainer || document.getElementById('contentContainer');
 
   // Eventos de paginación
-  attachPaginationEvents(
-    container,
-    'staffPagination',
-    (newPage) => {
-      staffCurrentPage = newPage;
-      renderStaff(container);
-    }
-  );
-
-  attachPaginationEvents(
-    container,
-    'paymentsPagination',
-    (newPage) => {
-      paymentsCurrentPage = newPage;
-      renderStaff(container);
-    }
-  );
-
-  attachPaginationEvents(
-    container,
-    'usersPagination',
-    (newPage) => {
-      usersCurrentPage = newPage;
-      renderStaff(container);
-    }
-  );
-
-  // Botones de Usuario
-  container.querySelector('#btnNewUserGlobal')?.addEventListener('click', () => {
-    openUserModal();
-  });
-  container.querySelector('#btnNewUserFromTable')?.addEventListener('click', () => {
-    openUserModal();
-  });
-  container.querySelector('#btnEmptyNewUser')?.addEventListener('click', () => {
-    openUserModal();
+  attachPaginationEvents(mainContent, 'staffPagination', (newPage) => {
+    staffCurrentPage = newPage;
+    renderStaffContentOnly();
   });
 
-  container.querySelectorAll('.btn-edit-user').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = Number(btn.dataset.id);
-      const user = usersList.find((u) => u.id === id);
-      if (user) openUserModal(user);
-    });
+  attachPaginationEvents(mainContent, 'paymentsPagination', (newPage) => {
+    paymentsCurrentPage = newPage;
+    renderStaffContentOnly();
   });
 
-  container.querySelectorAll('.btn-delete-user').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = Number(btn.dataset.id);
-      const name = btn.dataset.name || 'este usuario';
-      if (confirm(`¿Estás seguro de que deseas eliminar la cuenta de "${name}"?`)) {
-        try {
-          await api.deleteUser(id);
-          showToast(`¡Usuario "${name}" eliminado! 🗑️`);
-          renderStaff(container);
-        } catch (err) {
-          showToast(err.message || 'Error al eliminar usuario', 'danger');
-        }
-      }
-    });
+  attachPaginationEvents(mainContent, 'usersPagination', (newPage) => {
+    usersCurrentPage = newPage;
+    renderStaffContentOnly();
   });
 
-  // Botón Configuración de Cuenta de Cobro / Nequi
-  container.querySelector('#btnOpenBankSettingsStaff')?.addEventListener('click', () => {
-    openBankSettingsModal();
-  });
+  // Limpiar búsqueda desde estados vacíos
+  const handleResetSearch = () => {
+    staffFilters.searchTerm = '';
+    const input = container?.querySelector('#staffSearchInput');
+    if (input) input.value = '';
+    renderStaffContentOnly();
+  };
+  mainContent.querySelector('#btnResetHistorySearch')?.addEventListener('click', handleResetSearch);
+  mainContent.querySelector('#btnResetUsersSearch')?.addEventListener('click', handleResetSearch);
+  mainContent.querySelector('#btnResetStaffSearch')?.addEventListener('click', handleResetSearch);
 
-  // Botón Nuevo Integrante
-  container.querySelector('#btnNewStaffMember')?.addEventListener('click', () => {
+  // Botones de empty states
+  mainContent.querySelector('#btnEmptyNewStaff')?.addEventListener('click', () => {
     openStaffModal();
   });
-  container.querySelector('#btnEmptyNewStaff')?.addEventListener('click', () => {
-    openStaffModal();
+  mainContent.querySelector('#btnEmptyNewUser')?.addEventListener('click', () => {
+    openUserModal();
   });
-
-  // Botón Registrar Pago Global
-  container.querySelector('#btnNewPaymentGlobal')?.addEventListener('click', () => {
-    openStaffPaymentModal(staffList);
+  mainContent.querySelector('#btnNewUserFromTable')?.addEventListener('click', () => {
+    openUserModal();
   });
 
   // Botón Pagar a un integrante específico
-  container.querySelectorAll('.btn-pay-staff').forEach((btn) => {
+  mainContent.querySelectorAll('.btn-pay-staff').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const id = Number(e.currentTarget.dataset.id);
-      openStaffPaymentModal(staffList, id);
+      openStaffPaymentModal(cachedStaffList, id);
     });
   });
 
   // Botón Editar Integrante
-  container.querySelectorAll('.btn-edit-staff').forEach((btn) => {
+  mainContent.querySelectorAll('.btn-edit-staff').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const id = Number(e.currentTarget.dataset.id);
       try {
@@ -699,7 +928,7 @@ function attachStaffEvents(container, staffList, allPayments, usersList = []) {
   });
 
   // Botón Eliminar Integrante
-  container.querySelectorAll('.btn-delete-staff').forEach((btn) => {
+  mainContent.querySelectorAll('.btn-delete-staff').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const id = Number(e.currentTarget.dataset.id);
       const name = e.currentTarget.dataset.name || 'este integrante';
@@ -707,7 +936,7 @@ function attachStaffEvents(container, staffList, allPayments, usersList = []) {
         try {
           await api.deleteStaff(id);
           showToast(`¡Integrante "${name}" eliminado correctamente! 🗑️`);
-          renderStaff(container);
+          renderStaff(container, true);
         } catch (err) {
           showToast(err.message || 'Error al eliminar integrante', 'danger');
         }
@@ -716,7 +945,7 @@ function attachStaffEvents(container, staffList, allPayments, usersList = []) {
   });
 
   // Botón WhatsApp Recibo
-  container.querySelectorAll('.btn-staff-whatsapp').forEach((btn) => {
+  mainContent.querySelectorAll('.btn-staff-whatsapp').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const id = e.currentTarget.dataset.id;
       try {
@@ -736,27 +965,52 @@ function attachStaffEvents(container, staffList, allPayments, usersList = []) {
   });
 
   // Botón Editar Pago
-  container.querySelectorAll('.btn-edit-payment').forEach((btn) => {
+  mainContent.querySelectorAll('.btn-edit-payment').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const id = Number(e.currentTarget.dataset.id);
-      const payment = allPayments.find((p) => p.id === id);
+      const payment = cachedAllPayments.find((p) => p.id === id);
       if (payment) {
-        openStaffPaymentModal(staffList, payment.staffId, payment);
+        openStaffPaymentModal(cachedStaffList, payment.staffId, payment);
       }
     });
   });
 
   // Botón Eliminar Pago
-  container.querySelectorAll('.btn-delete-payment').forEach((btn) => {
+  mainContent.querySelectorAll('.btn-delete-payment').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const id = e.currentTarget.dataset.id;
       if (confirm('¿Estás seguro de eliminar este registro de pago de nómina?')) {
         try {
           await api.deleteStaffPayment(id);
           showToast('Registro de pago eliminado correctamente 🗑️');
-          renderStaff(container);
+          renderStaff(container, true);
         } catch (err) {
           showToast(err.message || 'Error al eliminar pago', 'danger');
+        }
+      }
+    });
+  });
+
+  // Botones de Usuario
+  mainContent.querySelectorAll('.btn-edit-user').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.id);
+      const user = cachedUsersList.find((u) => u.id === id);
+      if (user) openUserModal(user);
+    });
+  });
+
+  mainContent.querySelectorAll('.btn-delete-user').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = Number(btn.dataset.id);
+      const name = btn.dataset.name || 'este usuario';
+      if (confirm(`¿Estás seguro de que deseas eliminar la cuenta de "${name}"?`)) {
+        try {
+          await api.deleteUser(id);
+          showToast(`¡Usuario "${name}" eliminado! 🗑️`);
+          renderStaff(container, true);
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar usuario', 'danger');
         }
       }
     });
@@ -878,7 +1132,7 @@ export function openStaffModal(memberData = null) {
         showToast(`¡Integrante ${payload.fullName} registrado con éxito! 👤`);
       }
       closeModal();
-      renderStaff(document.getElementById('contentContainer'));
+      renderStaff(activeStaffContainer || document.getElementById('contentContainer'), true);
     } catch (err) {
       showToast(err.message || 'Error al guardar integrante', 'danger');
     }
@@ -891,7 +1145,7 @@ export function openStaffModal(memberData = null) {
           await api.deleteStaff(memberData.id);
           showToast(`¡Integrante "${memberData.fullName}" eliminado correctamente! 🗑️`);
           closeModal();
-          renderStaff(document.getElementById('contentContainer'));
+          renderStaff(activeStaffContainer || document.getElementById('contentContainer'), true);
         } catch (err) {
           showToast(err.message || 'Error al eliminar integrante', 'danger');
         }
@@ -1159,7 +1413,7 @@ export function openStaffPaymentModal(staffList = [], preselectedStaffId = null,
         showToast('¡Pago registrado con éxito! 💵');
       }
       closeModal();
-      renderStaff(document.getElementById('contentContainer'));
+      renderStaff(activeStaffContainer || document.getElementById('contentContainer'), true);
 
       // Preguntar si desea enviar comprobante por WhatsApp
       const staffObj = staffList.find((s) => s.id === Number(payload.staffId));
@@ -1301,7 +1555,7 @@ export function openUserModal(userData = null) {
         showToast(`¡Usuario ${payload.name} creado con éxito! 🔐`);
       }
       closeModal();
-      renderStaff(document.getElementById('contentContainer'));
+      renderStaff(activeStaffContainer || document.getElementById('contentContainer'), true);
     } catch (err) {
       showToast(err.message || 'Error al guardar usuario', 'danger');
     }
