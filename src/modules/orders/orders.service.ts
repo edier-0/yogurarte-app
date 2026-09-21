@@ -107,7 +107,11 @@ export const getOrders = async (query: OrdersQueryInput) => {
   }
 
   if (deliveryStatus && typeof deliveryStatus === 'string' && deliveryStatus !== 'ALL') {
-    conditions.push({ deliveryStatus });
+    if (deliveryStatus === 'TO_DELIVER') {
+      conditions.push({ deliveryStatus: { in: ['PENDING', 'PREPARING', 'READY_FOR_DISPATCH', 'IN_ROUTE'] } });
+    } else {
+      conditions.push({ deliveryStatus });
+    }
   }
 
   if (date && typeof date === 'string') {

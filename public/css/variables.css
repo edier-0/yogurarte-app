@@ -1,39 +1,39 @@
 :root {
-  /* YogurArte Color Palette */
+  /* YogurArte Color Palette - Light Mode (Default) */
   --primary: #3D1E6D;
-  --primary-hover: #542594;
-  --primary-light: #F2ECF9;
+  --primary-hover: #4C2688;
+  --primary-light: #F3E8FF;
   --primary-dark: #2A114E;
   
   --accent: #D81B60;
   --accent-hover: #B7154E;
   --accent-light: #FCE4EC;
   
-  --success: #2E7D32;
-  --success-light: #E8F5E9;
-  --success-border: #A5D6A7;
+  --success: #15803D;
+  --success-light: #DCFCE7;
+  --success-border: #86EFAC;
   
-  --warning: #D97706;
+  --warning: #B45309;
   --warning-light: #FEF3C7;
   --warning-border: #FDE68A;
   
-  --danger: #DC2626;
+  --danger: #B91C1C;
   --danger-light: #FEE2E2;
   --danger-border: #FCA5A5;
   
-  --info: #0284C7;
+  --info: #0369A1;
   --info-light: #E0F2FE;
   --info-border: #BAE6FD;
 
-  /* Neutral tones */
-  --bg-app: #FBF9F7;
+  /* Neutral Tones - Light Mode */
+  --bg-app: #F8FAFC;
   --bg-card: #FFFFFF;
-  --bg-subtle: #F5F2EE;
-  --text-main: #1F1928;
-  --text-muted: #6B7280;
-  --text-light: #9CA3AF;
-  --border-color: #E7E2DC;
-  --border-subtle: #F0EDE8;
+  --bg-subtle: #F1F5F9;
+  --text-main: #0F172A;
+  --text-muted: #64748B;
+  --text-light: #94A3B8;
+  --border-color: #E2E8F0;
+  --border-subtle: #F1F5F9;
 
   /* Typography */
   --font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
@@ -55,4 +55,71 @@
   --sidebar-width: 260px;
   --header-height: 70px;
   --mobile-nav-height: 64px;
+
+  /* Form & UI Controls */
+  --input-bg: #FFFFFF;
+  --input-border: #CBD5E1;
+  --input-focus-border: var(--primary);
+  --chip-bg: var(--bg-subtle);
+  --chip-text: var(--text-muted);
+  --chip-active-bg: var(--primary);
+  --chip-active-text: #FFFFFF;
+}
+
+/* ==========================================================================
+   YogurArte Design Tokens - Dark Mode (WCAG 2.1 AA Compliant)
+   Superficies en capas (Slate-900 / Slate-800 / Slate-750) sin negro puro.
+   ========================================================================== */
+html.dark,
+[data-theme="dark"] {
+  /* YogurArte Color Palette - Dark Mode */
+  --primary: #A78BFA;
+  --primary-hover: #C4B5FD;
+  --primary-light: rgba(167, 139, 250, 0.16);
+  --primary-dark: #1E1035;
+  
+  --accent: #F472B6;
+  --accent-hover: #F687B3;
+  --accent-light: rgba(244, 114, 182, 0.16);
+  
+  --success: #4ADE80;
+  --success-light: rgba(74, 222, 128, 0.14);
+  --success-border: rgba(74, 222, 128, 0.35);
+  
+  --warning: #FBBF24;
+  --warning-light: rgba(251, 191, 36, 0.14);
+  --warning-border: rgba(251, 191, 36, 0.35);
+  
+  --danger: #F87171;
+  --danger-light: rgba(248, 113, 113, 0.14);
+  --danger-border: rgba(248, 113, 113, 0.35);
+  
+  --info: #38BDF8;
+  --info-light: rgba(56, 189, 248, 0.14);
+  --info-border: rgba(56, 189, 248, 0.35);
+
+  /* Neutral Tones - Dark Mode (Structured Layers) */
+  --bg-app: #0F172A;        /* Slate 900 - Fondo base de la app */
+  --bg-card: #1E293B;       /* Slate 800 - Tarjetas, barras, modales */
+  --bg-subtle: #273549;     /* Slate 750 - Contenedores secundarios, headers */
+  --text-main: #F8FAFC;     /* Slate 50 - Texto principal de alto contraste */
+  --text-muted: #94A3B8;    /* Slate 400 - Texto secundario legible */
+  --text-light: #64748B;    /* Slate 500 - Deshabilitados e íconos sutiles */
+  --border-color: rgba(51, 65, 85, 0.7);  /* border-slate-700/70 */
+  --border-subtle: rgba(51, 65, 85, 0.4);
+
+  /* Elevations & Shadows Adaptadas a Dark */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.65);
+  --shadow-hover: 0 12px 30px rgba(244, 114, 182, 0.2);
+
+  /* Form & UI Controls */
+  --input-bg: #1E293B;
+  --input-border: #334155;
+  --input-focus-border: #A78BFA;
+  --chip-bg: #273549;
+  --chip-text: #94A3B8;
+  --chip-active-bg: #A78BFA;
+  --chip-active-text: #0F172A;
 }

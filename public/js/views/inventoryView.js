@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatPaymentBadge, formatStock, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatPaymentBadge, formatStock, getTodayLocalDateStr, showToast, store, escapeHtml } from '../store.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
 let materialsCurrentPage = 1;
@@ -7,6 +7,7 @@ let preparationsCurrentPage = 1;
 let purchasesCurrentPage = 1;
 let adjustmentsCurrentPage = 1;
 
+let materialSearchQuery = '';
 let selectedCategory = 'ALL';
 let purchaseDateFilter = '';
 let adjustmentDateFilter = '';
@@ -24,39 +25,67 @@ export async function renderInventory(container) {
 
   container.innerHTML = `
     <!-- Barra de Acciones de Inventario Optimizada y Responsive -->
-    <div class="inventory-toolbar-card">
-      <div class="inventory-toolbar-main-row">
+    <div class="inventory-toolbar-card" style="margin-bottom: 20px;">
+      <div class="inventory-toolbar-main-row" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
         <div class="inventory-toolbar-title-box">
-          <h3 class="inventory-toolbar-title">
+          <h3 class="inventory-toolbar-title" style="margin-bottom: 2px;">
             📦 Materia Prima e Insumos
           </h3>
           <span class="inventory-toolbar-subtitle">Control de existencias, insumos, elaboraciones, compras y mermas</span>
         </div>
 
         <div class="inventory-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button class="btn btn-outline" id="btnOpenNewMaterialModal">
+          <button class="btn btn-outline" id="btnOpenNewMaterialModal" style="height: 40px;">
             <span>+</span> Crear Insumo
           </button>
-          <button class="btn btn-outline" id="btnOpenAdjustStockTopModal" style="border-color: #f59e0b; color: #b45309; font-weight: 700;">
+          <button class="btn btn-outline" id="btnOpenAdjustStockTopModal" style="border-color: #f59e0b; color: #b45309; font-weight: 700; height: 40px;">
             <span>⚖️</span> Ajustar Stock / Merma
           </button>
-          <button class="btn btn-accent" id="btnOpenPreparationModal" style="background: linear-gradient(135deg, #1b4332, #2d6a4f); color: #fff; font-weight: 700;">
+          <button class="btn btn-accent" id="btnOpenPreparationModal" style="background: linear-gradient(135deg, #1b4332, #2d6a4f); color: #fff; font-weight: 700; height: 40px;">
             <span>🥣</span> Elaborar Insumo / Mermelada
           </button>
-          <button class="btn btn-accent" id="btnOpenPurchaseModal">
+          <button class="btn btn-accent" id="btnOpenPurchaseModal" style="height: 40px;">
             <span>+</span> Registrar Compra
           </button>
         </div>
       </div>
 
-      <div class="inventory-toolbar-filters-row">
-        <div class="filter-chip-group inventory-filter-chips">
-          <button class="filter-chip ${selectedCategory === 'ALL' ? 'active' : ''}" data-cat="ALL">Todos</button>
-          <button class="filter-chip ${selectedCategory === 'MATERIA_PRIMA' ? 'active' : ''}" data-cat="MATERIA_PRIMA">🥛 Materia Prima</button>
-          <button class="filter-chip ${selectedCategory === 'EMPAQUE' ? 'active' : ''}" data-cat="EMPAQUE">🍾 Empaques y Botellas</button>
-          <button class="filter-chip ${selectedCategory === 'INSUMO' ? 'active' : ''}" data-cat="INSUMO">🏷️ Otros Insumos</button>
-          <button class="btn btn-sm btn-outline" id="btnClearInventoryFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros de inventario">
-            <span>🧹</span> Limpiar Filtros
+      <!-- Fila de Búsqueda Universal con Debounce y Barra de Chips Horizontales -->
+      <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle); display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+        <div class="orders-search-group" style="flex: 1 1 260px; min-width: 220px;">
+          <div class="search-box input-with-icon" style="width: 100%;">
+            <span class="input-icon">🔍</span>
+            <input 
+              type="text" 
+              id="materialSearchInput" 
+              data-key="material-search"
+              class="form-input" 
+              style="height: 40px; width: 100%; font-weight: 600;"
+              placeholder="Buscar insumo por nombre o código..." 
+              value="${escapeHtml(materialSearchQuery)}"
+              autocomplete="off"
+            />
+          </div>
+        </div>
+
+        <div class="horizontal-chip-scroll" id="inventoryCategoryChips" style="flex: 2 1 300px;">
+          <button class="filter-chip ${selectedCategory === 'ALL' ? 'active' : ''}" data-cat="ALL">
+            📋 Todos
+          </button>
+          <button class="filter-chip ${selectedCategory === 'MATERIA_PRIMA' ? 'active' : ''}" data-cat="MATERIA_PRIMA">
+            🥛 Materia Prima
+          </button>
+          <button class="filter-chip ${selectedCategory === 'EMPAQUE' ? 'active' : ''}" data-cat="EMPAQUE">
+            🍾 Empaques y Botellas
+          </button>
+          <button class="filter-chip ${selectedCategory === 'INSUMO' ? 'active' : ''}" data-cat="INSUMO">
+            🏷️ Otros Insumos
+          </button>
+          <button class="filter-chip ${selectedCategory === 'LOW_STOCK' ? 'active' : ''}" data-cat="LOW_STOCK" style="border-color: #FECACA; color: #DC2626; font-weight: 700;">
+            ⚠️ Bajo Stock
+          </button>
+          <button class="btn btn-sm btn-outline" id="btnClearInventoryFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; height: 34px;" title="Restablecer filtros">
+            <span>🧹</span> Limpiar
           </button>
         </div>
       </div>
@@ -159,25 +188,44 @@ export async function renderInventory(container) {
     </div>
   `;
 
-  // Listener para limpiar filtros
+  // Listener de búsqueda universal con debounce de 300 ms sin destruir el input
+  const searchInput = container.querySelector('#materialSearchInput');
+  let debounceTimeout;
+  searchInput?.addEventListener('input', (e) => {
+    clearTimeout(debounceTimeout);
+    debounceTimeout = setTimeout(() => {
+      materialSearchQuery = e.target.value.trim();
+      materialsCurrentPage = 1;
+      loadMaterialsOnly(container);
+    }, 300);
+  });
+
+  // Listener para limpiar filtros sin redibujar toolbar
   container.querySelector('#btnClearInventoryFilters')?.addEventListener('click', () => {
     selectedCategory = 'ALL';
+    materialSearchQuery = '';
     purchaseDateFilter = '';
     adjustmentDateFilter = '';
     materialsCurrentPage = 1;
     preparationsCurrentPage = 1;
     purchasesCurrentPage = 1;
     adjustmentsCurrentPage = 1;
-    renderInventory(container);
+    const sInput = container.querySelector('#materialSearchInput');
+    if (sInput) sInput.value = '';
+    container.querySelectorAll('[data-cat]').forEach((b) => {
+      if (b.dataset.cat === 'ALL') b.classList.add('active');
+      else b.classList.remove('active');
+    });
+    loadInventoryData(container);
   });
 
   container.querySelectorAll('[data-cat]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       container.querySelectorAll('[data-cat]').forEach((b) => b.classList.remove('active'));
-      e.target.classList.add('active');
-      selectedCategory = e.target.dataset.cat;
+      e.currentTarget.classList.add('active');
+      selectedCategory = e.currentTarget.dataset.cat;
       materialsCurrentPage = 1;
-      loadInventoryData(container);
+      loadMaterialsOnly(container);
     });
   });
 
@@ -220,8 +268,181 @@ export async function renderInventory(container) {
   await loadInventoryData(container);
 }
 
-async function loadInventoryData(container) {
+function renderMaterialCardHtml(m) {
+  const isLow = m.currentStock <= m.minStockAlert;
+  const unitLower = (m.unit || '').toLowerCase();
+  const isKg = unitLower.includes('k');
+  const formattedStock = formatStock(m.currentStock, 2);
+  
+  let stockDisplay = `${formattedStock} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">${m.unit}</span>`;
+  if (isKg) {
+    const gramsVal = Math.round(m.currentStock * 1000);
+    stockDisplay = `${formattedStock} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">kg</span> <small style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted);">(${formatStock(gramsVal, 0)} g)</small>`;
+  }
+
+  let costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}</strong>`;
+  if (isKg) {
+    costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}/kg</strong> <small style="color: var(--text-muted);">(${formatCOP(Math.round(m.avgCost / 1000))}/g)</small>`;
+  }
+
+  return `
+    <div class="inventory-card ${isLow ? 'low-stock' : ''}">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;">
+        <span class="badge" style="background: var(--bg-subtle); color: var(--text-muted); font-size: 0.72rem;">${m.category}</span>
+        ${isLow ? '<span class="badge badge-pending" style="font-size: 0.72rem;">⚠️ Stock Bajo</span>' : '<span class="badge badge-paid" style="font-size: 0.72rem;">Stock Óptimo</span>'}
+      </div>
+
+      <div class="inventory-card-title">${escapeHtml(m.name)}</div>
+
+      <div>
+        <div class="inventory-card-stock ${isLow ? 'warning' : ''}">
+          ${stockDisplay}
+        </div>
+        <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
+          Mínimo sugerido: ${formatStock(m.minStockAlert, 2)} ${m.unit}
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 10px; margin-top: auto; gap: 6px; flex-wrap: wrap;">
+        <span style="font-size: 0.78rem; color: var(--text-muted);">${costDisplay}</span>
+        <div style="display: flex; gap: 4px;">
+          <button class="btn btn-outline btn-sm btn-edit-material" data-id="${m.id}" title="Editar campos del insumo">
+            ✏️
+          </button>
+          <button class="btn btn-outline btn-sm btn-adjust-stock" data-id="${m.id}" data-name="${escapeHtml(m.name)}" data-stock="${m.currentStock}" data-unit="${m.unit}" data-cost="${m.avgCost}" style="border-color: #F59E0B; color: #B45309; font-weight: 700;" title="Ajuste de inventario / Merma">
+            ⚖️ Ajustar
+          </button>
+          <button class="btn btn-outline btn-sm btn-delete-material" data-id="${m.id}" data-name="${escapeHtml(m.name)}" style="color: var(--danger);" title="Eliminar insumo">
+            🗑️
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadMaterialsOnly(container) {
   const gridContainer = container.querySelector('#materialsGridContainer');
+  if (!gridContainer) return;
+
+  try {
+    const isLowStock = selectedCategory === 'LOW_STOCK';
+    const params = {
+      search: materialSearchQuery || undefined,
+      category: isLowStock ? undefined : (selectedCategory !== 'ALL' ? selectedCategory : undefined),
+      page: materialsCurrentPage,
+      limit: 15,
+      paginate: 'true',
+    };
+
+    const res = await api.getMaterials(params);
+    let materials = [];
+    let totalPages = 1;
+    let totalItems = 0;
+    let currentPage = materialsCurrentPage;
+
+    if (res && res.items && res.pagination) {
+      materials = res.items;
+      totalPages = res.pagination.totalPages;
+      totalItems = res.pagination.totalItems;
+      currentPage = res.pagination.currentPage;
+    } else if (Array.isArray(res)) {
+      const pag = paginateArray(res, materialsCurrentPage, 15);
+      materials = pag.pageItems;
+      totalPages = pag.totalPages;
+      totalItems = pag.totalItems;
+      currentPage = pag.currentPage;
+    }
+
+    if (isLowStock) {
+      materials = materials.filter((m) => (m.currentStock || 0) <= (m.minStockAlert || 0));
+      totalItems = materials.length;
+      totalPages = Math.ceil(totalItems / 15) || 1;
+    }
+
+    if (!materials || materials.length === 0) {
+      gridContainer.innerHTML = `
+        <div class="empty-state" style="grid-column: 1 / -1;">
+          <div class="empty-state-icon">📦</div>
+          <div class="empty-state-title">No hay insumos registrados</div>
+          <div class="empty-state-text">No se encontraron insumos con los filtros o término de búsqueda aplicados.</div>
+        </div>
+      `;
+      return;
+    }
+
+    gridContainer.innerHTML = `
+      ${materials.map((m) => renderMaterialCardHtml(m)).join('')}
+      <div style="grid-column: 1 / -1; margin-top: 16px;">
+        ${renderPaginationHtml({
+          currentPage: materialsCurrentPage,
+          totalPages,
+          totalItems,
+          pageSize: 15,
+          itemName: 'insumos',
+          paginationId: 'materialsPagination',
+        })}
+      </div>
+    `;
+
+    attachPaginationEvents(
+      gridContainer,
+      'materialsPagination',
+      (newPage) => {
+        materialsCurrentPage = newPage;
+        loadMaterialsOnly(container);
+      },
+      gridContainer
+    );
+
+    // Eventos de edición de insumo
+    gridContainer.querySelectorAll('.btn-edit-material').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = Number(e.currentTarget.dataset.id);
+        const material = materials.find((m) => m.id === id);
+        if (material) openEditMaterialModal(material);
+      });
+    });
+
+    // Eventos de ajuste manual de stock
+    gridContainer.querySelectorAll('.btn-adjust-stock').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const { id, name, stock, unit, cost } = e.currentTarget.dataset;
+        openAdjustStockModal(Number(id), name, Number(stock), unit, Number(cost), materials);
+      });
+    });
+
+    // Eventos de eliminación de insumo
+    gridContainer.querySelectorAll('.btn-delete-material').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const { id, name } = e.currentTarget.dataset;
+        if (confirm(`¿Estás seguro de eliminar el insumo "${name}"?`)) {
+          try {
+            await api.deleteMaterial(id);
+            showToast('Insumo eliminado correctamente');
+            loadMaterialsOnly(container);
+          } catch (err) {
+            showToast('Error al eliminar insumo', 'danger');
+          }
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Error loading materials:', err);
+  }
+}
+
+function refreshInventoryView() {
+  const container = document.getElementById('contentContainer');
+  if (!container) return;
+  if (container.querySelector('#materialsGridContainer')) {
+    loadInventoryData(container);
+  } else {
+    renderInventory(container);
+  }
+}
+
+async function loadInventoryData(container) {
   const preparationsContainer = container.querySelector('#preparationsTableContainer');
   const purchasesContainer = container.querySelector('#purchasesTableContainer');
 
@@ -243,145 +464,13 @@ async function loadInventoryData(container) {
       adjParams.endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
     }
 
-    // Ejecutar las 4 consultas simultáneamente en paralelo
-    const [materialsRes, preparations, purchases, adjustments] = await Promise.all([
-      api.getMaterials(),
+    // Cargar insumos y el resto de tablas simultáneamente
+    const [, preparations, purchases, adjustments] = await Promise.all([
+      loadMaterialsOnly(container),
       api.getPreparations(),
       api.getPurchasesHistory(purchaseParams),
       api.getInventoryAdjustments(adjParams),
     ]);
-    let materials = materialsRes || [];
-    
-    // Filtrar por categoría si no es ALL
-    if (selectedCategory !== 'ALL') {
-      materials = materials.filter((m) => m.category === selectedCategory);
-    }
-
-    // 1. Renderizar tarjetas de insumos
-    if (gridContainer) {
-      if (!materials || materials.length === 0) {
-        gridContainer.innerHTML = `
-          <div class="empty-state" style="grid-column: 1 / -1;">
-            <div class="empty-state-icon">📦</div>
-            <div class="empty-state-title">No hay insumos registrados</div>
-            <div class="empty-state-text">Agrega los insumos base para comenzar a gestionar el inventario.</div>
-          </div>
-        `;
-      } else {
-        const { pageItems: pageMaterials, totalPages: matPages, totalItems: matTotal, currentPage: matCurr } = paginateArray(materials, materialsCurrentPage, 15);
-        materialsCurrentPage = matCurr;
-
-        gridContainer.innerHTML = `
-          ${pageMaterials
-            .map((m) => {
-              const isLow = m.currentStock <= m.minStockAlert;
-              const unitLower = (m.unit || '').toLowerCase();
-              const isKg = unitLower.includes('k');
-              const formattedStock = formatStock(m.currentStock, 2);
-              
-              let stockDisplay = `${formattedStock} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">${m.unit}</span>`;
-              if (isKg) {
-                const gramsVal = Math.round(m.currentStock * 1000);
-                stockDisplay = `${formattedStock} <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-muted);">kg</span> <small style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted);">(${formatStock(gramsVal, 0)} g)</small>`;
-              }
-
-              let costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}</strong>`;
-              if (isKg) {
-                costDisplay = `Costo: <strong>${formatCOP(m.avgCost)}/kg</strong> <small style="color: var(--text-muted);">(${formatCOP(Math.round(m.avgCost / 1000))}/g)</small>`;
-              }
-
-              return `
-              <div class="inventory-card ${isLow ? 'low-stock' : ''}">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;">
-                  <span class="badge" style="background: var(--bg-subtle); color: var(--text-muted); font-size: 0.72rem;">${m.category}</span>
-                  ${isLow ? '<span class="badge badge-pending" style="font-size: 0.72rem;">⚠️ Stock Bajo</span>' : '<span class="badge badge-paid" style="font-size: 0.72rem;">Stock Óptimo</span>'}
-                </div>
-
-                <div class="inventory-card-title">${m.name}</div>
-
-                <div>
-                  <div class="inventory-card-stock ${isLow ? 'warning' : ''}">
-                    ${stockDisplay}
-                  </div>
-                  <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
-                    Mínimo sugerido: ${formatStock(m.minStockAlert, 2)} ${m.unit}
-                  </div>
-                </div>
-
-                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 10px; margin-top: auto; gap: 6px; flex-wrap: wrap;">
-                  <span style="font-size: 0.78rem; color: var(--text-muted);">${costDisplay}</span>
-                  <div style="display: flex; gap: 4px;">
-                    <button class="btn btn-outline btn-sm btn-edit-material" data-id="${m.id}" title="Editar campos del insumo">
-                      ✏️
-                    </button>
-                    <button class="btn btn-outline btn-sm btn-adjust-stock" data-id="${m.id}" data-name="${m.name}" data-stock="${m.currentStock}" data-unit="${m.unit}" data-cost="${m.avgCost}" style="border-color: #F59E0B; color: #B45309; font-weight: 700;" title="Ajuste de inventario / Merma">
-                      ⚖️ Ajustar
-                    </button>
-                    <button class="btn btn-outline btn-sm btn-delete-material" data-id="${m.id}" data-name="${m.name}" style="color: var(--danger);" title="Eliminar insumo">
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              </div>
-            `;
-            })
-            .join('')}
-          <div style="grid-column: 1 / -1; margin-top: 16px;">
-            ${renderPaginationHtml({
-              currentPage: materialsCurrentPage,
-              totalPages: matPages,
-              totalItems: matTotal,
-              pageSize: 15,
-              itemName: 'insumos',
-              paginationId: 'materialsPagination',
-            })}
-          </div>
-        `;
-
-        attachPaginationEvents(
-          gridContainer,
-          'materialsPagination',
-          (newPage) => {
-            materialsCurrentPage = newPage;
-            loadInventoryData(container);
-          },
-          gridContainer
-        );
-
-        // Eventos de edición de insumo
-        gridContainer.querySelectorAll('.btn-edit-material').forEach((btn) => {
-          btn.addEventListener('click', (e) => {
-            const id = Number(e.currentTarget.dataset.id);
-            const material = materials.find((m) => m.id === id);
-            if (material) openEditMaterialModal(material);
-          });
-        });
-
-        // Eventos de ajuste manual de stock
-        gridContainer.querySelectorAll('.btn-adjust-stock').forEach((btn) => {
-          btn.addEventListener('click', (e) => {
-            const { id, name, stock, unit, cost } = e.currentTarget.dataset;
-            openAdjustStockModal(Number(id), name, Number(stock), unit, Number(cost), materials);
-          });
-        });
-
-        // Eventos de eliminación de insumo
-        gridContainer.querySelectorAll('.btn-delete-material').forEach((btn) => {
-          btn.addEventListener('click', async (e) => {
-            const { id, name } = e.currentTarget.dataset;
-            if (confirm(`¿Estás seguro de eliminar el insumo "${name}"?`)) {
-              try {
-                await api.deleteMaterial(id);
-                showToast('Insumo eliminado correctamente');
-                renderInventory(container);
-              } catch (err) {
-                showToast('Error al eliminar insumo', 'danger');
-              }
-            }
-          });
-        });
-      }
-    }
 
     // 2. Renderizar historial de elaboraciones / mermeladas
     if (preparationsContainer) {
@@ -505,7 +594,7 @@ async function loadInventoryData(container) {
               try {
                 await api.deletePreparation(id);
                 showToast('Elaboración eliminada e inventario restaurado 🥣');
-                renderInventory(container);
+                loadInventoryData(container);
               } catch (err) {
                 showToast(err.message || 'Error al eliminar elaboración', 'danger');
               }
@@ -606,7 +695,7 @@ async function loadInventoryData(container) {
               try {
                 await api.deletePurchase(id);
                 showToast('Compra eliminada y stock revertido');
-                renderInventory(container);
+                loadInventoryData(container);
               } catch (err) {
                 showToast('Error al eliminar compra', 'danger');
               }
@@ -1004,7 +1093,7 @@ async function openPurchaseModal() {
       await api.createPurchase(payload);
       showToast('Compra registrada y stock actualizado con éxito 📦');
       closeModal();
-      renderInventory(document.getElementById('contentContainer'));
+      refreshInventoryView();
     } catch (err) {
       showToast(err.message || 'Error al registrar compra', 'danger');
     }
@@ -1104,7 +1193,7 @@ function openEditMaterialModal(material) {
       await api.updateMaterial(material.id, payload);
       showToast('Insumo actualizado con éxito');
       closeModal();
-      renderInventory(document.getElementById('contentContainer'));
+      refreshInventoryView();
     } catch (err) {
       showToast('Error al actualizar insumo', 'danger');
     }
@@ -1344,7 +1433,7 @@ async function openAdjustStockModal(materialId = null, materialName = '', curren
 
       showToast('¡Ajuste de inventario registrado con éxito! ⚖️📦');
       closeModal();
-      renderInventory(document.getElementById('contentContainer'));
+      refreshInventoryView();
     } catch (err) {
       showToast(err.message || 'Error al registrar ajuste de inventario', 'danger');
     }
@@ -1442,7 +1531,7 @@ function openNewMaterialModal() {
       await api.createMaterial(payload);
       showToast('Nuevo insumo creado con éxito');
       closeModal();
-      renderInventory(document.getElementById('contentContainer'));
+      refreshInventoryView();
     } catch (err) {
       showToast('Error al crear insumo', 'danger');
     }
@@ -1625,7 +1714,7 @@ function openEditPurchaseModal(purchase) {
       await api.updatePurchase(purchase.id, payload);
       showToast('Compra actualizada y stock sincronizado correctamente 📦');
       closeModal();
-      renderInventory(document.getElementById('contentContainer'));
+      refreshInventoryView();
     } catch (err) {
       showToast(err.message || 'Error al actualizar compra', 'danger');
     }
@@ -1945,7 +2034,7 @@ function openNewPreparationModal(materials) {
       await api.createPreparation(payload);
       showToast('🥣 Elaboración registrada e insumo guardado con éxito');
       closeModal();
-      renderInventory(document.getElementById('contentContainer'));
+      refreshInventoryView();
     } catch (err) {
       showToast(err.message || 'Error al registrar elaboración', 'danger');
     }

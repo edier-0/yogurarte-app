@@ -39,32 +39,34 @@ export async function renderCustomers(container) {
   }
 
   container.innerHTML = `
-    <!-- Barra de Búsqueda, Filtros y Acción -->
+    <!-- Barra de Búsqueda, Filtros y Acciones Optimizada -->
     <div class="orders-toolbar-card" style="margin-bottom: 20px;">
-      <div class="orders-toolbar-main-row" style="margin-bottom: 10px;">
-        <div class="orders-search-group" style="flex: 1 1 auto; min-width: 0; width: 100%;">
-          <div class="search-box input-with-icon" style="width: 100%; max-width: 100%;">
+      <div class="orders-toolbar-main-row" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
+        <div class="orders-search-group" style="flex: 1 1 280px; min-width: 220px;">
+          <div class="search-box input-with-icon" style="width: 100%;">
             <span class="input-icon">🔍</span>
             <input 
               type="text" 
               id="customerSearchInput" 
+              data-key="customer-search"
               class="form-input" 
-              style="height: 40px; width: 100%;"
-              placeholder="Buscar por cliente, @usuario o dirección..." 
-              value="${searchQuery}"
+              style="height: 42px; width: 100%; font-weight: 600;"
+              placeholder="Buscar cliente por nombre, teléfono, @usuario o dirección..." 
+              value="${escapeHtml(searchQuery)}"
+              autocomplete="off"
             />
           </div>
         </div>
 
-        <div class="orders-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; width: auto;">
+        <div class="orders-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
           <!-- Selector de Lote para Clientes -->
-          <select id="custBatchFilterSelect" class="orders-select-item" style="height: 40px; font-weight: 700; color: var(--primary); flex: 1 1 auto; min-width: 150px; max-width: 100%;">
+          <select id="custBatchFilterSelect" class="orders-select-item" style="height: 40px; font-weight: 700; color: var(--primary); min-width: 150px;">
             <option value="ALL" ${currentBatchFilter === 'ALL' ? 'selected' : ''}>🍶 Todos los Lotes</option>
             ${availableBatches
               .map(
                 (b) => `
               <option value="${b.id}" ${String(currentBatchFilter) === String(b.id) ? 'selected' : ''}>
-                🍶 ${b.batchCode} - ${b.flavor}
+                🍶 ${escapeHtml(b.batchCode)} - ${escapeHtml(b.flavor)}
               </option>
             `
               )
@@ -72,34 +74,39 @@ export async function renderCustomers(container) {
           </select>
 
           <!-- Botón Limpiar Filtros -->
-          <button class="btn btn-outline" id="btnClearCustomerFilters" style="height: 40px; white-space: nowrap; font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Limpiar búsqueda y filtros de clientes">
-            <span>🧹</span> Limpiar Filtros
+          <button class="btn btn-outline" id="btnClearCustomerFilters" style="height: 40px; white-space: nowrap; font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px;" title="Limpiar búsqueda y filtros de clientes">
+            <span>🧹</span> Limpiar
           </button>
 
           <!-- Botón Configuración de Cuenta de Cobro (Nequi) -->
-          <button class="btn btn-outline" id="btnOpenBankSettingsModal" style="height: 40px; white-space: nowrap; flex: 0 0 auto; border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: #FAF5FF;" title="Configurar número de Nequi o cuenta para recordatorios de cobro">
-            ⚙️ Cuenta de Cobro (Nequi)
+          <button class="btn btn-outline" id="btnOpenBankSettingsModal" style="height: 40px; white-space: nowrap; border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: var(--bg-card);" title="Configurar número de Nequi o cuenta para recordatorios de cobro">
+            ⚙️ Cuenta Nequi
           </button>
 
-          <button class="btn btn-accent" id="btnOpenNewCustModal" style="height: 40px; white-space: nowrap; flex: 0 0 auto;">
+          <button class="btn btn-accent" id="btnOpenNewCustModal" style="height: 40px; white-space: nowrap; padding: 8px 14px; font-size: 0.88rem;">
             <span>+</span> Registrar Cliente
           </button>
         </div>
       </div>
 
+      <!-- Barra de Chips Horizontales de un toque con scroll táctil -->
       <div style="padding-top: 10px; border-top: 1px solid var(--border-subtle); width: 100%; box-sizing: border-box;">
-        <div class="filter-chip-group" id="custDebtFilterGroup" style="width: 100%;">
-          <button class="filter-chip ${currentDebtFilter === 'ALL' ? 'active' : ''}" data-debt="ALL">Todos</button>
-          <button class="filter-chip ${currentDebtFilter === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt="DELIVERED_DEBT" style="${currentDebtFilter === 'DELIVERED_DEBT' ? 'background: #DC2626; border-color: #DC2626; color: white;' : 'color: #DC2626; font-weight: 700; border-color: #FECACA;'}">
-            🚨 Con Deuda (Entregados)
+        <div class="horizontal-chip-scroll" id="custDebtFilterGroup">
+          <button class="filter-chip ${currentDebtFilter === 'ALL' ? 'active' : ''}" data-cust-chip="ALL">
+            📋 Todos
           </button>
-          <button class="filter-chip ${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'active' : ''}" data-debt="PAID_NOT_DELIVERED" style="${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'background: #059669; border-color: #059669; color: white;' : 'color: #059669; font-weight: 700; border-color: #A7F3D0;'}">
+          <button class="filter-chip ${currentDebtFilter === 'DELIVERED_DEBT' ? 'active' : ''}" data-cust-chip="DELIVERED_DEBT" style="${currentDebtFilter === 'DELIVERED_DEBT' ? 'background: #DC2626; border-color: #DC2626; color: white;' : 'color: #DC2626; font-weight: 700; border-color: #FECACA;'}">
+            🚨 Con Deuda
+          </button>
+          <button class="filter-chip ${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'active' : ''}" data-cust-chip="PAID_NOT_DELIVERED" style="${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'background: #059669; border-color: #059669; color: white;' : 'color: #059669; font-weight: 700; border-color: #A7F3D0;'}">
             🟢🥣 Pagados por Entregar
           </button>
-          <button class="filter-chip ${currentDebtFilter === 'IN_PROCESS' ? 'active' : ''}" data-debt="IN_PROCESS" style="${currentDebtFilter === 'IN_PROCESS' ? 'background: var(--primary); border-color: var(--primary); color: white;' : 'color: var(--primary); font-weight: 700; border-color: #DDD6FE;'}">
-            🥣 Encargos (En Proceso)
+          <button class="filter-chip ${currentDebtFilter === 'IN_PROCESS' ? 'active' : ''}" data-cust-chip="IN_PROCESS" style="${currentDebtFilter === 'IN_PROCESS' ? 'background: var(--primary); border-color: var(--primary); color: white;' : 'color: var(--primary); font-weight: 700; border-color: #DDD6FE;'}">
+            🥣 Encargos
           </button>
-          <button class="filter-chip ${currentDebtFilter === 'PAID' ? 'active' : ''}" data-debt="PAID">🟢 Al Día</button>
+          <button class="filter-chip ${currentDebtFilter === 'PAID' ? 'active' : ''}" data-cust-chip="PAID" style="${currentDebtFilter === 'PAID' ? 'background: var(--success); color: white;' : 'color: #15803D; font-weight: 700; border-color: #BBF7D0;'}">
+            🟢 Al Día
+          </button>
         </div>
       </div>
     </div>
@@ -112,26 +119,36 @@ export async function renderCustomers(container) {
     </div>
   `;
 
+  // Limpiar filtros sin redibujar toolbar
   container.querySelector('#btnClearCustomerFilters')?.addEventListener('click', () => {
     searchQuery = '';
     currentDebtFilter = 'ALL';
     currentBatchFilter = 'ALL';
     customersCurrentPage = 1;
-    renderCustomers(container);
+    const sInput = container.querySelector('#customerSearchInput');
+    const bSelect = container.querySelector('#custBatchFilterSelect');
+    if (sInput) sInput.value = '';
+    if (bSelect) bSelect.value = 'ALL';
+    container.querySelectorAll('[data-cust-chip]').forEach((b) => {
+      if (b.dataset.custChip === 'ALL') b.classList.add('active');
+      else b.classList.remove('active');
+    });
+    loadCustomersList(container);
   });
 
+  // Buscador universal con debounce de 300 ms sin destruir el input
   const searchInput = container.querySelector('#customerSearchInput');
   let debounceTimer;
   searchInput?.addEventListener('input', (e) => {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       customersCurrentPage = 1;
-      searchQuery = e.target.value;
+      searchQuery = e.target.value.trim();
       loadCustomersList(container);
-    }, 250);
+    }, 300);
   });
 
-  // Listener para filtro de lote
+  // Filtro de lote
   const batchFilterSelect = container.querySelector('#custBatchFilterSelect');
   batchFilterSelect?.addEventListener('change', (e) => {
     customersCurrentPage = 1;
@@ -139,13 +156,13 @@ export async function renderCustomers(container) {
     loadCustomersList(container);
   });
 
-  // Listeners de filtro de deuda
-  container.querySelectorAll('#custDebtFilterGroup button').forEach((btn) => {
+  // Listeners de chips horizontales de deuda
+  container.querySelectorAll('[data-cust-chip]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
-      container.querySelectorAll('#custDebtFilterGroup button').forEach((b) => b.classList.remove('active'));
+      container.querySelectorAll('[data-cust-chip]').forEach((b) => b.classList.remove('active'));
       e.currentTarget.classList.add('active');
       customersCurrentPage = 1;
-      currentDebtFilter = e.currentTarget.dataset.debt;
+      currentDebtFilter = e.currentTarget.dataset.custChip;
       loadCustomersList(container);
     });
   });
@@ -662,7 +679,7 @@ async function loadCustomersList(container) {
           try {
             await api.deleteCustomer(id);
             showToast('Cliente desactivado correctamente');
-            renderCustomers(container);
+            loadCustomersList(container);
           } catch (err) {
             showToast('Error al desactivar cliente', 'danger');
           }
@@ -754,7 +771,12 @@ function openCustomerEditModal(customer = null) {
         showToast('Cliente registrado con éxito 👤');
       }
       closeModal();
-      renderCustomers(document.getElementById('contentContainer'));
+      const contentContainer = document.getElementById('contentContainer');
+      if (contentContainer?.querySelector('#customersGridContainer')) {
+        loadCustomersList(contentContainer);
+      } else if (contentContainer) {
+        renderCustomers(contentContainer);
+      }
     } catch (err) {
       showToast('Error al guardar cliente', 'danger');
     }
@@ -1134,7 +1156,7 @@ async function openCustomerPaymentModal(customerOrId) {
       modalOverlay.innerHTML = '';
       const contentContainer = document.getElementById('contentContainer');
       if (contentContainer && contentContainer.querySelector('#customersGridContainer')) {
-        renderCustomers(contentContainer);
+        loadCustomersList(contentContainer);
       }
     };
 
@@ -1232,7 +1254,11 @@ async function openCustomerPaymentModal(customerOrId) {
         document.getElementById('btnFinishPaySuccess')?.addEventListener('click', () => {
           modalOverlay.innerHTML = '';
           const contentContainer = document.getElementById('contentContainer');
-          if (contentContainer) renderCustomers(contentContainer);
+          if (contentContainer?.querySelector('#customersGridContainer')) {
+            loadCustomersList(contentContainer);
+          } else if (contentContainer) {
+            renderCustomers(contentContainer);
+          }
         });
 
         document.getElementById('btnSendWaThank')?.addEventListener('click', async () => {
@@ -1255,7 +1281,11 @@ async function openCustomerPaymentModal(customerOrId) {
           setTimeout(() => {
             modalOverlay.innerHTML = '';
             const contentContainer = document.getElementById('contentContainer');
-            if (contentContainer) renderCustomers(contentContainer);
+            if (contentContainer?.querySelector('#customersGridContainer')) {
+              loadCustomersList(contentContainer);
+            } else if (contentContainer) {
+              renderCustomers(contentContainer);
+            }
           }, 600);
         });
 
@@ -1415,7 +1445,7 @@ export async function openBankSettingsModal() {
 
       const contentContainer = document.getElementById('contentContainer');
       if (contentContainer && contentContainer.querySelector('#customersGridContainer')) {
-        renderCustomers(contentContainer);
+        loadCustomersList(contentContainer);
       }
     } catch (err) {
       console.error('Error saving bank settings:', err);

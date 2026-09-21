@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
-  background: #FFFFFF;
+  background: var(--bg-card);
   padding: 14px 18px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
@@ -56,7 +56,7 @@
 }
 
 .filter-chip.active {
-  background: #FFFFFF;
+  background: var(--bg-card);
   color: var(--primary);
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
 }
@@ -69,7 +69,7 @@
 
 /* ==================== INVENTORY TOOLBAR (PC RESPONSIVE) ==================== */
 .inventory-toolbar-card {
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: var(--radius-lg);
   border: 1.5px solid var(--border-color);
   box-shadow: var(--shadow-sm);
@@ -194,7 +194,7 @@
 
 /* ==================== ORDERS TOOLBAR (PC RESPONSIVE) ==================== */
 .orders-toolbar-card {
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: var(--radius-lg);
   border: 1.5px solid var(--border-color);
   box-shadow: var(--shadow-sm);
@@ -248,7 +248,7 @@
 
 .orders-calendar-picker:focus-within, .orders-calendar-picker.has-date {
   border-color: var(--primary);
-  background: #FFFFFF;
+  background: var(--bg-card);
 }
 
 .orders-calendar-picker input[type="date"] {
@@ -282,7 +282,7 @@
   border: 1.5px solid var(--border-color);
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: #FFFFFF;
+  background: var(--bg-card);
   height: 40px;
 }
 
@@ -319,7 +319,7 @@
   font-weight: 700;
   border-radius: var(--radius-md);
   border: 1.5px solid var(--border-color);
-  background: #FFFFFF;
+  background: var(--bg-card);
   color: var(--text-main);
   cursor: pointer;
   outline: none;
@@ -550,7 +550,8 @@
 }
 
 .order-card {
-  background: #FFFFFF;
+  background: var(--bg-card);
+  color: var(--text-main);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
@@ -735,7 +736,8 @@
 }
 
 .inventory-card {
-  background: #FFFFFF;
+  background: var(--bg-card);
+  color: var(--text-main);
   border-radius: var(--radius-lg);
   padding: 16px 18px;
   border: 1px solid var(--border-color);
@@ -750,7 +752,7 @@
 
 .inventory-card.low-stock {
   border-color: var(--warning-border);
-  background: #FFFEFA;
+  background: var(--warning-light);
 }
 
 .inventory-card-title {
@@ -786,7 +788,8 @@
 }
 
 .expense-pill {
-  background: #FFFFFF;
+  background: var(--bg-card);
+  color: var(--text-main);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 10px 14px;
@@ -811,7 +814,7 @@
   grid-template-columns: 320px 1fr 300px;
   height: calc(100vh - 120px);
   min-height: 580px;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
@@ -854,7 +857,7 @@
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  background: #FFFFFF;
+  background: var(--bg-card);
   height: 100%;
   overflow: hidden;
 }
@@ -1070,7 +1073,7 @@
 
 .crm-chat-header {
   padding: 10px 16px;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
@@ -1402,7 +1405,7 @@
 /* Sidebar del Cliente (Derecho) */
 .crm-customer-sidebar {
   border-left: 1px solid var(--border-color);
-  background: #FFFFFF;
+  background: var(--bg-card);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1415,7 +1418,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
   min-height: 52px;
@@ -1766,8 +1769,8 @@
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  background: #FFFFFF;
-  border: 1px solid #CBD5E1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-full);
   font-size: 0.76rem;
   font-weight: 700;
@@ -1778,14 +1781,14 @@
 }
 
 .crm-quick-chip:hover {
-  background: #EDE9FE;
+  background: var(--primary-light);
   border-color: var(--primary);
   transform: translateY(-1px);
 }
 
 /* Tarjetas de Fidelización y Progreso */
 .crm-loyalty-card {
-  background: #FFFFFF;
+  background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   padding: 16px;
@@ -1829,7 +1832,8 @@
 }
 
 .crm-recurring-card {
-  background: #FFFFFF;
+  background: var(--bg-card);
+  color: var(--text-main);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   padding: 14px 16px;

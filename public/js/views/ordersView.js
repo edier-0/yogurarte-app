@@ -7,6 +7,7 @@ let ordersCurrentPage = 1;
 
 let currentFilters = {
   search: '',
+  chip: 'ALL', // 'ALL' | 'TO_DELIVER' | 'IN_PROCESS' | 'DELIVERED_DEBT' | 'PAID' | 'UPDATED_DESC' | 'TODAY' | 'TOMORROW'
   debtCategory: 'ALL', // 'ALL' | 'DELIVERED_DEBT' | 'PAID_NOT_DELIVERED' | 'IN_PROCESS' | 'PAID'
   paymentStatus: 'ALL',
   deliveryStatus: 'ALL',
@@ -29,8 +30,145 @@ let cachedOrders = [];
 let availableBatches = [];
 let availableDrivers = [];
 
+function getActiveSecondaryFiltersCount() {
+  let count = 0;
+  if (currentFilters.driverFilter !== 'ALL') count++;
+  if (currentFilters.batchId !== 'ALL') count++;
+  if (currentFilters.paymentStatus !== 'ALL') count++;
+  if (currentFilters.deliveryStatus !== 'ALL' && currentFilters.deliveryStatus !== 'TO_DELIVER') count++;
+  if (currentFilters.specificDate) count++;
+  if (currentFilters.month) count++;
+  if (currentFilters.sortBy !== 'PRIORITY_DEBT' && currentFilters.sortBy !== 'UPDATED_DESC') count++;
+  return count;
+}
+
+function updateChipUi(container) {
+  container.querySelectorAll('[data-order-chip]').forEach((btn) => {
+    if (btn.dataset.orderChip === currentFilters.chip) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+}
+
+function renderActiveFilterTags(container) {
+  const banner = container.querySelector('#activeFilterTagsBanner');
+  const countBadge = container.querySelector('#ordersFilterBadgeCount');
+  if (!banner) return;
+
+  const count = getActiveSecondaryFiltersCount();
+  if (countBadge) {
+    if (count > 0) {
+      countBadge.textContent = String(count);
+      countBadge.style.display = 'inline-flex';
+    } else {
+      countBadge.style.display = 'none';
+    }
+  }
+
+  const tags = [];
+  if (currentFilters.specificDate) {
+    tags.push({ key: 'specificDate', label: `📅 ${formatDate(currentFilters.specificDate)}` });
+  }
+  if (currentFilters.driverFilter !== 'ALL') {
+    let dLabel = '🛵 Repartidor';
+    if (currentFilters.driverFilter === 'PROPIO') dLabel = '👤 Entrega Propia';
+    else if (currentFilters.driverFilter === 'LOCAL') dLabel = '🏪 En Local';
+    else if (currentFilters.driverFilter === 'UNASSIGNED') dLabel = '⚠️ Sin Asignar';
+    else {
+      const dObj = availableDrivers.find((d) => `DRIVER_${d.id}` === currentFilters.driverFilter);
+      if (dObj) dLabel = `🛵 ${dObj.name}`;
+    }
+    tags.push({ key: 'driverFilter', label: dLabel });
+  }
+  if (currentFilters.batchId !== 'ALL') {
+    const bObj = availableBatches.find((b) => String(b.id) === String(currentFilters.batchId));
+    tags.push({ key: 'batchId', label: bObj ? `🍶 ${bObj.batchCode}` : '🍶 Lote' });
+  }
+  if (currentFilters.deliveryStatus !== 'ALL' && currentFilters.deliveryStatus !== 'TO_DELIVER') {
+    const statusLabels = {
+      PENDING: '🕒 Pendiente',
+      PREPARING: '🥣 En Prep.',
+      READY_FOR_DISPATCH: '📦 Listo',
+      IN_ROUTE: '🛵 En Ruta',
+      DELIVERED: '✅ Entregado',
+    };
+    tags.push({ key: 'deliveryStatus', label: statusLabels[currentFilters.deliveryStatus] || currentFilters.deliveryStatus });
+  }
+  if (currentFilters.paymentStatus !== 'ALL') {
+    const payLabels = { PAID: '🟢 Pagado', PARTIAL: '🟡 Parcial', PENDING: '🔴 Pend. Pago' };
+    tags.push({ key: 'paymentStatus', label: payLabels[currentFilters.paymentStatus] || currentFilters.paymentStatus });
+  }
+  if (currentFilters.month) {
+    tags.push({ key: 'month', label: `📅 Mes: ${currentFilters.month}` });
+  }
+
+  if (tags.length === 0) {
+    banner.innerHTML = '';
+    banner.style.display = 'none';
+    return;
+  }
+
+  banner.style.display = 'flex';
+  banner.innerHTML = `
+    <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: inline-flex; align-items: center;">Filtros:</span>
+    ${tags
+      .map(
+        (t) => `
+      <span class="badge" style="background: var(--bg-card); color: var(--primary); border: 1px solid var(--border-color); font-weight: 700; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: var(--radius-sm);">
+        ${t.label}
+        <button type="button" data-clear-tag="${t.key}" style="border: none; background: none; cursor: pointer; color: var(--danger); font-weight: 800; font-size: 0.85rem; padding: 0 2px;" title="Quitar filtro">✕</button>
+      </span>
+    `
+      )
+      .join('')}
+    <button type="button" id="btnClearAllOrderFilters" style="border: none; background: none; cursor: pointer; color: var(--accent); font-weight: 700; font-size: 0.78rem; text-decoration: underline; padding: 2px 6px;">
+      Limpiar filtros
+    </button>
+  `;
+
+  banner.querySelectorAll('[data-clear-tag]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const key = e.currentTarget.dataset.clearTag;
+      if (key === 'specificDate') {
+        currentFilters.specificDate = '';
+        currentFilters.dateRange = 'ALL';
+      } else if (key === 'driverFilter') {
+        currentFilters.driverFilter = 'ALL';
+      } else if (key === 'batchId') {
+        currentFilters.batchId = 'ALL';
+      } else if (key === 'deliveryStatus') {
+        currentFilters.deliveryStatus = 'ALL';
+      } else if (key === 'paymentStatus') {
+        currentFilters.paymentStatus = 'ALL';
+      } else if (key === 'month') {
+        currentFilters.month = '';
+      }
+      ordersCurrentPage = 1;
+      renderActiveFilterTags(container);
+      loadOrdersList(container);
+    });
+  });
+
+  banner.querySelector('#btnClearAllOrderFilters')?.addEventListener('click', () => {
+    currentFilters.specificDate = '';
+    currentFilters.driverFilter = 'ALL';
+    currentFilters.batchId = 'ALL';
+    currentFilters.deliveryStatus = 'ALL';
+    currentFilters.paymentStatus = 'ALL';
+    currentFilters.month = '';
+    currentFilters.chip = 'ALL';
+    currentFilters.debtCategory = 'ALL';
+    ordersCurrentPage = 1;
+    updateChipUi(container);
+    renderActiveFilterTags(container);
+    loadOrdersList(container);
+  });
+}
+
 export async function renderOrders(container) {
-  // Cargar lotes disponibles y repartidores para el filtro
+  // Cargar lotes disponibles y repartidores para los filtros
   try {
     const [batchesRes, usersRes] = await Promise.all([
       api.getBatches({ lite: 'true' }),
@@ -55,49 +193,41 @@ export async function renderOrders(container) {
   }
 
   container.innerHTML = `
-    <!-- Toolbar de Búsqueda y Filtros Optimizada para PC -->
-    <div class="orders-toolbar-card">
-      <!-- Fila Principal: Búsqueda, Selector de Calendario y Acciones Principales -->
-      <div class="orders-toolbar-main-row">
-        <div class="orders-search-group">
-          <div class="search-box input-with-icon">
+    <!-- Toolbar de Búsqueda y Filtros Optimizada para Móvil y Desktop -->
+    <div class="orders-toolbar-card" style="margin-bottom: 16px;">
+      <!-- Fila 1: Buscador Universal con Debounce y Acciones Rápidas -->
+      <div class="orders-toolbar-main-row" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+        <div class="orders-search-group" style="flex: 1 1 280px; min-width: 220px;">
+          <div class="search-box input-with-icon" style="width: 100%;">
             <span class="input-icon">🔍</span>
             <input 
               type="text" 
               id="orderSearchInput" 
+              data-key="order-search"
               class="form-input" 
-              placeholder="Buscar por cliente, teléfono o dirección..." 
-              value="${currentFilters.search}"
+              placeholder="Buscar por cliente, teléfono, @usuario, sabor..." 
+              value="${escapeHtml(currentFilters.search)}"
+              autocomplete="off"
+              style="width: 100%; height: 42px; font-weight: 600;"
             />
-          </div>
-
-          <!-- Selector de Calendario por Día Específico -->
-          <div class="orders-calendar-picker ${currentFilters.specificDate ? 'has-date' : ''}">
-            <label for="selectSpecificDateFilter" style="font-size: 0.84rem; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 4px; margin: 0; cursor: pointer;">
-              <span>📅 Ver Día:</span>
-            </label>
-            <input 
-              type="date" 
-              id="selectSpecificDateFilter" 
-              value="${currentFilters.specificDate || ''}" 
-              title="Selecciona una fecha en el calendario para ver los pedidos programados para ese día"
-            />
-            ${
-              currentFilters.specificDate
-                ? `<button type="button" id="btnClearSpecificDate" style="border: none; background: transparent; cursor: pointer; color: var(--danger); font-weight: 800; font-size: 0.9rem; padding: 0 4px;" title="Quitar filtro de fecha">✕</button>`
-                : ''
-            }
           </div>
         </div>
 
-        <div class="orders-toolbar-actions">
+        <div class="orders-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
+          <!-- Botón Drawer / Bottom Sheet de Filtros Secundarios -->
+          <button type="button" class="filter-action-btn" id="btnOpenOrdersFilterSheet" title="Abrir filtros avanzados (fechas, repartidores, lotes)">
+            <span>⚙️ Filtros</span>
+            <span class="filter-badge-count" id="ordersFilterBadgeCount" style="display: none;">0</span>
+          </button>
+
           <!-- Toggle de Vista: Lista vs Calendario Mensual -->
-          <div class="orders-view-toggle">
+          <div class="orders-view-toggle" style="display: inline-flex;">
             <button 
               type="button"
               class="btn ${currentFilters.viewMode === 'list' ? 'btn-primary' : 'btn-outline'}" 
               id="btnToggleListView" 
-              title="Ver pedidos en lista de tarjetas"
+              style="padding: 6px 10px; font-size: 0.82rem;"
+              title="Ver pedidos en lista"
             >
               📋 Lista
             </button>
@@ -105,124 +235,54 @@ export async function renderOrders(container) {
               type="button"
               class="btn ${currentFilters.viewMode === 'calendar' ? 'btn-primary' : 'btn-outline'}" 
               id="btnToggleCalendarView" 
-              title="Ver calendario mensual de entregas"
+              style="padding: 6px 10px; font-size: 0.82rem;"
+              title="Ver calendario mensual"
             >
               📅 Calendario
             </button>
           </div>
 
-          <button class="btn btn-outline" id="btnRescheduleOverdueOrders" style="border-color: #F59E0B; color: #B45309; background: #FEF3C7; font-weight: 700; font-size: 0.85rem;" title="Reprogramar todos los pedidos de días anteriores para entregarse hoy">
-            📅 Reprogramar Atrasados a Hoy
+          <button class="btn btn-outline" id="btnRescheduleOverdueOrders" style="border-color: #F59E0B; color: #B45309; background: var(--bg-card); font-weight: 700; font-size: 0.82rem; padding: 8px 12px; height: 40px;" title="Reprogramar pedidos atrasados de días anteriores a hoy">
+            📅 Reprogramar
           </button>
 
-          <button class="btn btn-accent" id="btnOpenNewOrderModal">
+          <button class="btn btn-accent" id="btnOpenNewOrderModal" style="height: 40px; padding: 8px 14px; font-size: 0.88rem;">
             <span>+</span> Nuevo Pedido
           </button>
         </div>
       </div>
 
-      <!-- Fila de Filtros Jerárquicos de Cobro / Deuda y Orden Rápido -->
-      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle); align-items: center;">
-        <button class="filter-chip ${currentFilters.debtCategory === 'ALL' && currentFilters.sortBy !== 'UPDATED_DESC' ? 'active' : ''}" data-debt-cat="ALL">
-          📋 Todos
-        </button>
-        <button class="filter-chip ${currentFilters.debtCategory === 'DELIVERED_DEBT' ? 'active' : ''}" data-debt-cat="DELIVERED_DEBT" style="${currentFilters.debtCategory === 'DELIVERED_DEBT' ? 'background: #DC2626; color: white;' : 'border-color: #FECACA; color: #DC2626; font-weight: 700;'}">
-          🚨 Entregados por Cobrar
-        </button>
-        <button class="filter-chip ${currentFilters.debtCategory === 'PAID_NOT_DELIVERED' ? 'active' : ''}" data-debt-cat="PAID_NOT_DELIVERED" style="${currentFilters.debtCategory === 'PAID_NOT_DELIVERED' ? 'background: #059669; color: white;' : 'border-color: #A7F3D0; color: #059669; font-weight: 700;'}">
-          🟢🥣 Pagados por Entregar
-        </button>
-        <button class="filter-chip ${currentFilters.debtCategory === 'IN_PROCESS' ? 'active' : ''}" data-debt-cat="IN_PROCESS" style="${currentFilters.debtCategory === 'IN_PROCESS' ? 'background: var(--primary); color: white;' : 'border-color: #DDD6FE; color: var(--primary); font-weight: 700;'}">
-          🥣 Encargos por Entregar
-        </button>
-        <button class="filter-chip ${currentFilters.debtCategory === 'PAID' ? 'active' : ''}" data-debt-cat="PAID" style="${currentFilters.debtCategory === 'PAID' ? 'background: var(--success); color: white;' : 'border-color: #BBF7D0; color: #15803D; font-weight: 700;'}">
-          🟢 Totalmente Pagados
-        </button>
-        <button class="filter-chip ${currentFilters.sortBy === 'UPDATED_DESC' ? 'active' : ''}" id="btnQuickSortUpdated" style="${currentFilters.sortBy === 'UPDATED_DESC' ? 'background: #0f766e; color: white; border-color: #0f766e;' : 'border-color: #99f6e4; color: #0f766e; font-weight: 700;'}" title="Ordenar pedidos desde el más recientemente modificado al más antiguo">
-          🔄 Últimos Actualizados
-        </button>
-      </div>
-
-      <!-- Fila Secundaria: Filtros Rápidos de Fecha, Estados de Entrega, Pago y Ordenamiento -->
-      <div class="orders-filters-sub-row" style="margin-top: 10px;">
-        <div class="orders-filter-chips">
-          <button class="filter-chip ${currentFilters.dateRange === 'ALL' && !currentFilters.specificDate && !currentFilters.month ? 'active' : ''}" data-date="ALL">Todos los Días</button>
-          <button class="filter-chip ${currentFilters.dateRange === 'TODAY' ? 'active' : ''}" data-date="TODAY">Hoy</button>
-          <button class="filter-chip ${currentFilters.dateRange === 'TOMORROW' ? 'active' : ''}" data-date="TOMORROW">Mañana</button>
-          <button class="filter-chip ${currentFilters.dateRange === 'WEEK' ? 'active' : ''}" data-date="WEEK">Esta Semana</button>
-        </div>
-
-        <div class="orders-selects-group">
-          <!-- Selector de Reparto / Repartidor -->
-          <select id="selectDriverFilter" class="orders-select-item" style="font-weight: 700; color: #0284C7;">
-            <option value="ALL" ${currentFilters.driverFilter === 'ALL' ? 'selected' : ''}>🛵 Todos los Repartos</option>
-            <option value="PROPIO" ${currentFilters.driverFilter === 'PROPIO' ? 'selected' : ''}>👤 Entrega Propia (Socios)</option>
-            <option value="LOCAL" ${currentFilters.driverFilter === 'LOCAL' ? 'selected' : ''}>🏪 Recoge en Local</option>
-            <option value="UNASSIGNED" ${currentFilters.driverFilter === 'UNASSIGNED' ? 'selected' : ''}>⚠️ Sin Repartidor Asignado</option>
-            ${availableDrivers
-              .map(
-                (d) => `
-              <option value="DRIVER_${d.id}" ${currentFilters.driverFilter === `DRIVER_${d.id}` ? 'selected' : ''}>
-                🛵 Repartidor: ${d.name}
-              </option>
-            `
-              )
-              .join('')}
-          </select>
-
-          <!-- Selector de Lote de Producción -->
-          <select id="selectBatchFilter" class="orders-select-item" style="font-weight: 700; color: var(--primary);">
-            <option value="ALL" ${currentFilters.batchId === 'ALL' ? 'selected' : ''}>🍶 Todos los Lotes</option>
-            ${availableBatches
-              .map(
-                (b) => `
-              <option value="${b.id}" ${String(currentFilters.batchId) === String(b.id) ? 'selected' : ''}>
-                🍶 ${b.batchCode} - ${b.flavor} ${b.status === 'EN_PROCESO' ? '(En proceso)' : ''}
-              </option>
-            `
-              )
-              .join('')}
-          </select>
-
-          <!-- Selector de Ordenamiento -->
-          <select id="selectOrderSort" class="orders-select-item" style="font-weight: 700; color: var(--primary);">
-            <option value="PRIORITY_DEBT" ${currentFilters.sortBy === 'PRIORITY_DEBT' ? 'selected' : ''}>🎯 Prioridad: Deudas de primero</option>
-            <option value="UPDATED_DESC" ${currentFilters.sortBy === 'UPDATED_DESC' ? 'selected' : ''}>🔄 Últimos Actualizados (Reciente a antiguo)</option>
-            <option value="DATE_DESC" ${currentFilters.sortBy === 'DATE_DESC' ? 'selected' : ''}>📅 Fecha de Entrega (Más reciente)</option>
-            <option value="DATE_ASC" ${currentFilters.sortBy === 'DATE_ASC' ? 'selected' : ''}>📅 Fecha de Entrega (Más antigua)</option>
-          </select>
-
-          <!-- Selector de Meses -->
-          <select id="selectMonthFilter" class="orders-select-item">
-            <option value="">📅 Por Mes</option>
-            ${monthOptions
-              .map((m) => `<option value="${m.val}" ${currentFilters.month === m.val ? 'selected' : ''}>${m.label}</option>`)
-              .join('')}
-          </select>
-
-          <!-- Filtro por Estado de Entrega -->
-          <select id="selectDeliveryFilter" class="orders-select-item">
-            <option value="ALL" ${currentFilters.deliveryStatus === 'ALL' ? 'selected' : ''}>🛵 Todas las entregas</option>
-            <option value="PENDING" ${currentFilters.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Pendientes</option>
-            <option value="PREPARING" ${currentFilters.deliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
-            <option value="READY_FOR_DISPATCH" ${currentFilters.deliveryStatus === 'READY_FOR_DISPATCH' ? 'selected' : ''}>📦 Listos para Despacho</option>
-            <option value="IN_ROUTE" ${currentFilters.deliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Ruta</option>
-            <option value="DELIVERED" ${currentFilters.deliveryStatus === 'DELIVERED' ? 'selected' : ''}>✅ Entregados</option>
-          </select>
-
-          <!-- Filtro por Estado de Pago -->
-          <select id="selectPaymentFilter" class="orders-select-item">
-            <option value="ALL" ${currentFilters.paymentStatus === 'ALL' ? 'selected' : ''}>💰 Todos los pagos</option>
-            <option value="PAID" ${currentFilters.paymentStatus === 'PAID' ? 'selected' : ''}>🟢 Totalmente Pagados</option>
-            <option value="PARTIAL" ${currentFilters.paymentStatus === 'PARTIAL' ? 'selected' : ''}>🟡 Con Abono Parcial</option>
-            <option value="PENDING" ${currentFilters.paymentStatus === 'PENDING' ? 'selected' : ''}>🔴 Pendientes de Pago</option>
-          </select>
-
-          <!-- Botón Limpiar Filtros -->
-          <button class="btn btn-sm btn-outline" id="btnClearOrderFilters" style="color: var(--text-muted); border-color: var(--border-color); font-weight: 700; display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; height: 38px; border-radius: var(--radius-sm);" title="Restablecer todos los filtros de pedidos">
-            <span>🧹</span> Limpiar Filtros
+      <!-- Fila 2: Barra de Chips Horizontales de un toque con scroll táctil -->
+      <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+        <div class="horizontal-chip-scroll" id="ordersChipBar">
+          <button class="filter-chip ${currentFilters.chip === 'ALL' ? 'active' : ''}" data-order-chip="ALL">
+            📋 Todos
+          </button>
+          <button class="filter-chip ${currentFilters.chip === 'TO_DELIVER' ? 'active' : ''}" data-order-chip="TO_DELIVER" style="border-color: #38BDF8; color: #0284C7; font-weight: 700;">
+            🛵 Por Entregar
+          </button>
+          <button class="filter-chip ${currentFilters.chip === 'IN_PROCESS' ? 'active' : ''}" data-order-chip="IN_PROCESS" style="border-color: #DDD6FE; color: var(--primary); font-weight: 700;">
+            🟡 Encargos
+          </button>
+          <button class="filter-chip ${currentFilters.chip === 'DELIVERED_DEBT' ? 'active' : ''}" data-order-chip="DELIVERED_DEBT" style="border-color: #FECACA; color: #DC2626; font-weight: 700;">
+            🚨 Con Deuda
+          </button>
+          <button class="filter-chip ${currentFilters.chip === 'PAID' ? 'active' : ''}" data-order-chip="PAID" style="border-color: #BBF7D0; color: #15803D; font-weight: 700;">
+            🟢 Pagados
+          </button>
+          <button class="filter-chip ${currentFilters.chip === 'UPDATED_DESC' ? 'active' : ''}" data-order-chip="UPDATED_DESC" style="border-color: #99F6E4; color: #0F766E; font-weight: 700;">
+            🔄 Recientes
+          </button>
+          <button class="filter-chip ${currentFilters.chip === 'TODAY' ? 'active' : ''}" data-order-chip="TODAY">
+            📅 Hoy
+          </button>
+          <button class="filter-chip ${currentFilters.chip === 'TOMORROW' ? 'active' : ''}" data-order-chip="TOMORROW">
+            📅 Mañana
           </button>
         </div>
+
+        <!-- Banner de Filtros Secundarios Activos con Tags Removibles -->
+        <div id="activeFilterTagsBanner" style="display: none; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px;"></div>
       </div>
     </div>
 
@@ -232,170 +292,269 @@ export async function renderOrders(container) {
     <!-- Banner informativo de fecha seleccionada -->
     <div id="activeDateBanner"></div>
 
-    <!-- Lista de Pedidos -->
+    <!-- Lista de Pedidos (Único contenedor refrescado al buscar o filtrar para no destruir el input) -->
     <div id="ordersListContainer">
       <div style="text-align: center; padding: 30px; color: var(--text-muted);">
         Cargando pedidos... 🥛
       </div>
     </div>
+
+    <!-- Bottom Sheet / Drawer de Filtros Avanzados para Móvil y Desktop -->
+    <div class="bottom-sheet-overlay" id="ordersFilterSheetOverlay">
+      <div class="bottom-sheet-card" id="ordersFilterSheetCard">
+        <div class="bottom-sheet-header">
+          <div class="bottom-sheet-title">⚙️ Filtros Avanzados de Pedidos</div>
+          <button type="button" class="bottom-sheet-close" id="btnCloseOrdersFilterSheet" title="Cerrar filtros">✕</button>
+        </div>
+        <div class="bottom-sheet-body">
+          <div class="form-group">
+            <label class="form-label">📅 Fecha Específica de Entrega</label>
+            <input type="date" id="sheetOrderSpecificDate" class="form-input" value="${currentFilters.specificDate || ''}" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">🛵 Repartidor / Modalidad</label>
+            <select id="sheetOrderDriver" class="form-select" style="font-weight: 700;">
+              <option value="ALL" ${currentFilters.driverFilter === 'ALL' ? 'selected' : ''}>🛵 Todos los Repartos</option>
+              <option value="PROPIO" ${currentFilters.driverFilter === 'PROPIO' ? 'selected' : ''}>👤 Entrega Propia (Socios)</option>
+              <option value="LOCAL" ${currentFilters.driverFilter === 'LOCAL' ? 'selected' : ''}>🏪 Recoge en Local</option>
+              <option value="UNASSIGNED" ${currentFilters.driverFilter === 'UNASSIGNED' ? 'selected' : ''}>⚠️ Sin Repartidor Asignado</option>
+              ${availableDrivers
+                .map(
+                  (d) => `
+                <option value="DRIVER_${d.id}" ${currentFilters.driverFilter === `DRIVER_${d.id}` ? 'selected' : ''}>
+                  🛵 Repartidor: ${escapeHtml(d.name)}
+                </option>
+              `
+                )
+                .join('')}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">🍶 Lote de Producción</label>
+            <select id="sheetOrderBatch" class="form-select" style="font-weight: 700;">
+              <option value="ALL" ${currentFilters.batchId === 'ALL' ? 'selected' : ''}>🍶 Todos los Lotes</option>
+              ${availableBatches
+                .map(
+                  (b) => `
+                <option value="${b.id}" ${String(currentFilters.batchId) === String(b.id) ? 'selected' : ''}>
+                  🍶 ${escapeHtml(b.batchCode)} - ${escapeHtml(b.flavor)} ${b.status === 'EN_PROCESO' ? '(En proceso)' : ''}
+                </option>
+              `
+                )
+                .join('')}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">📦 Estado de Entrega</label>
+            <select id="sheetOrderDelivery" class="form-select">
+              <option value="ALL" ${currentFilters.deliveryStatus === 'ALL' ? 'selected' : ''}>Todas las entregas</option>
+              <option value="PENDING" ${currentFilters.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Pendientes</option>
+              <option value="PREPARING" ${currentFilters.deliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
+              <option value="READY_FOR_DISPATCH" ${currentFilters.deliveryStatus === 'READY_FOR_DISPATCH' ? 'selected' : ''}>📦 Listos para Despacho</option>
+              <option value="IN_ROUTE" ${currentFilters.deliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Ruta</option>
+              <option value="DELIVERED" ${currentFilters.deliveryStatus === 'DELIVERED' ? 'selected' : ''}>✅ Entregados</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">💰 Estado de Pago</label>
+            <select id="sheetOrderPayment" class="form-select">
+              <option value="ALL" ${currentFilters.paymentStatus === 'ALL' ? 'selected' : ''}>Todos los pagos</option>
+              <option value="PAID" ${currentFilters.paymentStatus === 'PAID' ? 'selected' : ''}>🟢 Totalmente Pagados</option>
+              <option value="PARTIAL" ${currentFilters.paymentStatus === 'PARTIAL' ? 'selected' : ''}>🟡 Con Abono Parcial</option>
+              <option value="PENDING" ${currentFilters.paymentStatus === 'PENDING' ? 'selected' : ''}>🔴 Pendientes de Pago</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">🎯 Criterio de Orden</label>
+            <select id="sheetOrderSort" class="form-select">
+              <option value="PRIORITY_DEBT" ${currentFilters.sortBy === 'PRIORITY_DEBT' ? 'selected' : ''}>🎯 Prioridad: Deudas de primero</option>
+              <option value="UPDATED_DESC" ${currentFilters.sortBy === 'UPDATED_DESC' ? 'selected' : ''}>🔄 Últimos Actualizados (Recientes)</option>
+              <option value="DATE_DESC" ${currentFilters.sortBy === 'DATE_DESC' ? 'selected' : ''}>📅 Fecha de Entrega (Más reciente)</option>
+              <option value="DATE_ASC" ${currentFilters.sortBy === 'DATE_ASC' ? 'selected' : ''}>📅 Fecha de Entrega (Más antigua)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">📅 Historial por Mes</label>
+            <select id="sheetOrderMonth" class="form-select">
+              <option value="">Todos los meses</option>
+              ${monthOptions
+                .map((m) => `<option value="${m.val}" ${currentFilters.month === m.val ? 'selected' : ''}>${m.label}</option>`)
+                .join('')}
+            </select>
+          </div>
+        </div>
+        <div class="bottom-sheet-footer">
+          <button type="button" class="btn btn-outline" id="btnResetFilterSheet">🧹 Limpiar Filtros</button>
+          <button type="button" class="btn btn-primary" id="btnApplyFilterSheet">Aplicar Filtros</button>
+        </div>
+      </div>
+    </div>
   `;
 
-  // Listener para limpiar filtros
-  container.querySelector('#btnClearOrderFilters')?.addEventListener('click', () => {
-    currentFilters = {
-      search: '',
-      debtCategory: 'ALL',
-      paymentStatus: 'ALL',
-      deliveryStatus: 'ALL',
-      driverFilter: 'ALL',
-      batchId: 'ALL',
-      sortBy: 'PRIORITY_DEBT',
-      month: '',
-      specificDate: '',
-      dateRange: 'ALL',
-      minLiters: '',
-      viewMode: 'list',
-    };
-    ordersCurrentPage = 1;
-    renderOrders(container);
-  });
-
-  // Listeners de la barra de herramientas
+  // Listeners de la barra de búsqueda universal con debounce de 300 ms (sin redibujar toolbar)
   const searchInput = container.querySelector('#orderSearchInput');
   let debounceTimeout;
   searchInput?.addEventListener('input', (e) => {
     clearTimeout(debounceTimeout);
     debounceTimeout = setTimeout(() => {
       ordersCurrentPage = 1;
-      currentFilters.search = e.target.value;
+      currentFilters.search = e.target.value.trim();
       loadOrdersList(container);
-    }, 250);
+    }, 300);
   });
 
-  // Listeners de filtro de categoría de deuda
-  container.querySelectorAll('[data-debt-cat]').forEach((btn) => {
+  // Listeners de chips horizontales rápidos
+  container.querySelectorAll('[data-order-chip]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
-      container.querySelectorAll('[data-debt-cat]').forEach((b) => b.classList.remove('active'));
-      e.currentTarget.classList.add('active');
+      const chip = e.currentTarget.dataset.orderChip;
+      currentFilters.chip = chip;
       ordersCurrentPage = 1;
-      currentFilters.debtCategory = e.currentTarget.dataset.debtCat;
+
+      // Restablecer estados básicos
+      currentFilters.debtCategory = 'ALL';
+      currentFilters.deliveryStatus = 'ALL';
+      currentFilters.dateRange = 'ALL';
+      currentFilters.specificDate = '';
+
+      if (chip === 'ALL') {
+        currentFilters.sortBy = 'PRIORITY_DEBT';
+      } else if (chip === 'TO_DELIVER') {
+        currentFilters.deliveryStatus = 'TO_DELIVER';
+      } else if (chip === 'IN_PROCESS') {
+        currentFilters.debtCategory = 'IN_PROCESS';
+      } else if (chip === 'DELIVERED_DEBT') {
+        currentFilters.debtCategory = 'DELIVERED_DEBT';
+      } else if (chip === 'PAID') {
+        currentFilters.debtCategory = 'PAID';
+      } else if (chip === 'UPDATED_DESC') {
+        currentFilters.sortBy = 'UPDATED_DESC';
+      } else if (chip === 'TODAY') {
+        currentFilters.dateRange = 'TODAY';
+      } else if (chip === 'TOMORROW') {
+        currentFilters.dateRange = 'TOMORROW';
+      }
+
+      updateChipUi(container);
+      renderActiveFilterTags(container);
       loadOrdersList(container);
     });
   });
 
-  const specificDateInput = container.querySelector('#selectSpecificDateFilter');
-  specificDateInput?.addEventListener('change', (e) => {
-    const val = e.target.value;
-    ordersCurrentPage = 1;
-    currentFilters.specificDate = val;
-    currentFilters.dateRange = val ? 'CUSTOM' : 'ALL';
-    currentFilters.month = '';
-    container.querySelectorAll('[data-date]').forEach((b) => b.classList.remove('active'));
-    renderOrders(container);
+  // Drawer / Bottom Sheet de Filtros Secundarios
+  const filterSheetOverlay = container.querySelector('#ordersFilterSheetOverlay');
+  const openSheet = () => {
+    filterSheetOverlay?.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  };
+  const closeSheet = () => {
+    filterSheetOverlay?.classList.remove('active');
+    document.body.style.overflow = '';
+  };
+
+  container.querySelector('#btnOpenOrdersFilterSheet')?.addEventListener('click', openSheet);
+  container.querySelector('#btnCloseOrdersFilterSheet')?.addEventListener('click', closeSheet);
+  filterSheetOverlay?.addEventListener('click', (e) => {
+    if (e.target === filterSheetOverlay) closeSheet();
   });
 
-  container.querySelector('#btnClearSpecificDate')?.addEventListener('click', () => {
+  // Aplicar filtros avanzados desde el bottom sheet
+  container.querySelector('#btnApplyFilterSheet')?.addEventListener('click', () => {
+    const sDate = container.querySelector('#sheetOrderSpecificDate')?.value || '';
+    const driver = container.querySelector('#sheetOrderDriver')?.value || 'ALL';
+    const batch = container.querySelector('#sheetOrderBatch')?.value || 'ALL';
+    const delivery = container.querySelector('#sheetOrderDelivery')?.value || 'ALL';
+    const payment = container.querySelector('#sheetOrderPayment')?.value || 'ALL';
+    const sort = container.querySelector('#sheetOrderSort')?.value || 'PRIORITY_DEBT';
+    const month = container.querySelector('#sheetOrderMonth')?.value || '';
+
+    currentFilters.specificDate = sDate;
+    if (sDate) {
+      currentFilters.dateRange = 'CUSTOM';
+      currentFilters.chip = '';
+    }
+    currentFilters.driverFilter = driver;
+    currentFilters.batchId = batch;
+    currentFilters.deliveryStatus = delivery;
+    currentFilters.paymentStatus = payment;
+    currentFilters.sortBy = sort;
+    currentFilters.month = month;
+    if (month) {
+      currentFilters.chip = '';
+    }
+
     ordersCurrentPage = 1;
+    closeSheet();
+    updateChipUi(container);
+    renderActiveFilterTags(container);
+    loadOrdersList(container);
+  });
+
+  // Limpiar filtros desde el bottom sheet
+  container.querySelector('#btnResetFilterSheet')?.addEventListener('click', () => {
     currentFilters.specificDate = '';
     currentFilters.dateRange = 'ALL';
-    renderOrders(container);
-  });
+    currentFilters.driverFilter = 'ALL';
+    currentFilters.batchId = 'ALL';
+    currentFilters.deliveryStatus = 'ALL';
+    currentFilters.paymentStatus = 'ALL';
+    currentFilters.sortBy = 'PRIORITY_DEBT';
+    currentFilters.month = '';
+    currentFilters.chip = 'ALL';
+    currentFilters.debtCategory = 'ALL';
 
-  const monthSelect = container.querySelector('#selectMonthFilter');
-  monthSelect?.addEventListener('change', (e) => {
+    const sDateInput = container.querySelector('#sheetOrderSpecificDate');
+    const driverSel = container.querySelector('#sheetOrderDriver');
+    const batchSel = container.querySelector('#sheetOrderBatch');
+    const delSel = container.querySelector('#sheetOrderDelivery');
+    const paySel = container.querySelector('#sheetOrderPayment');
+    const sortSel = container.querySelector('#sheetOrderSort');
+    const monthSel = container.querySelector('#sheetOrderMonth');
+
+    if (sDateInput) sDateInput.value = '';
+    if (driverSel) driverSel.value = 'ALL';
+    if (batchSel) batchSel.value = 'ALL';
+    if (delSel) delSel.value = 'ALL';
+    if (paySel) paySel.value = 'ALL';
+    if (sortSel) sortSel.value = 'PRIORITY_DEBT';
+    if (monthSel) monthSel.value = '';
+
     ordersCurrentPage = 1;
-    currentFilters.month = e.target.value;
-    if (currentFilters.month) {
-      currentFilters.dateRange = 'CUSTOM';
-      currentFilters.specificDate = '';
-      container.querySelectorAll('[data-date]').forEach((b) => b.classList.remove('active'));
-    }
-    renderOrders(container);
-  });
-
-  container.querySelectorAll('[data-date]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      container.querySelectorAll('[data-date]').forEach((b) => b.classList.remove('active'));
-      e.target.classList.add('active');
-      ordersCurrentPage = 1;
-      currentFilters.dateRange = e.target.dataset.date;
-      currentFilters.specificDate = '';
-      currentFilters.month = '';
-      if (monthSelect) monthSelect.value = '';
-      if (specificDateInput) specificDateInput.value = '';
-      loadOrdersList(container);
-    });
-  });
-
-  const driverSelect = container.querySelector('#selectDriverFilter');
-  driverSelect?.addEventListener('change', (e) => {
-    ordersCurrentPage = 1;
-    currentFilters.driverFilter = e.target.value;
+    closeSheet();
+    updateChipUi(container);
+    renderActiveFilterTags(container);
     loadOrdersList(container);
   });
 
-  const batchSelect = container.querySelector('#selectBatchFilter');
-  batchSelect?.addEventListener('change', (e) => {
-    ordersCurrentPage = 1;
-    currentFilters.batchId = e.target.value;
-    loadOrdersList(container);
-  });
-
-  const paymentSelect = container.querySelector('#selectPaymentFilter');
-  paymentSelect?.addEventListener('change', (e) => {
-    ordersCurrentPage = 1;
-    currentFilters.paymentStatus = e.target.value;
-    loadOrdersList(container);
-  });
-
-  const deliverySelect = container.querySelector('#selectDeliveryFilter');
-  deliverySelect?.addEventListener('change', (e) => {
-    ordersCurrentPage = 1;
-    currentFilters.deliveryStatus = e.target.value;
-    loadOrdersList(container);
-  });
-
-  const sortSelect = container.querySelector('#selectOrderSort');
-  sortSelect?.addEventListener('change', (e) => {
-    ordersCurrentPage = 1;
-    currentFilters.sortBy = e.target.value;
-    const quickBtn = container.querySelector('#btnQuickSortUpdated');
-    if (quickBtn) {
-      if (currentFilters.sortBy === 'UPDATED_DESC') {
-        quickBtn.classList.add('active');
-        quickBtn.style.background = '#0f766e';
-        quickBtn.style.color = 'white';
-      } else {
-        quickBtn.classList.remove('active');
-        quickBtn.style.background = '';
-        quickBtn.style.color = '#0f766e';
-      }
-    }
-    loadOrdersList(container);
-  });
-
-  container.querySelector('#btnQuickSortUpdated')?.addEventListener('click', () => {
-    ordersCurrentPage = 1;
-    if (currentFilters.sortBy === 'UPDATED_DESC') {
-      currentFilters.sortBy = 'PRIORITY_DEBT';
-    } else {
-      currentFilters.sortBy = 'UPDATED_DESC';
-    }
-    if (sortSelect) sortSelect.value = currentFilters.sortBy;
-    renderOrders(container);
-  });
-
-  // Toggles de vista
+  // Toggles de vista lista vs calendario
   container.querySelector('#btnToggleListView')?.addEventListener('click', () => {
     currentFilters.viewMode = 'list';
-    renderOrders(container);
+    const calSec = container.querySelector('#calendarViewSection');
+    if (calSec) calSec.style.display = 'none';
+    container.querySelector('#btnToggleListView')?.classList.add('btn-primary');
+    container.querySelector('#btnToggleListView')?.classList.remove('btn-outline');
+    container.querySelector('#btnToggleCalendarView')?.classList.add('btn-outline');
+    container.querySelector('#btnToggleCalendarView')?.classList.remove('btn-primary');
+    loadOrdersList(container);
   });
 
   container.querySelector('#btnToggleCalendarView')?.addEventListener('click', () => {
     currentFilters.viewMode = 'calendar';
-    renderOrders(container);
+    const calSec = container.querySelector('#calendarViewSection');
+    if (calSec) calSec.style.display = 'block';
+    container.querySelector('#btnToggleCalendarView')?.classList.add('btn-primary');
+    container.querySelector('#btnToggleCalendarView')?.classList.remove('btn-outline');
+    container.querySelector('#btnToggleListView')?.classList.add('btn-outline');
+    container.querySelector('#btnToggleListView')?.classList.remove('btn-primary');
+    loadOrdersList(container);
   });
 
+  // Reprogramar atrasados a hoy
   container.querySelector('#btnRescheduleOverdueOrders')?.addEventListener('click', async () => {
     const todayStr = getTodayLocalDateStr();
     if (confirm(`¿Deseas reprogramar todos los pedidos atrasados de días anteriores para ser entregados hoy (${formatDate(todayStr)})?`)) {
@@ -413,9 +572,12 @@ export async function renderOrders(container) {
     }
   });
 
+  // Botón Nuevo Pedido
   container.querySelector('#btnOpenNewOrderModal')?.addEventListener('click', () => {
     openOrderModal();
   });
+
+  renderActiveFilterTags(container);
 
   await loadOrdersList(container);
 }
@@ -467,7 +629,31 @@ async function loadOrdersList(container) {
       params.endDate = `${endOfWeek.getFullYear()}-${String(endOfWeek.getMonth() + 1).padStart(2, '0')}-${String(endOfWeek.getDate()).padStart(2, '0')}`;
     }
 
-    const orders = await api.getOrders(params);
+    const queryParams = {
+      ...params,
+      page: ordersCurrentPage,
+      limit: 15,
+      paginate: 'true',
+    };
+
+    const res = await api.getOrders(queryParams);
+    let orders = [];
+    let totalPages = 1;
+    let totalItems = 0;
+    let currentPage = ordersCurrentPage;
+
+    if (res && res.items && res.pagination) {
+      orders = res.items;
+      totalPages = res.pagination.totalPages;
+      totalItems = res.pagination.totalItems;
+      currentPage = res.pagination.currentPage;
+    } else if (Array.isArray(res)) {
+      const pag = paginateArray(res, ordersCurrentPage, 15);
+      orders = pag.pageItems;
+      totalPages = pag.totalPages;
+      totalItems = pag.totalItems;
+      currentPage = pag.currentPage;
+    }
     cachedOrders = orders || [];
 
     // Renderizar Calendario si la vista está activa
@@ -491,16 +677,16 @@ async function loadOrdersList(container) {
         const totalCOP = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
         activeDateBanner.innerHTML = `
-          <div style="background: var(--primary-light); border: 1.5px solid var(--primary); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: gap; gap: 10px;">
+          <div style="background: var(--primary-light); border: 1.5px solid var(--primary); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
               <div style="color: var(--primary); font-size: 1rem; font-weight: 800; text-transform: capitalize;">
                 📅 Entregas Programadas: ${formattedTitle}
               </div>
               <div style="font-size: 0.84rem; color: var(--text-main); margin-top: 2px;">
-                Total: <strong>${orders.length} pedido(s)</strong> • <strong>${totalLiters} Litros</strong> • Total a recaudar: <strong>${formatCOP(totalCOP)}</strong>
+                Mostrando: <strong>${totalItems || orders.length} pedido(s)</strong> • <strong>${totalLiters} Litros</strong> • Total: <strong>${formatCOP(totalCOP)}</strong>
               </div>
             </div>
-            <button class="btn btn-outline btn-sm" id="btnResetDayFilter" style="background: #FFFFFF; font-size: 0.8rem; font-weight: 700;">
+            <button class="btn btn-outline btn-sm" id="btnResetDayFilter" style="background: var(--bg-card); font-size: 0.8rem; font-weight: 700;">
               Ver Todos los Pedidos
             </button>
           </div>
@@ -509,7 +695,10 @@ async function loadOrdersList(container) {
         activeDateBanner.querySelector('#btnResetDayFilter')?.addEventListener('click', () => {
           currentFilters.specificDate = '';
           currentFilters.dateRange = 'ALL';
-          renderOrders(container);
+          currentFilters.chip = 'ALL';
+          updateChipUi(container);
+          renderActiveFilterTags(container);
+          loadOrdersList(container);
         });
       } else {
         activeDateBanner.innerHTML = '';
@@ -529,12 +718,9 @@ async function loadOrdersList(container) {
       return;
     }
 
-    const { pageItems, totalPages, totalItems, currentPage } = paginateArray(orders, ordersCurrentPage, 15);
-    ordersCurrentPage = currentPage;
-
     listContainer.innerHTML = `
       <div class="orders-grid">
-        ${pageItems.map((o) => createOrderCardHtml(o)).join('')}
+        ${orders.map((o) => createOrderCardHtml(o)).join('')}
       </div>
       ${renderPaginationHtml({
         currentPage: ordersCurrentPage,
@@ -697,7 +883,12 @@ async function renderDeliveryCalendarWidget(calendarContainer, mainContainer) {
     calendarState.year = n.getFullYear();
     calendarState.month = n.getMonth();
     currentFilters.specificDate = todayStr;
-    renderOrders(mainContainer);
+    currentFilters.dateRange = 'CUSTOM';
+    currentFilters.month = '';
+    currentFilters.chip = 'TODAY';
+    updateChipUi(mainContainer);
+    renderActiveFilterTags(mainContainer);
+    loadOrdersList(mainContainer);
   });
 
   calendarContainer.querySelectorAll('.calendar-day-cell[data-day]').forEach((cell) => {
@@ -706,7 +897,10 @@ async function renderDeliveryCalendarWidget(calendarContainer, mainContainer) {
       currentFilters.specificDate = selectedDay;
       currentFilters.dateRange = 'CUSTOM';
       currentFilters.month = '';
-      renderOrders(mainContainer);
+      currentFilters.chip = '';
+      updateChipUi(mainContainer);
+      renderActiveFilterTags(mainContainer);
+      loadOrdersList(mainContainer);
     });
   });
 }
@@ -1049,7 +1243,12 @@ function attachOrderCardEvents(container) {
         try {
           await api.deleteOrder(id);
           showToast('Pedido eliminado correctamente');
-          renderOrders(document.getElementById('contentContainer'));
+          const contentContainer = document.getElementById('contentContainer');
+          if (contentContainer?.querySelector('#ordersListContainer')) {
+            loadOrdersList(contentContainer);
+          } else if (contentContainer) {
+            renderOrders(contentContainer);
+          }
         } catch (err) {
           showToast('Error al eliminar pedido', 'danger');
         }
@@ -2086,7 +2285,12 @@ export async function openOrderModal(orderData = null) {
         showToast(`¡Pedido ${newOrder.orderNumber} registrado con éxito! 🥛`);
       }
       closeModal();
-      renderOrders(document.getElementById('contentContainer'));
+      const contentContainer = document.getElementById('contentContainer');
+      if (contentContainer?.querySelector('#ordersListContainer')) {
+        loadOrdersList(contentContainer);
+      } else if (contentContainer) {
+        renderOrders(contentContainer);
+      }
     } catch (err) {
       showToast(err.message || 'Error al guardar pedido', 'danger');
     }
@@ -2191,7 +2395,11 @@ export function openAssignDriverModal(order, availableDrivers = []) {
       showToast('¡Modalidad de entrega actualizada con éxito! 🛵');
       closeModal();
       const contentContainer = document.getElementById('contentContainer');
-      if (contentContainer) renderOrders(contentContainer);
+      if (contentContainer?.querySelector('#ordersListContainer')) {
+        loadOrdersList(contentContainer);
+      } else if (contentContainer) {
+        renderOrders(contentContainer);
+      }
     } catch (err) {
       showToast(err.message || 'Error al actualizar modalidad de entrega', 'danger');
     }
@@ -2403,7 +2611,11 @@ export async function openPaymentModal(orderId, totalAmount, currentPaid, curren
         onSuccess();
       } else {
         const contentContainer = document.getElementById('contentContainer');
-        if (contentContainer) renderOrders(contentContainer);
+        if (contentContainer?.querySelector('#ordersListContainer')) {
+          loadOrdersList(contentContainer);
+        } else if (contentContainer) {
+          renderOrders(contentContainer);
+        }
       }
     } catch (err) {
       showToast(err.message || 'Error al registrar abono', 'danger');

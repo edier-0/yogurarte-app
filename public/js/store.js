@@ -3,7 +3,58 @@ export const store = {
   token: localStorage.getItem('yogurarte_token') || null,
   currentUser: localStorage.getItem('yogurarte_user') || 'Edier',
   currentTab: 'dashboard',
+  theme: localStorage.getItem('yogurarte_theme') || 'system',
   listeners: [],
+
+  getTheme() {
+    return this.theme;
+  },
+
+  isDarkMode() {
+    if (this.theme === 'dark') return true;
+    if (this.theme === 'light') return false;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  },
+
+  setTheme(theme) {
+    if (!['light', 'dark', 'system'].includes(theme)) theme = 'system';
+    this.theme = theme;
+    localStorage.setItem('yogurarte_theme', theme);
+    this.applyTheme();
+    this.notify();
+  },
+
+  toggleTheme() {
+    if (this.theme === 'light') {
+      this.setTheme('dark');
+    } else if (this.theme === 'dark') {
+      this.setTheme('system');
+    } else {
+      this.setTheme('light');
+    }
+  },
+
+  applyTheme() {
+    const isDark = this.isDarkMode();
+    document.documentElement.classList.toggle('dark', isDark);
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute('content', isDark ? '#0F172A' : '#F8FAFC');
+    }
+  },
+
+  initTheme() {
+    this.applyTheme();
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (this.theme === 'system') {
+          this.applyTheme();
+          this.notify();
+        }
+      });
+    }
+  },
 
   isAuthenticated() {
     return !!this.authUser && !!this.token;

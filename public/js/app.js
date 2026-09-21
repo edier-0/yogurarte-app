@@ -16,6 +16,9 @@ const views = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Inicializar tema guardado (Claro / Oscuro / Sistema)
+  store.initTheme();
+
   const contentContainer = document.getElementById('contentContainer');
   const pageTitleElement = document.getElementById('pageTitle');
   const loginScreenContainer = document.getElementById('loginScreenContainer');
@@ -24,6 +27,41 @@ document.addEventListener('DOMContentLoaded', () => {
   const userAvatar = document.getElementById('userAvatar');
   const headerUserNameDisplay = document.getElementById('headerUserNameDisplay');
   const headerUserAvatar = document.getElementById('headerUserAvatar');
+
+  // Sincronizar iconos y títulos de los botones de tema
+  function updateThemeToggleUI() {
+    const current = store.getTheme();
+    const isDark = store.isDarkMode();
+    const icon = isDark ? '🌙' : '☀️';
+    const label = current === 'system' ? `Sistema (${isDark ? 'Oscuro' : 'Claro'})` : (isDark ? 'Oscuro' : 'Claro');
+    const title = `Tema actual: ${label}. Clic para cambiar`;
+
+    const btnHeader = document.getElementById('btnThemeToggleHeader');
+    const btnSidebar = document.getElementById('btnThemeToggleSidebar');
+    if (btnHeader) {
+      btnHeader.textContent = icon;
+      btnHeader.title = title;
+    }
+    if (btnSidebar) {
+      btnSidebar.textContent = icon;
+      btnSidebar.title = title;
+    }
+  }
+
+  // Registrar listeners de cambio de tema
+  const handleToggleTheme = () => {
+    store.toggleTheme();
+    updateThemeToggleUI();
+    const modeName = store.getTheme() === 'system' 
+      ? 'Automático (del sistema)' 
+      : (store.isDarkMode() ? 'Modo Oscuro' : 'Modo Claro');
+    showToast(`Tema: ${modeName}`, 'info');
+  };
+
+  document.getElementById('btnThemeToggleHeader')?.addEventListener('click', handleToggleTheme);
+  document.getElementById('btnThemeToggleSidebar')?.addEventListener('click', handleToggleTheme);
+  updateThemeToggleUI();
+  store.subscribe(updateThemeToggleUI);
 
   // Función para sincronizar la UI del usuario logueado
   function updateActiveUserUI(userObj) {
