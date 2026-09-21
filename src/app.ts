@@ -10,7 +10,7 @@ import dotenv from 'dotenv';
 import { Server as SocketIOServer } from 'socket.io';
 
 import ordersRoutes from './modules/orders/orders.routes.js';
-import batchesRoutes from './routes/batches.routes.js';
+import batchesRoutes from './modules/batches/batches.routes.js';
 import inventoryRoutes from './routes/inventory.routes.js';
 import expensesRoutes from './routes/expenses.routes.js';
 import customersRoutes from './modules/customers/customers.routes.js';
