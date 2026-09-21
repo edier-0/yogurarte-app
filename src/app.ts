@@ -15,7 +15,7 @@ import inventoryRoutes from './routes/inventory.routes.js';
 import expensesRoutes from './routes/expenses.routes.js';
 import customersRoutes from './routes/customers.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
-import usersRoutes from './routes/users.routes.js';
+import authRoutes from './modules/auth/auth.routes.js';
 import preparationsRoutes from './routes/preparations.routes.js';
 import staffRoutes from './routes/staff.routes.js';
 import cashMovementsRoutes from './routes/cashMovements.routes.js';
@@ -24,9 +24,9 @@ import settingsRoutes from './routes/settings.routes.js';
 import crmRoutes from './routes/crm.routes.js';
 import { whatsappService } from './services/whatsapp.service.js';
 
-import { requireAuth } from './middlewares/auth.middleware.js';
+import { requireAuth } from './shared/middlewares/auth.middleware.js';
 import { apiLimiter } from './middlewares/rateLimiter.middleware.js';
-import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
+import { errorHandler, notFoundHandler } from './shared/middlewares/error.middleware.js';
 
 dotenv.config();
 
@@ -138,8 +138,8 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
-// Rutas de Usuarios (Login público + Me y Admin protegidos)
-app.use('/api/users', usersRoutes);
+// Rutas de Autenticación y Usuarios (Login público + Me y Admin protegidos)
+app.use('/api/users', authRoutes);
 
 // 9. Rutas Protegidas de la API (Requieren Token JWT Válido)
 app.use('/api/orders', requireAuth, ordersRoutes);
