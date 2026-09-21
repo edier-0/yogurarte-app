@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { Server as SocketIOServer } from 'socket.io';
 
-import ordersRoutes from './routes/orders.routes.js';
+import ordersRoutes from './modules/orders/orders.routes.js';
 import batchesRoutes from './routes/batches.routes.js';
 import inventoryRoutes from './routes/inventory.routes.js';
 import expensesRoutes from './routes/expenses.routes.js';
