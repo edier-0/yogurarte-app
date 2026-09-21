@@ -1,22 +1,35 @@
-name: Continuous Integration & Quality Gate
+name: CI / CD Pipeline - YogurArte
 
 on:
   push:
-    branches: [ main, develop ]
+    branches:
+      - main
+      - develop
+      - 'refactor/**'
   pull_request:
-    branches: [ main, develop ]
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test-and-build:
-    name: Lint, Tests & Build
+  # ============================================================================
+  # JOB 1: Test, Lint & Type Validation
+  # ============================================================================
+  test:
+    name: Type Check & Integration Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: testpassword
+          POSTGRES_PASSWORD: postgrespassword
           POSTGRES_DB: yogurarte_test
         ports:
           - 5432:5432
@@ -26,38 +39,63 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      DATABASE_URL: "postgresql://postgres:postgrespassword@localhost:5432/yogurarte_test?schema=public"
+      JWT_SECRET: "test-jwt-secret-key-yogurarte-ci-pipeline-123456789"
+      JWT_EXPIRES_IN: "1d"
+
     steps:
-      - name: Checkout Código Fuente
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20.x
+      - name: 🟢 Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
 
-      - name: Instalar Dependencias
+      - name: 📦 Install Dependencies (npm ci)
         run: npm ci
 
-      - name: Generar Cliente Prisma
-        run: npx prisma generate
+      - name: 🛡️ Audit Dependencies Security
+        run: npm audit --audit-level=high
 
-      - name: Verificación Estricta de Tipos TypeScript
+      - name: 🔍 TypeScript Compile Check (npx tsc --noEmit)
         run: npx tsc --noEmit
 
-      - name: Sincronizar Esquema en Base de Datos de Pruebas
-        env:
-          DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/yogurarte_test?schema=public
+      - name: 🍶 Generate Prisma Client
+        run: npx prisma generate
+
+      - name: 🗄️ Push Schema to Test Database
         run: npx prisma db push --skip-generate
 
+      - name: 🧪 Run Integration Test Suites (Vitest)
+        run: npx vitest run
 
+  # ============================================================================
+  # JOB 2: Docker Multi-Stage Build Verification
+  # ============================================================================
+  docker-build:
+    name: Docker Image Build Test
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
 
-      - name: Ejecutar Suite Completa de Pruebas Vitest
-        env:
-          NODE_ENV: test
-          DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/yogurarte_test?schema=public
-          JWT_SECRET: ci-pipeline-secure-test-jwt-secret-key-32chars
-        run: npm test
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Compilar Proyecto para Producción
-        run: npm run build
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔨 Build Multi-Stage Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: yogurarte-app:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

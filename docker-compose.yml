@@ -1,42 +1,80 @@
 services:
+  # ============================================================================
+  # Base de Datos PostgreSQL (Servicio Local / Respaldo)
+  # ============================================================================
   postgres:
     image: postgres:16-alpine
     container_name: yogurarte_postgres
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: yogurarte_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
+      POSTGRES_DB: ${POSTGRES_DB:-yogurarte_db}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d yogurarte_db"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-yogurarte_db}"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - yogurarte_net
 
+  # ============================================================================
+  # Servidor de Aplicación YogurArte (Node.js + Prisma + Web UI)
+  # ============================================================================
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: yogurarte_app
-    restart: always
+    restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     environment:
       PORT: 3000
       NODE_ENV: production
-      DATABASE_URL: "postgresql://postgres:postgrespassword@postgres:5432/yogurarte_db?schema=public"
+      DATABASE_URL: "${DATABASE_URL:-postgresql://postgres:postgrespassword@postgres:5432/yogurarte_db?schema=public}"
       JWT_SECRET: "${JWT_SECRET:-ba6822f65365a699a960575fe416b3a00770fd1659c34654d56e8c955ce6a78a}"
       JWT_EXPIRES_IN: "${JWT_EXPIRES_IN:-1d}"
     env_file:
       - .env
+    volumes:
+      - baileys_auth_data:/app/baileys_auth_info
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - yogurarte_net
 
+# ==============================================================================
+# Volúmenes Persistentes
+# ==============================================================================
 volumes:
   postgres_data:
+    name: yogurarte_postgres_data
     driver: local
+  baileys_auth_data:
+    name: yogurarte_baileys_auth_data
+    driver: local
+  app_logs:
+    name: yogurarte_app_logs
+    driver: local
+
+# ==============================================================================
+# Redes Aisladas
+# ==============================================================================
+networks:
+  yogurarte_net:
+    name: yogurarte_network
+    driver: bridge
