@@ -20,7 +20,7 @@ import {
   dashboardRouter as dashboardRoutes,
 } from './modules/finance/finance.routes.js';
 import inventoryRoutes from './modules/inventory/inventory.routes.js';
-import preparationsRoutes from './routes/preparations.routes.js';
+import preparationsRoutes from './modules/preparations/preparations.routes.js';
 import staffRoutes from './modules/staff/staff.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import crmRoutes from './routes/crm.routes.js';
