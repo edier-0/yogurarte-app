@@ -11,15 +11,17 @@ import { Server as SocketIOServer } from 'socket.io';
 
 import ordersRoutes from './modules/orders/orders.routes.js';
 import batchesRoutes from './modules/batches/batches.routes.js';
-import inventoryRoutes from './routes/inventory.routes.js';
-import expensesRoutes from './routes/expenses.routes.js';
 import customersRoutes from './modules/customers/customers.routes.js';
-import dashboardRoutes from './routes/dashboard.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
+import {
+  expensesRouter as expensesRoutes,
+  cashMovementsRouter as cashMovementsRoutes,
+  creditsRouter as creditsRoutes,
+  dashboardRouter as dashboardRoutes,
+} from './modules/finance/finance.routes.js';
+import inventoryRoutes from './routes/inventory.routes.js';
 import preparationsRoutes from './routes/preparations.routes.js';
 import staffRoutes from './routes/staff.routes.js';
-import cashMovementsRoutes from './routes/cashMovements.routes.js';
-import creditsRoutes from './routes/credits.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import crmRoutes from './routes/crm.routes.js';
 import { whatsappService } from './services/whatsapp.service.js';
