@@ -555,10 +555,10 @@
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
-  padding: 18px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   transition: all 0.2s ease;
   position: relative;
 }
@@ -570,66 +570,116 @@
 
 .order-card-header {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 10px;
+}
+
+.order-header-top {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 12px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.order-number {
-  font-size: 0.95rem;
+.order-consecutive-tag {
+  font-size: 1.05rem;
   font-weight: 800;
   color: var(--primary);
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.order-date {
-  font-size: 0.75rem;
+.order-status-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.order-date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.order-customer-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.order-customer-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.order-customer-name {
+  font-size: 1.12rem;
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1.25;
+}
+
+.order-customer-contact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
   color: var(--text-muted);
 }
 
-.order-customer-info {
+.order-address-box {
+  background: var(--bg-app);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-main);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.35;
+}
+
+.order-address-icon {
+  font-size: 1.05rem;
+  flex-shrink: 0;
+  margin-top: -1px;
+}
+
+.order-metadata-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.order-items-compact {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.order-customer-name {
-  font-size: 1.05rem;
-  font-weight: 800;
-  color: var(--text-main);
-}
-
-.order-customer-phone, .order-customer-address {
-  font-size: 0.85rem;
-  color: var(--text-muted);
+.order-item-row {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 6px;
-}
-
-.order-product-badge-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   background: var(--bg-app);
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  align-items: center;
-}
-
-.order-product-liters {
-  font-size: 0.95rem;
-  font-weight: 800;
-  color: var(--primary);
-}
-
-.order-product-flavor {
-  font-size: 0.82rem;
-  background: #FFFFFF;
-  padding: 3px 8px;
+  padding: 6px 10px;
   border-radius: var(--radius-sm);
-  font-weight: 700;
-  color: var(--accent);
+  font-size: 0.84rem;
   border: 1px solid var(--border-subtle);
 }
 
@@ -637,10 +687,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #FDFDFD;
-  padding: 10px 12px;
+  background: var(--bg-app);
+  padding: 10px 14px;
   border-radius: var(--radius-md);
-  border: 1px dashed var(--border-color);
+  border: 1.5px dashed var(--border-color);
 }
 
 .order-total-price {
@@ -654,18 +704,111 @@
 }
 
 .order-debt-amount {
-  font-size: 0.88rem;
+  font-size: 0.95rem;
   font-weight: 800;
   color: var(--danger);
 }
 
-.order-actions {
+/* Acciones Primarias Táctiles (Hit Target >= 44px) */
+.order-primary-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.btn-touch-action {
+  min-height: 44px;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 800;
+  font-size: 0.86rem;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  line-height: 1.2;
+}
+
+.btn-touch-wa {
+  background: #16A34A;
+  color: #FFFFFF !important;
+}
+
+.btn-touch-wa:hover {
+  background: #15803D;
+}
+
+.btn-touch-call {
+  background: #E0F2FE;
+  color: #0284C7 !important;
+  border-color: #BAE6FD;
+}
+
+.btn-touch-call:hover {
+  background: #BAE6FD;
+}
+
+.btn-touch-route {
+  background: #0284C7;
+  color: #FFFFFF !important;
+}
+
+.btn-touch-route:hover {
+  background: #0369A1;
+}
+
+.btn-touch-delivered {
+  background: #059669;
+  color: #FFFFFF !important;
+}
+
+.btn-touch-delivered:hover {
+  background: #047857;
+}
+
+.btn-touch-pay {
+  background: var(--accent);
+  color: #FFFFFF !important;
+}
+
+.btn-touch-pay:hover {
+  filter: brightness(0.92);
+}
+
+/* Acciones Secundarias Agrupadas */
+.order-secondary-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  margin-top: auto;
   padding-top: 8px;
   border-top: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+.order-secondary-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.btn-secondary-action {
+  min-height: 38px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  touch-action: manipulation;
 }
 
 /* ==================== STOCK ALERTS BANNER ==================== */

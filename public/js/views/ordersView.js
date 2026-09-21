@@ -915,29 +915,46 @@ function createOrderCardHtml(o) {
   let cardBorder = '';
   let payBadge = '';
   let waBtnText = `${WA_ICON_SVG} WhatsApp`;
-  let waBtnClass = 'btn-whatsapp';
 
   if (isDeliveredDebt) {
     cardBorder = 'border: 1.5px solid #F87171; background: #FFFDFD; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.08);';
-    payBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-weight: 800; font-size: 0.78rem;">🚨 Entregado • Deuda: ${formatCOP(o.pendingAmount)}</span>`;
+    payBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-weight: 800; font-size: 0.78rem; border: 1px solid #FCA5A5;">🚨 Deuda: ${formatCOP(o.pendingAmount)}</span>`;
     waBtnText = `${WA_ICON_SVG} Recordar Pago`;
   } else if (isPaidNotDelivered) {
     cardBorder = 'border: 1.5px solid #34D399; background: #F0FDF4; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.08);';
-    payBadge = `<span class="badge" style="background: #DCFCE7; color: #059669; font-weight: 800; font-size: 0.78rem;">🟢🥣 Pagado • Por Entregar 🛵</span>`;
+    payBadge = `<span class="badge" style="background: #DCFCE7; color: #059669; font-weight: 800; font-size: 0.78rem; border: 1px solid #86EFAC;">🟢🥣 Pagado • Por Entregar 🛵</span>`;
     waBtnText = `${WA_ICON_SVG} Agradecer Pago`;
-    waBtnClass = 'btn-whatsapp';
   } else if (isInProcessPending) {
     cardBorder = 'border: 1.5px solid #DDD6FE; background: #FAF7FC; box-shadow: 0 4px 14px rgba(109, 40, 217, 0.05);';
     if (o.paidAmount > 0) {
       payBadge = `<span class="badge badge-partial">🟡 Encargo (Abonó ${formatCOP(o.paidAmount)})</span>`;
     } else {
-      payBadge = `<span class="badge" style="background: #EDE9FE; color: var(--primary); font-weight: 800; font-size: 0.78rem;">🥣 Encargo • Por Entregar</span>`;
+      payBadge = `<span class="badge" style="background: #EDE9FE; color: var(--primary); font-weight: 800; font-size: 0.78rem; border: 1px solid #DDD6FE;">🥣 Encargo • Por Entregar</span>`;
     }
     waBtnText = `${WA_ICON_SVG} Info Pedido`;
-    waBtnClass = 'btn-primary';
   } else {
-    payBadge = '<span class="badge badge-paid">🟢 Totalmente Pagado</span>';
+    payBadge = '<span class="badge badge-paid" style="border: 1px solid #86EFAC;">🟢 Totalmente Pagado</span>';
   }
+
+  // Insignia scannable de Estado de Entrega
+  let deliveryBadgePill = '';
+  if (o.deliveryStatus === 'DELIVERED') {
+    deliveryBadgePill = '<span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 800; font-size: 0.76rem; border: 1px solid #86EFAC;">✅ Entregado</span>';
+  } else if (o.deliveryStatus === 'IN_ROUTE') {
+    deliveryBadgePill = '<span class="badge" style="background: #E0F2FE; color: #0369A1; font-weight: 800; font-size: 0.76rem; border: 1px solid #7DD3FC;">🛵 En Camino</span>';
+  } else if (o.deliveryStatus === 'READY_FOR_DISPATCH') {
+    deliveryBadgePill = '<span class="badge" style="background: #FEF3C7; color: #92400E; font-weight: 800; font-size: 0.76rem; border: 1px solid #FCD34D;">📦 Listo Despacho</span>';
+  } else if (o.deliveryStatus === 'PREPARING') {
+    deliveryBadgePill = '<span class="badge" style="background: #FAF5FF; color: #7E22CE; font-weight: 800; font-size: 0.76rem; border: 1px solid #DDD6FE;">🥣 En Preparación</span>';
+  } else {
+    deliveryBadgePill = '<span class="badge" style="background: #F1F5F9; color: #475569; font-weight: 800; font-size: 0.76rem; border: 1px solid #CBD5E1;">🕒 Por Entregar</span>';
+  }
+
+  // Teléfono o Usuario de WhatsApp y botón de llamada directa
+  const rawPhone = o.customer.phone || '';
+  const phoneDigits = rawPhone.replace(/\D/g, '');
+  const hasPhoneDigits = phoneDigits.length >= 7;
+  const isUsernameOnly = rawPhone.startsWith('@') || (!hasPhoneDigits && /[a-zA-Z]/.test(rawPhone));
 
   // Renderizar detalle de ítems múltiples si existen
   let itemsHtml = '';
@@ -964,8 +981,8 @@ function createOrderCardHtml(o) {
     itemsHtml = displayItems
       .map(
         (i) => `
-        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-app); padding: 5px 10px; border-radius: var(--radius-sm); font-size: 0.83rem; margin-bottom: 4px; border: 1px solid var(--border-color);">
-          <span>🥛 <strong>${i.quantity}x</strong> Botella ${i.bottleSize} (${i.flavor}) ${i.batchTag ? `<span class="badge" style="font-size: 0.72rem; background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-weight: 800; padding: 1px 5px; margin-left: 4px;">🍶 ${i.batchTag}</span>` : ''} ${i.unitPrice ? `<span style="font-size: 0.75rem; color: #0284C7; font-weight: 700; background: #E0F2FE; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">@ ${formatCOP(i.unitPrice)}</span>` : ''}</span>
+        <div class="order-item-row">
+          <span>🥛 <strong>${i.quantity}x</strong> Botella ${i.bottleSize} (${escapeHtml(i.flavor)}) ${i.batchTag ? `<span class="badge" style="font-size: 0.72rem; background: #FAF5FF; color: var(--primary); border: 1px solid #DDD6FE; font-weight: 800; padding: 1px 5px; margin-left: 4px;">🍶 ${i.batchTag}</span>` : ''} ${i.unitPrice ? `<span style="font-size: 0.75rem; color: #0284C7; font-weight: 700; background: #E0F2FE; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">@ ${formatCOP(i.unitPrice)}</span>` : ''}</span>
           <strong style="color: var(--primary); font-size: 0.88rem;">${formatCOP(i.totalPrice)}</strong>
         </div>
       `
@@ -973,10 +990,9 @@ function createOrderCardHtml(o) {
       .join('');
   } else {
     itemsHtml = `
-      <div class="order-product-badge-group">
-        <span class="order-product-liters">🥛 ${o.totalLiters} Litro(s)</span>
-        <span class="order-product-flavor">${o.flavor}</span>
-        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">(Envase ${o.bottleSize}${o.unitPrice ? ` @ ${formatCOP(o.unitPrice)}` : ''})</span>
+      <div class="order-item-row">
+        <span>🥛 <strong>${o.totalLiters}L</strong> • Envase ${o.bottleSize} (${escapeHtml(o.flavor || 'Natural')})</span>
+        <strong style="color: var(--primary); font-size: 0.88rem;">${formatCOP(o.totalAmount)}</strong>
       </div>
     `;
   }
@@ -987,9 +1003,9 @@ function createOrderCardHtml(o) {
     deliveryBadge = `<span class="badge" style="background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">🏪 Recoge en Local</span>`;
   } else if (o.deliveryType === 'DOMICILIARIO') {
     if (o.deliveryDriverName) {
-      deliveryBadge = `<span class="badge" style="background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">🛵 Repartidor: ${o.deliveryDriverName}</span>`;
+      deliveryBadge = `<span class="badge" style="background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">🛵 Repartidor: ${escapeHtml(o.deliveryDriverName)}</span>`;
     } else {
-      deliveryBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">⚠️ Sin Repartidor Asignado</span>`;
+      deliveryBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">⚠️ Sin Repartidor</span>`;
     }
   } else {
     deliveryBadge = `<span class="badge" style="background: #EDE9FE; color: #6D28D9; border: 1px solid #DDD6FE; font-weight: 800; font-size: 0.73rem; padding: 2px 6px;">👤 Entrega Propia (Socios)</span>`;
@@ -1035,32 +1051,60 @@ function createOrderCardHtml(o) {
     `;
   }
 
+  // Botón rápido de 1 toque de cambio de estado en ruta para repartidores
+  let quickStatusBtnHtml = '';
+  if (o.deliveryStatus === 'IN_ROUTE') {
+    quickStatusBtnHtml = `
+      <button type="button" class="btn-touch-action btn-touch-delivered btn-quick-status" data-id="${o.id}" data-target-status="DELIVERED" title="Marcar como entregado con un solo toque">
+        ✅ Entregar
+      </button>
+    `;
+  } else if (o.deliveryStatus !== 'DELIVERED') {
+    quickStatusBtnHtml = `
+      <button type="button" class="btn-touch-action btn-touch-route btn-quick-status" data-id="${o.id}" data-target-status="IN_ROUTE" title="Marcar en camino de reparto con un solo toque">
+        🛵 En Camino
+      </button>
+    `;
+  }
+
   return `
     <div class="order-card" data-id="${o.id}" style="${cardBorder}">
+      <!-- Encabezado Claro: Consecutivo, Estados de Entrega y Pago -->
       <div class="order-card-header">
-        <div>
-          <span class="order-number">${o.orderNumber}</span>
-          <div class="order-date" style="display: flex; flex-direction: column; gap: 2px;">
-            <span>📅 Pedido: <strong>${formatDate(o.orderDate)}</strong></span>
-            ${o.deliveryDate ? `<span style="color: var(--primary); font-weight: 800; font-size: 0.78rem;">🛵 Entrega: ${formatDate(o.deliveryDate)}</span>` : ''}
-            ${o.updatedAt ? `<span style="color: #0f766e; font-size: 0.73rem; font-weight: 700; background: #f0fdfa; padding: 1px 5px; border-radius: 4px; border: 1px solid #ccfbf1; display: inline-block; width: fit-content; margin-top: 2px;" title="Última modificación">🔄 Modificado: ${formatDateTime(o.updatedAt)}</span>` : ''}
+        <div class="order-header-top">
+          <div class="order-consecutive-tag">
+            🥛 ${o.orderNumber}
+          </div>
+          <div class="order-status-pills">
+            ${deliveryBadgePill}
+            ${payBadge}
           </div>
         </div>
-        <div>
-          ${payBadge}
+        <div class="order-date-row">
+          <span>📅 Pedido: <strong>${formatDate(o.orderDate)}</strong></span>
+          ${o.deliveryDate ? `<span style="color: var(--primary); font-weight: 800;">🛵 Entrega: ${formatDate(o.deliveryDate)}</span>` : ''}
+          ${o.updatedAt ? `<span style="color: #0f766e; font-size: 0.72rem; font-weight: 700; background: #f0fdfa; padding: 1px 5px; border-radius: 4px; border: 1px solid #ccfbf1;" title="Última modificación">🔄 ${formatDateTime(o.updatedAt)}</span>` : ''}
         </div>
       </div>
 
-      <div class="order-customer-info">
-        <div class="order-customer-name">${o.customer.fullName}</div>
-        <div class="order-customer-phone">
-          <span>${o.customer.phone && (o.customer.phone.startsWith('@') || /[a-zA-Z]/.test(o.customer.phone)) ? '💬' : '📞'}</span> 
-          ${o.customer.phone && (o.customer.phone.startsWith('@') || /[a-zA-Z]/.test(o.customer.phone)) && !o.customer.phone.startsWith('@') ? '@' + o.customer.phone : o.customer.phone}
+      <!-- Datos Clave del Cliente a Simple Vista -->
+      <div class="order-customer-box">
+        <div class="order-customer-title-row">
+          <div class="order-customer-name">${escapeHtml(o.customer.fullName)}</div>
+          ${hasPhoneDigits ? `<a href="tel:${phoneDigits}" class="btn-touch-action btn-touch-call" style="min-height: 36px; padding: 4px 10px; font-size: 0.8rem;" title="Llamar a ${escapeHtml(o.customer.fullName)}">📞 Llamar</a>` : ''}
         </div>
-        <div class="order-customer-address">
-          <span>📍</span> ${o.deliveryAddress || o.customer.address || 'Fonseca'}
+
+        <div class="order-customer-contact">
+          <span>${isUsernameOnly ? '💬' : '📞'}</span> 
+          <span>${isUsernameOnly && !rawPhone.startsWith('@') ? '@' + rawPhone : (rawPhone || 'Sin teléfono')}</span>
         </div>
-        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center;">
+
+        <div class="order-address-box">
+          <span class="order-address-icon">📍</span>
+          <div>${escapeHtml(o.deliveryAddress || o.customer.address || 'Fonseca, La Guajira')}</div>
+        </div>
+
+        <div class="order-metadata-pills">
           ${batchBadgeHtml}
           ${deliveryBadge}
           ${deliveryFeeBadge}
@@ -1068,90 +1112,118 @@ function createOrderCardHtml(o) {
         </div>
       </div>
 
-      <div style="margin: 8px 0;">
-        <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">
-          Productos (${o.totalLiters}L en total):
+      <!-- Desglose Compacto de Productos -->
+      <div class="order-items-compact">
+        <div style="font-size: 0.74rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 2px;">
+          Productos (${o.totalLiters}L total):
         </div>
         ${itemsHtml}
       </div>
 
+      <!-- Resumen Financiero Claro -->
       <div class="order-finance-box">
         <div>
           <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Total:</span>
           <div class="order-total-price">${formatCOP(o.totalAmount)}</div>
           ${o.deliveryFee && Number(o.deliveryFee) > 0 ? `<div style="font-size: 0.72rem; color: #0284C7; font-weight: 700;">Incluye ${formatCOP(o.deliveryFee)} de domicilio</div>` : ''}
-          ${o.discount && Number(o.discount) > 0 ? `<div style="font-size: 0.72rem; color: #DC2626; font-weight: 700;">Descuento aplicado: -${formatCOP(o.discount)}</div>` : ''}
+          ${o.discount && Number(o.discount) > 0 ? `<div style="font-size: 0.72rem; color: #DC2626; font-weight: 700;">Descuento: -${formatCOP(o.discount)}</div>` : ''}
         </div>
         <div class="order-debt-info">
           ${
             o.pendingAmount > 0
-              ? `<span style="font-size: 0.75rem; color: ${isDeliveredDebt ? '#DC2626' : 'var(--primary)'}; font-weight: 700;">${isDeliveredDebt ? '🚨 Saldo Deuda:' : '🥣 Saldo Pendiente:'}</span>
+              ? `<span style="font-size: 0.75rem; color: ${isDeliveredDebt ? '#DC2626' : 'var(--primary)'}; font-weight: 800;">${isDeliveredDebt ? '🚨 Deuda Pendiente:' : '🥣 Saldo Pendiente:'}</span>
                  <div class="order-debt-amount" style="color: ${isDeliveredDebt ? '#DC2626' : 'var(--primary)'};">${formatCOP(o.pendingAmount)}</div>`
-              : `<span style="font-size: 0.8rem; color: var(--success); font-weight: 700;">¡Paz y Salvo! ✨</span>`
+              : `<span style="font-size: 0.8rem; color: var(--success); font-weight: 800;">¡Paz y Salvo! ✨</span>`
           }
         </div>
-      </div>
-
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-        <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted);">Estado Entrega:</span>
-        <select class="form-select select-delivery-status" data-id="${o.id}" style="width: auto; padding: 4px 10px; font-size: 0.82rem; font-weight: 700;">
-          <option value="PENDING" ${o.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Por Entregar (Pendiente)</option>
-          <option value="PREPARING" ${o.deliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
-          <option value="READY_FOR_DISPATCH" ${o.deliveryStatus === 'READY_FOR_DISPATCH' ? 'selected' : ''}>📦 Listo para Despacho</option>
-          <option value="IN_ROUTE" ${o.deliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Camino (En Ruta)</option>
-          <option value="DELIVERED" ${o.deliveryStatus === 'DELIVERED' ? 'selected' : ''}>✅ Entregado</option>
-        </select>
       </div>
 
       ${
         o.notes && o.notes.trim()
           ? `
-        <div style="background: var(--bg-app); border-left: 3px solid var(--accent); padding: 6px 10px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: 0.82rem; color: var(--text-main); margin-top: 6px;">
-          <strong style="color: var(--accent);">📝 Nota:</strong> ${o.notes.trim()}
+        <div style="background: var(--bg-app); border-left: 3px solid var(--accent); padding: 6px 10px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: 0.82rem; color: var(--text-main);">
+          <strong style="color: var(--accent);">📝 Nota:</strong> ${escapeHtml(o.notes.trim())}
         </div>
       `
           : ''
       }
 
-      <div class="order-actions">
+      <!-- Acciones Primarias Táctiles (Hit Target >= 44px) -->
+      <div class="order-primary-actions">
         ${
           isPaidNotDelivered
-            ? `<button class="btn btn-whatsapp btn-sm btn-whatsapp-action" data-id="${o.id}" data-type="THANK_PAYMENT" title="Notificar recepción del pago y agradecer al estilo YogurArte">
-                 <span>${WA_ICON_SVG} Agradecer Pago</span>
-               </button>
-               <button class="btn btn-outline btn-sm btn-whatsapp-action" data-id="${o.id}" data-type="ORDER_INFO" style="color: var(--primary); border-color: var(--primary); font-weight: 700;" title="Enviar información completa y estado actual del pedido">
-                 <span>${WA_ICON_SVG} Info Pedido</span>
+            ? `<button type="button" class="btn-touch-action btn-touch-wa btn-whatsapp-action" data-id="${o.id}" data-type="THANK_PAYMENT" title="Agradecer pago">
+                 ${WA_ICON_SVG} Agradecer Pago
                </button>`
-            : `<button class="btn ${waBtnClass} btn-sm btn-whatsapp-action" data-id="${o.id}" title="Enviar mensaje por WhatsApp">
-                 <span>${waBtnText}</span>
+            : `<button type="button" class="btn-touch-action btn-touch-wa btn-whatsapp-action" data-id="${o.id}" title="${waBtnText}">
+                 ${WA_ICON_SVG} ${waBtnText.replace(/<[^>]*>/g, '').trim()}
                </button>`
         }
+
+        ${quickStatusBtnHtml}
 
         ${
           o.pendingAmount > 0
-            ? `<button class="btn ${isDeliveredDebt ? 'btn-accent' : 'btn-outline'} btn-sm btn-payment-action" data-id="${o.id}" data-total="${o.totalAmount}" data-paid="${o.paidAmount}" data-pending="${o.pendingAmount}" title="${isDeliveredDebt ? 'Cobrar saldo de pedido entregado' : 'Registrar abono a encargo'}">
-                <span>💵 ${isDeliveredDebt ? 'Cobrar' : 'Abonar'}</span>
+            ? `<button type="button" class="btn-touch-action btn-touch-pay btn-payment-action" data-id="${o.id}" data-total="${o.totalAmount}" data-paid="${o.paidAmount}" data-pending="${o.pendingAmount}" title="${isDeliveredDebt ? 'Cobrar saldo de pedido entregado' : 'Registrar abono a encargo'}">
+                 💵 ${isDeliveredDebt ? 'Cobrar' : 'Abonar'}
                </button>`
             : ''
         }
+      </div>
 
-        <button class="btn btn-outline btn-sm btn-assign-driver-action" data-id="${o.id}" title="Asignar repartidor o cambiar modo de entrega" style="color: #0284C7; border-color: #BAE6FD; font-weight: 700;">
-          🛵 Reparto
-        </button>
+      <!-- Acciones Secundarias Agrupadas -->
+      <div class="order-secondary-actions">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted);">Estado:</span>
+          <select class="form-select select-delivery-status" data-id="${o.id}" style="width: auto; padding: 4px 8px; font-size: 0.8rem; font-weight: 700;">
+            <option value="PENDING" ${o.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Por Entregar</option>
+            <option value="PREPARING" ${o.deliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
+            <option value="READY_FOR_DISPATCH" ${o.deliveryStatus === 'READY_FOR_DISPATCH' ? 'selected' : ''}>📦 Listo Despacho</option>
+            <option value="IN_ROUTE" ${o.deliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Camino</option>
+            <option value="DELIVERED" ${o.deliveryStatus === 'DELIVERED' ? 'selected' : ''}>✅ Entregado</option>
+          </select>
+        </div>
 
-        <button class="btn btn-outline btn-sm btn-edit-order" data-id="${o.id}" title="Editar pedido">
-          ✏️ Editar
-        </button>
-
-        <button class="btn btn-outline btn-sm btn-delete-order" data-id="${o.id}" title="Eliminar pedido" style="margin-left: auto; color: var(--danger);">
-          🗑️
-        </button>
+        <div class="order-secondary-buttons">
+          <button type="button" class="btn btn-outline btn-secondary-action btn-assign-driver-action" data-id="${o.id}" title="Asignar repartidor o cambiar modo de entrega" style="color: #0284C7; border-color: #BAE6FD;">
+            🛵 Reparto
+          </button>
+          <button type="button" class="btn btn-outline btn-secondary-action btn-edit-order" data-id="${o.id}" title="Editar pedido">
+            ✏️ Editar
+          </button>
+          <button type="button" class="btn btn-outline btn-secondary-action btn-delete-order" data-id="${o.id}" title="Eliminar pedido" style="color: var(--danger);">
+            🗑️
+          </button>
+        </div>
       </div>
     </div>
   `;
 }
 
 function attachOrderCardEvents(container) {
+  // Acción rápida de un solo toque para cambiar estado a En Ruta o Entregado
+  container.querySelectorAll('.btn-quick-status').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.dataset.id;
+      const targetStatus = e.currentTarget.dataset.targetStatus;
+      try {
+        btn.disabled = true;
+        await api.updateOrder(id, { deliveryStatus: targetStatus });
+        const msg = targetStatus === 'DELIVERED'
+          ? '¡Pedido marcado como Entregado! ✅'
+          : '¡Pedido marcado En Camino a reparto! 🛵💨';
+        showToast(msg);
+        const mainContainer = document.getElementById('contentContainer');
+        if (mainContainer) {
+          await loadOrdersList(mainContainer);
+        }
+      } catch (err) {
+        showToast('Error al actualizar estado', 'danger');
+        btn.disabled = false;
+      }
+    });
+  });
+
   // WhatsApp Direct Click (Enrutamiento Inteligente por Rol: CRM oficial o WhatsApp Personal)
   container.querySelectorAll('.btn-whatsapp-action').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
@@ -1494,26 +1566,26 @@ export async function openOrderModal(orderData = null) {
 
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px; color: #0369A1;">🛵 Domicilio ($ COP)</label>
-                  <input type="number" id="orderDeliveryFee" class="form-input" min="0" step="500" value="${defaultDeliveryFee}" placeholder="0 si es gratis" style="font-weight: 700; color: #0369A1;" />
+                  <input type="number" inputmode="numeric" id="orderDeliveryFee" class="form-input" min="0" step="500" value="${defaultDeliveryFee}" placeholder="0 si es gratis" style="font-weight: 700; color: #0369A1;" />
                 </div>
               </div>
 
               <div class="form-row" style="margin-bottom: 10px;">
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px; color: #DC2626;">🏷️ Descuento Global ($ COP)</label>
-                  <input type="number" id="orderDiscount" class="form-input" min="0" step="500" value="${orderData?.discount || 0}" placeholder="0 si no hay rebaja" style="font-weight: 700; color: #DC2626;" />
+                  <input type="number" inputmode="numeric" id="orderDiscount" class="form-input" min="0" step="500" value="${orderData?.discount || 0}" placeholder="0 si no hay rebaja" style="font-weight: 700; color: #DC2626;" />
                 </div>
 
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label" style="font-size: 0.82rem; font-weight: 800; color: #15803D; margin-bottom: 2px;">💵 TOTAL A COBRAR ($ COP) *</label>
-                  <input type="number" id="orderTotalAmount" class="form-input" value="${(initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) + defaultDeliveryFee - (orderData?.discount || 0)) || 12000}" required style="font-weight: 800; color: #15803D; font-size: 1.05rem; background: #F0FDF4; border: 1.5px solid #86EFAC;" />
+                  <input type="number" inputmode="numeric" id="orderTotalAmount" class="form-input" value="${(initialItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0) + defaultDeliveryFee - (orderData?.discount || 0)) || 12000}" required style="font-weight: 800; color: #15803D; font-size: 1.05rem; background: #F0FDF4; border: 1.5px solid #86EFAC;" />
                 </div>
               </div>
 
               <div class="form-row" style="border-top: 1px dashed #CBD5E1; padding-top: 10px; margin-bottom: 0;">
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px;">Monto Pagado / Abonado ($)</label>
-                  <input type="number" id="orderPaidAmount" class="form-input" min="0" step="500" value="${defaultPaid}" placeholder="0 si no ha pagado" style="font-weight: 700;" />
+                  <input type="number" inputmode="numeric" id="orderPaidAmount" class="form-input" min="0" step="500" value="${defaultPaid}" placeholder="0 si no ha pagado" style="font-weight: 700;" />
                 </div>
 
                 <div class="form-group" style="margin-bottom: 0;">
@@ -1711,10 +1783,10 @@ export async function openOrderModal(orderData = null) {
         />
       </div>
 
-      <input type="number" class="form-input item-qty" min="1" value="${item.quantity || 1}" style="width: 44px; text-align: center; font-weight: 700; padding: 6px 2px;" title="Cantidad de botellas" placeholder="Cant." />
+      <input type="number" inputmode="numeric" class="form-input item-qty" min="1" value="${item.quantity || 1}" style="width: 44px; text-align: center; font-weight: 700; padding: 6px 2px;" title="Cantidad de botellas" placeholder="Cant." />
 
       <div style="display: flex; align-items: center; gap: 2px; width: 80px;" title="Precio unitario por botella (Modificable para precios especiales)">
-        <input type="number" class="form-input item-price" min="0" step="500" value="${itemPrice}" style="font-size: 0.82rem; font-weight: 800; padding: 6px 4px; text-align: right; color: #0369A1; background: #F0F9FF; width: 100%;" placeholder="Precio" />
+        <input type="number" inputmode="numeric" class="form-input item-price" min="0" step="500" value="${itemPrice}" style="font-size: 0.82rem; font-weight: 800; padding: 6px 4px; text-align: right; color: #0369A1; background: #F0F9FF; width: 100%;" placeholder="Precio" />
       </div>
 
       <span class="item-subtotal-display" style="font-size: 0.85rem; font-weight: 800; color: var(--primary); width: 68px; text-align: right;">
@@ -2502,7 +2574,7 @@ export async function openPaymentModal(orderId, totalAmount, currentPaid, curren
                 ? `
               <div class="form-group">
                 <label class="form-label" style="font-weight: 700;">¿Cuánto va a abonar o pagar ahora? ($ COP) *</label>
-                <input type="number" id="newPaymentAmount" class="form-input" min="100" max="${currentPending}" value="${currentPending}" required style="font-weight: 800; font-size: 1.05rem;" />
+                <input type="number" inputmode="numeric" id="newPaymentAmount" class="form-input" min="100" max="${currentPending}" value="${currentPending}" required style="font-weight: 800; font-size: 1.05rem;" />
               </div>
 
               <div class="form-group">

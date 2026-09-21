@@ -1089,6 +1089,7 @@ async function openCustomerPaymentModal(customerOrId) {
                 </div>
                 <input 
                   type="number" 
+                  inputmode="numeric"
                   id="custPayAmount" 
                   class="form-input" 
                   min="1" 

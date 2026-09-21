@@ -902,7 +902,7 @@ async function openPurchaseModal() {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Cantidad Comprada *</label>
-                <input type="number" id="purchaseQuantity" class="form-input" min="0.01" step="0.01" placeholder="Ej: 12 o 2.5" required />
+                <input type="number" inputmode="decimal" id="purchaseQuantity" class="form-input" min="0.01" step="0.01" placeholder="Ej: 12 o 2.5" required />
                 <small id="purchaseQtyHint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: block;">
                   Unidad: Kilogramos / Litros / Unidades
                 </small>
@@ -912,7 +912,7 @@ async function openPurchaseModal() {
                 <label class="form-label">
                   <span>Costo Unitario ($ COP)</span>
                 </label>
-                <input type="number" id="purchaseUnitCost" class="form-input" min="0" step="any" placeholder="Ej: 3100 o 20100" />
+                <input type="number" inputmode="numeric" id="purchaseUnitCost" class="form-input" min="0" step="any" placeholder="Ej: 3100 o 20100" />
                 <small id="purchaseCostHint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: block;">
                   Precio por unidad / kilo / litro
                 </small>
@@ -929,7 +929,7 @@ async function openPurchaseModal() {
                   🏷️ Puedes escribir el total manual si fue promoción
                 </span>
               </div>
-              <input type="number" id="purchaseTotalCost" class="form-input" min="0" step="any" placeholder="Ej: 50000 (o se calcula solo)" style="font-weight: 800; font-size: 1.05rem; color: var(--primary);" required />
+              <input type="number" inputmode="numeric" id="purchaseTotalCost" class="form-input" min="0" step="any" placeholder="Ej: 50000 (o se calcula solo)" style="font-weight: 800; font-size: 1.05rem; color: var(--primary);" required />
               <div id="purchaseCalcBadge" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--bg-subtle);">
                 💡 Escribe el costo por unidad o el valor total pagado por el paquete/promoción.
               </div>
@@ -1147,18 +1147,18 @@ function openEditMaterialModal(material) {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Stock Actual</label>
-                <input type="number" id="editMatStock" class="form-input" min="0" step="0.001" value="${material.currentStock}" required />
+                <input type="number" inputmode="decimal" id="editMatStock" class="form-input" min="0" step="0.001" value="${material.currentStock}" required />
               </div>
 
               <div class="form-group">
                 <label class="form-label">Stock Mínimo (Alerta)</label>
-                <input type="number" id="editMatMinAlert" class="form-input" min="0" step="0.1" value="${material.minStockAlert}" required />
+                <input type="number" inputmode="decimal" id="editMatMinAlert" class="form-input" min="0" step="0.1" value="${material.minStockAlert}" required />
               </div>
             </div>
 
             <div class="form-group">
               <label class="form-label">Costo Promedio Unitario ($ COP)</label>
-              <input type="number" id="editMatAvgCost" class="form-input" min="0" value="${material.avgCost}" />
+              <input type="number" inputmode="numeric" id="editMatAvgCost" class="form-input" min="0" value="${material.avgCost}" />
               <small style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: block;">
                 Si la unidad es Kilogramos, ingresa el precio por Kilo (ej: 3100 para azúcar, 20100 para leche en polvo).
               </small>
@@ -1284,7 +1284,7 @@ async function openAdjustStockModal(materialId = null, materialName = '', curren
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label" id="labelNewStock">Nuevo Stock Real (${selectedMatUnit}) *</label>
-                <input type="number" id="newStockInput" class="form-input" min="0" step="0.001" value="${selectedMatStock}" required />
+                <input type="number" inputmode="decimal" id="newStockInput" class="form-input" min="0" step="0.001" value="${selectedMatStock}" required />
               </div>
 
               <div class="form-group">
@@ -1485,18 +1485,18 @@ function openNewMaterialModal() {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Stock Inicial</label>
-                <input type="number" id="newMatInitialStock" class="form-input" min="0" step="0.01" value="0" />
+                <input type="number" inputmode="decimal" id="newMatInitialStock" class="form-input" min="0" step="0.01" value="0" />
               </div>
 
               <div class="form-group">
                 <label class="form-label">Alerta Stock Mínimo</label>
-                <input type="number" id="newMatMinAlert" class="form-input" min="0.1" step="0.1" value="1" />
+                <input type="number" inputmode="decimal" id="newMatMinAlert" class="form-input" min="0.1" step="0.1" value="1" />
               </div>
             </div>
 
             <div class="form-group">
               <label class="form-label">Costo por Unidad / Kilo ($ COP)</label>
-              <input type="number" id="newMatAvgCost" class="form-input" min="0" value="0" placeholder="Ej: 3100 para 1 kg de azúcar" />
+              <input type="number" inputmode="numeric" id="newMatAvgCost" class="form-input" min="0" value="0" placeholder="Ej: 3100 para 1 kg de azúcar" />
               <small style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: block;">
                 Para insumos por Kilo, ingresa el valor de 1 Kg (se dividirá automáticamente para calcular el costo por gramo).
               </small>
@@ -1579,12 +1579,12 @@ function openEditPurchaseModal(purchase) {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Cantidad Adquirida (${unit}) *</label>
-                <input type="number" id="editPurchQty" class="form-input" min="0.01" step="0.01" value="${purchase.quantity}" required />
+                <input type="number" inputmode="decimal" id="editPurchQty" class="form-input" min="0.01" step="0.01" value="${purchase.quantity}" required />
               </div>
 
               <div class="form-group">
                 <label class="form-label">Costo Unitario ($ COP)</label>
-                <input type="number" id="editPurchUnitCost" class="form-input" min="0" step="any" value="${purchase.unitCost}" />
+                <input type="number" inputmode="numeric" id="editPurchUnitCost" class="form-input" min="0" step="any" value="${purchase.unitCost}" />
               </div>
             </div>
 
@@ -1597,7 +1597,7 @@ function openEditPurchaseModal(purchase) {
                   🏷️ Puedes escribir el total manual
                 </span>
               </div>
-              <input type="number" id="editPurchTotalCost" class="form-input" min="0" step="any" value="${purchase.totalCost}" style="font-weight: 800; font-size: 1.05rem; color: var(--primary);" required />
+              <input type="number" inputmode="numeric" id="editPurchTotalCost" class="form-input" min="0" step="any" value="${purchase.totalCost}" style="font-weight: 800; font-size: 1.05rem; color: var(--primary);" required />
               <div id="editPurchCalcBadge" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--bg-subtle);">
                 💡 Modifica el costo unitario o el total pagado.
               </div>
@@ -1799,7 +1799,7 @@ function openNewPreparationModal(materials) {
               <div class="form-row" style="margin-bottom: 0;">
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label">Cantidad Final Obtenida (Kilos) *</label>
-                  <input type="number" id="prepQuantityProduced" class="form-input" min="0.05" step="0.05" placeholder="Ej: 2.5" required style="font-weight: 800; color: var(--primary);" />
+                  <input type="number" inputmode="decimal" id="prepQuantityProduced" class="form-input" min="0.05" step="0.05" placeholder="Ej: 2.5" required style="font-weight: 800; color: var(--primary);" />
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label">Fecha de Elaboración *</label>
@@ -1945,7 +1945,7 @@ function openNewPreparationModal(materials) {
           .join('')}
       </select>
 
-      <input type="number" class="form-input prep-row-qty" min="1" step="any" placeholder="Cantidad" style="flex: 1; padding: 6px 8px; font-size: 0.82rem; font-weight: 700;" required />
+      <input type="number" inputmode="decimal" class="form-input prep-row-qty" min="1" step="any" placeholder="Cantidad" style="flex: 1; padding: 6px 8px; font-size: 0.82rem; font-weight: 700;" required />
 
       <select class="form-select prep-row-unit" style="width: 100px; padding: 6px 8px; font-size: 0.82rem;">
         <option value="g">Gramos (g)</option>
