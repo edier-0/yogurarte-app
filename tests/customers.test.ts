@@ -30,6 +30,20 @@ describe('Customers Endpoints and Payment Cascade', () => {
     }
   });
 
+  it('GET /api/customers con parámetros de paginación debe retornar items y metadata de paginación', async () => {
+    const res = await request(app)
+      .get('/api/customers?page=1&limit=2&paginate=true')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('items');
+    expect(res.body).toHaveProperty('pagination');
+    expect(res.body.pagination).toHaveProperty('currentPage', 1);
+    expect(res.headers).toHaveProperty('x-total-count');
+    expect(res.headers).toHaveProperty('x-total-pages');
+    expect(res.headers).toHaveProperty('x-current-page', '1');
+  });
+
   it('POST /api/customers con datos inválidos debe responder 400 por validación Zod', async () => {
     const res = await request(app)
       .post('/api/customers')

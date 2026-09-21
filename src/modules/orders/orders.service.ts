@@ -156,12 +156,37 @@ export const getOrders = async (query: OrdersQueryInput) => {
 
   const whereClause = conditions.length > 0 ? { AND: conditions } : {};
 
+  const isPaginated = query.page !== undefined || query.paginate === 'true';
+  const pageNum = Math.max(1, Number(query.page) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number(limit) || (isPaginated ? 20 : 500)));
+
+  const totalItems = await prisma.order.count({ where: whereClause });
+  const totalPages = Math.ceil(totalItems / limitNum) || 1;
+
   const orders = await prisma.order.findMany({
     where: whereClause,
     include: {
-      customer: true,
+      customer: {
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+          address: true,
+          neighborhood: true,
+          loyaltyRedeemedCount: true,
+        },
+      },
       items: {
-        include: {
+        select: {
+          id: true,
+          batchId: true,
+          bottleSize: true,
+          flavor: true,
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+          litersPerUnit: true,
+          totalLiters: true,
           batch: {
             select: {
               id: true,
@@ -175,6 +200,14 @@ export const getOrders = async (query: OrdersQueryInput) => {
         },
       },
       payments: {
+        select: {
+          id: true,
+          amount: true,
+          paymentDate: true,
+          paymentMethod: true,
+          notes: true,
+          registeredBy: true,
+        },
         orderBy: { paymentDate: 'asc' },
       },
       batch: {
@@ -189,7 +222,8 @@ export const getOrders = async (query: OrdersQueryInput) => {
       },
     },
     orderBy: { updatedAt: 'desc' },
-    take: limit ? Number(limit) : undefined,
+    skip: isPaginated ? (pageNum - 1) * limitNum : undefined,
+    take: limitNum,
   });
 
   if (sortBy === 'UPDATED_DESC') {
@@ -217,6 +251,18 @@ export const getOrders = async (query: OrdersQueryInput) => {
 
       return new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
     });
+  }
+
+  if (isPaginated) {
+    return {
+      items: orders,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: pageNum,
+        limit: limitNum,
+      },
+    };
   }
 
   return orders;

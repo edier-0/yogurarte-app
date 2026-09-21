@@ -25,6 +25,11 @@ export const updateMaterialSchema = z.object({
 
 export const materialsQuerySchema = z.object({
   includeInactive: z.string().optional(),
+  search: z.string().optional(),
+  category: z.string().optional(),
+  page: z.coerce.number().optional(),
+  limit: z.coerce.number().optional(),
+  paginate: z.enum(['true', 'false']).optional(),
 });
 
 // ==========================================

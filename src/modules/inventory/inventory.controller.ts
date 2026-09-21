@@ -3,8 +3,15 @@ import * as inventoryService from './inventory.service.js';
 
 export const getMaterials = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const materials = await inventoryService.getMaterials(req.query as any);
-    res.json(materials);
+    const result = await inventoryService.getMaterials(req.query as any);
+    if (result && typeof result === 'object' && 'pagination' in result) {
+      res.setHeader('X-Total-Count', String((result as any).pagination.totalItems));
+      res.setHeader('X-Total-Pages', String((result as any).pagination.totalPages));
+      res.setHeader('X-Current-Page', String((result as any).pagination.currentPage));
+      res.json(result);
+    } else {
+      res.json(result);
+    }
   } catch (error) {
     next(error);
   }

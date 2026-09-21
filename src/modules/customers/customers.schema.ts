@@ -51,6 +51,9 @@ export const customersQuerySchema = z.object({
   includeInactive: z.string().optional(),
   batchId: z.string().optional(),
   lite: z.string().optional(),
+  page: z.coerce.number().optional(),
+  limit: z.coerce.number().optional(),
+  paginate: z.enum(['true', 'false']).optional(),
 });
 
 export const resolveCustomerSchema = z.object({

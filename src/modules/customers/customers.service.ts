@@ -228,6 +228,13 @@ export const getCustomers = async (query: CustomersQueryInput) => {
     }
   }
 
+  const isPaginated = query.page !== undefined || query.paginate === 'true';
+  const pageNum = Math.max(1, Number(query.page) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number(query.limit) || (isPaginated ? 20 : 500)));
+
+  const totalItems = await prisma.customer.count({ where: whereClause });
+  const totalPages = Math.ceil(totalItems / limitNum) || 1;
+
   const customers = await prisma.customer.findMany({
     where: whereClause,
     include: {
@@ -256,6 +263,8 @@ export const getCustomers = async (query: CustomersQueryInput) => {
       },
     },
     orderBy: { fullName: 'asc' },
+    skip: isPaginated ? (pageNum - 1) * limitNum : undefined,
+    take: limitNum,
   });
 
   const customersWithStats = customers.map((c) => {
@@ -340,6 +349,18 @@ export const getCustomers = async (query: CustomersQueryInput) => {
 
     return a.fullName.localeCompare(b.fullName);
   });
+
+  if (isPaginated) {
+    return {
+      items: customersWithStats,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: pageNum,
+        limit: limitNum,
+      },
+    };
+  }
 
   return customersWithStats;
 };

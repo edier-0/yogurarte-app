@@ -113,6 +113,8 @@ export const ordersQuerySchema = z.object({
   driverId: z.string().optional(),
   deliveryDriverId: z.string().optional(),
   limit: z.coerce.number().optional(),
+  page: z.coerce.number().optional(),
+  paginate: z.enum(['true', 'false']).optional(),
 });
 
 export type OrderItemInput = z.infer<typeof orderItemSchema>;

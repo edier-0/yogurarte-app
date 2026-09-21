@@ -680,7 +680,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
   const startOfCurrentMonth = new Date(Date.UTC(curYear, curMonthNum - 1, 1, 0, 0, 0));
   const endOfCurrentMonth = new Date(Date.UTC(curYear, curMonthNum, 0, 23, 59, 59, 999));
 
-  // Consultar entidades en paralelo para alto rendimiento
+  // Consultar entidades en paralelo para alto rendimiento con proyecciones select
   const [
     orders,
     purchases,
@@ -695,10 +695,52 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
   ] = await Promise.all([
     prisma.order.findMany({
       where: orderWhere,
-      include: {
-        customer: true,
-        items: true,
-        payments: { orderBy: { paymentDate: 'asc' } },
+      select: {
+        id: true,
+        orderNumber: true,
+        totalLiters: true,
+        quantityBottles: true,
+        bottleSize: true,
+        totalAmount: true,
+        paidAmount: true,
+        pendingAmount: true,
+        deliveryStatus: true,
+        deliveryType: true,
+        deliveryFee: true,
+        deliveryAddress: true,
+        paymentStatus: true,
+        paymentMethod: true,
+        orderDate: true,
+        deliveryDate: true,
+        createdAt: true,
+        flavor: true,
+        notes: true,
+        customer: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            address: true,
+          },
+        },
+        items: {
+          select: {
+            bottleSize: true,
+            quantity: true,
+            flavor: true,
+          },
+        },
+        payments: {
+          select: {
+            id: true,
+            amount: true,
+            paymentMethod: true,
+            paymentDate: true,
+            createdAt: true,
+            notes: true,
+          },
+          orderBy: { paymentDate: 'asc' },
+        },
         batch: {
           select: {
             id: true,
@@ -713,7 +755,16 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     }),
     prisma.purchase.findMany({
       where: purchaseWhere,
-      include: {
+      select: {
+        id: true,
+        purchaseDate: true,
+        createdAt: true,
+        quantity: true,
+        unitCost: true,
+        totalCost: true,
+        supplier: true,
+        paymentMethod: true,
+        notes: true,
         rawMaterial: {
           select: {
             name: true,
@@ -726,19 +777,69 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     }),
     prisma.expense.findMany({
       where: expenseWhere,
+      select: {
+        id: true,
+        expenseDate: true,
+        createdAt: true,
+        category: true,
+        description: true,
+        amount: true,
+        paymentMethod: true,
+        notes: true,
+        registeredBy: true,
+      },
       orderBy: { expenseDate: 'desc' },
     }),
     prisma.staffPayment.findMany({
       where: staffPaymentWhere,
-      include: { staff: true },
+      select: {
+        id: true,
+        paymentDate: true,
+        createdAt: true,
+        paymentType: true,
+        calculationDetails: true,
+        netAmount: true,
+        paymentMethod: true,
+        periodStart: true,
+        periodEnd: true,
+        notes: true,
+        staff: {
+          select: {
+            fullName: true,
+            role: true,
+          },
+        },
+      },
       orderBy: { paymentDate: 'desc' },
     }),
     prisma.cashMovement.findMany({
       where: cashMovementWhere,
+      select: {
+        id: true,
+        movementDate: true,
+        createdAt: true,
+        type: true,
+        concept: true,
+        amount: true,
+        paymentMethod: true,
+        notes: true,
+        registeredBy: true,
+      },
       orderBy: { movementDate: 'desc' },
     }),
     prisma.creditObligation.findMany({
       where: { status: 'ACTIVO' },
+      select: {
+        id: true,
+        title: true,
+        creditor: true,
+        totalAmount: true,
+        remainingBalance: true,
+        installmentAmount: true,
+        frequency: true,
+        status: true,
+        nextDueDate: true,
+      },
       orderBy: { nextDueDate: 'asc' },
     }),
     prisma.rawMaterial.findMany({
@@ -778,7 +879,18 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     }),
     prisma.batchDischarge.findMany({
       where: dischargeWhere,
-      include: {
+      select: {
+        id: true,
+        batchId: true,
+        bottleSize: true,
+        quantityBottles: true,
+        totalLiters: true,
+        unitPrice: true,
+        totalAmount: true,
+        reasonType: true,
+        notes: true,
+        registeredBy: true,
+        dischargeDate: true,
         batch: {
           select: {
             id: true,

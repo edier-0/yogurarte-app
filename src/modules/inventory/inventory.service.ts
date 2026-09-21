@@ -23,22 +23,57 @@ import {
  * Obtener listado de insumos enriquecidos con alerta de bajo stock
  */
 export const getMaterials = async (query: MaterialsQueryInput) => {
-  const { includeInactive } = query;
+  const { includeInactive, search, category, page, limit, paginate } = query;
 
   const whereClause: any = {};
   if (includeInactive !== 'true') {
     whereClause.isActive = true;
   }
 
+  if (category && category !== 'ALL') {
+    whereClause.category = category;
+  }
+
+  if (search && search.trim()) {
+    const q = search.trim();
+    whereClause.OR = [
+      { name: { contains: q, mode: 'insensitive' } },
+      { code: { contains: q, mode: 'insensitive' } },
+    ];
+  }
+
+  const isPaginated = page !== undefined || paginate === 'true';
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number(limit) || (isPaginated ? 20 : 200)));
+
+  const totalItems = await prisma.rawMaterial.count({ where: whereClause });
+  const totalPages = Math.ceil(totalItems / limitNum) || 1;
+
   const materials = await prisma.rawMaterial.findMany({
     where: whereClause,
     orderBy: { category: 'asc' },
+    skip: isPaginated ? (pageNum - 1) * limitNum : undefined,
+    take: limitNum,
   });
 
-  return materials.map((m) => ({
+  const materialsWithAlert = materials.map((m) => ({
     ...m,
     isLowStock: m.currentStock <= m.minStockAlert,
   }));
+
+  if (isPaginated) {
+    return {
+      items: materialsWithAlert,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: pageNum,
+        limit: limitNum,
+      },
+    };
+  }
+
+  return materialsWithAlert;
 };
 
 /**

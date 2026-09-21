@@ -3,8 +3,15 @@ import * as ordersService from './orders.service.js';
 
 export const getOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orders = await ordersService.getOrders(req.query as any);
-    res.json(orders);
+    const result = await ordersService.getOrders(req.query as any);
+    if (result && typeof result === 'object' && 'pagination' in result) {
+      res.setHeader('X-Total-Count', String((result as any).pagination.totalItems));
+      res.setHeader('X-Total-Pages', String((result as any).pagination.totalPages));
+      res.setHeader('X-Current-Page', String((result as any).pagination.currentPage));
+      res.json(result);
+    } else {
+      res.json(result);
+    }
   } catch (error) {
     next(error);
   }

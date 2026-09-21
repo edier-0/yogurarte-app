@@ -23,6 +23,22 @@ describe('Orders Endpoints and Atomic Operations', () => {
     expect(Array.isArray(res.body)).toBe(true);
   });
 
+  it('GET /api/orders con parámetros de paginación debe retornar items y metadata de paginación', async () => {
+    const res = await request(app)
+      .get('/api/orders?page=1&limit=2&paginate=true')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('items');
+    expect(res.body).toHaveProperty('pagination');
+    expect(res.body.pagination).toHaveProperty('currentPage', 1);
+    expect(res.body.pagination).toHaveProperty('limit', 2);
+    expect(res.body.pagination).toHaveProperty('totalItems');
+    expect(res.headers).toHaveProperty('x-total-count');
+    expect(res.headers).toHaveProperty('x-total-pages');
+    expect(res.headers).toHaveProperty('x-current-page', '1');
+  });
+
   it('POST /api/orders con payload inválido debe responder 400', async () => {
     const res = await request(app)
       .post('/api/orders')

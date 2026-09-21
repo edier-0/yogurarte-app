@@ -41,6 +41,7 @@ model Customer {
   @@index([fullName])
   @@index([phone])
   @@index([isActive])
+  @@index([isActive, fullName])
 }
 
 model RawMaterial {
@@ -63,6 +64,7 @@ model RawMaterial {
 
   @@index([category])
   @@index([isActive])
+  @@index([isActive, category])
 }
 
 model SupplyPreparation {
@@ -121,6 +123,7 @@ model Purchase {
   @@index([purchaseDate])
   @@index([rawMaterialId])
   @@index([paymentMethod])
+  @@index([purchaseDate, rawMaterialId])
 }
 
 model InventoryAdjustment {
@@ -175,6 +178,8 @@ model ProductionBatch {
   @@index([flavor])
   @@index([status])
   @@index([isActive])
+  @@index([isActive, status])
+  @@index([isActive, preparationDate])
 }
 
 model BatchDischarge {
@@ -258,6 +263,9 @@ model Order {
   @@index([paymentStatus])
   @@index([deliveryStatus])
   @@index([deliveryDate, deliveryStatus])
+  @@index([customerId, orderDate])
+  @@index([deliveryStatus, orderDate])
+  @@index([paymentStatus, orderDate])
   @@index([createdAt])
 }
 
@@ -311,6 +319,7 @@ model Expense {
   @@index([expenseDate])
   @@index([category])
   @@index([paymentMethod])
+  @@index([expenseDate, category])
 }
 
 model StaffMember {
@@ -354,6 +363,7 @@ model StaffPayment {
   @@index([paymentDate])
   @@index([staffId])
   @@index([paymentType])
+  @@index([paymentDate, staffId])
 }
 
 model CashMovement {
@@ -371,6 +381,7 @@ model CashMovement {
   @@index([movementDate])
   @@index([type])
   @@index([paymentMethod])
+  @@index([movementDate, type])
 }
 
 model CreditObligation {
