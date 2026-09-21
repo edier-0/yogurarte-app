@@ -67,3 +67,5 @@ temp/
 scratch/
 auth_info_baileys/
 .baileys_auth/
+__pycache__/
+*.pyc
