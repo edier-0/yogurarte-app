@@ -23,7 +23,7 @@ import inventoryRoutes from './modules/inventory/inventory.routes.js';
 import preparationsRoutes from './modules/preparations/preparations.routes.js';
 import staffRoutes from './modules/staff/staff.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
-import crmRoutes from './routes/crm.routes.js';
+import crmRoutes from './modules/crm/crm.routes.js';
 import { whatsappService } from './services/whatsapp.service.js';
 
 import { requireAuth } from './shared/middlewares/auth.middleware.js';
