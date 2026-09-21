@@ -19,7 +19,7 @@ import {
   creditsRouter as creditsRoutes,
   dashboardRouter as dashboardRoutes,
 } from './modules/finance/finance.routes.js';
-import inventoryRoutes from './routes/inventory.routes.js';
+import inventoryRoutes from './modules/inventory/inventory.routes.js';
 import preparationsRoutes from './routes/preparations.routes.js';
 import staffRoutes from './routes/staff.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
