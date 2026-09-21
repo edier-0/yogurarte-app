@@ -13,7 +13,7 @@ import ordersRoutes from './modules/orders/orders.routes.js';
 import batchesRoutes from './routes/batches.routes.js';
 import inventoryRoutes from './routes/inventory.routes.js';
 import expensesRoutes from './routes/expenses.routes.js';
-import customersRoutes from './routes/customers.routes.js';
+import customersRoutes from './modules/customers/customers.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import preparationsRoutes from './routes/preparations.routes.js';
