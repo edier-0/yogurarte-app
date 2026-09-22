@@ -31,10 +31,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Estilos del Sistema -->
-  <link rel="stylesheet" href="/css/variables.css?v=20260921_dark_mode_v1">
-  <link rel="stylesheet" href="/css/layout.css?v=20260921_dark_mode_v1">
-  <link rel="stylesheet" href="/css/components.css?v=20260921_dark_mode_v1">
-  <link rel="stylesheet" href="/css/pages.css?v=20260921_dark_mode_v1">
+  <link rel="stylesheet" href="/css/variables.css?v=20260922_hotfix_v2">
+  <link rel="stylesheet" href="/css/layout.css?v=20260922_hotfix_v2">
+  <link rel="stylesheet" href="/css/components.css?v=20260922_hotfix_v2">
+  <link rel="stylesheet" href="/css/pages.css?v=20260922_hotfix_v2">
 </head>
 <body>
 
@@ -130,22 +130,24 @@
         </div>
 
         <div class="header-actions">
-          <!-- Botón de Modo Oscuro / Claro en Header -->
-          <button class="theme-toggle-btn" id="btnThemeToggleHeader" title="Cambiar tema (Claro/Oscuro/Sistema)" aria-label="Cambiar tema">
-            🌓
-          </button>
-
-          <!-- Insignia de Usuario para Móvil y Tablet con opción de salir -->
-          <div class="header-user-badge" id="headerUserBadge">
-            <div class="user-avatar" id="headerUserAvatar">E</div>
-            <span id="headerUserNameDisplay" style="font-size: 0.85rem; font-weight: 800; color: var(--text-main);">Edier</span>
-            <button class="btn-logout-mini" id="btnLogoutMobile" title="Cerrar sesión">
-              🚪
+          <div class="header-secondary-controls">
+            <!-- Botón de Modo Oscuro / Claro en Header -->
+            <button class="theme-toggle-btn" id="btnThemeToggleHeader" title="Cambiar tema (Claro/Oscuro/Sistema)" aria-label="Cambiar tema">
+              🌓
             </button>
+
+            <!-- Insignia de Usuario para Móvil y Tablet con opción de salir -->
+            <div class="header-user-badge" id="headerUserBadge">
+              <div class="user-avatar" id="headerUserAvatar">E</div>
+              <span id="headerUserNameDisplay" style="font-size: 0.85rem; font-weight: 800; color: var(--text-main);">Edier</span>
+              <button class="btn-logout-mini" id="btnLogoutMobile" title="Cerrar sesión">
+                🚪
+              </button>
+            </div>
           </div>
 
           <button class="btn btn-accent" id="btnNewOrderGlobal">
-            <span>+</span> Nuevo Pedido
+            <span>+</span> <span class="btn-order-label">Nuevo Pedido</span>
           </button>
         </div>
       </header>
@@ -264,6 +266,6 @@
   <script src="/socket.io/socket.io.js"></script>
 
   <!-- JavaScript Modular -->
-  <script type="module" src="/js/app.js?v=20260918_v24_focus_fix"></script>
+  <script type="module" src="/js/app.js?v=20260922_hotfix_v2"></script>
 </body>
 </html>

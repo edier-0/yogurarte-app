@@ -37,12 +37,13 @@ services:
     environment:
       PORT: 3000
       NODE_ENV: production
-      DATABASE_URL: "${DATABASE_URL:-postgresql://postgres:postgrespassword@postgres:5432/yogurarte_db?schema=public}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgrespassword}@postgres:5432/${POSTGRES_DB:-yogurarte_db}?schema=public"
       JWT_SECRET: "${JWT_SECRET:-ba6822f65365a699a960575fe416b3a00770fd1659c34654d56e8c955ce6a78a}"
       JWT_EXPIRES_IN: "${JWT_EXPIRES_IN:-1d}"
     env_file:
       - .env
     volumes:
+      - ./public:/app/public
       - baileys_auth_data:/app/baileys_auth_info
       - app_logs:/app/logs
     healthcheck:

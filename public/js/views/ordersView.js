@@ -194,66 +194,31 @@ export async function renderOrders(container) {
 
   container.innerHTML = `
     <!-- Toolbar de Búsqueda y Filtros Optimizada para Móvil y Desktop -->
-    <div class="orders-toolbar-card" style="margin-bottom: 16px;">
-      <!-- Fila 1: Buscador Universal con Debounce y Acciones Rápidas -->
-      <div class="orders-toolbar-main-row" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-        <div class="orders-search-group" style="flex: 1 1 280px; min-width: 220px;">
-          <div class="search-box input-with-icon" style="width: 100%;">
-            <span class="input-icon">🔍</span>
-            <input 
-              type="text" 
-              id="orderSearchInput" 
-              data-key="order-search"
-              class="form-input" 
-              placeholder="Buscar por cliente, teléfono, @usuario, sabor..." 
-              value="${escapeHtml(currentFilters.search)}"
-              autocomplete="off"
-              style="width: 100%; height: 42px; font-weight: 600;"
-            />
-          </div>
+    <div class="orders-toolbar-card">
+      <!-- Fila 1: Buscador Integrado con Botón de Filtros Avanzados en una Sola Fila -->
+      <div class="orders-search-integrated-row">
+        <div class="search-box input-with-icon">
+          <span class="input-icon">🔍</span>
+          <input 
+            type="text" 
+            id="orderSearchInput" 
+            data-key="order-search"
+            class="form-input" 
+            placeholder="Buscar por cliente, teléfono, @usuario, sabor..." 
+            value="${escapeHtml(currentFilters.search)}"
+            autocomplete="off"
+          />
         </div>
 
-        <div class="orders-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
-          <!-- Botón Drawer / Bottom Sheet de Filtros Secundarios -->
-          <button type="button" class="filter-action-btn" id="btnOpenOrdersFilterSheet" title="Abrir filtros avanzados (fechas, repartidores, lotes)">
-            <span>⚙️ Filtros</span>
-            <span class="filter-badge-count" id="ordersFilterBadgeCount" style="display: none;">0</span>
-          </button>
-
-          <!-- Toggle de Vista: Lista vs Calendario Mensual -->
-          <div class="orders-view-toggle" style="display: inline-flex;">
-            <button 
-              type="button"
-              class="btn ${currentFilters.viewMode === 'list' ? 'btn-primary' : 'btn-outline'}" 
-              id="btnToggleListView" 
-              style="padding: 6px 10px; font-size: 0.82rem;"
-              title="Ver pedidos en lista"
-            >
-              📋 Lista
-            </button>
-            <button 
-              type="button"
-              class="btn ${currentFilters.viewMode === 'calendar' ? 'btn-primary' : 'btn-outline'}" 
-              id="btnToggleCalendarView" 
-              style="padding: 6px 10px; font-size: 0.82rem;"
-              title="Ver calendario mensual"
-            >
-              📅 Calendario
-            </button>
-          </div>
-
-          <button class="btn btn-outline" id="btnRescheduleOverdueOrders" style="border-color: #F59E0B; color: #B45309; background: var(--bg-card); font-weight: 700; font-size: 0.82rem; padding: 8px 12px; height: 40px;" title="Reprogramar pedidos atrasados de días anteriores a hoy">
-            📅 Reprogramar
-          </button>
-
-          <button class="btn btn-accent" id="btnOpenNewOrderModal" style="height: 40px; padding: 8px 14px; font-size: 0.88rem;">
-            <span>+</span> Nuevo Pedido
-          </button>
-        </div>
+        <!-- Botón Drawer / Bottom Sheet de Filtros Secundarios integrado en la misma fila -->
+        <button type="button" class="filter-action-btn" id="btnOpenOrdersFilterSheet" title="Abrir filtros avanzados (fechas, repartidores, lotes)">
+          <span>⚙️ Filtros</span>
+          <span class="filter-badge-count" id="ordersFilterBadgeCount" style="display: none;">0</span>
+        </button>
       </div>
 
-      <!-- Fila 2: Barra de Chips Horizontales de un toque con scroll táctil -->
-      <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+      <!-- Fila 2: Tira de Chips Horizontales fluida sin márgenes muertos -->
+      <div class="orders-chips-wrapper">
         <div class="horizontal-chip-scroll" id="ordersChipBar">
           <button class="filter-chip ${currentFilters.chip === 'ALL' ? 'active' : ''}" data-order-chip="ALL">
             📋 Todos
@@ -282,7 +247,40 @@ export async function renderOrders(container) {
         </div>
 
         <!-- Banner de Filtros Secundarios Activos con Tags Removibles -->
-        <div id="activeFilterTagsBanner" style="display: none; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px;"></div>
+        <div id="activeFilterTagsBanner" style="display: none; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px;"></div>
+      </div>
+
+      <!-- Fila 3: Controles Secundarios de Vista y Acciones -->
+      <div class="orders-toolbar-secondary-row">
+        <!-- Toggle de Vista: Lista vs Calendario Mensual -->
+        <div class="orders-view-toggle">
+          <button 
+            type="button"
+            class="btn ${currentFilters.viewMode === 'list' ? 'btn-primary' : 'btn-outline'}" 
+            id="btnToggleListView" 
+            title="Ver pedidos en lista"
+          >
+            📋 Lista
+          </button>
+          <button 
+            type="button"
+            class="btn ${currentFilters.viewMode === 'calendar' ? 'btn-primary' : 'btn-outline'}" 
+            id="btnToggleCalendarView" 
+            title="Ver calendario mensual"
+          >
+            📅 Calendario
+          </button>
+        </div>
+
+        <div class="orders-secondary-actions-group">
+          <button class="btn btn-outline" id="btnRescheduleOverdueOrders" title="Reprogramar pedidos atrasados de días anteriores a hoy">
+            📅 Reprogramar
+          </button>
+
+          <button class="btn btn-accent orders-desktop-new-btn" id="btnOpenNewOrderModal">
+            <span>+</span> Nuevo Pedido
+          </button>
+        </div>
       </div>
     </div>
 
@@ -914,16 +912,16 @@ function createOrderCardHtml(o) {
 
   let cardBorder = '';
   let payBadge = '';
-  let waBtnText = `${WA_ICON_SVG} WhatsApp`;
+  let waBtnLabel = 'WhatsApp';
 
   if (isDeliveredDebt) {
     cardBorder = 'border: 1.5px solid #F87171; background: #FFFDFD; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.08);';
     payBadge = `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-weight: 800; font-size: 0.78rem; border: 1px solid #FCA5A5;">🚨 Deuda: ${formatCOP(o.pendingAmount)}</span>`;
-    waBtnText = `${WA_ICON_SVG} Recordar Pago`;
+    waBtnLabel = 'Recordar Pago';
   } else if (isPaidNotDelivered) {
     cardBorder = 'border: 1.5px solid #34D399; background: #F0FDF4; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.08);';
     payBadge = `<span class="badge" style="background: #DCFCE7; color: #059669; font-weight: 800; font-size: 0.78rem; border: 1px solid #86EFAC;">🟢🥣 Pagado • Por Entregar 🛵</span>`;
-    waBtnText = `${WA_ICON_SVG} Agradecer Pago`;
+    waBtnLabel = 'Agradecer Pago';
   } else if (isInProcessPending) {
     cardBorder = 'border: 1.5px solid #DDD6FE; background: #FAF7FC; box-shadow: 0 4px 14px rgba(109, 40, 217, 0.05);';
     if (o.paidAmount > 0) {
@@ -931,7 +929,7 @@ function createOrderCardHtml(o) {
     } else {
       payBadge = `<span class="badge" style="background: #EDE9FE; color: var(--primary); font-weight: 800; font-size: 0.78rem; border: 1px solid #DDD6FE;">🥣 Encargo • Por Entregar</span>`;
     }
-    waBtnText = `${WA_ICON_SVG} Info Pedido`;
+    waBtnLabel = 'Info Pedido';
   } else {
     payBadge = '<span class="badge badge-paid" style="border: 1px solid #86EFAC;">🟢 Totalmente Pagado</span>';
   }
@@ -1152,11 +1150,11 @@ function createOrderCardHtml(o) {
       <div class="order-primary-actions">
         ${
           isPaidNotDelivered
-            ? `<button type="button" class="btn-touch-action btn-touch-wa btn-whatsapp-action" data-id="${o.id}" data-type="THANK_PAYMENT" title="Agradecer pago">
-                 ${WA_ICON_SVG} Agradecer Pago
+            ? `<button type="button" class="btn-touch-action btn-touch-wa btn-whatsapp-action" data-id="${o.id}" data-type="THANK_PAYMENT" title="Agradecer pago por WhatsApp">
+                 ${WA_ICON_SVG} <span>Agradecer Pago</span>
                </button>`
-            : `<button type="button" class="btn-touch-action btn-touch-wa btn-whatsapp-action" data-id="${o.id}" title="${waBtnText}">
-                 ${WA_ICON_SVG} ${waBtnText.replace(/<[^>]*>/g, '').trim()}
+            : `<button type="button" class="btn-touch-action btn-touch-wa btn-whatsapp-action" data-id="${o.id}" title="${escapeHtml(waBtnLabel)}">
+                 ${WA_ICON_SVG} <span>${escapeHtml(waBtnLabel)}</span>
                </button>`
         }
 
@@ -1171,11 +1169,11 @@ function createOrderCardHtml(o) {
         }
       </div>
 
-      <!-- Acciones Secundarias Agrupadas -->
+      <!-- Acciones Secundarias Agrupadas (Layout Equilibrado) -->
       <div class="order-secondary-actions">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted);">Estado:</span>
-          <select class="form-select select-delivery-status" data-id="${o.id}" style="width: auto; padding: 4px 8px; font-size: 0.8rem; font-weight: 700;">
+        <div class="order-status-change-group">
+          <span class="order-status-label">Estado:</span>
+          <select class="form-select select-delivery-status" data-id="${o.id}" aria-label="Cambiar estado de entrega">
             <option value="PENDING" ${o.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Por Entregar</option>
             <option value="PREPARING" ${o.deliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
             <option value="READY_FOR_DISPATCH" ${o.deliveryStatus === 'READY_FOR_DISPATCH' ? 'selected' : ''}>📦 Listo Despacho</option>
@@ -1192,7 +1190,7 @@ function createOrderCardHtml(o) {
             ✏️ Editar
           </button>
           <button type="button" class="btn btn-outline btn-secondary-action btn-delete-order" data-id="${o.id}" title="Eliminar pedido" style="color: var(--danger);">
-            🗑️
+            🗑️ Eliminar
           </button>
         </div>
       </div>

@@ -192,17 +192,80 @@
   }
 }
 
-/* ==================== ORDERS TOOLBAR (PC RESPONSIVE) ==================== */
+/* ==================== ORDERS TOOLBAR (COMPACT & RESPONSIVE) ==================== */
 .orders-toolbar-card {
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   border: 1.5px solid var(--border-color);
   box-shadow: var(--shadow-sm);
-  padding: 16px 20px;
-  margin-bottom: 20px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
+}
+
+.orders-search-integrated-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.orders-search-integrated-row .search-box {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.orders-search-integrated-row .form-input {
+  width: 100%;
+  height: 42px;
+  min-height: 42px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+}
+
+.orders-search-integrated-row .filter-action-btn {
+  flex-shrink: 0;
+  height: 42px;
+  min-height: 42px;
+  padding: 0 14px;
+}
+
+.orders-chips-wrapper {
+  margin: 0;
+  padding: 3px 0 1px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.orders-chips-wrapper .horizontal-chip-scroll {
+  padding: 2px 0;
+  margin: 0;
+}
+
+.orders-toolbar-secondary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.orders-secondary-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.orders-secondary-actions-group .btn {
+  height: 36px;
+  min-height: 36px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .orders-toolbar-main-row {
@@ -433,6 +496,18 @@
 }
 
 @media (max-width: 900px) {
+  .orders-toolbar-card {
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    gap: 6px;
+  }
+  .orders-desktop-new-btn {
+    display: none; /* En móvil ya está en el header */
+  }
+  .orders-toolbar-secondary-row {
+    justify-content: space-between;
+    width: 100%;
+  }
   .orders-toolbar-main-row, .orders-filters-sub-row {
     flex-direction: column;
     align-items: stretch;
@@ -781,34 +856,106 @@
   filter: brightness(0.92);
 }
 
-/* Acciones Secundarias Agrupadas */
+/* Acciones Secundarias Agrupadas (Layout Equilibrado con Hit Targets >= 44px) */
 .order-secondary-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 8px;
-  padding-top: 8px;
+  width: 100%;
+  padding-top: 10px;
   border-top: 1px solid var(--border-subtle);
-  flex-wrap: wrap;
+}
+
+.order-status-change-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.order-status-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.order-status-change-group .select-delivery-status {
+  flex: 1;
+  width: 100%;
+  min-height: 42px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  outline: none;
+  cursor: pointer;
 }
 
 .order-secondary-buttons {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-left: auto;
+  gap: 8px;
+  width: 100%;
 }
 
-.btn-secondary-action {
-  min-height: 38px;
-  padding: 6px 10px;
-  font-size: 0.82rem;
+.order-secondary-buttons .btn-secondary-action {
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 0.84rem;
   font-weight: 700;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 5px;
   touch-action: manipulation;
+  transition: all 0.15s ease;
+}
+
+.order-secondary-buttons .btn-delete-order {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 12px;
+  color: var(--danger);
+  border-color: #FECACA;
+}
+
+@media (min-width: 769px) {
+  .order-secondary-actions {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .order-status-change-group {
+    width: auto;
+    flex: 1;
+    max-width: 280px;
+  }
+
+  .order-secondary-buttons {
+    width: auto;
+    flex: initial;
+    margin-left: auto;
+  }
+
+  .order-secondary-buttons .btn-secondary-action {
+    flex: initial;
+    min-height: 38px;
+    padding: 6px 14px;
+  }
+
+  .order-secondary-buttons .btn-delete-order {
+    min-height: 38px;
+    min-width: 38px;
+  }
 }
 
 /* ==================== STOCK ALERTS BANNER ==================== */
