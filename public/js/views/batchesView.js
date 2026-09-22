@@ -13,8 +13,8 @@ function escapeHtml(str) {
 }
 
 let batchesCurrentPage = 1;
-let includeInactive = false;
-let batchStatusFilter = 'ALL';
+let batchSearchQuery = '';
+let batchStatusFilter = 'ALL'; // 'ALL' | 'COMPLETADO' | 'AGOTADO' | 'ARCHIVED'
 
 export async function renderBatches(container) {
   container.innerHTML = `
@@ -35,26 +35,41 @@ export async function renderBatches(container) {
       </div>
     </div>
 
-    <!-- Toolbar de Filtros -->
-    <div class="toolbar-container" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-      <div class="toolbar-left" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-        <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--primary); margin: 0;">
-          📋 Historial de Lotes Producidos
-        </h3>
-        <div class="filter-chip-group" id="batchStatusChips">
-          <button class="filter-chip ${batchStatusFilter === 'ALL' ? 'active' : ''}" data-status="ALL">Todos los Lotes</button>
-          <button class="filter-chip ${batchStatusFilter === 'COMPLETADO' ? 'active' : ''}" data-status="COMPLETADO">✅ Disponibles</button>
-          <button class="filter-chip ${batchStatusFilter === 'AGOTADO' ? 'active' : ''}" data-status="AGOTADO">📦 Agotados</button>
-          <button class="btn btn-sm btn-outline" id="btnClearBatchFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros de lotes">
-            <span>🧹</span> Limpiar Filtros
-          </button>
+    <!-- Toolbar de Búsqueda y Filtros de Lotes -->
+    <div class="orders-toolbar-card" style="margin-bottom: 16px;">
+      <div class="orders-toolbar-main-row" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
+        <div class="orders-search-group" style="flex: 1 1 280px; min-width: 220px;">
+          <div class="search-box input-with-icon" style="width: 100%;">
+            <span class="input-icon">🔍</span>
+            <input 
+              type="text" 
+              id="batchSearchInput" 
+              class="form-input" 
+              style="height: 42px; width: 100%; font-weight: 600;"
+              placeholder="Buscar lote por código (LOT-...) o sabor..." 
+              value="${escapeHtml(batchSearchQuery)}"
+              autocomplete="off"
+            />
+          </div>
         </div>
       </div>
-      <div class="toolbar-right">
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 700; color: var(--text-muted); cursor: pointer;">
-          <input type="checkbox" id="chkIncludeInactive" ${includeInactive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" />
-          Mostrar desactivados
-        </label>
+
+      <!-- Tira de Chips Unificada (4 chips operativos) -->
+      <div style="padding-top: 10px; border-top: 1px solid var(--border-subtle); width: 100%; box-sizing: border-box;">
+        <div class="horizontal-chip-scroll" id="batchStatusChips">
+          <button class="filter-chip ${batchStatusFilter === 'ALL' ? 'active' : ''}" data-status="ALL">
+            📋 Todos los Lotes
+          </button>
+          <button class="filter-chip ${batchStatusFilter === 'COMPLETADO' ? 'active' : ''}" data-status="COMPLETADO" style="border-color: #BBF7D0; color: #15803D; font-weight: 700;">
+            ✅ Disponibles
+          </button>
+          <button class="filter-chip ${batchStatusFilter === 'AGOTADO' ? 'active' : ''}" data-status="AGOTADO" style="border-color: #FECACA; color: #DC2626; font-weight: 700;">
+            📦 Agotados
+          </button>
+          <button class="filter-chip ${batchStatusFilter === 'ARCHIVED' ? 'active' : ''}" data-status="ARCHIVED" style="border-color: #CBD5E1; color: var(--text-muted); font-weight: 700;">
+            📁 Archivados
+          </button>
+        </div>
       </div>
     </div>
 
@@ -68,12 +83,16 @@ export async function renderBatches(container) {
     </div>
   `;
 
-  // Listener para limpiar filtros
-  container.querySelector('#btnClearBatchFilters')?.addEventListener('click', () => {
-    batchStatusFilter = 'ALL';
-    includeInactive = false;
-    batchesCurrentPage = 1;
-    renderBatches(container);
+  // Buscador ágil con debounce de 300 ms
+  const searchInput = container.querySelector('#batchSearchInput');
+  let debounceTimer;
+  searchInput?.addEventListener('input', (e) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      batchesCurrentPage = 1;
+      batchSearchQuery = e.target.value.trim();
+      loadBatchesList(container);
+    }, 300);
   });
 
   container.querySelector('#btnOpenNewBatchModal')?.addEventListener('click', () => {
@@ -90,12 +109,6 @@ export async function renderBatches(container) {
     });
   });
 
-  container.querySelector('#chkIncludeInactive')?.addEventListener('change', (e) => {
-    includeInactive = e.target.checked;
-    batchesCurrentPage = 1;
-    loadBatchesList(container);
-  });
-
   await loadBatchesList(container);
 }
 
@@ -104,22 +117,53 @@ async function loadBatchesList(container) {
   if (!tableContainer) return;
 
   try {
-    const params = {
-      includeInactive: includeInactive ? 'true' : 'false',
-    };
-    if (batchStatusFilter !== 'ALL') {
-      params.status = batchStatusFilter;
+    const params = {};
+    if (batchStatusFilter === 'ARCHIVED') {
+      params.includeInactive = 'true';
+    } else {
+      params.includeInactive = 'false';
+      if (batchStatusFilter !== 'ALL') {
+        params.status = batchStatusFilter;
+      }
     }
 
-    const batches = await api.getBatches(params);
+    let batches = await api.getBatches(params);
+    if (batchStatusFilter === 'ARCHIVED') {
+      batches = (batches || []).filter((b) => b.isActive === false);
+    }
+
+    if (batchSearchQuery) {
+      const q = batchSearchQuery.toLowerCase();
+      batches = (batches || []).filter(
+        (b) =>
+          (b.batchCode && b.batchCode.toLowerCase().includes(q)) ||
+          (b.flavor && b.flavor.toLowerCase().includes(q))
+      );
+    }
 
     if (!batches || batches.length === 0) {
       tableContainer.innerHTML = `
         <div class="empty-state">
           <div class="empty-state-icon">🍶</div>
-          <div class="empty-state-title">No hay lotes de producción registrados</div>
-          <div class="empty-state-text">Registra tu primer lote indicando la leche y botellas envasadas.</div>
-          <button class="btn btn-primary" id="btnNewBatchEmpty">+ Registrar Primer Lote</button>
+          <div class="empty-state-title">No se encontraron lotes</div>
+          <div class="empty-state-text">
+            ${
+              batchSearchQuery
+                ? `No hay lotes que coincidan con "${escapeHtml(batchSearchQuery)}".`
+                : batchStatusFilter === 'ARCHIVED'
+                ? 'No hay lotes desactivados o archivados.'
+                : batchStatusFilter === 'AGOTADO'
+                ? 'No hay lotes con inventario agotado.'
+                : batchStatusFilter === 'COMPLETADO'
+                ? 'No hay lotes disponibles en este momento.'
+                : 'Registra tu primer lote indicando la leche y botellas envasadas.'
+            }
+          </div>
+          ${
+            batchStatusFilter === 'ALL' && !batchSearchQuery
+              ? '<button class="btn btn-primary" id="btnNewBatchEmpty">+ Registrar Primer Lote</button>'
+              : ''
+          }
         </div>
       `;
       tableContainer.querySelector('#btnNewBatchEmpty')?.addEventListener('click', () => openBatchModal());

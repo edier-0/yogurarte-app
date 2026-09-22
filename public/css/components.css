@@ -901,4 +901,65 @@
   transform: translateY(-1px);
 }
 
+/* ==================== DARK MODE ACCENT SOFTENING & ERGONOMICS ==================== */
+html.dark .btn-primary,
+[data-theme="dark"] .btn-primary {
+  background: rgba(196, 181, 253, 0.15);
+  border: 1px solid rgba(196, 181, 253, 0.28);
+  color: #C4B5FD;
+  box-shadow: none;
+}
+
+html.dark .btn-primary:hover,
+[data-theme="dark"] .btn-primary:hover {
+  background: rgba(196, 181, 253, 0.22);
+  border-color: rgba(196, 181, 253, 0.45);
+  color: #DDD6FE;
+}
+
+html.dark .btn-accent,
+[data-theme="dark"] .btn-accent {
+  background: rgba(244, 114, 182, 0.15);
+  border: 1px solid rgba(244, 114, 182, 0.28);
+  color: #F472B6;
+  box-shadow: none;
+}
+
+html.dark .btn-accent:hover,
+[data-theme="dark"] .btn-accent:hover {
+  background: rgba(244, 114, 182, 0.22);
+  border-color: rgba(244, 114, 182, 0.45);
+  color: #F9A8D4;
+}
+
+html.dark .btn-outline,
+[data-theme="dark"] .btn-outline {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+  color: var(--text-main);
+}
+
+html.dark .btn-outline:hover,
+[data-theme="dark"] .btn-outline:hover {
+  background: var(--bg-subtle);
+  border-color: var(--text-muted);
+}
+
+html.dark .filter-chip.active,
+[data-theme="dark"] .filter-chip.active {
+  background: rgba(196, 181, 253, 0.15);
+  color: #C4B5FD;
+  border: 1px solid rgba(196, 181, 253, 0.28);
+  box-shadow: none;
+}
+
+html.dark .modal-content,
+[data-theme="dark"] .modal-content,
+html.dark .bottom-sheet-card,
+[data-theme="dark"] .bottom-sheet-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+}
+
 

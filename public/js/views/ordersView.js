@@ -30,15 +30,50 @@ let cachedOrders = [];
 let availableBatches = [];
 let availableDrivers = [];
 
+function getDriverDisplayValue(driverFilter, drivers) {
+  if (!driverFilter || driverFilter === 'ALL') return '';
+  if (driverFilter === 'PROPIO') return '👤 Entrega Propia (Socios)';
+  if (driverFilter === 'LOCAL') return '🏪 Recoge en Local';
+  if (driverFilter === 'UNASSIGNED') return '⚠️ Sin Repartidor Asignado';
+  if (driverFilter.startsWith('DRIVER_')) {
+    const id = driverFilter.replace('DRIVER_', '');
+    const d = drivers.find((x) => String(x.id) === String(id));
+    return d ? `🛵 Repartidor: ${d.name}` : '';
+  }
+  return '';
+}
+
+function parseDriverInput(val, drivers) {
+  if (!val || val === 'Todos los Repartos') return 'ALL';
+  const v = val.toLowerCase();
+  if (v.includes('entrega propia') || v.includes('propio') || v.includes('socios')) return 'PROPIO';
+  if (v.includes('recoge') || v.includes('local')) return 'LOCAL';
+  if (v.includes('sin repartidor') || v.includes('unassigned') || v.includes('sin asignar')) return 'UNASSIGNED';
+  const found = drivers.find((d) => v.includes(d.name.toLowerCase()));
+  if (found) return `DRIVER_${found.id}`;
+  return 'ALL';
+}
+
+function getBatchDisplayValue(batchId, batches) {
+  if (!batchId || batchId === 'ALL') return '';
+  const b = batches.find((x) => String(x.id) === String(batchId));
+  return b ? `🍶 ${b.batchCode} - ${b.flavor || ''}` : '';
+}
+
+function parseBatchInput(val, batches) {
+  if (!val || val === 'Todos los Lotes') return 'ALL';
+  const v = val.toLowerCase().replace('🍶', '').trim();
+  const found = batches.find((b) => {
+    return b.batchCode.toLowerCase().includes(v) || (b.flavor && b.flavor.toLowerCase().includes(v)) || v.includes(b.batchCode.toLowerCase());
+  });
+  return found ? String(found.id) : 'ALL';
+}
+
 function getActiveSecondaryFiltersCount() {
   let count = 0;
   if (currentFilters.driverFilter !== 'ALL') count++;
   if (currentFilters.batchId !== 'ALL') count++;
-  if (currentFilters.paymentStatus !== 'ALL') count++;
-  if (currentFilters.deliveryStatus !== 'ALL' && currentFilters.deliveryStatus !== 'TO_DELIVER') count++;
   if (currentFilters.specificDate) count++;
-  if (currentFilters.month) count++;
-  if (currentFilters.sortBy !== 'PRIORITY_DEBT' && currentFilters.sortBy !== 'UPDATED_DESC') count++;
   return count;
 }
 
@@ -223,26 +258,14 @@ export async function renderOrders(container) {
           <button class="filter-chip ${currentFilters.chip === 'ALL' ? 'active' : ''}" data-order-chip="ALL">
             📋 Todos
           </button>
-          <button class="filter-chip ${currentFilters.chip === 'TO_DELIVER' ? 'active' : ''}" data-order-chip="TO_DELIVER" style="border-color: #38BDF8; color: #0284C7; font-weight: 700;">
-            🛵 Por Entregar
-          </button>
-          <button class="filter-chip ${currentFilters.chip === 'IN_PROCESS' ? 'active' : ''}" data-order-chip="IN_PROCESS" style="border-color: #DDD6FE; color: var(--primary); font-weight: 700;">
+          <button class="filter-chip ${currentFilters.chip === 'ENCARGOS' ? 'active' : ''}" data-order-chip="ENCARGOS" style="border-color: #DDD6FE; color: var(--primary); font-weight: 700;">
             🟡 Encargos
           </button>
           <button class="filter-chip ${currentFilters.chip === 'DELIVERED_DEBT' ? 'active' : ''}" data-order-chip="DELIVERED_DEBT" style="border-color: #FECACA; color: #DC2626; font-weight: 700;">
             🚨 Con Deuda
           </button>
           <button class="filter-chip ${currentFilters.chip === 'PAID' ? 'active' : ''}" data-order-chip="PAID" style="border-color: #BBF7D0; color: #15803D; font-weight: 700;">
-            🟢 Pagados
-          </button>
-          <button class="filter-chip ${currentFilters.chip === 'UPDATED_DESC' ? 'active' : ''}" data-order-chip="UPDATED_DESC" style="border-color: #99F6E4; color: #0F766E; font-weight: 700;">
-            🔄 Recientes
-          </button>
-          <button class="filter-chip ${currentFilters.chip === 'TODAY' ? 'active' : ''}" data-order-chip="TODAY">
-            📅 Hoy
-          </button>
-          <button class="filter-chip ${currentFilters.chip === 'TOMORROW' ? 'active' : ''}" data-order-chip="TOMORROW">
-            📅 Mañana
+            🟢 Al Día
           </button>
         </div>
 
@@ -306,85 +329,45 @@ export async function renderOrders(container) {
         </div>
         <div class="bottom-sheet-body">
           <div class="form-group">
-            <label class="form-label">📅 Fecha Específica de Entrega</label>
+            <label class="form-label">📅 Rango o Fecha Específica de Entrega</label>
             <input type="date" id="sheetOrderSpecificDate" class="form-input" value="${currentFilters.specificDate || ''}" />
           </div>
 
           <div class="form-group">
-            <label class="form-label">🛵 Repartidor / Modalidad</label>
-            <select id="sheetOrderDriver" class="form-select" style="font-weight: 700;">
-              <option value="ALL" ${currentFilters.driverFilter === 'ALL' ? 'selected' : ''}>🛵 Todos los Repartos</option>
-              <option value="PROPIO" ${currentFilters.driverFilter === 'PROPIO' ? 'selected' : ''}>👤 Entrega Propia (Socios)</option>
-              <option value="LOCAL" ${currentFilters.driverFilter === 'LOCAL' ? 'selected' : ''}>🏪 Recoge en Local</option>
-              <option value="UNASSIGNED" ${currentFilters.driverFilter === 'UNASSIGNED' ? 'selected' : ''}>⚠️ Sin Repartidor Asignado</option>
-              ${availableDrivers
-                .map(
-                  (d) => `
-                <option value="DRIVER_${d.id}" ${currentFilters.driverFilter === `DRIVER_${d.id}` ? 'selected' : ''}>
-                  🛵 Repartidor: ${escapeHtml(d.name)}
-                </option>
-              `
-                )
-                .join('')}
-            </select>
+            <label class="form-label">🛵 Repartidor / Modalidad (Predictivo)</label>
+            <input 
+              type="text" 
+              id="sheetOrderDriverInput" 
+              list="sheetDriverOptions" 
+              class="form-input" 
+              placeholder="Buscar por repartidor o modalidad..." 
+              value="${getDriverDisplayValue(currentFilters.driverFilter, availableDrivers)}" 
+              autocomplete="off" 
+            />
+            <datalist id="sheetDriverOptions">
+              <option value="Todos los Repartos">
+              <option value="👤 Entrega Propia (Socios)">
+              <option value="🏪 Recoge en Local">
+              <option value="⚠️ Sin Repartidor Asignado">
+              ${availableDrivers.map((d) => `<option value="🛵 ${escapeHtml(d.name)}">`).join('')}
+            </datalist>
           </div>
 
           <div class="form-group">
-            <label class="form-label">🍶 Lote de Producción</label>
-            <select id="sheetOrderBatch" class="form-select" style="font-weight: 700;">
-              <option value="ALL" ${currentFilters.batchId === 'ALL' ? 'selected' : ''}>🍶 Todos los Lotes</option>
-              ${availableBatches
-                .map(
-                  (b) => `
-                <option value="${b.id}" ${String(currentFilters.batchId) === String(b.id) ? 'selected' : ''}>
-                  🍶 ${escapeHtml(b.batchCode)} - ${escapeHtml(b.flavor)} ${b.status === 'EN_PROCESO' ? '(En proceso)' : ''}
-                </option>
-              `
-                )
-                .join('')}
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">📦 Estado de Entrega</label>
-            <select id="sheetOrderDelivery" class="form-select">
-              <option value="ALL" ${currentFilters.deliveryStatus === 'ALL' ? 'selected' : ''}>Todas las entregas</option>
-              <option value="PENDING" ${currentFilters.deliveryStatus === 'PENDING' ? 'selected' : ''}>🕒 Pendientes</option>
-              <option value="PREPARING" ${currentFilters.deliveryStatus === 'PREPARING' ? 'selected' : ''}>🥣 En Preparación</option>
-              <option value="READY_FOR_DISPATCH" ${currentFilters.deliveryStatus === 'READY_FOR_DISPATCH' ? 'selected' : ''}>📦 Listos para Despacho</option>
-              <option value="IN_ROUTE" ${currentFilters.deliveryStatus === 'IN_ROUTE' ? 'selected' : ''}>🛵 En Ruta</option>
-              <option value="DELIVERED" ${currentFilters.deliveryStatus === 'DELIVERED' ? 'selected' : ''}>✅ Entregados</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">💰 Estado de Pago</label>
-            <select id="sheetOrderPayment" class="form-select">
-              <option value="ALL" ${currentFilters.paymentStatus === 'ALL' ? 'selected' : ''}>Todos los pagos</option>
-              <option value="PAID" ${currentFilters.paymentStatus === 'PAID' ? 'selected' : ''}>🟢 Totalmente Pagados</option>
-              <option value="PARTIAL" ${currentFilters.paymentStatus === 'PARTIAL' ? 'selected' : ''}>🟡 Con Abono Parcial</option>
-              <option value="PENDING" ${currentFilters.paymentStatus === 'PENDING' ? 'selected' : ''}>🔴 Pendientes de Pago</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">🎯 Criterio de Orden</label>
-            <select id="sheetOrderSort" class="form-select">
-              <option value="PRIORITY_DEBT" ${currentFilters.sortBy === 'PRIORITY_DEBT' ? 'selected' : ''}>🎯 Prioridad: Deudas de primero</option>
-              <option value="UPDATED_DESC" ${currentFilters.sortBy === 'UPDATED_DESC' ? 'selected' : ''}>🔄 Últimos Actualizados (Recientes)</option>
-              <option value="DATE_DESC" ${currentFilters.sortBy === 'DATE_DESC' ? 'selected' : ''}>📅 Fecha de Entrega (Más reciente)</option>
-              <option value="DATE_ASC" ${currentFilters.sortBy === 'DATE_ASC' ? 'selected' : ''}>📅 Fecha de Entrega (Más antigua)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">📅 Historial por Mes</label>
-            <select id="sheetOrderMonth" class="form-select">
-              <option value="">Todos los meses</option>
-              ${monthOptions
-                .map((m) => `<option value="${m.val}" ${currentFilters.month === m.val ? 'selected' : ''}>${m.label}</option>`)
-                .join('')}
-            </select>
+            <label class="form-label">🍶 Lote de Producción (Predictivo)</label>
+            <input 
+              type="text" 
+              id="sheetOrderBatchInput" 
+              list="sheetBatchOptions" 
+              class="form-input" 
+              placeholder="Buscar código o sabor del lote..." 
+              value="${getBatchDisplayValue(currentFilters.batchId, availableBatches)}" 
+              autocomplete="off" 
+            />
+            <datalist id="sheetBatchOptions">
+              <option value="Todos los Lotes">
+              ${availableBatches.map((b) => `<option value="🍶 ${escapeHtml(b.batchCode)} - ${escapeHtml(b.flavor || '')}">`).join('')}
+            </datalist>
           </div>
         </div>
         <div class="bottom-sheet-footer">
@@ -407,7 +390,7 @@ export async function renderOrders(container) {
     }, 300);
   });
 
-  // Listeners de chips horizontales rápidos
+  // Listeners de chips horizontales rápidos (4 chips operativos)
   container.querySelectorAll('[data-order-chip]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const chip = e.currentTarget.dataset.orderChip;
@@ -417,25 +400,19 @@ export async function renderOrders(container) {
       // Restablecer estados básicos
       currentFilters.debtCategory = 'ALL';
       currentFilters.deliveryStatus = 'ALL';
+      currentFilters.paymentStatus = 'ALL';
       currentFilters.dateRange = 'ALL';
       currentFilters.specificDate = '';
 
       if (chip === 'ALL') {
         currentFilters.sortBy = 'PRIORITY_DEBT';
-      } else if (chip === 'TO_DELIVER') {
+      } else if (chip === 'ENCARGOS') {
         currentFilters.deliveryStatus = 'TO_DELIVER';
-      } else if (chip === 'IN_PROCESS') {
-        currentFilters.debtCategory = 'IN_PROCESS';
+        currentFilters.sortBy = 'PRIORITY_DEBT';
       } else if (chip === 'DELIVERED_DEBT') {
         currentFilters.debtCategory = 'DELIVERED_DEBT';
       } else if (chip === 'PAID') {
         currentFilters.debtCategory = 'PAID';
-      } else if (chip === 'UPDATED_DESC') {
-        currentFilters.sortBy = 'UPDATED_DESC';
-      } else if (chip === 'TODAY') {
-        currentFilters.dateRange = 'TODAY';
-      } else if (chip === 'TOMORROW') {
-        currentFilters.dateRange = 'TOMORROW';
       }
 
       updateChipUi(container);
@@ -464,27 +441,16 @@ export async function renderOrders(container) {
   // Aplicar filtros avanzados desde el bottom sheet
   container.querySelector('#btnApplyFilterSheet')?.addEventListener('click', () => {
     const sDate = container.querySelector('#sheetOrderSpecificDate')?.value || '';
-    const driver = container.querySelector('#sheetOrderDriver')?.value || 'ALL';
-    const batch = container.querySelector('#sheetOrderBatch')?.value || 'ALL';
-    const delivery = container.querySelector('#sheetOrderDelivery')?.value || 'ALL';
-    const payment = container.querySelector('#sheetOrderPayment')?.value || 'ALL';
-    const sort = container.querySelector('#sheetOrderSort')?.value || 'PRIORITY_DEBT';
-    const month = container.querySelector('#sheetOrderMonth')?.value || '';
+    const driverVal = container.querySelector('#sheetOrderDriverInput')?.value || '';
+    const batchVal = container.querySelector('#sheetOrderBatchInput')?.value || '';
 
     currentFilters.specificDate = sDate;
     if (sDate) {
       currentFilters.dateRange = 'CUSTOM';
       currentFilters.chip = '';
     }
-    currentFilters.driverFilter = driver;
-    currentFilters.batchId = batch;
-    currentFilters.deliveryStatus = delivery;
-    currentFilters.paymentStatus = payment;
-    currentFilters.sortBy = sort;
-    currentFilters.month = month;
-    if (month) {
-      currentFilters.chip = '';
-    }
+    currentFilters.driverFilter = parseDriverInput(driverVal, availableDrivers);
+    currentFilters.batchId = parseBatchInput(batchVal, availableBatches);
 
     ordersCurrentPage = 1;
     closeSheet();
@@ -507,20 +473,12 @@ export async function renderOrders(container) {
     currentFilters.debtCategory = 'ALL';
 
     const sDateInput = container.querySelector('#sheetOrderSpecificDate');
-    const driverSel = container.querySelector('#sheetOrderDriver');
-    const batchSel = container.querySelector('#sheetOrderBatch');
-    const delSel = container.querySelector('#sheetOrderDelivery');
-    const paySel = container.querySelector('#sheetOrderPayment');
-    const sortSel = container.querySelector('#sheetOrderSort');
-    const monthSel = container.querySelector('#sheetOrderMonth');
+    const driverInput = container.querySelector('#sheetOrderDriverInput');
+    const batchInput = container.querySelector('#sheetOrderBatchInput');
 
     if (sDateInput) sDateInput.value = '';
-    if (driverSel) driverSel.value = 'ALL';
-    if (batchSel) batchSel.value = 'ALL';
-    if (delSel) delSel.value = 'ALL';
-    if (paySel) paySel.value = 'ALL';
-    if (sortSel) sortSel.value = 'PRIORITY_DEBT';
-    if (monthSel) monthSel.value = '';
+    if (driverInput) driverInput.value = '';
+    if (batchInput) batchInput.value = '';
 
     ordersCurrentPage = 1;
     closeSheet();
@@ -652,6 +610,17 @@ async function loadOrdersList(container) {
       totalItems = pag.totalItems;
       currentPage = pag.currentPage;
     }
+
+    // Priorización para encargos: agrupa pendientes por entregar, priorizando al inicio de la lista los que ya están pagados
+    if (currentFilters.chip === 'ENCARGOS' || currentFilters.deliveryStatus === 'TO_DELIVER') {
+      orders.sort((a, b) => {
+        const aPaid = a.paymentStatus === 'PAID' ? 0 : 1;
+        const bPaid = b.paymentStatus === 'PAID' ? 0 : 1;
+        if (aPaid !== bPaid) return aPaid - bPaid;
+        return new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime();
+      });
+    }
+
     cachedOrders = orders || [];
 
     // Renderizar Calendario si la vista está activa

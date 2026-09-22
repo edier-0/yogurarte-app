@@ -6,10 +6,8 @@ import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE 
 
 let customersCurrentPage = 1;
 let searchQuery = '';
-let currentDebtFilter = 'ALL'; // 'ALL', 'DELIVERED_DEBT', 'IN_PROCESS', 'PAID'
-let currentBatchFilter = 'ALL';
+let currentDebtFilter = 'ALL'; // 'ALL', 'DELIVERED_DEBT', 'ENCARGOS', 'PAID'
 let cachedCustomers = [];
-let availableBatches = [];
 let cachedSettings = {
   nequiNumber: '3024581882',
   bankName: 'Nequi / Bancolombia',
@@ -19,23 +17,12 @@ let cachedSettings = {
 
 export async function renderCustomers(container) {
   try {
-    const [batchesSettled, settingsSettled] = await Promise.allSettled([
-      api.getBatches({ lite: 'true' }),
-      api.getSettings(),
-    ]);
-
-    if (batchesSettled.status === 'fulfilled') {
-      availableBatches = batchesSettled.value || [];
-    } else {
-      console.error('Error loading batches in customersView:', batchesSettled.reason);
-      availableBatches = [];
-    }
-
-    if (settingsSettled.status === 'fulfilled' && settingsSettled.value) {
-      cachedSettings = { ...cachedSettings, ...settingsSettled.value };
+    const settingsRes = await api.getSettings();
+    if (settingsRes) {
+      cachedSettings = { ...cachedSettings, ...settingsRes };
     }
   } catch (err) {
-    console.error('Error loading initial data in customersView:', err);
+    console.error('Error loading settings in customersView:', err);
   }
 
   container.innerHTML = `
@@ -51,7 +38,7 @@ export async function renderCustomers(container) {
               data-key="customer-search"
               class="form-input" 
               style="height: 42px; width: 100%; font-weight: 600;"
-              placeholder="Buscar cliente por nombre, teléfono, @usuario o dirección..." 
+              placeholder="Buscar cliente por nombre, teléfono o @usuario..." 
               value="${escapeHtml(searchQuery)}"
               autocomplete="off"
             />
@@ -59,25 +46,6 @@ export async function renderCustomers(container) {
         </div>
 
         <div class="orders-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
-          <!-- Selector de Lote para Clientes -->
-          <select id="custBatchFilterSelect" class="orders-select-item" style="height: 40px; font-weight: 700; color: var(--primary); min-width: 150px;">
-            <option value="ALL" ${currentBatchFilter === 'ALL' ? 'selected' : ''}>🍶 Todos los Lotes</option>
-            ${availableBatches
-              .map(
-                (b) => `
-              <option value="${b.id}" ${String(currentBatchFilter) === String(b.id) ? 'selected' : ''}>
-                🍶 ${escapeHtml(b.batchCode)} - ${escapeHtml(b.flavor)}
-              </option>
-            `
-              )
-              .join('')}
-          </select>
-
-          <!-- Botón Limpiar Filtros -->
-          <button class="btn btn-outline" id="btnClearCustomerFilters" style="height: 40px; white-space: nowrap; font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px;" title="Limpiar búsqueda y filtros de clientes">
-            <span>🧹</span> Limpiar
-          </button>
-
           <!-- Botón Configuración de Cuenta de Cobro (Nequi) -->
           <button class="btn btn-outline" id="btnOpenBankSettingsModal" style="height: 40px; white-space: nowrap; border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: var(--bg-card);" title="Configurar número de Nequi o cuenta para recordatorios de cobro">
             ⚙️ Cuenta Nequi
@@ -89,22 +57,19 @@ export async function renderCustomers(container) {
         </div>
       </div>
 
-      <!-- Barra de Chips Horizontales de un toque con scroll táctil -->
+      <!-- Barra de Chips Horizontales de un toque (4 chips operativos) -->
       <div style="padding-top: 10px; border-top: 1px solid var(--border-subtle); width: 100%; box-sizing: border-box;">
         <div class="horizontal-chip-scroll" id="custDebtFilterGroup">
           <button class="filter-chip ${currentDebtFilter === 'ALL' ? 'active' : ''}" data-cust-chip="ALL">
             📋 Todos
           </button>
-          <button class="filter-chip ${currentDebtFilter === 'DELIVERED_DEBT' ? 'active' : ''}" data-cust-chip="DELIVERED_DEBT" style="${currentDebtFilter === 'DELIVERED_DEBT' ? 'background: #DC2626; border-color: #DC2626; color: white;' : 'color: #DC2626; font-weight: 700; border-color: #FECACA;'}">
+          <button class="filter-chip ${currentDebtFilter === 'DELIVERED_DEBT' ? 'active' : ''}" data-cust-chip="DELIVERED_DEBT" style="border-color: #FECACA; color: #DC2626; font-weight: 700;">
             🚨 Con Deuda
           </button>
-          <button class="filter-chip ${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'active' : ''}" data-cust-chip="PAID_NOT_DELIVERED" style="${currentDebtFilter === 'PAID_NOT_DELIVERED' ? 'background: #059669; border-color: #059669; color: white;' : 'color: #059669; font-weight: 700; border-color: #A7F3D0;'}">
-            🟢🥣 Pagados por Entregar
+          <button class="filter-chip ${currentDebtFilter === 'ENCARGOS' ? 'active' : ''}" data-cust-chip="ENCARGOS" style="border-color: #DDD6FE; color: var(--primary); font-weight: 700;">
+            🟡 Encargos
           </button>
-          <button class="filter-chip ${currentDebtFilter === 'IN_PROCESS' ? 'active' : ''}" data-cust-chip="IN_PROCESS" style="${currentDebtFilter === 'IN_PROCESS' ? 'background: var(--primary); border-color: var(--primary); color: white;' : 'color: var(--primary); font-weight: 700; border-color: #DDD6FE;'}">
-            🥣 Encargos
-          </button>
-          <button class="filter-chip ${currentDebtFilter === 'PAID' ? 'active' : ''}" data-cust-chip="PAID" style="${currentDebtFilter === 'PAID' ? 'background: var(--success); color: white;' : 'color: #15803D; font-weight: 700; border-color: #BBF7D0;'}">
+          <button class="filter-chip ${currentDebtFilter === 'PAID' ? 'active' : ''}" data-cust-chip="PAID" style="border-color: #BBF7D0; color: #15803D; font-weight: 700;">
             🟢 Al Día
           </button>
         </div>
@@ -119,23 +84,6 @@ export async function renderCustomers(container) {
     </div>
   `;
 
-  // Limpiar filtros sin redibujar toolbar
-  container.querySelector('#btnClearCustomerFilters')?.addEventListener('click', () => {
-    searchQuery = '';
-    currentDebtFilter = 'ALL';
-    currentBatchFilter = 'ALL';
-    customersCurrentPage = 1;
-    const sInput = container.querySelector('#customerSearchInput');
-    const bSelect = container.querySelector('#custBatchFilterSelect');
-    if (sInput) sInput.value = '';
-    if (bSelect) bSelect.value = 'ALL';
-    container.querySelectorAll('[data-cust-chip]').forEach((b) => {
-      if (b.dataset.custChip === 'ALL') b.classList.add('active');
-      else b.classList.remove('active');
-    });
-    loadCustomersList(container);
-  });
-
   // Buscador universal con debounce de 300 ms sin destruir el input
   const searchInput = container.querySelector('#customerSearchInput');
   let debounceTimer;
@@ -148,15 +96,7 @@ export async function renderCustomers(container) {
     }, 300);
   });
 
-  // Filtro de lote
-  const batchFilterSelect = container.querySelector('#custBatchFilterSelect');
-  batchFilterSelect?.addEventListener('change', (e) => {
-    customersCurrentPage = 1;
-    currentBatchFilter = e.target.value;
-    loadCustomersList(container);
-  });
-
-  // Listeners de chips horizontales de deuda
+  // Listeners de chips horizontales de estado (4 chips)
   container.querySelectorAll('[data-cust-chip]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       container.querySelectorAll('[data-cust-chip]').forEach((b) => b.classList.remove('active'));
@@ -255,18 +195,22 @@ async function loadCustomersList(container) {
   try {
     const allCustomers = await api.getCustomers({
       search: searchQuery,
-      batchId: currentBatchFilter,
     });
     cachedCustomers = allCustomers || [];
 
-    // Aplicar filtro de deuda localmente
+    // Aplicar filtro de estado/deuda localmente (4 chips)
     let filteredCustomers = [...cachedCustomers];
     if (currentDebtFilter === 'DELIVERED_DEBT') {
       filteredCustomers = filteredCustomers.filter((c) => (c.deliveredPendingDebt || 0) > 0);
-    } else if (currentDebtFilter === 'PAID_NOT_DELIVERED') {
-      filteredCustomers = filteredCustomers.filter((c) => (c.inProcessOrdersCount || 0) > 0 && (c.inProcessPendingAmount || 0) <= 0 && (c.deliveredPendingDebt || 0) <= 0);
-    } else if (currentDebtFilter === 'IN_PROCESS') {
+    } else if (currentDebtFilter === 'ENCARGOS') {
+      // Agrupa pendientes por entregar, priorizando al inicio los ya pagados
       filteredCustomers = filteredCustomers.filter((c) => (c.inProcessOrdersCount || 0) > 0 || (c.inProcessPendingAmount || 0) > 0);
+      filteredCustomers.sort((a, b) => {
+        const aPaid = ((a.inProcessOrdersCount || 0) > 0 && (a.inProcessPendingAmount || 0) <= 0) ? 0 : 1;
+        const bPaid = ((b.inProcessOrdersCount || 0) > 0 && (b.inProcessPendingAmount || 0) <= 0) ? 0 : 1;
+        if (aPaid !== bPaid) return aPaid - bPaid;
+        return (b.inProcessOrdersCount || 0) - (a.inProcessOrdersCount || 0);
+      });
     } else if (currentDebtFilter === 'PAID') {
       filteredCustomers = filteredCustomers.filter((c) => (c.totalPendingAmount || 0) <= 0);
     }
@@ -280,17 +224,15 @@ async function loadCustomersList(container) {
             ${
               currentDebtFilter === 'DELIVERED_DEBT'
                 ? '¡Excelente noticia! No hay clientes con deudas de pedidos entregados.'
-                : currentDebtFilter === 'PAID_NOT_DELIVERED'
-                ? 'No hay clientes con pedidos pagados pendientes de entrega.'
-                : currentDebtFilter === 'IN_PROCESS'
+                : currentDebtFilter === 'ENCARGOS'
                 ? 'No hay clientes con pedidos encargados en proceso.'
-                : currentBatchFilter !== 'ALL'
-                ? 'No hay clientes que hayan comprado o encargado yogur de este lote.'
+                : currentDebtFilter === 'PAID'
+                ? 'No se encontraron clientes al día con ese criterio.'
                 : 'Registra tus clientes habituales para agilizar la toma de pedidos.'
             }
           </div>
           ${
-            currentDebtFilter === 'ALL' && currentBatchFilter === 'ALL'
+            currentDebtFilter === 'ALL'
               ? '<button class="btn btn-primary" id="btnRegisterCustEmpty">+ Registrar Primer Cliente</button>'
               : ''
           }
@@ -305,7 +247,7 @@ async function loadCustomersList(container) {
     const inProcessCount = filteredCustomers.filter((c) => (c.inProcessOrdersCount || 0) > 0 || (c.inProcessPendingAmount || 0) > 0).length;
 
     let summaryBanner = '';
-    if (deliveredDebtorsCount > 0 && currentDebtFilter !== 'PAID' && currentDebtFilter !== 'IN_PROCESS' && currentDebtFilter !== 'PAID_NOT_DELIVERED') {
+    if (deliveredDebtorsCount > 0 && currentDebtFilter !== 'PAID' && currentDebtFilter !== 'ENCARGOS') {
       summaryBanner = `
         <div style="background: #FFF5F5; border: 1.5px solid #FECACA; border-radius: var(--radius-lg); padding: 12px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -319,14 +261,14 @@ async function loadCustomersList(container) {
           </div>
         </div>
       `;
-    } else if (currentDebtFilter === 'IN_PROCESS' && inProcessCount > 0) {
+    } else if (currentDebtFilter === 'ENCARGOS' && inProcessCount > 0) {
       const totalInProcess = filteredCustomers.reduce((sum, c) => sum + (c.inProcessPendingAmount || 0), 0);
       summaryBanner = `
-        <div style="background: #FAF5FF; border: 1.5px solid #DDD6FE; border-radius: var(--radius-lg); padding: 12px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="background: var(--primary-light); border: 1.5px solid var(--primary); border-radius: var(--radius-lg); padding: 12px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
           <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 1.2rem;">🥣</span>
+            <span style="font-size: 1.2rem;">🟡</span>
             <span style="font-weight: 700; color: var(--primary); font-size: 0.92rem;">
-              Mostrando ${inProcessCount} cliente(s) con pedidos encargados en preparación / ruta
+              Mostrando ${inProcessCount} cliente(s) con encargos por entregar (priorizando al inicio los pagados)
             </span>
           </div>
           <div style="background: var(--primary); color: white; padding: 4px 12px; border-radius: var(--radius-md); font-weight: 800; font-size: 0.95rem;">

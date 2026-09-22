@@ -11,6 +11,7 @@ let materialSearchQuery = '';
 let selectedCategory = 'ALL';
 let purchaseDateFilter = '';
 let adjustmentDateFilter = '';
+let currentInventoryTab = 'STOCKS_PURCHASES'; // 'STOCKS_PURCHASES' | 'PREPARATIONS' | 'KARDEX_ADJUSTMENTS'
 
 export async function renderInventory(container) {
   // Generar meses para filtrar compras y ajustes
@@ -24,169 +25,198 @@ export async function renderInventory(container) {
   }
 
   container.innerHTML = `
-    <!-- Barra de Acciones de Inventario Optimizada y Responsive -->
-    <div class="inventory-toolbar-card" style="margin-bottom: 20px;">
-      <div class="inventory-toolbar-main-row" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
-        <div class="inventory-toolbar-title-box">
-          <h3 class="inventory-toolbar-title" style="margin-bottom: 2px;">
-            📦 Materia Prima e Insumos
-          </h3>
-          <span class="inventory-toolbar-subtitle">Control de existencias, insumos, elaboraciones, compras y mermas</span>
-        </div>
+    <!-- Barra de Navegación Interna por Pestañas -->
+    <div class="inventory-tabs-bar" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1.5px solid var(--border-color); padding-bottom: 10px; overflow-x: auto;">
+      <button type="button" class="btn ${currentInventoryTab === 'STOCKS_PURCHASES' ? 'btn-primary' : 'btn-outline'}" data-inv-tab="STOCKS_PURCHASES" style="font-weight: 700; font-size: 0.88rem; white-space: nowrap;">
+        📦 Existencias & Compras
+      </button>
+      <button type="button" class="btn ${currentInventoryTab === 'PREPARATIONS' ? 'btn-primary' : 'btn-outline'}" data-inv-tab="PREPARATIONS" style="font-weight: 700; font-size: 0.88rem; white-space: nowrap;">
+        🥣 Mermeladas / Preparaciones
+      </button>
+      <button type="button" class="btn ${currentInventoryTab === 'KARDEX_ADJUSTMENTS' ? 'btn-primary' : 'btn-outline'}" data-inv-tab="KARDEX_ADJUSTMENTS" style="font-weight: 700; font-size: 0.88rem; white-space: nowrap;">
+        ⚖️ Ajustes de Kardex
+      </button>
+    </div>
 
-        <div class="inventory-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button class="btn btn-outline" id="btnOpenNewMaterialModal" style="height: 40px;">
-            <span>+</span> Crear Insumo
-          </button>
-          <button class="btn btn-outline" id="btnOpenAdjustStockTopModal" style="border-color: #f59e0b; color: #b45309; font-weight: 700; height: 40px;">
-            <span>⚖️</span> Ajustar Stock / Merma
-          </button>
-          <button class="btn btn-accent" id="btnOpenPreparationModal" style="background: linear-gradient(135deg, #1b4332, #2d6a4f); color: #fff; font-weight: 700; height: 40px;">
-            <span>🥣</span> Elaborar Insumo / Mermelada
-          </button>
-          <button class="btn btn-accent" id="btnOpenPurchaseModal" style="height: 40px;">
-            <span>+</span> Registrar Compra
-          </button>
-        </div>
-      </div>
+    <!-- Sub-vista 1: Existencias & Compras -->
+    <div id="subviewStocksPurchases" style="${currentInventoryTab === 'STOCKS_PURCHASES' ? 'display: block;' : 'display: none;'}">
+      <!-- Barra de Acciones de Inventario -->
+      <div class="inventory-toolbar-card" style="margin-bottom: 20px;">
+        <div class="inventory-toolbar-main-row" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+          <div class="inventory-toolbar-title-box">
+            <h3 class="inventory-toolbar-title" style="margin-bottom: 2px;">
+              📦 Materia Prima e Insumos
+            </h3>
+            <span class="inventory-toolbar-subtitle">Control de existencias, insumos y compras directas</span>
+          </div>
 
-      <!-- Fila de Búsqueda Universal con Debounce y Barra de Chips Horizontales -->
-      <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle); display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-        <div class="orders-search-group" style="flex: 1 1 260px; min-width: 220px;">
-          <div class="search-box input-with-icon" style="width: 100%;">
-            <span class="input-icon">🔍</span>
-            <input 
-              type="text" 
-              id="materialSearchInput" 
-              data-key="material-search"
-              class="form-input" 
-              style="height: 40px; width: 100%; font-weight: 600;"
-              placeholder="Buscar insumo por nombre o código..." 
-              value="${escapeHtml(materialSearchQuery)}"
-              autocomplete="off"
-            />
+          <div class="inventory-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-outline" id="btnOpenNewMaterialModal" style="height: 40px;">
+              <span>+</span> Crear Insumo
+            </button>
+            <button class="btn btn-accent" id="btnOpenPurchaseModal" style="height: 40px;">
+              <span>+</span> Registrar Compra
+            </button>
           </div>
         </div>
 
-        <div class="horizontal-chip-scroll" id="inventoryCategoryChips" style="flex: 2 1 300px;">
-          <button class="filter-chip ${selectedCategory === 'ALL' ? 'active' : ''}" data-cat="ALL">
-            📋 Todos
-          </button>
-          <button class="filter-chip ${selectedCategory === 'MATERIA_PRIMA' ? 'active' : ''}" data-cat="MATERIA_PRIMA">
-            🥛 Materia Prima
-          </button>
-          <button class="filter-chip ${selectedCategory === 'EMPAQUE' ? 'active' : ''}" data-cat="EMPAQUE">
-            🍾 Empaques y Botellas
-          </button>
-          <button class="filter-chip ${selectedCategory === 'INSUMO' ? 'active' : ''}" data-cat="INSUMO">
-            🏷️ Otros Insumos
-          </button>
-          <button class="filter-chip ${selectedCategory === 'LOW_STOCK' ? 'active' : ''}" data-cat="LOW_STOCK" style="border-color: #FECACA; color: #DC2626; font-weight: 700;">
-            ⚠️ Bajo Stock
-          </button>
-          <button class="btn btn-sm btn-outline" id="btnClearInventoryFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; height: 34px;" title="Restablecer filtros">
-            <span>🧹</span> Limpiar
-          </button>
+        <!-- Fila de Búsqueda y Tira de 4 Chips de Stock -->
+        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle); display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+          <div class="orders-search-group" style="flex: 1 1 260px; min-width: 220px;">
+            <div class="search-box input-with-icon" style="width: 100%;">
+              <span class="input-icon">🔍</span>
+              <input 
+                type="text" 
+                id="materialSearchInput" 
+                data-key="material-search"
+                class="form-input" 
+                style="height: 40px; width: 100%; font-weight: 600;"
+                placeholder="Buscar insumo por nombre o código..." 
+                value="${escapeHtml(materialSearchQuery)}"
+                autocomplete="off"
+              />
+            </div>
+          </div>
+
+          <div class="horizontal-chip-scroll" id="inventoryCategoryChips" style="flex: 2 1 300px;">
+            <button class="filter-chip ${selectedCategory === 'ALL' ? 'active' : ''}" data-cat="ALL">
+              📋 Todos
+            </button>
+            <button class="filter-chip ${selectedCategory === 'LOW_STOCK' ? 'active' : ''}" data-cat="LOW_STOCK" style="border-color: #FECACA; color: #DC2626; font-weight: 700;">
+              ⚠️ Bajo Stock
+            </button>
+            <button class="filter-chip ${selectedCategory === 'MATERIA_PRIMA' ? 'active' : ''}" data-cat="MATERIA_PRIMA" style="border-color: #DDD6FE; color: var(--primary); font-weight: 700;">
+              🥛 Lácteos y Frutas
+            </button>
+            <button class="filter-chip ${selectedCategory === 'EMPAQUE' ? 'active' : ''}" data-cat="EMPAQUE" style="border-color: #BBF7D0; color: #15803D; font-weight: 700;">
+              🍾 Botellas y Empaques
+            </button>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Grid de Insumos / Stock Actual -->
-    <div id="materialsGridContainer" class="inventory-grid">
-      <div style="text-align: center; padding: 20px; color: var(--text-muted);">
-        Cargando stock de insumos... 📦
-      </div>
-    </div>
-
-    <!-- Historial de Elaboraciones de Insumos / Mermeladas -->
-    <div class="table-container" style="padding: 20px; margin-top: 24px;">
-      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
-        <div>
-          <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-bottom: 2px;">
-            🥣 Historial de Elaboraciones (Mermeladas, Jarabes, Dulces)
-          </h3>
-          <span style="font-size: 0.8rem; color: var(--text-muted);">
-            Insumos preparados a partir de otros insumos. El costo se transfiere automáticamente sin generar gastos duplicados.
-          </span>
-        </div>
-        <button class="btn btn-accent btn-sm" id="btnOpenPreparationModalSec" style="background: linear-gradient(135deg, #1b4332, #2d6a4f); color: #fff; font-weight: 700;">
-          + Elaborar Mermelada / Insumo
-        </button>
-      </div>
-
-      <div id="preparationsTableContainer">
+      <!-- Grid de Insumos / Stock Actual -->
+      <div id="materialsGridContainer" class="inventory-grid">
         <div style="text-align: center; padding: 20px; color: var(--text-muted);">
-          Cargando historial de elaboraciones... 🥣
+          Cargando stock de insumos... 📦
+        </div>
+      </div>
+
+      <!-- Historial de Compras con Filtro por Fechas -->
+      <div class="table-container" style="padding: 20px; margin-top: 24px;">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-bottom: 2px;">
+              🧾 Historial de Compras de Insumos
+            </h3>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">
+              Adquisiciones de materias primas con impacto directo en caja y costo promedio.
+            </span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <select id="selectPurchaseMonth" class="form-select" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">
+              <option value="">📅 Todas las fechas</option>
+              ${monthOptions
+                .map((m) => `<option value="${m.val}" ${purchaseDateFilter === m.val ? 'selected' : ''}>📅 ${m.label}</option>`)
+                .join('')}
+            </select>
+          </div>
+        </div>
+
+        <div id="purchasesTableContainer">
+          <div style="text-align: center; padding: 20px; color: var(--text-muted);">
+            Cargando compras...
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Historial de Compras con Filtro por Fechas -->
-    <div class="table-container" style="padding: 20px; margin-top: 24px;">
-      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
-        <div>
-          <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-bottom: 2px;">
-            🧾 Historial de Compras de Insumos
-          </h3>
-          <span style="font-size: 0.8rem; color: var(--text-muted);">
-            Adquisiciones de materias primas con impacto directo en caja y costo promedio.
-          </span>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <select id="selectPurchaseMonth" class="form-select" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">
-            <option value="">📅 Todas las fechas</option>
-            ${monthOptions
-              .map((m) => `<option value="${m.val}" ${purchaseDateFilter === m.val ? 'selected' : ''}>📅 ${m.label}</option>`)
-              .join('')}
-          </select>
-        </div>
-      </div>
-
-      <div id="purchasesTableContainer">
-        <div style="text-align: center; padding: 20px; color: var(--text-muted);">
-          Cargando compras...
-        </div>
-      </div>
-    </div>
-
-    <!-- Historial de Ajustes de Inventario y Control de Mermas -->
-    <div class="table-container" style="padding: 20px; margin-top: 24px;">
-      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
-        <div>
-          <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-bottom: 2px;">
-            ⚖️ Historial de Ajustes de Inventario y Control de Mermas
-          </h3>
-          <span style="font-size: 0.8rem; color: var(--text-muted);">
-            Auditoría física, mermas por daño, vencimientos, consumos de prueba y sobrantes con cálculo de impacto económico.
-          </span>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-          <select id="selectAdjustmentMonth" class="form-select" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">
-            <option value="">📅 Todas las fechas</option>
-            ${monthOptions
-              .map((m) => `<option value="${m.val}" ${adjustmentDateFilter === m.val ? 'selected' : ''}>📅 ${m.label}</option>`)
-              .join('')}
-          </select>
-          <button class="btn btn-primary btn-sm" id="btnOpenAdjustStockSecModal" style="background: #D97706; border-color: #B45309; font-weight: 700;">
-            + Nuevo Ajuste / Merma
+    <!-- Sub-vista 2: Mermeladas / Preparaciones -->
+    <div id="subviewPreparations" style="${currentInventoryTab === 'PREPARATIONS' ? 'display: block;' : 'display: none;'}">
+      <div class="table-container" style="padding: 20px;">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-bottom: 2px;">
+              🥣 Historial de Elaboraciones (Mermeladas, Jarabes, Dulces)
+            </h3>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">
+              Insumos preparados a partir de otros insumos. El costo se transfiere automáticamente sin generar gastos duplicados.
+            </span>
+          </div>
+          <button class="btn btn-accent btn-sm" id="btnOpenPreparationModalSec" style="background: linear-gradient(135deg, #1b4332, #2d6a4f); color: #fff; font-weight: 700;">
+            + Elaborar Mermelada / Insumo
           </button>
         </div>
-      </div>
 
-      <!-- Tarjetas KPIs de Mermas y Ajustes -->
-      <div id="adjustmentsKpisContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
-        <!-- Inyectado dinámicamente -->
+        <div id="preparationsTableContainer">
+          <div style="text-align: center; padding: 20px; color: var(--text-muted);">
+            Cargando historial de elaboraciones... 🥣
+          </div>
+        </div>
       </div>
+    </div>
 
-      <div id="adjustmentsTableContainer">
-        <div style="text-align: center; padding: 20px; color: var(--text-muted);">
-          Cargando ajustes de inventario... ⚖️
+    <!-- Sub-vista 3: Ajustes de Kardex -->
+    <div id="subviewKardexAdjustments" style="${currentInventoryTab === 'KARDEX_ADJUSTMENTS' ? 'display: block;' : 'display: none;'}">
+      <div class="table-container" style="padding: 20px;">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-bottom: 2px;">
+              ⚖️ Historial de Ajustes de Inventario y Control de Mermas
+            </h3>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">
+              Auditoría física, mermas por daño, vencimientos, consumos de prueba y sobrantes con cálculo de impacto económico.
+            </span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <select id="selectAdjustmentMonth" class="form-select" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">
+              <option value="">📅 Todas las fechas</option>
+              ${monthOptions
+                .map((m) => `<option value="${m.val}" ${adjustmentDateFilter === m.val ? 'selected' : ''}>📅 ${m.label}</option>`)
+                .join('')}
+            </select>
+            <button class="btn btn-primary btn-sm" id="btnOpenAdjustStockSecModal" style="background: #D97706; border-color: #B45309; font-weight: 700;">
+              + Nuevo Ajuste / Merma
+            </button>
+          </div>
+        </div>
+
+        <!-- Tarjetas KPIs de Mermas y Ajustes -->
+        <div id="adjustmentsKpisContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
+          <!-- Inyectado dinámicamente -->
+        </div>
+
+        <div id="adjustmentsTableContainer">
+          <div style="text-align: center; padding: 20px; color: var(--text-muted);">
+            Cargando ajustes de inventario... ⚖️
+          </div>
         </div>
       </div>
     </div>
   `;
+
+  // Listener para alternar sub-vistas / pestañas
+  container.querySelectorAll('[data-inv-tab]').forEach((tabBtn) => {
+    tabBtn.addEventListener('click', (e) => {
+      currentInventoryTab = e.currentTarget.dataset.invTab;
+      container.querySelectorAll('[data-inv-tab]').forEach((b) => {
+        b.classList.remove('btn-primary');
+        b.classList.add('btn-outline');
+      });
+      e.currentTarget.classList.remove('btn-outline');
+      e.currentTarget.classList.add('btn-primary');
+
+      const vStocks = container.querySelector('#subviewStocksPurchases');
+      const vPreps = container.querySelector('#subviewPreparations');
+      const vAdj = container.querySelector('#subviewKardexAdjustments');
+
+      if (vStocks) vStocks.style.display = currentInventoryTab === 'STOCKS_PURCHASES' ? 'block' : 'none';
+      if (vPreps) vPreps.style.display = currentInventoryTab === 'PREPARATIONS' ? 'block' : 'none';
+      if (vAdj) vAdj.style.display = currentInventoryTab === 'KARDEX_ADJUSTMENTS' ? 'block' : 'none';
+    });
+  });
 
   // Listener de búsqueda universal con debounce de 300 ms sin destruir el input
   const searchInput = container.querySelector('#materialSearchInput');
@@ -198,25 +228,6 @@ export async function renderInventory(container) {
       materialsCurrentPage = 1;
       loadMaterialsOnly(container);
     }, 300);
-  });
-
-  // Listener para limpiar filtros sin redibujar toolbar
-  container.querySelector('#btnClearInventoryFilters')?.addEventListener('click', () => {
-    selectedCategory = 'ALL';
-    materialSearchQuery = '';
-    purchaseDateFilter = '';
-    adjustmentDateFilter = '';
-    materialsCurrentPage = 1;
-    preparationsCurrentPage = 1;
-    purchasesCurrentPage = 1;
-    adjustmentsCurrentPage = 1;
-    const sInput = container.querySelector('#materialSearchInput');
-    if (sInput) sInput.value = '';
-    container.querySelectorAll('[data-cat]').forEach((b) => {
-      if (b.dataset.cat === 'ALL') b.classList.add('active');
-      else b.classList.remove('active');
-    });
-    loadInventoryData(container);
   });
 
   container.querySelectorAll('[data-cat]').forEach((btn) => {
