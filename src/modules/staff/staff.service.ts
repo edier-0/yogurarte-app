@@ -1,6 +1,11 @@
 import prisma from '../../prisma.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.utils.js';
-import { parseColombiaDate } from '../../utils/date.utils.js';
+import {
+  parseColombiaDate,
+  getColombiaStartOfDay,
+  getColombiaEndOfDay,
+  getLocalDateString,
+} from '../../utils/date.utils.js';
 import {
   BadRequestError,
   NotFoundError,
@@ -176,27 +181,31 @@ export const getStaffPayments = async (query: StaffPaymentsQueryInput) => {
     const [yearStr, monthStr] = month.split('-');
     const year = parseInt(yearStr, 10);
     const m = parseInt(monthStr, 10);
-    const startOfMonth = new Date(Date.UTC(year, m - 1, 1, 0, 0, 0));
-    const endOfMonth = new Date(Date.UTC(year, m, 0, 23, 59, 59, 999));
+    const startOfMonth = getColombiaStartOfDay(`${year}-${String(m).padStart(2, '0')}-01`);
+    const lastDay = new Date(Date.UTC(year, m, 0)).getUTCDate();
+    const endOfMonth = getColombiaEndOfDay(`${year}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
     where.paymentDate = { gte: startOfMonth, lte: endOfMonth };
   } else if (period && typeof period === 'string') {
     const now = new Date();
     if (period === 'today') {
-      const todayStr = now.toISOString().split('T')[0];
+      const todayStr = getLocalDateString(now);
       where.paymentDate = {
-        gte: new Date(`${todayStr}T00:00:00.000Z`),
-        lte: new Date(`${todayStr}T23:59:59.999Z`),
+        gte: getColombiaStartOfDay(todayStr),
+        lte: getColombiaEndOfDay(todayStr),
       };
     } else if (period === 'yesterday') {
       const y = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const yStr = y.toISOString().split('T')[0];
+      const yStr = getLocalDateString(y);
       where.paymentDate = {
-        gte: new Date(`${yStr}T00:00:00.000Z`),
-        lte: new Date(`${yStr}T23:59:59.999Z`),
+        gte: getColombiaStartOfDay(yStr),
+        lte: getColombiaEndOfDay(yStr),
       };
     } else if (period === 'month') {
-      const startOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1, 0, 0, 0));
-      const endOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999));
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const startOfMonth = getColombiaStartOfDay(`${currentYear}-${String(currentMonth).padStart(2, '0')}-01`);
+      const lastDay = new Date(Date.UTC(currentYear, currentMonth, 0)).getUTCDate();
+      const endOfMonth = getColombiaEndOfDay(`${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
       where.paymentDate = { gte: startOfMonth, lte: endOfMonth };
     }
   }

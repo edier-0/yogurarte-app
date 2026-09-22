@@ -1,6 +1,7 @@
 import prisma from '../../prisma.js';
 import whatsappService from '../../services/whatsapp.service.js';
 import { BadRequestError, NotFoundError } from '../../shared/errors/appError.js';
+import { getLocalDateString } from '../../shared/utils/dateUtils.js';
 import {
   SendCrmMessageInput,
   CreateRecurringScheduleInput,
@@ -133,6 +134,130 @@ export async function getConversationMessages(conversationId: number, query: Get
   return messages;
 }
 
+/**
+ * Resolución híbrida de destinatarios para WhatsApp:
+ * Resuelve tanto números telefónicos como @username o identificadores alfanuméricos
+ * al JID correspondiente (...@s.whatsapp.net o ...@lid)
+ */
+export async function resolveRecipientJid(recipient: string, customerId?: number | null): Promise<string> {
+  const trimmed = recipient.trim();
+
+  // 1. Si ya es un JID completo y válido de WhatsApp
+  if (trimmed.endsWith('@s.whatsapp.net') || trimmed.endsWith('@lid') || trimmed.endsWith('@g.us')) {
+    return trimmed;
+  }
+
+  // 2. Si contiene dígitos telefónicos válidos (mínimo 7 dígitos)
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length >= 7 && !trimmed.startsWith('@')) {
+    let cleanPhone = digits;
+    if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
+      cleanPhone = `57${cleanPhone}`;
+    }
+    return `${cleanPhone}@s.whatsapp.net`;
+  }
+
+  // 3. Si se proporcionó customerId, buscar su conversación previa o número telefónico registrado
+  if (customerId) {
+    const existingConv = await prisma.chatConversation.findFirst({
+      where: { customerId: Number(customerId) },
+      orderBy: { updatedAt: 'desc' },
+      select: { remoteJid: true, phoneNumber: true },
+    });
+    if (existingConv?.remoteJid && (existingConv.remoteJid.endsWith('@s.whatsapp.net') || existingConv.remoteJid.endsWith('@lid'))) {
+      return existingConv.remoteJid;
+    }
+
+    const customer = await prisma.customer.findUnique({
+      where: { id: Number(customerId) },
+      select: { phone: true },
+    });
+    if (customer?.phone) {
+      const custDigits = customer.phone.replace(/\D/g, '');
+      if (custDigits.length >= 7) {
+        let cleanPhone = custDigits;
+        if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
+          cleanPhone = `57${cleanPhone}`;
+        }
+        return `${cleanPhone}@s.whatsapp.net`;
+      }
+    }
+  }
+
+  // 4. Si es un @username o alias alfanumérico (ej: @carlos_lopez o carlos_lopez)
+  const cleanUsername = trimmed.replace(/^@/, '').trim();
+  if (cleanUsername) {
+    // Buscar en conversaciones de chat por contactName, phoneNumber o customer
+    const conv = await prisma.chatConversation.findFirst({
+      where: {
+        OR: [
+          { contactName: { equals: cleanUsername, mode: 'insensitive' } },
+          { contactName: { contains: cleanUsername, mode: 'insensitive' } },
+          { phoneNumber: { equals: cleanUsername, mode: 'insensitive' } },
+          { phoneNumber: { contains: cleanUsername, mode: 'insensitive' } },
+          { customer: { fullName: { equals: cleanUsername, mode: 'insensitive' } } },
+          { customer: { fullName: { contains: cleanUsername, mode: 'insensitive' } } },
+          { customer: { phone: { contains: cleanUsername, mode: 'insensitive' } } },
+        ],
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { remoteJid: true },
+    });
+
+    if (conv?.remoteJid && (conv.remoteJid.endsWith('@s.whatsapp.net') || conv.remoteJid.endsWith('@lid'))) {
+      return conv.remoteJid;
+    }
+
+    // Buscar en la tabla Customer
+    const matchedCustomer = await prisma.customer.findFirst({
+      where: {
+        OR: [
+          { fullName: { equals: cleanUsername, mode: 'insensitive' } },
+          { fullName: { contains: cleanUsername, mode: 'insensitive' } },
+          { phone: { equals: cleanUsername, mode: 'insensitive' } },
+          { phone: { contains: cleanUsername, mode: 'insensitive' } },
+          { phone: { equals: `@${cleanUsername}`, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, phone: true },
+    });
+
+    if (matchedCustomer?.phone) {
+      const custDigits = matchedCustomer.phone.replace(/\D/g, '');
+      if (custDigits.length >= 7) {
+        let cleanPhone = custDigits;
+        if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
+          cleanPhone = `57${cleanPhone}`;
+        }
+        return `${cleanPhone}@s.whatsapp.net`;
+      }
+    }
+
+    if (matchedCustomer?.id) {
+      const customerConv = await prisma.chatConversation.findFirst({
+        where: { customerId: matchedCustomer.id },
+        select: { remoteJid: true },
+      });
+      if (customerConv?.remoteJid) {
+        return customerConv.remoteJid;
+      }
+    }
+  }
+
+  // 5. Fallback si tiene dígitos utilizables
+  if (digits.length >= 7) {
+    let cleanPhone = digits;
+    if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
+      cleanPhone = `57${cleanPhone}`;
+    }
+    return `${cleanPhone}@s.whatsapp.net`;
+  }
+
+  throw new BadRequestError(
+    `No se pudo resolver un JID de WhatsApp válido para "${recipient}". Verifique la conversación en el CRM o el número del cliente.`
+  );
+}
+
 export async function sendMessage(data: SendCrmMessageInput) {
   const recipient = data.recipient || data.remoteJid || data.to;
 
@@ -140,8 +265,10 @@ export async function sendMessage(data: SendCrmMessageInput) {
     throw new BadRequestError('Se requiere destinatario y mensaje o archivo multimedia');
   }
 
+  const jid = await resolveRecipientJid(recipient, data.customerId ? Number(data.customerId) : undefined);
+
   return whatsappService.sendMessage(
-    recipient,
+    jid,
     data.text || '',
     data.contactName || undefined,
     data.customerId ? Number(data.customerId) : undefined
@@ -560,10 +687,30 @@ export async function triggerRecurringOrder(scheduleId: number, registeredByName
   const totalLiters = schedule.quantity * litersPerUnit;
   const totalAmount = schedule.quantity * unitPrice;
 
-  // Generar consecutivo de pedido correlativo
-  const countToday = await prisma.order.count();
-  const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const orderNumber = `PED-${todayStr}-${String(countToday + 1).padStart(3, '0')}`;
+  // Generar consecutivo de pedido correlativo (PED-YYYYMMDD-001) usando zona horaria de Colombia
+  const todayStr = getLocalDateString().replace(/-/g, '');
+  const todayOrders = await prisma.order.findMany({
+    where: {
+      orderNumber: { startsWith: `PED-${todayStr}` },
+    },
+    select: { orderNumber: true },
+  });
+
+  let maxSeq = 0;
+  for (const ord of todayOrders) {
+    const parts = ord.orderNumber.split('-');
+    const seq = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq) && seq > maxSeq) {
+      maxSeq = seq;
+    }
+  }
+
+  let nextSeq = maxSeq + 1;
+  let orderNumber = `PED-${todayStr}-${String(nextSeq).padStart(3, '0')}`;
+  while (await prisma.order.findUnique({ where: { orderNumber } })) {
+    nextSeq++;
+    orderNumber = `PED-${todayStr}-${String(nextSeq).padStart(3, '0')}`;
+  }
 
   const order = await prisma.order.create({
     data: {

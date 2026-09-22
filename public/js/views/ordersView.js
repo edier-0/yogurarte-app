@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, showToast, store, escapeHtml } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, toColombiaDateStr, showToast, store, escapeHtml } from '../store.js';
 import { dispatchSmartWhatsApp } from '../utils/whatsappDispatch.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
@@ -741,7 +741,7 @@ async function renderDeliveryCalendarWidget(calendarContainer, mainContainer) {
   monthOrders.forEach((o) => {
     const rawDate = o.deliveryDate || o.orderDate;
     if (rawDate) {
-      const dateKey = String(rawDate).split('T')[0];
+      const dateKey = toColombiaDateStr(rawDate);
       if (!ordersByDate[dateKey]) {
         ordersByDate[dateKey] = {
           count: 0,
@@ -1310,10 +1310,10 @@ export async function openOrderModal(orderData = null) {
   const defaultPhone = orderData?.customer?.phone || '';
   const defaultAddress = orderData?.deliveryAddress || orderData?.customer?.address || '';
   const defaultDate = isEditing && orderData.orderDate
-    ? String(orderData.orderDate).split('T')[0]
+    ? toColombiaDateStr(orderData.orderDate)
     : getTodayLocalDateStr();
   const defaultDeliveryDate = isEditing && orderData.deliveryDate
-    ? String(orderData.deliveryDate).split('T')[0]
+    ? toColombiaDateStr(orderData.deliveryDate)
     : '';
   const defaultNotes = isEditing ? (orderData.notes || '') : '';
   const defaultDeliveryStatus = isEditing ? orderData.deliveryStatus : 'PENDING';
@@ -2523,7 +2523,7 @@ export async function openPaymentModal(orderId, totalAmount, currentPaid, curren
                         <span style="color: var(--text-muted); font-size: 0.72rem;">📅 ${formatDate(p.paymentDate)} ${p.notes ? `• ${p.notes}` : ''}</span>
                       </div>
                       <div style="display: flex; gap: 4px; align-items: center;">
-                        <button type="button" class="btn btn-outline btn-sm btn-edit-order-payment" data-payment-id="${p.id}" data-amount="${p.amount}" data-method="${p.paymentMethod}" data-date="${p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : ''}" data-notes="${p.notes || ''}" style="padding: 3px 6px; font-size: 0.75rem; color: var(--primary);" title="Editar este abono">✏️</button>
+                        <button type="button" class="btn btn-outline btn-sm btn-edit-order-payment" data-payment-id="${p.id}" data-amount="${p.amount}" data-method="${p.paymentMethod}" data-date="${p.paymentDate ? toColombiaDateStr(p.paymentDate) : ''}" data-notes="${p.notes || ''}" style="padding: 3px 6px; font-size: 0.75rem; color: var(--primary);" title="Editar este abono">✏️</button>
                         <button type="button" class="btn btn-outline btn-sm btn-delete-order-payment" data-payment-id="${p.id}" data-amount="${p.amount}" style="padding: 3px 6px; font-size: 0.75rem; color: var(--danger);" title="Eliminar / Anular este abono">🗑️</button>
                       </div>
                     </div>

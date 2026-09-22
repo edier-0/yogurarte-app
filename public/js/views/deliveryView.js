@@ -596,7 +596,7 @@ function attachDeliveryEvents(container) {
     const overdueCount = cachedDeliveryOrders.filter(
       (o) =>
         o.deliveryStatus !== 'DELIVERED' &&
-        (o.deliveryDate ? o.deliveryDate.split('T')[0] < todayStr : o.orderDate && o.orderDate.split('T')[0] < todayStr)
+        (o.deliveryDate ? toColombiaDateStr(o.deliveryDate) < todayStr : o.orderDate && toColombiaDateStr(o.orderDate) < todayStr)
     ).length;
 
     if (overdueCount === 0) {

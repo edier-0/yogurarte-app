@@ -50,12 +50,12 @@ export async function renderCashControl(container) {
     <div class="orders-toolbar-card" style="margin-bottom: 20px;">
       
       <!-- Fila Superior: Control Segmentado de Período y Acciones -->
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+      <div class="cash-toolbar-top-row">
         
         <!-- Control Segmentado Limpio de Período (4 opciones ergonómicas) -->
-        <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
-          <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); margin-right: 4px;">📅 Período:</span>
-          <div class="filter-chip-group" id="cashPeriodSegmented">
+        <div class="cash-period-wrapper">
+          <span class="cash-period-label">📅 Período:</span>
+          <div class="cash-period-selector filter-chip-group" id="cashPeriodSegmented">
             <button class="filter-chip ${cashFilters.period === 'today' ? 'active' : ''}" data-period="today">📅 Hoy</button>
             <button class="filter-chip ${cashFilters.period === 'this_week' ? 'active' : ''}" data-period="this_week">Esta Semana</button>
             <button class="filter-chip ${cashFilters.period === 'this_month' ? 'active' : ''}" data-period="this_month">Este Mes</button>
@@ -74,8 +74,8 @@ export async function renderCashControl(container) {
           <button class="btn btn-outline" id="btnCashWithdrawBase" style="color: #DC2626; border-color: #FECACA; font-weight: 800;">
             <span>➖</span> Retirar Base
           </button>
-          <button class="btn btn-outline" id="btnCashTransfer" style="color: #2563EB; border-color: #BFDBFE; font-weight: 800;">
-            <span>🔄</span> Traslado Efectivo / Banco
+          <button class="btn btn-outline" id="btnCashTransfer" style="color: #2563EB; border-color: #BFDBFE; font-weight: 800;" title="Traslado entre Efectivo y Banco">
+            <span>🔄</span> Traslado
           </button>
           <button class="btn btn-accent" id="btnCashAddExpense" style="font-weight: 800;">
             <span>🧾</span> Registrar Gasto
@@ -86,19 +86,19 @@ export async function renderCashControl(container) {
 
       <!-- Control de Rango de Fecha Personalizada (Visible cuando se activa Histórico / Rango) -->
       <div id="cashRangeDateGroup" class="cash-range-date-wrapper" style="display: ${cashFilters.period === 'custom_range' || cashFilters.period === 'all' ? 'flex' : 'none'};">
-        <div class="cash-range-inputs-grid">
-          <div class="cash-range-field">
-            <label for="cashStartDateInput">Desde:</label>
-            <input type="date" id="cashStartDateInput" class="form-input" value="${cashFilters.startDate || ''}" />
+        <div class="cash-custom-range-row">
+          <div class="cash-date-card">
+            <span class="cash-date-card-label">📅 Desde:</span>
+            <input type="date" id="cashStartDateInput" class="cash-date-native-input" value="${cashFilters.startDate || ''}" />
           </div>
-          <div class="cash-range-field">
-            <label for="cashEndDateInput">Hasta:</label>
-            <input type="date" id="cashEndDateInput" class="form-input" value="${cashFilters.endDate || ''}" />
+          <div class="cash-date-card">
+            <span class="cash-date-card-label">📅 Hasta:</span>
+            <input type="date" id="cashEndDateInput" class="cash-date-native-input" value="${cashFilters.endDate || ''}" />
           </div>
         </div>
-        <div class="cash-range-actions-row">
-          <button class="btn btn-sm btn-primary" id="btnApplyCashRange" style="font-weight: 700;">🔍 Filtrar Rango</button>
-          <button class="btn btn-sm btn-outline" id="btnApplyCashAllHistory" style="font-weight: 700;" title="Ver todos los registros históricos sin límite de fecha">📜 Ver Todo</button>
+        <div class="cash-custom-range-actions">
+          <button class="btn btn-primary" id="btnApplyCashRange" style="font-weight: 700;">🔍 Filtrar Rango</button>
+          <button class="btn btn-outline" id="btnApplyCashAllHistory" style="font-weight: 700;" title="Ver todos los registros históricos sin límite de fecha">📜 Ver Todo el Historial</button>
         </div>
       </div>
 

@@ -40,12 +40,10 @@ export const getCashMovements = async (query: CashMovementsQueryInput) => {
   if (startDate || endDate) {
     whereClause.movementDate = {};
     if (startDate && typeof startDate === 'string') {
-      whereClause.movementDate.gte = new Date(startDate);
+      whereClause.movementDate.gte = getColombiaStartOfDay(startDate);
     }
     if (endDate && typeof endDate === 'string') {
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      whereClause.movementDate.lte = end;
+      whereClause.movementDate.lte = getColombiaEndOfDay(endDate);
     }
   }
 
@@ -202,12 +200,10 @@ export const getExpenses = async (query: ExpensesQueryInput) => {
   if (startDate || endDate) {
     whereClause.expenseDate = {};
     if (startDate && typeof startDate === 'string') {
-      whereClause.expenseDate.gte = new Date(startDate);
+      whereClause.expenseDate.gte = getColombiaStartOfDay(startDate);
     }
     if (endDate && typeof endDate === 'string') {
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      whereClause.expenseDate.lte = end;
+      whereClause.expenseDate.lte = getColombiaEndOfDay(endDate);
     }
   }
 
@@ -598,8 +594,8 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     const s = startDate ? String(startDate).split('T')[0] : '2020-01-01';
     const e = endDate ? String(endDate).split('T')[0] : '2099-12-31';
     customDateRange = {
-      gte: new Date(`${s}T00:00:00.000Z`),
-      lte: new Date(`${e}T23:59:59.999Z`),
+      gte: getColombiaStartOfDay(s),
+      lte: getColombiaEndOfDay(e),
     };
   } else if (period === 'today') {
     activeFilterDate = todayStr;
@@ -636,8 +632,9 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
   } else if (month && typeof month === 'string') {
     const [year, m] = month.split('-').map(Number);
     if (year && m) {
-      const startOfMonth = new Date(Date.UTC(year, m - 1, 1, 0, 0, 0));
-      const endOfMonth = new Date(Date.UTC(year, m, 0, 23, 59, 59, 999));
+      const startOfMonth = getColombiaStartOfDay(`${year}-${String(m).padStart(2, '0')}-01`);
+      const lastDay = new Date(Date.UTC(year, m, 0)).getUTCDate();
+      const endOfMonth = getColombiaEndOfDay(`${year}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
       const monthRange = { gte: startOfMonth, lte: endOfMonth };
       orderWhere.OR = [{ orderDate: monthRange }, { deliveryDate: monthRange }];
       expenseWhere.expenseDate = monthRange;
@@ -649,8 +646,9 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     }
   } else if (period === 'month') {
     const [year, m] = todayStr.split('-').map(Number);
-    const startOfMonth = new Date(Date.UTC(year, m - 1, 1, 0, 0, 0));
-    const endOfMonth = new Date(Date.UTC(year, m, 0, 23, 59, 59, 999));
+    const startOfMonth = getColombiaStartOfDay(`${year}-${String(m).padStart(2, '0')}-01`);
+    const lastDay = new Date(Date.UTC(year, m, 0)).getUTCDate();
+    const endOfMonth = getColombiaEndOfDay(`${year}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
     const monthRange = { gte: startOfMonth, lte: endOfMonth };
     orderWhere.OR = [{ orderDate: monthRange }, { deliveryDate: monthRange }];
     expenseWhere.expenseDate = monthRange;

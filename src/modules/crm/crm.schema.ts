@@ -7,7 +7,7 @@ export const sendCrmMessageSchema = z
   .object({
     recipient: z
       .string()
-      .min(7, 'El número o ID de WhatsApp debe tener al menos 7 caracteres')
+      .min(2, 'El identificador o número de WhatsApp debe tener al menos 2 caracteres')
       .max(100, 'El ID de destinatario es demasiado largo')
       .optional(),
     remoteJid: z.string().optional(),

@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatStock, getTodayLocalDateStr, showToast, store } from '../store.js';
+import { formatCOP, formatDate, formatStock, getTodayLocalDateStr, getTomorrowDateStr, toColombiaDateStr, showToast, store } from '../store.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
 function escapeHtml(str) {
@@ -983,9 +983,7 @@ async function openBatchModal() {
       const orders = pendingData?.orders || [];
       if (orders.length > 0) {
         const todayStr = getTodayLocalDateStr();
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+        const tomorrowStr = getTomorrowDateStr();
 
         pendingContainer.style.display = 'block';
         pendingContainer.innerHTML = `
@@ -1016,7 +1014,7 @@ async function openBatchModal() {
             <div style="max-height: 150px; overflow-y: auto; background: #FFFFFF; border: 1px solid #A7F3D0; border-radius: var(--radius-sm); padding: 4px 6px;">
               ${orders
                 .map((o) => {
-                  const delivStr = o.deliveryDate ? String(o.deliveryDate).split('T')[0] : '';
+                  const delivStr = o.deliveryDate ? toColombiaDateStr(o.deliveryDate) : '';
                   const isToday = delivStr === todayStr || (!delivStr && delivStr !== 'null');
                   const isTomorrow = delivStr === tomorrowStr;
                   let dateBadge = `<span style="font-size: 0.72rem; color: var(--text-muted);">Sin fecha (${formatDate(o.orderDate)})</span>`;
@@ -2127,8 +2125,8 @@ async function openEditBatchModal(batchId) {
   const b2 = batch.bottles2LProduced || 0;
   const milk = batch.milkUsedLiters || 0;
   const produced = batch.totalLitersProduced || milk;
-  const prepDate = batch.preparationDate ? String(batch.preparationDate).split('T')[0] : getTodayLocalDateStr();
-  const expDate = batch.expirationDate ? String(batch.expirationDate).split('T')[0] : '';
+  const prepDate = batch.preparationDate ? toColombiaDateStr(batch.preparationDate) : getTodayLocalDateStr();
+  const expDate = batch.expirationDate ? toColombiaDateStr(batch.expirationDate) : '';
 
   const standardFlavors = ['Natural', 'Natural Bajo en Azúcar', 'Natural Sin Azúcar', 'Fresa', 'Melocotón', 'Mora', 'Maracuyá'];
   const isCustomFlavor = !standardFlavors.includes(batch.flavor);
@@ -2436,9 +2434,7 @@ async function openLinkOrdersModal(batchId, batchCode, flavor, container = null)
     }
 
     const todayStr = getTodayLocalDateStr();
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+    const tomorrowStr = getTomorrowDateStr();
 
     modalOverlay.querySelector('.modal-body').innerHTML = `
       <div style="background: #ECFDF5; border: 1.5px solid #A7F3D0; border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 14px;">
@@ -2450,7 +2446,7 @@ async function openLinkOrdersModal(batchId, batchCode, flavor, container = null)
         </div>
       </div>
 
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: gap: 8px; margin-bottom: 10px;">
         <span style="font-size: 0.84rem; font-weight: 800; color: var(--text-main);">
           📋 Encargos Disponibles (${orders.length}):
         </span>
@@ -2485,7 +2481,7 @@ async function openLinkOrdersModal(batchId, batchCode, flavor, container = null)
           <tbody>
             ${orders
               .map((o) => {
-                const delivStr = o.deliveryDate ? String(o.deliveryDate).split('T')[0] : '';
+                const delivStr = o.deliveryDate ? toColombiaDateStr(o.deliveryDate) : '';
                 const isToday = delivStr === todayStr || (!delivStr && delivStr !== 'null');
                 const isTomorrow = delivStr === tomorrowStr;
                 let dateBadge = `<span style="font-size: 0.74rem; color: var(--text-muted);">Sin fecha (${formatDate(o.orderDate)})</span>`;

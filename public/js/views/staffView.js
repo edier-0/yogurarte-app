@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatDateTime, formatPaymentBadge, getTodayLocalDateStr, showToast, store, escapeHtml } from '../store.js';
+import { formatCOP, formatDate, formatDateTime, formatPaymentBadge, getTodayLocalDateStr, toColombiaDateStr, showToast, store, escapeHtml } from '../store.js';
 import { dispatchSmartWhatsApp } from '../utils/whatsappDispatch.js';
 import { openBankSettingsModal } from './customersView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
@@ -1234,9 +1234,9 @@ export function openStaffPaymentModal(staffList = [], preselectedStaffId = null,
   const defaultMethod = paymentToEdit ? paymentToEdit.paymentMethod : 'EFECTIVO';
   const defaultGross = paymentToEdit ? paymentToEdit.amount : 0;
   const defaultDed = paymentToEdit ? (paymentToEdit.deductions || 0) : 0;
-  const defaultDate = paymentToEdit && paymentToEdit.paymentDate ? paymentToEdit.paymentDate.split('T')[0] : getTodayLocalDateStr();
-  const defaultStart = paymentToEdit && paymentToEdit.periodStart ? paymentToEdit.periodStart.split('T')[0] : '';
-  const defaultEnd = paymentToEdit && paymentToEdit.periodEnd ? paymentToEdit.periodEnd.split('T')[0] : '';
+  const defaultDate = paymentToEdit && paymentToEdit.paymentDate ? toColombiaDateStr(paymentToEdit.paymentDate) : getTodayLocalDateStr();
+  const defaultStart = paymentToEdit && paymentToEdit.periodStart ? toColombiaDateStr(paymentToEdit.periodStart) : '';
+  const defaultEnd = paymentToEdit && paymentToEdit.periodEnd ? toColombiaDateStr(paymentToEdit.periodEnd) : '';
   const defaultConcept = paymentToEdit ? (paymentToEdit.calculationDetails || '') : (isSocio ? 'Retiro de utilidades' : 'Pago de nómina');
   const defaultNotes = paymentToEdit ? (paymentToEdit.notes || '') : '';
 

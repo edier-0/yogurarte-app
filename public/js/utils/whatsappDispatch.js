@@ -13,9 +13,13 @@ export function promptConfirmWhatsAppModal({ phone, text, contactName, isOfficia
       return;
     }
 
-    const cleanNumber = phone ? String(phone).replace(/\D/g, '') : '';
-    const displayPhone = cleanNumber.length >= 10 ? `+57 ${cleanNumber.slice(-10)}` : (phone || 'Sin número');
-    const displayName = contactName || 'Cliente';
+    const rawTarget = phone ? String(phone).trim() : '';
+    const cleanNumber = rawTarget.replace(/\D/g, '');
+    const isUsername = rawTarget.startsWith('@') || (cleanNumber.length < 7 && /[a-zA-Z]/.test(rawTarget));
+    const displayPhone = isUsername
+      ? (rawTarget.startsWith('@') ? rawTarget : `@${rawTarget}`)
+      : (cleanNumber.length >= 10 ? `+57 ${cleanNumber.slice(-10)}` : (phone || 'Sin número'));
+    const displayName = contactName || (isUsername ? displayPhone : 'Cliente');
 
     modalContainer.innerHTML = `
       <div class="modal-overlay active" id="waConfirmOverlay" style="z-index: 10500;">
@@ -43,7 +47,7 @@ export function promptConfirmWhatsAppModal({ phone, text, contactName, isOfficia
                   👤 ${escapeHtml(displayName)}
                 </div>
                 <div style="font-size: 0.8rem; color: #166534; font-weight: 600;">
-                  📱 ${escapeHtml(displayPhone)}
+                  ${isUsername ? '💬 @Usuario:' : '📱 Teléfono:'} ${escapeHtml(displayPhone)}
                 </div>
               </div>
               <span class="badge" style="background: #DCFCE7; color: #15803D; font-weight: 700; font-size: 0.72rem; border: 1px solid #86EFAC;">
@@ -103,8 +107,8 @@ export function promptConfirmWhatsAppModal({ phone, text, contactName, isOfficia
  * Enrutador inteligente de notificaciones de WhatsApp según el rol del usuario:
  * - Muestra modal de confirmación y previsualización editable antes de enviar
  * - 👑 ADMIN / 🛍️ VENTAS: Envía directamente por la línea oficial de YogurArte (CRM Baileys)
- * - 🛵 DOMICILIARIO: Abre WhatsApp nativo en su teléfono personal (wa.me)
- * - Fallback automático a wa.me si Baileys no está conectado
+ * - 🛵 DOMICILIARIO: Abre WhatsApp nativo en su teléfono personal (wa.me) sólo si es número válido
+ * - Fallback inteligente: si es @username, evita URLs externas rotas y redirige a la bandeja CRM
  */
 export async function dispatchSmartWhatsApp({
   phone,
@@ -117,12 +121,15 @@ export async function dispatchSmartWhatsApp({
 }) {
   const role = store.getUserRole();
   const isOfficialCrm = role !== 'DOMICILIARIO';
+  const rawTarget = phone ? String(phone).trim() : '';
+  const digits = rawTarget.replace(/\D/g, '');
+  const isUsername = rawTarget.startsWith('@') || (digits.length < 7 && /[a-zA-Z]/.test(rawTarget));
 
   // 1. Mostrar modal interactivo de confirmación y edición
   let messageToSend = text || '';
   if (!skipConfirm) {
     const confirmation = await promptConfirmWhatsAppModal({
-      phone,
+      phone: rawTarget,
       text: messageToSend,
       contactName,
       isOfficialCrm,
@@ -133,22 +140,39 @@ export async function dispatchSmartWhatsApp({
     messageToSend = confirmation.text !== undefined ? confirmation.text : messageToSend;
   }
 
-  // 2. Domiciliarios siempre usan su app de WhatsApp personal para coordinar en calle
+  // 2. Domiciliarios usan app externa solo para teléfonos válidos
   if (role === 'DOMICILIARIO') {
-    const targetUrl = buildWhatsAppUrl(phone, messageToSend) || fallbackUrl;
-    window.open(targetUrl, '_blank');
-    return { success: true, mode: 'EXTERNAL_APP' };
+    if (isUsername) {
+      showToast(
+        `⚠️ El contacto "${rawTarget}" es un @usuario de WhatsApp. Las URLs externas no admiten usuarios; debes contactarlo por la bandeja del CRM oficial de YogurArte.`,
+        'warning'
+      );
+      const navCrmBtn = document.querySelector('[data-tab="crm"]');
+      if (navCrmBtn) navCrmBtn.click();
+      return { success: false, mode: 'NEEDS_CRM_USERNAME' };
+    }
+
+    const targetUrl = buildWhatsAppUrl(rawTarget, messageToSend) || fallbackUrl;
+    if (targetUrl) {
+      window.open(targetUrl, '_blank');
+      return { success: true, mode: 'EXTERNAL_APP' };
+    } else {
+      showToast('No se encontró número telefónico válido para abrir WhatsApp externo', 'warning');
+      return { success: false };
+    }
   }
 
   // 3. Admin y Ventas: Envío directo por CRM Baileys
   try {
-    if (!phone && !fallbackUrl) {
-      showToast('No se encontró número telefónico para enviar', 'warning');
+    if (!rawTarget && !fallbackUrl) {
+      showToast('No se encontró número telefónico ni usuario para enviar', 'warning');
       return { success: false };
     }
 
-    const cleanPhone = phone ? String(phone).replace(/\D/g, '') : '';
-    const res = await api.sendCrmMessage(cleanPhone, messageToSend, {
+    // Si es @username se envía el identificador textual completo; si es número se envían los dígitos
+    const recipientToSend = isUsername ? rawTarget : (digits.length >= 7 ? digits : rawTarget);
+
+    const res = await api.sendCrmMessage(recipientToSend, messageToSend, {
       contactName,
       customerId: customerId ? Number(customerId) : undefined,
     });
@@ -160,10 +184,27 @@ export async function dispatchSmartWhatsApp({
       throw new Error(res?.error || 'No se pudo enviar por CRM');
     }
   } catch (err) {
-    console.warn('CRM WhatsApp directo no disponible, usando enlace externo de respaldo:', err);
-    showToast('⚠️ WhatsApp oficial no conectado. Abriendo WhatsApp Web/Móvil...', 'info');
-    const targetUrl = buildWhatsAppUrl(phone, messageToSend) || fallbackUrl;
-    window.open(targetUrl, '_blank');
-    return { success: true, mode: 'FALLBACK' };
+    console.warn('CRM WhatsApp directo no disponible:', err);
+
+    if (isUsername) {
+      showToast(
+        `⚠️ No se pudo enviar al @usuario por CRM (${err.message || 'WhatsApp desconectado'}). Por favor activa la sesión de WhatsApp oficial en la pestaña CRM.`,
+        'warning'
+      );
+      const navCrmBtn = document.querySelector('[data-tab="crm"]');
+      if (navCrmBtn) navCrmBtn.click();
+      return { success: false, mode: 'CRM_ERROR_USERNAME' };
+    }
+
+    // Para números telefónicos tradicionales, permitir fallback a WhatsApp Web / Móvil
+    const targetUrl = buildWhatsAppUrl(rawTarget, messageToSend) || fallbackUrl;
+    if (targetUrl) {
+      showToast('⚠️ WhatsApp oficial no conectado. Abriendo WhatsApp Web/Móvil...', 'info');
+      window.open(targetUrl, '_blank');
+      return { success: true, mode: 'FALLBACK' };
+    } else {
+      showToast('No se encontró número telefónico válido para WhatsApp externo', 'warning');
+      return { success: false };
+    }
   }
 }

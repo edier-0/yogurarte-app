@@ -2370,6 +2370,57 @@
 }
 
 /* ==================== CASH CONTROL (RESPONSIVE & THEME AWARE) ==================== */
+.cash-toolbar-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+  width: 100%;
+}
+
+.cash-period-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cash-period-label {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cash-period-selector {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  width: 100%;
+  padding: 2px 0 6px 0;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  flex-wrap: nowrap;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.cash-period-selector::-webkit-scrollbar {
+  display: none;
+}
+
+.cash-period-selector .filter-chip,
+.cash-period-selector button {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+}
+
 .cash-action-buttons-grid {
   display: flex;
   gap: 8px;
@@ -2389,53 +2440,145 @@
 }
 
 .cash-range-date-wrapper {
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
   border-top: 1px dashed var(--border-color);
   margin-top: 8px;
   width: 100%;
+  max-width: 480px;
+  box-sizing: border-box;
 }
 
-.cash-range-inputs-grid {
+.cash-custom-range-row {
   display: flex;
-  gap: 12px;
-  align-items: center;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  margin: 4px 0;
+  box-sizing: border-box;
 }
 
-.cash-range-field {
+.cash-date-card {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  background: var(--bg-subtle, var(--bg-card));
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-md, 8px);
+  padding: 6px 10px;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.cash-range-field label {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--text-main);
+.cash-date-card:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-light, rgba(99, 102, 241, 0.15));
+}
+
+.cash-date-card-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  line-height: 1;
+  margin: 0;
   white-space: nowrap;
 }
 
-.cash-range-field .form-input {
-  width: auto;
-  padding: 5px 10px;
-  font-size: 0.85rem;
+.cash-date-native-input {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-main) !important;
+  font-size: 0.86rem !important;
+  font-weight: 700 !important;
+  font-family: inherit !important;
+  height: 26px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  cursor: pointer;
 }
 
+.cash-custom-range-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cash-custom-range-actions .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 38px;
+  height: 38px;
+  justify-content: center;
+  align-items: center;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0 8px;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+/* Retrocompatibilidad */
+.cash-range-inputs-grid {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+}
+.cash-range-field {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
 .cash-range-actions-row {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  gap: 10px;
+  width: 100%;
 }
-
 .cash-range-actions-row .btn {
-  height: 36px;
-  font-size: 0.84rem;
-  font-weight: 700;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 38px;
 }
 
 @media (max-width: 768px) {
+  .cash-toolbar-top-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .cash-period-wrapper {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .cash-period-selector {
+    width: 100%;
+  }
+
   .cash-action-buttons-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -2462,47 +2605,76 @@
   }
 
   .cash-range-date-wrapper {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  .cash-range-inputs-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    max-width: 100%;
     width: 100%;
+    gap: 8px;
   }
 
-  .cash-range-field {
+  .cash-custom-range-row {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    width: 100%;
-  }
-
-  .cash-range-field .form-input {
-    width: 100%;
-    height: 42px;
-    min-height: 42px;
-    box-sizing: border-box;
-  }
-
-  .cash-range-actions-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    flex-direction: row;
+    align-items: stretch;
     gap: 8px;
     width: 100%;
+    margin: 4px 0;
   }
 
-  .cash-range-actions-row .btn {
+  .cash-date-card {
+    padding: 5px 8px;
+  }
+
+  .cash-date-card-label {
+    font-size: 0.68rem;
+  }
+
+  .cash-date-native-input {
+    font-size: 0.82rem !important;
+    height: 24px !important;
+  }
+
+  .cash-custom-range-actions {
+    display: flex;
+    flex-direction: row;
     width: 100%;
-    height: 42px;
-    min-height: 42px;
-    justify-content: center;
-    font-size: 0.82rem;
-    padding: 0 8px;
+    max-width: 100%;
+    gap: 8px;
+  }
+
+  .cash-custom-range-actions .btn {
+    height: 38px;
+    min-height: 38px;
+    font-size: 0.78rem;
+    padding: 0 4px;
+  }
+}
+
+@media (max-width: 400px) {
+  .cash-custom-range-row {
+    gap: 6px;
+  }
+
+  .cash-date-card {
+    padding: 4px 6px;
+  }
+
+  .cash-date-card-label {
+    font-size: 0.65rem;
+  }
+
+  .cash-date-native-input {
+    font-size: 0.76rem !important;
+    height: 22px !important;
+  }
+
+  .cash-custom-range-actions {
+    gap: 6px;
+  }
+
+  .cash-custom-range-actions .btn {
+    font-size: 0.74rem;
+    padding: 0 2px;
+    height: 36px;
+    min-height: 36px;
   }
 }
 

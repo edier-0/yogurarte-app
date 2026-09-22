@@ -3,16 +3,16 @@ import { store, showToast } from './store.js';
 
 // Mapa de Vistas con Carga Dinámica (Lazy Loading) para acelerar inicio móvil en un 85%
 const views = {
-  dashboard: { title: 'Panel de Control', load: () => import('./views/dashboardView.js?v=20260922_ux_v6').then((m) => m.renderDashboard) },
-  delivery: { title: '🛵 Mis Domicilios de Hoy', load: () => import('./views/deliveryView.js?v=20260922_ux_v6').then((m) => m.renderDelivery) },
-  crm: { title: '💬 CRM y WhatsApp Multi-Agente', load: () => import('./views/crmView.js?v=20260922_ux_v6').then((m) => m.renderCrm) },
-  orders: { title: 'Pedidos y Ventas', load: () => import('./views/ordersView.js?v=20260922_ux_v6').then((m) => m.renderOrders) },
-  cashControl: { title: 'Control de Caja y Finanzas', load: () => import('./views/cashControlView.js?v=20260922_ux_v6').then((m) => m.renderCashControl) },
-  batches: { title: 'Producción de Lotes', load: () => import('./views/batchesView.js?v=20260922_ux_v6').then((m) => m.renderBatches) },
-  inventory: { title: 'Materia Prima e Insumos', load: () => import('./views/inventoryView.js?v=20260922_ux_v6').then((m) => m.renderInventory) },
-  expenses: { title: 'Gastos e Inversión', load: () => import('./views/expensesView.js?v=20260922_ux_v6').then((m) => m.renderExpenses) },
-  staff: { title: 'Nómina, Personal y Accesos', load: () => import('./views/staffView.js?v=20260922_ux_v6').then((m) => m.renderStaff) },
-  customers: { title: 'Clientes Frecuentes', load: () => import('./views/customersView.js?v=20260922_ux_v6').then((m) => m.renderCustomers) },
+  dashboard: { title: 'Panel de Control', load: () => import('./views/dashboardView.js?v=20260922_ux_v11').then((m) => m.renderDashboard) },
+  delivery: { title: '🛵 Mis Domicilios de Hoy', load: () => import('./views/deliveryView.js?v=20260922_ux_v11').then((m) => m.renderDelivery) },
+  crm: { title: '💬 CRM y WhatsApp Multi-Agente', load: () => import('./views/crmView.js?v=20260922_ux_v11').then((m) => m.renderCrm) },
+  orders: { title: 'Pedidos y Ventas', load: () => import('./views/ordersView.js?v=20260922_ux_v11').then((m) => m.renderOrders) },
+  cashControl: { title: 'Control de Caja y Finanzas', load: () => import('./views/cashControlView.js?v=20260922_ux_v11').then((m) => m.renderCashControl) },
+  batches: { title: 'Producción de Lotes', load: () => import('./views/batchesView.js?v=20260922_ux_v11').then((m) => m.renderBatches) },
+  inventory: { title: 'Materia Prima e Insumos', load: () => import('./views/inventoryView.js?v=20260922_ux_v11').then((m) => m.renderInventory) },
+  expenses: { title: 'Gastos e Inversión', load: () => import('./views/expensesView.js?v=20260922_ux_v11').then((m) => m.renderExpenses) },
+  staff: { title: 'Nómina, Personal y Accesos', load: () => import('./views/staffView.js?v=20260922_ux_v11').then((m) => m.renderStaff) },
+  customers: { title: 'Clientes Frecuentes', load: () => import('./views/customersView.js?v=20260922_ux_v11').then((m) => m.renderCustomers) },
 };
 
 document.addEventListener('DOMContentLoaded', () => {

@@ -1,7 +1,13 @@
 import prisma from '../../prisma.js';
 import { getAllSettingsMap } from '../../controllers/settings.controller.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.utils.js';
-import { getColombiaDateStr, parseColombiaDate } from '../../utils/date.utils.js';
+import {
+  getColombiaDateStr,
+  getLocalDateString,
+  parseColombiaDate,
+  getColombiaStartOfDay,
+  getColombiaEndOfDay,
+} from '../../utils/date.utils.js';
 import {
   BadRequestError,
   NotFoundError,
@@ -116,8 +122,8 @@ export const getOrders = async (query: OrdersQueryInput) => {
 
   if (date && typeof date === 'string') {
     const cleanDate = date.split('T')[0];
-    const dayStart = new Date(`${cleanDate}T00:00:00.000Z`);
-    const dayEnd = new Date(`${cleanDate}T23:59:59.999Z`);
+    const dayStart = getColombiaStartOfDay(cleanDate);
+    const dayEnd = getColombiaEndOfDay(cleanDate);
     const dayRange = { gte: dayStart, lte: dayEnd };
     conditions.push({
       OR: [
@@ -133,8 +139,9 @@ export const getOrders = async (query: OrdersQueryInput) => {
   } else if (month && typeof month === 'string') {
     const [year, m] = month.split('-').map(Number);
     if (year && m) {
-      const startOfMonth = new Date(Date.UTC(year, m - 1, 1, 0, 0, 0));
-      const endOfMonth = new Date(Date.UTC(year, m, 0, 23, 59, 59, 999));
+      const startOfMonth = getColombiaStartOfDay(`${year}-${String(m).padStart(2, '0')}-01`);
+      const lastDay = new Date(Date.UTC(year, m, 0)).getUTCDate();
+      const endOfMonth = getColombiaEndOfDay(`${year}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
       conditions.push({
         OR: [
           { orderDate: { gte: startOfMonth, lte: endOfMonth } },
@@ -145,10 +152,10 @@ export const getOrders = async (query: OrdersQueryInput) => {
   } else if (startDate || endDate) {
     const dateRange: any = {};
     if (startDate) {
-      dateRange.gte = new Date(`${String(startDate).split('T')[0]}T00:00:00.000Z`);
+      dateRange.gte = getColombiaStartOfDay(String(startDate).split('T')[0]);
     }
     if (endDate) {
-      dateRange.lte = new Date(`${String(endDate).split('T')[0]}T23:59:59.999Z`);
+      dateRange.lte = getColombiaEndOfDay(String(endDate).split('T')[0]);
     }
     conditions.push({
       OR: [

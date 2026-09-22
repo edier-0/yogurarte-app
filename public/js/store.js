@@ -183,9 +183,8 @@ export const formatStock = (val, maxDecimals = 2) => {
 export const formatDate = (dateStr) => {
   if (!dateStr) return '';
   try {
-    // Si viene en formato ISO o YYYY-MM-DD
-    const str = String(dateStr).split('T')[0];
-    const parts = str.split('-');
+    const colombiaStr = toColombiaDateStr(dateStr);
+    const parts = colombiaStr.split('-');
     if (parts.length === 3) {
       const year = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
@@ -199,6 +198,7 @@ export const formatDate = (dateStr) => {
     }
     const date = new Date(dateStr);
     return new Intl.DateTimeFormat('es-CO', {
+      timeZone: 'America/Bogota',
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -212,7 +212,9 @@ export const formatDateTime = (dateStr) => {
   if (!dateStr) return '';
   try {
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
     return new Intl.DateTimeFormat('es-CO', {
+      timeZone: 'America/Bogota',
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -292,30 +294,7 @@ export const formatMovementTime = (m) => {
   }
 };
 
-// Formatear cualquier fecha (ISO, string o Date) en formato YYYY-MM-DD en la zona horaria de Colombia (America/Bogota, UTC-5)
-export const toColombiaDateStr = (dateInput) => {
-  if (!dateInput) return '';
-  const d = new Date(dateInput);
-  if (isNaN(d.getTime())) return '';
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Bogota',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(d);
-  } catch (e) {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-};
-
-// Obtener fecha actual en formato local de Colombia YYYY-MM-DD
-export const getTodayLocalDateStr = () => {
-  return toColombiaDateStr(new Date());
-};
+export { getLocalDateString, toColombiaDateStr, getTodayLocalDateStr, getTomorrowDateStr } from './utils/dateUtils.js';
 
 // Sistema de Notificaciones Toast
 export const showToast = (message, type = 'success') => {
@@ -391,13 +370,10 @@ export const buildWhatsAppUrl = (contact, message) => {
     return `https://api.whatsapp.com/send/?phone=${cleanPhone}&text=${encodedText}`;
   }
 
-  // Si es un @usuario o alias:
-  const cleanUsername = rawContact.replace(/^@/, '').trim();
-  if (cleanUsername.length > 0) {
-    return `https://api.whatsapp.com/send/?username=${cleanUsername}&text=${encodedText}`;
-  }
-
-  return `https://api.whatsapp.com/send/?text=${encodedText}`;
+  // Si es un @usuario o alias alfanumérico sin número telefónico válido:
+  // WhatsApp NO soporta URLs externas con username (wa.me/username falla).
+  // Retornamos null para forzar la gestión nativa dentro del CRM interno de YogurArte.
+  return null;
 };
 
 export function escapeHtml(str) {

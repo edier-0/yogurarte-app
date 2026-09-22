@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatCOP, formatDate, formatPaymentBadge, formatStock, getTodayLocalDateStr, showToast, store, escapeHtml } from '../store.js';
+import { formatCOP, formatDate, formatPaymentBadge, formatStock, getTodayLocalDateStr, toColombiaDateStr, showToast, store, escapeHtml } from '../store.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
 let materialsCurrentPage = 1;
@@ -1556,7 +1556,7 @@ function openEditPurchaseModal(purchase) {
 
   const matName = purchase.rawMaterial?.name || 'Insumo';
   const unit = purchase.rawMaterial?.unit || 'Unidades';
-  const purchaseDateStr = purchase.purchaseDate ? String(purchase.purchaseDate).split('T')[0] : getTodayLocalDateStr();
+  const purchaseDateStr = purchase.purchaseDate ? toColombiaDateStr(purchase.purchaseDate) : getTodayLocalDateStr();
 
   modalOverlay.innerHTML = `
     <div class="modal-overlay active">

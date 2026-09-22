@@ -587,11 +587,24 @@ class WhatsAppService {
       throw new Error('WhatsApp no está conectado actualmente. Por favor escanea el código QR.');
     }
 
-    let rawDigits = remoteJid.replace(/\D/g, '');
-    if (rawDigits.length === 10 && rawDigits.startsWith('3')) {
-      rawDigits = `57${rawDigits}`;
+    let cleanJid = remoteJid.trim();
+    if (!cleanJid.includes('@')) {
+      let rawDigits = cleanJid.replace(/\D/g, '');
+      if (rawDigits.length === 10 && rawDigits.startsWith('3')) {
+        rawDigits = `57${rawDigits}`;
+      }
+      cleanJid = `${rawDigits}@s.whatsapp.net`;
+    } else if (!cleanJid.endsWith('@s.whatsapp.net') && !cleanJid.endsWith('@lid') && !cleanJid.endsWith('@g.us')) {
+      let rawDigits = cleanJid.replace(/\D/g, '');
+      if (rawDigits.length >= 7) {
+        if (rawDigits.length === 10 && rawDigits.startsWith('3')) {
+          rawDigits = `57${rawDigits}`;
+        }
+        cleanJid = `${rawDigits}@s.whatsapp.net`;
+      } else {
+        throw new Error(`El destinatario "${remoteJid}" no corresponde a un JID o número de WhatsApp válido`);
+      }
     }
-    const cleanJid = remoteJid.includes('@') ? remoteJid : `${rawDigits}@s.whatsapp.net`;
     const cleanNumber = cleanJid.split('@')[0].replace(/\D/g, '');
 
     const sentMsg = await this.sock.sendMessage(cleanJid, { text: text.trim() });
