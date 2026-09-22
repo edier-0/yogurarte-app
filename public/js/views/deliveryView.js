@@ -3,7 +3,7 @@ import { formatCOP, formatDate, formatDateTime, getTodayLocalDateStr, toColombia
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
 let deliveryCurrentPage = 1;
-let deliveryStatusFilter = 'PENDING'; // 'PENDING' | 'IN_ROUTE' | 'DELIVERED' | 'ALL'
+let deliveryStatusFilter = 'PREPARING_ALL'; // 'PREPARING_ALL' | 'IN_ROUTE' | 'DELIVERED' | 'ALL'
 let deliveryTypeFilter = 'DELIVERY_ALL'; // 'DELIVERY_ALL' | 'PROPIO' | 'DOMICILIARIO' | 'LOCAL' | 'ALL'
 let deliveryDateScope = 'ALL_PENDING'; // 'ALL_PENDING' | 'TODAY' | 'SPECIFIC_DATE' | 'ALL'
 let deliverySpecificDate = getTodayLocalDateStr();
@@ -42,7 +42,7 @@ export async function renderDelivery(container) {
     container.innerHTML = `
       <!-- Barra de Herramientas de Entregas -->
       <div class="orders-toolbar-card" style="padding: 16px 20px; margin-bottom: 18px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
           <div>
             <h2 style="font-size: 1.3rem; font-weight: 800; color: var(--primary); margin: 0; display: flex; align-items: center; gap: 8px;">
               <span>🛵</span> ${isAdmin ? 'Entregas y Domicilios (Socios y Repartidores)' : 'Mis Domicilios Asignados'}
@@ -53,41 +53,27 @@ export async function renderDelivery(container) {
           </div>
 
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            ${
-              isAdmin
-                ? `
-              <select id="selectDeliveryTypeFilter" class="form-select" style="width: auto; padding: 6px 12px; font-weight: 700; font-size: 0.84rem;">
-                <option value="DELIVERY_ALL" ${deliveryTypeFilter === 'DELIVERY_ALL' ? 'selected' : ''}>🛵 Todos los Domicilios (Socios y Repartidor)</option>
-                <option value="PROPIO" ${deliveryTypeFilter === 'PROPIO' ? 'selected' : ''}>👤 Solo Entregas de Socios</option>
-                <option value="DOMICILIARIO" ${deliveryTypeFilter === 'DOMICILIARIO' ? 'selected' : ''}>🛵 Solo Domicilios con Repartidor</option>
-                <option value="LOCAL" ${deliveryTypeFilter === 'LOCAL' ? 'selected' : ''}>🏪 Solo Recoge en Local</option>
-                <option value="ALL" ${deliveryTypeFilter === 'ALL' ? 'selected' : ''}>📋 Todas las Modalidades (Incluye Local)</option>
-              </select>
-            `
-                : ''
-            }
-
-            <button class="btn btn-outline" id="btnRescheduleOverdue" style="font-weight: 700; font-size: 0.85rem; padding: 6px 12px; border-color: ${overdueOrdersCount > 0 ? '#F59E0B' : 'var(--border-color)'}; color: ${overdueOrdersCount > 0 ? '#B45309' : 'var(--text-muted)'}; background: ${overdueOrdersCount > 0 ? '#FEF3C7' : 'transparent'};" title="Reprogramar todos los pedidos de días anteriores para entregarse hoy">
-              📅 Reprogramar Atrasados a Hoy ${overdueOrdersCount > 0 ? `<span class="badge" style="background: #F59E0B; color: #FFFFFF; margin-left: 4px; padding: 2px 6px; font-size: 0.72rem; border-radius: 999px;">${overdueOrdersCount}</span>` : ''}
+            <button class="btn btn-outline btn-sm" id="btnRescheduleOverdue" style="font-weight: 700; font-size: 0.82rem; padding: 6px 12px; border-color: ${overdueOrdersCount > 0 ? '#F59E0B' : 'var(--border-color)'}; color: ${overdueOrdersCount > 0 ? '#B45309' : 'var(--text-muted)'}; background: ${overdueOrdersCount > 0 ? 'rgba(245, 158, 11, 0.12)' : 'transparent'};" title="Reprogramar todos los pedidos de días anteriores para entregarse hoy">
+              📅 Reprogramar Atrasados a Hoy ${overdueOrdersCount > 0 ? `<span class="badge" style="background: #F59E0B; color: #FFFFFF; margin-left: 4px; padding: 1px 6px; font-size: 0.72rem; border-radius: 999px;">${overdueOrdersCount}</span>` : ''}
             </button>
 
-            <button class="btn btn-outline" id="btnRefreshDeliveries" style="font-weight: 700; font-size: 0.85rem; padding: 6px 12px;">
+            <button class="btn btn-outline btn-sm" id="btnRefreshDeliveries" style="font-weight: 700; font-size: 0.82rem; padding: 6px 12px;" title="Actualizar entregas">
               🔄 Actualizar
             </button>
           </div>
         </div>
 
-        <!-- Fila de Búsqueda por Nombre y Filtro de Fecha -->
-        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px;">
+        <!-- Fila Superior Unificada: Barra de Búsqueda a la izquierda + Selector de Repartidor a la derecha -->
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
           <!-- Buscador por Nombre de Cliente, Teléfono, Dirección o Pedido -->
-          <div style="position: relative; flex: 1; min-width: 240px;">
+          <div style="position: relative; flex: 1; min-width: 260px;">
             <input
               type="text"
               id="deliverySearchInput"
               class="form-input"
-              placeholder="🔍 Buscar por nombre de cliente, teléfono, dirección o # pedido..."
+              placeholder="🔍 Buscar por cliente, teléfono, dirección o # pedido..."
               value="${deliverySearchQuery}"
-              style="padding-left: 36px; padding-right: 32px; font-weight: 600;"
+              style="padding-left: 36px; padding-right: 32px; font-weight: 600; font-size: 0.88rem;"
             />
             <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 0.95rem; color: var(--text-muted); pointer-events: none;">🔍</span>
             ${
@@ -97,36 +83,26 @@ export async function renderDelivery(container) {
             }
           </div>
 
-          <!-- Filtro de Alcance de Fecha -->
-          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <select id="selectDeliveryDateScope" class="form-select" style="width: auto; padding: 7px 12px; font-weight: 700; font-size: 0.84rem;">
-              <option value="ALL_PENDING" ${deliveryDateScope === 'ALL_PENDING' ? 'selected' : ''}>🕒 Todos los Pendientes</option>
-              <option value="TODAY" ${deliveryDateScope === 'TODAY' ? 'selected' : ''}>📅 Entregas de Hoy (${formatDate(todayStr)})</option>
-              <option value="SPECIFIC_DATE" ${deliveryDateScope === 'SPECIFIC_DATE' ? 'selected' : ''}>🗓️ Fecha Específica...</option>
-              <option value="ALL" ${deliveryDateScope === 'ALL' ? 'selected' : ''}>📋 Historial Completo (Todas)</option>
+          <!-- Selector de Modalidad / Repartidor -->
+          ${
+            isAdmin
+              ? `
+            <select id="selectDeliveryTypeFilter" class="form-select" style="width: auto; padding: 7px 12px; font-weight: 700; font-size: 0.84rem; min-width: 220px;">
+              <option value="DELIVERY_ALL" ${deliveryTypeFilter === 'DELIVERY_ALL' ? 'selected' : ''}>🛵 Todos los Domicilios</option>
+              <option value="PROPIO" ${deliveryTypeFilter === 'PROPIO' ? 'selected' : ''}>👤 Solo Entregas de Socios</option>
+              <option value="DOMICILIARIO" ${deliveryTypeFilter === 'DOMICILIARIO' ? 'selected' : ''}>🛵 Solo Domicilios con Repartidor</option>
+              <option value="LOCAL" ${deliveryTypeFilter === 'LOCAL' ? 'selected' : ''}>🏪 Recoge en Local</option>
+              <option value="ALL" ${deliveryTypeFilter === 'ALL' ? 'selected' : ''}>📋 Todas las Modalidades</option>
             </select>
-
-            <!-- Selector de Fecha Específica (Datepicker) -->
-            <input
-              type="date"
-              id="inputDeliverySpecificDate"
-              class="form-input"
-              value="${deliverySpecificDate || todayStr}"
-              style="width: auto; padding: 6px 10px; font-size: 0.84rem; font-weight: 700; ${deliveryDateScope === 'SPECIFIC_DATE' ? '' : 'display: none;'}"
-              title="Selecciona una fecha de entrega específica"
-            />
-
-            <!-- Botón Limpiar Filtros -->
-            <button class="btn btn-outline" id="btnClearDeliveryFilters" style="font-weight: 700; font-size: 0.84rem; padding: 6px 12px; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros a valores por defecto">
-              <span>🧹</span> Limpiar Filtros
-            </button>
-          </div>
+          `
+              : ''
+          }
         </div>
 
         <div style="height: 1px; background: var(--border-subtle); margin: 12px 0;"></div>
 
-        <!-- Selector de Pestañas Rápidas de Estado -->
-        <div class="filter-chip-group" id="deliveryStatusChipsContainer" style="margin-top: 6px;">
+        <!-- Tira de Chips Reducida (4 Estados Operativos con Contadores Dinámicos) -->
+        <div class="filter-chip-group" id="deliveryStatusChipsContainer">
           <!-- Se actualiza dinámicamente -->
         </div>
       </div>
@@ -227,9 +203,10 @@ function filterAndRenderDelivery(container) {
     });
   }
 
-  // 4. Contadores de estados
-  const pendingOrders = scopedOrders.filter((o) => o.deliveryStatus === 'PENDING' || o.deliveryStatus === 'PREPARING');
-  const readyOrders = scopedOrders.filter((o) => o.deliveryStatus === 'READY_FOR_DISPATCH');
+  // 4. Contadores de estados reducidos a 4 estados operativos
+  const preparingOrders = scopedOrders.filter(
+    (o) => o.deliveryStatus === 'PENDING' || o.deliveryStatus === 'PREPARING' || o.deliveryStatus === 'READY_FOR_DISPATCH'
+  );
   const inRouteOrders = scopedOrders.filter((o) => o.deliveryStatus === 'IN_ROUTE');
   const deliveredOrders = scopedOrders.filter((o) => o.deliveryStatus === 'DELIVERED');
 
@@ -270,24 +247,21 @@ function filterAndRenderDelivery(container) {
   const deliveredPaid = calculateCollectedForOrders(deliveredOrders);
   const inProcessPaid = calculateCollectedForOrders(scopedOrders.filter((o) => o.deliveryStatus !== 'DELIVERED'));
 
-  // 5. Actualizar chips de estado
+  // 5. Actualizar chips de estado (4 estados operativos con contadores dinámicos)
   const chipsContainer = document.getElementById('deliveryStatusChipsContainer');
   if (chipsContainer) {
     chipsContainer.innerHTML = `
-      <button class="filter-chip ${deliveryStatusFilter === 'PENDING' ? 'active' : ''}" data-deliv-filter="PENDING" style="${deliveryStatusFilter === 'PENDING' ? 'background: #EA580C; color: white;' : 'color: #EA580C; border-color: #FED7AA;'}">
-        🕒 Por Preparar (${pendingOrders.length})
-      </button>
-      <button class="filter-chip ${deliveryStatusFilter === 'READY_FOR_DISPATCH' ? 'active' : ''}" data-deliv-filter="READY_FOR_DISPATCH" style="${deliveryStatusFilter === 'READY_FOR_DISPATCH' ? 'background: #D97706; color: white;' : 'color: #D97706; border-color: #FDE68A;'}">
-        📦 Listos Despacho (${readyOrders.length})
-      </button>
-      <button class="filter-chip ${deliveryStatusFilter === 'IN_ROUTE' ? 'active' : ''}" data-deliv-filter="IN_ROUTE" style="${deliveryStatusFilter === 'IN_ROUTE' ? 'background: var(--primary); color: white;' : 'color: var(--primary); border-color: #DDD6FE;'}">
-        🛵 En Camino (${inRouteOrders.length})
-      </button>
-      <button class="filter-chip ${deliveryStatusFilter === 'DELIVERED' ? 'active' : ''}" data-deliv-filter="DELIVERED" style="${deliveryStatusFilter === 'DELIVERED' ? 'background: #15803D; color: white;' : 'color: #15803D; border-color: #BBF7D0;'}">
-        ✅ Entregados (${deliveredOrders.length})
-      </button>
       <button class="filter-chip ${deliveryStatusFilter === 'ALL' ? 'active' : ''}" data-deliv-filter="ALL">
         📋 Todos (${scopedOrders.length})
+      </button>
+      <button class="filter-chip ${deliveryStatusFilter === 'PREPARING_ALL' ? 'active' : ''}" data-deliv-filter="PREPARING_ALL">
+        🥣 En Preparación (${preparingOrders.length})
+      </button>
+      <button class="filter-chip ${deliveryStatusFilter === 'IN_ROUTE' ? 'active' : ''}" data-deliv-filter="IN_ROUTE">
+        🛵 En Camino (${inRouteOrders.length})
+      </button>
+      <button class="filter-chip ${deliveryStatusFilter === 'DELIVERED' ? 'active' : ''}" data-deliv-filter="DELIVERED">
+        ✅ Entregados (${deliveredOrders.length})
       </button>
     `;
 
@@ -304,21 +278,21 @@ function filterAndRenderDelivery(container) {
   const kpisContainer = document.getElementById('deliveryKpisContainer');
   if (kpisContainer) {
     kpisContainer.innerHTML = `
-      <div class="kpi-card" style="padding: 12px 16px; border-left: 4px solid var(--primary); background: #FFFFFF;">
+      <div class="kpi-card" style="padding: 12px 16px; border-left: 4px solid var(--primary); background: var(--bg-card);">
         <div class="kpi-label" style="font-size: 0.75rem;">📦 Litros en Reparto / Pendientes</div>
         <div class="kpi-value" style="font-size: 1.35rem; color: var(--primary);">${totalLitersInRoute} L</div>
         <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 2px;">
-          ${pendingOrders.length + readyOrders.length} por despachar • ${inRouteOrders.length} en moto
+          ${preparingOrders.length} por despachar • ${inRouteOrders.length} en moto
         </div>
       </div>
-      <div class="kpi-card" style="padding: 12px 16px; border-left: 4px solid #DC2626; background: #FFFFFF;">
+      <div class="kpi-card" style="padding: 12px 16px; border-left: 4px solid #DC2626; background: var(--bg-card);">
         <div class="kpi-label" style="font-size: 0.75rem;">🚨 Saldo Total por Cobrar</div>
         <div class="kpi-value" style="font-size: 1.35rem; color: #DC2626;">${formatCOP(totalToCollect)}</div>
         <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 2px;">
           Dinero pendiente en la calle
         </div>
       </div>
-      <div class="kpi-card" style="padding: 12px 16px; border-left: 4px solid #15803D; background: #FFFFFF;">
+      <div class="kpi-card" style="padding: 12px 16px; border-left: 4px solid #15803D; background: var(--bg-card);">
         <div class="kpi-label" style="font-size: 0.75rem;">✅ Recaudado (Cobrado)</div>
         <div class="kpi-value" style="font-size: 1.35rem; color: #15803D;">${formatCOP(totalCollectedToday)}</div>
         <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 2px;">
@@ -330,10 +304,8 @@ function filterAndRenderDelivery(container) {
 
   // 7. Filtrar según la pestaña activa de estado
   let displayOrders = scopedOrders;
-  if (deliveryStatusFilter === 'PENDING') {
-    displayOrders = pendingOrders;
-  } else if (deliveryStatusFilter === 'READY_FOR_DISPATCH') {
-    displayOrders = readyOrders;
+  if (deliveryStatusFilter === 'PREPARING_ALL') {
+    displayOrders = preparingOrders;
   } else if (deliveryStatusFilter === 'IN_ROUTE') {
     displayOrders = inRouteOrders;
   } else if (deliveryStatusFilter === 'DELIVERED') {
@@ -615,35 +587,7 @@ function attachDeliveryEvents(container) {
     filterAndRenderDelivery(container);
   });
 
-  const scopeSelect = document.getElementById('selectDeliveryDateScope');
-  const dateInput = document.getElementById('inputDeliverySpecificDate');
-
-  scopeSelect?.addEventListener('change', (e) => {
-    deliveryDateScope = e.target.value;
-    deliveryCurrentPage = 1;
-    if (dateInput) {
-      dateInput.style.display = deliveryDateScope === 'SPECIFIC_DATE' ? 'inline-block' : 'none';
-    }
-    filterAndRenderDelivery(container);
-  });
-
-  dateInput?.addEventListener('change', (e) => {
-    deliverySpecificDate = e.target.value;
-    deliveryCurrentPage = 1;
-    filterAndRenderDelivery(container);
-  });
-
   document.getElementById('btnRefreshDeliveries')?.addEventListener('click', () => {
-    renderDelivery(container);
-  });
-
-  document.getElementById('btnClearDeliveryFilters')?.addEventListener('click', () => {
-    deliverySearchQuery = '';
-    deliveryStatusFilter = 'PENDING';
-    deliveryTypeFilter = 'DELIVERY_ALL';
-    deliveryDateScope = 'ALL_PENDING';
-    deliverySpecificDate = getTodayLocalDateStr();
-    deliveryCurrentPage = 1;
     renderDelivery(container);
   });
 

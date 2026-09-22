@@ -11,7 +11,8 @@ let usersCurrentPage = 1;
 const WA_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: inline-block; vertical-align: -2px; margin-right: 4px;"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>`;
 
 let staffFilters = {
-  tab: 'all', // 'all', 'socios', 'empleados', 'historial', 'usuarios'
+  mainTab: 'team', // 'team', 'historial', 'usuarios'
+  teamSubFilter: 'all', // 'all', 'socios', 'empleados'
   searchTerm: '',
   month: '',
 };
@@ -32,9 +33,9 @@ function normalizeText(val) {
 
 function getFilteredStaff() {
   let list = cachedStaffList || [];
-  if (staffFilters.tab === 'socios') {
+  if (staffFilters.teamSubFilter === 'socios') {
     list = list.filter((s) => s.type === 'SOCIO');
-  } else if (staffFilters.tab === 'empleados') {
+  } else if (staffFilters.teamSubFilter === 'empleados') {
     list = list.filter((s) => s.type === 'EMPLEADO');
   }
 
@@ -169,35 +170,41 @@ export async function renderStaff(container, forceFetch = true) {
             </span>
           </div>
 
-          <div id="staffTopActionsContainer" style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <div id="staffTopActionsContainer" class="staff-top-actions-container">
             <!-- Botones de acción dinámicos -->
           </div>
         </div>
 
         <div style="height: 1px; background: var(--border-subtle); margin: 14px 0;"></div>
 
-        <!-- Filtros y Pastillas Rápidas -->
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-          <div id="staffTabChipsContainer" class="filter-chip-group">
-            <!-- Chips dinámicos -->
+        <!-- Fila de Navegación Principal y Búsqueda -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <!-- Pestañas Principales en 3 niveles limpios con scroll horizontal táctil -->
+          <div id="staffMainTabsContainer" class="staff-main-tabs-container">
+            <!-- Renderizado dinámico en updateToolbarControls -->
           </div>
 
-          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <!-- Buscador Unificado -->
+          <div style="display: flex; gap: 8px; align-items: center; flex: 1; max-width: 320px; min-width: 200px;">
             <input 
               type="text" 
               id="staffSearchInput" 
               class="form-input" 
-              placeholder="🔍 Buscar por nombre o cargo..." 
+              placeholder="🔍 Buscar por nombre, cargo o documento..." 
               value="${escapeHtml(staffFilters.searchTerm)}"
               autocomplete="off"
               autocorrect="off"
               autocapitalize="off"
               spellcheck="false"
-              style="max-width: 250px; font-size: 0.85rem; padding: 6px 10px;"
+              style="width: 100%; font-size: 0.85rem; padding: 7px 12px;"
             />
-            <button class="btn btn-sm btn-outline" id="btnClearStaffFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros de personal">
-              <span>🧹</span> Limpiar Filtros
-            </button>
+          </div>
+        </div>
+
+        <!-- Sub-Filtros de Equipo (Chips de segundo nivel, sólo visibles si mainTab === 'team') -->
+        <div id="staffTeamSubFiltersWrapper" style="margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <div id="staffTabChipsContainer" class="filter-chip-group horizontal-chip-scroll" style="scrollbar-width: none;">
+            <!-- Chips dinámicos para Equipo -->
           </div>
         </div>
       </div>
@@ -217,29 +224,44 @@ export async function renderStaff(container, forceFetch = true) {
 }
 
 function updateToolbarControls(container) {
-  const isUsersTab = staffFilters.tab === 'usuarios';
+  const isUsersTab = staffFilters.mainTab === 'usuarios';
+  const isHistorialTab = staffFilters.mainTab === 'historial';
   const actionsContainer = container.querySelector('#staffTopActionsContainer');
   if (actionsContainer) {
-    actionsContainer.innerHTML = isUsersTab && store.isAdmin()
-      ? `
-        <button class="btn btn-outline" id="btnOpenBankSettingsStaff" style="border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: #FAF5FF;" title="Configurar cuenta bancaria / Nequi de cobro">
+    if (isUsersTab && store.isAdmin()) {
+      actionsContainer.className = 'staff-top-actions-container has-two-actions';
+      actionsContainer.innerHTML = `
+        <button class="btn btn-outline" id="btnOpenBankSettingsStaff" style="border-color: #D8B4FE; color: var(--primary); font-weight: 700; background: var(--primary-light);" title="Configurar cuenta bancaria / Nequi de cobro">
           ⚙️ Cuenta de Cobro (Nequi)
         </button>
-        <button class="btn btn-primary" id="btnNewUserGlobal" style="font-weight: 800; padding: 8px 18px;">
+        <button class="btn btn-primary" id="btnNewUserGlobal" style="font-weight: 800;">
           🔐 + Crear Usuario del Sistema
         </button>
-      `
-      : `
-        <button class="btn btn-outline" id="btnOpenBankSettingsStaff" style="border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: #FAF5FF;" title="Configurar cuenta bancaria / Nequi de cobro">
+      `;
+    } else if (isHistorialTab) {
+      actionsContainer.className = 'staff-top-actions-container has-two-actions';
+      actionsContainer.innerHTML = `
+        <button class="btn btn-outline" id="btnOpenBankSettingsStaff" style="border-color: #D8B4FE; color: var(--primary); font-weight: 700; background: var(--primary-light);" title="Configurar cuenta bancaria / Nequi de cobro">
           ⚙️ Cuenta de Cobro (Nequi)
+        </button>
+        <button class="btn btn-accent" id="btnNewPaymentGlobal" style="font-weight: 800;">
+          💵 + Registrar Pago / Retiro
+        </button>
+      `;
+    } else {
+      actionsContainer.className = 'staff-top-actions-container';
+      actionsContainer.innerHTML = `
+        <button class="btn btn-outline" id="btnOpenBankSettingsStaff" style="border-color: #D8B4FE; color: var(--primary); font-weight: 700; background: var(--primary-light);" title="Configurar cuenta bancaria / Nequi de cobro">
+          ⚙️ Cuenta Nequi
         </button>
         <button class="btn btn-outline" id="btnNewStaffMember">
           👤 + Registrar Integrante
         </button>
-        <button class="btn btn-accent" id="btnNewPaymentGlobal" style="font-weight: 800; padding: 8px 18px;">
+        <button class="btn btn-accent" id="btnNewPaymentGlobal" style="font-weight: 800;">
           💵 + Registrar Pago / Retiro
         </button>
       `;
+    }
 
     actionsContainer.querySelector('#btnOpenBankSettingsStaff')?.addEventListener('click', () => {
       openBankSettingsModal();
@@ -255,40 +277,69 @@ function updateToolbarControls(container) {
     });
   }
 
-  const chipsContainer = container.querySelector('#staffTabChipsContainer');
-  if (chipsContainer) {
-    const sociosCount = cachedStaffList.filter((s) => s.type === 'SOCIO').length;
-    const empleadosCount = cachedStaffList.filter((s) => s.type === 'EMPLEADO').length;
-    chipsContainer.innerHTML = `
-      <button class="filter-chip ${staffFilters.tab === 'all' ? 'active' : ''}" data-tab-filter="all">
-        Todos (${cachedStaffList.length})
+  // Pestañas Principales en 3 niveles limpios
+  const mainTabsContainer = container.querySelector('#staffMainTabsContainer');
+  if (mainTabsContainer) {
+    const isTeam = staffFilters.mainTab === 'team';
+    const isHistorial = staffFilters.mainTab === 'historial';
+    const isUsers = staffFilters.mainTab === 'usuarios';
+
+    mainTabsContainer.innerHTML = `
+      <button type="button" class="btn btn-sm ${isTeam ? 'btn-primary' : 'btn-outline'}" data-staff-main-tab="team" style="font-weight: 700; padding: 6px 14px; white-space: nowrap; flex-shrink: 0;">
+        👥 Equipo y Colaboradores (${cachedStaffList.length})
       </button>
-      <button class="filter-chip ${staffFilters.tab === 'socios' ? 'active' : ''}" data-tab-filter="socios">
-        👑 Socios / Dueños (${sociosCount})
-      </button>
-      <button class="filter-chip ${staffFilters.tab === 'empleados' ? 'active' : ''}" data-tab-filter="empleados">
-        👷 Colaboradores (${empleadosCount})
-      </button>
-      <button class="filter-chip ${staffFilters.tab === 'historial' ? 'active' : ''}" data-tab-filter="historial">
+      <button type="button" class="btn btn-sm ${isHistorial ? 'btn-primary' : 'btn-outline'}" data-staff-main-tab="historial" style="font-weight: 700; padding: 6px 14px; white-space: nowrap; flex-shrink: 0;">
         📜 Historial de Pagos (${cachedAllPayments.length})
       </button>
       ${
         store.isAdmin()
           ? `
-        <button class="filter-chip ${staffFilters.tab === 'usuarios' ? 'active' : ''}" data-tab-filter="usuarios" style="${staffFilters.tab === 'usuarios' ? 'background: #0284C7; color: white;' : 'color: #0284C7; border-color: #BAE6FD; font-weight: 700;'}">
-          🔐 Usuarios y Accesos (${cachedUsersList.length})
+        <button type="button" class="btn btn-sm ${isUsers ? 'btn-primary' : 'btn-outline'}" data-staff-main-tab="usuarios" style="font-weight: 700; padding: 6px 14px; white-space: nowrap; flex-shrink: 0;">
+          🔐 Usuarios y Roles (${cachedUsersList.length})
         </button>
       `
           : ''
       }
     `;
 
-    chipsContainer.querySelectorAll('[data-tab-filter]').forEach((btn) => {
+    mainTabsContainer.querySelectorAll('[data-staff-main-tab]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
-        staffFilters.tab = e.currentTarget.dataset.tabFilter;
+        staffFilters.mainTab = e.currentTarget.dataset.staffMainTab;
         staffCurrentPage = 1;
         paymentsCurrentPage = 1;
         usersCurrentPage = 1;
+        updateToolbarControls(container);
+        renderStaffContentOnly();
+      });
+    });
+  }
+
+  // Sub-Filtros de Equipo
+  const teamSubWrapper = container.querySelector('#staffTeamSubFiltersWrapper');
+  if (teamSubWrapper) {
+    teamSubWrapper.style.display = staffFilters.mainTab === 'team' ? 'flex' : 'none';
+  }
+
+  const chipsContainer = container.querySelector('#staffTabChipsContainer');
+  if (chipsContainer && staffFilters.mainTab === 'team') {
+    const sociosCount = cachedStaffList.filter((s) => s.type === 'SOCIO').length;
+    const empleadosCount = cachedStaffList.filter((s) => s.type === 'EMPLEADO').length;
+    chipsContainer.innerHTML = `
+      <button class="filter-chip ${staffFilters.teamSubFilter === 'all' ? 'active' : ''}" data-sub-filter="all">
+        Todos (${cachedStaffList.length})
+      </button>
+      <button class="filter-chip ${staffFilters.teamSubFilter === 'socios' ? 'active' : ''}" data-sub-filter="socios">
+        👑 Socios / Dueños (${sociosCount})
+      </button>
+      <button class="filter-chip ${staffFilters.teamSubFilter === 'empleados' ? 'active' : ''}" data-sub-filter="empleados">
+        👷 Colaboradores (${empleadosCount})
+      </button>
+    `;
+
+    chipsContainer.querySelectorAll('[data-sub-filter]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        staffFilters.teamSubFilter = e.currentTarget.dataset.subFilter;
+        staffCurrentPage = 1;
         updateToolbarControls(container);
         renderStaffContentOnly();
       });
@@ -329,20 +380,7 @@ function attachToolbarEvents(container) {
           }
         } catch (_) {}
       }
-    }, 120);
-  });
-
-  container.querySelector('#btnClearStaffFilters')?.addEventListener('click', () => {
-    staffFilters.tab = 'all';
-    staffFilters.searchTerm = '';
-    staffFilters.month = '';
-    staffCurrentPage = 1;
-    paymentsCurrentPage = 1;
-    usersCurrentPage = 1;
-    const input = container.querySelector('#staffSearchInput');
-    if (input) input.value = '';
-    updateToolbarControls(container);
-    renderStaffContentOnly();
+    }, 300);
   });
 }
 
@@ -357,8 +395,8 @@ function renderStaffContentOnly() {
     return;
   }
 
-  const isUsersTab = staffFilters.tab === 'usuarios';
-  const isHistorialTab = staffFilters.tab === 'historial';
+  const isUsersTab = staffFilters.mainTab === 'usuarios';
+  const isHistorialTab = staffFilters.mainTab === 'historial';
 
   // KPIs Financieros: Solo renderizar si aún no existen para evitar reflows molestos durante la escritura
   if (!isUsersTab) {
@@ -372,7 +410,7 @@ function renderStaffContentOnly() {
 
       kpisContainer.innerHTML = `
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 22px;">
-          <div class="kpi-card" style="border: 1.5px solid var(--border-color); background: #FFFFFF;">
+          <div class="kpi-card" style="border: 1.5px solid var(--border-color); background: var(--bg-card);">
             <div class="kpi-header">
               <span class="kpi-title" style="color: var(--primary); font-weight: 800;">👥 Equipo Activo</span>
               <div class="kpi-icon" style="background: var(--primary-light); color: var(--primary);">👤</div>
@@ -385,28 +423,28 @@ function renderStaffContentOnly() {
             </div>
           </div>
 
-          <div class="kpi-card" style="border: 1.5px solid #BBF7D0; background: #F0FDF4;">
+          <div class="kpi-card" style="border: 1.5px solid var(--success-border); background: var(--success-light);">
             <div class="kpi-header">
-              <span class="kpi-title" style="color: #15803D; font-weight: 800;">💵 Nómina Total Pagada</span>
-              <div class="kpi-icon" style="background: #DCFCE7; color: #15803D;">💰</div>
+              <span class="kpi-title" style="color: var(--success); font-weight: 800;">💵 Nómina Total Pagada</span>
+              <div class="kpi-icon" style="background: var(--success-light); color: var(--success);">💰</div>
             </div>
-            <div class="kpi-value" style="color: #16A34A; font-size: 1.8rem;">
+            <div class="kpi-value" style="color: var(--success); font-size: 1.8rem;">
               ${formatCOP(totalPayroll)}
             </div>
-            <div class="kpi-subtitle" style="color: #15803D;">
+            <div class="kpi-subtitle" style="color: var(--success);">
               Costo operativo de mano de obra
             </div>
           </div>
 
-          <div class="kpi-card" style="border: 1.5px solid #DDD6FE; background: #FAF5FF;">
+          <div class="kpi-card" style="border: 1.5px solid var(--border-color); background: var(--primary-light);">
             <div class="kpi-header">
-              <span class="kpi-title" style="color: #6D28D9; font-weight: 800;">🤝 Retiros de Socios</span>
-              <div class="kpi-icon" style="background: #EDE9FE; color: #6D28D9;">👑</div>
+              <span class="kpi-title" style="color: var(--primary); font-weight: 800;">🤝 Retiros de Socios</span>
+              <div class="kpi-icon" style="background: var(--primary-light); color: var(--primary);">👑</div>
             </div>
-            <div class="kpi-value" style="color: #7C3AED; font-size: 1.8rem;">
+            <div class="kpi-value" style="color: var(--primary); font-size: 1.8rem;">
               ${formatCOP(totalOwnerDraws)}
             </div>
-            <div class="kpi-subtitle" style="color: #6D28D9;">
+            <div class="kpi-subtitle" style="color: var(--primary);">
               Utilidades y retiros personales de dueños
             </div>
           </div>

@@ -26,39 +26,36 @@ export async function renderCustomers(container) {
   }
 
   container.innerHTML = `
-    <!-- Barra de Búsqueda, Filtros y Acciones Optimizada -->
-    <div class="orders-toolbar-card" style="margin-bottom: 20px;">
-      <div class="orders-toolbar-main-row" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
-        <div class="orders-search-group" style="flex: 1 1 280px; min-width: 220px;">
-          <div class="search-box input-with-icon" style="width: 100%;">
-            <span class="input-icon">🔍</span>
-            <input 
-              type="text" 
-              id="customerSearchInput" 
-              data-key="customer-search"
-              class="form-input" 
-              style="height: 42px; width: 100%; font-weight: 600;"
-              placeholder="Buscar cliente por nombre, teléfono o @usuario..." 
-              value="${escapeHtml(searchQuery)}"
-              autocomplete="off"
-            />
-          </div>
+    <!-- Barra de Búsqueda, Filtros y Acciones Optimizada para Móvil y Desktop -->
+    <div class="orders-toolbar-card customers-toolbar-card">
+      <div class="customers-search-row">
+        <div class="search-box input-with-icon" style="flex: 1 1 auto; min-width: 0;">
+          <span class="input-icon">🔍</span>
+          <input 
+            type="text" 
+            id="customerSearchInput" 
+            data-key="customer-search"
+            class="form-input" 
+            placeholder="Buscar cliente por nombre, teléfono o @usuario..." 
+            value="${escapeHtml(searchQuery)}"
+            autocomplete="off"
+          />
         </div>
 
-        <div class="orders-toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
+        <div class="customers-toolbar-actions">
           <!-- Botón Configuración de Cuenta de Cobro (Nequi) -->
-          <button class="btn btn-outline" id="btnOpenBankSettingsModal" style="height: 40px; white-space: nowrap; border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: var(--bg-card);" title="Configurar número de Nequi o cuenta para recordatorios de cobro">
+          <button class="btn btn-outline" id="btnOpenBankSettingsModal" style="border-color: #D8B4FE; color: #7E22CE; font-weight: 700; background: var(--bg-card); white-space: nowrap;" title="Configurar número de Nequi o cuenta para recordatorios de cobro">
             ⚙️ Cuenta Nequi
           </button>
 
-          <button class="btn btn-accent" id="btnOpenNewCustModal" style="height: 40px; white-space: nowrap; padding: 8px 14px; font-size: 0.88rem;">
+          <button class="btn btn-accent" id="btnOpenNewCustModal" style="white-space: nowrap; font-weight: 800;">
             <span>+</span> Registrar Cliente
           </button>
         </div>
       </div>
 
-      <!-- Barra de Chips Horizontales de un toque (4 chips operativos) -->
-      <div style="padding-top: 10px; border-top: 1px solid var(--border-subtle); width: 100%; box-sizing: border-box;">
+      <!-- Barra de Chips Horizontales de un toque (4 chips operativos) fluida sin saltos innecesarios -->
+      <div class="customers-chips-wrapper">
         <div class="horizontal-chip-scroll" id="custDebtFilterGroup">
           <button class="filter-chip ${currentDebtFilter === 'ALL' ? 'active' : ''}" data-cust-chip="ALL">
             📋 Todos

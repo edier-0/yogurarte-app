@@ -4,8 +4,11 @@ import { renderCredits } from './creditsView.js';
 import { paginateArray, renderPaginationHtml, attachPaginationEvents, PAGE_SIZE } from '../components/pagination.js';
 
 let expensesCurrentPage = 1;
-let activeCategory = 'ALL';
+let activeCategory = 'ALL'; // 'ALL' | 'TRANSPORTE' | 'SERVICES_INFRA' | 'OPERATIONS_OTHER'
 let activeMainTab = 'EXPENSES'; // 'EXPENSES' | 'CREDITS'
+let expensesSearchQuery = '';
+let expensesSearchTimer = null;
+let cachedExpensesList = [];
 
 export async function renderExpenses(container) {
   container.innerHTML = `
@@ -51,7 +54,7 @@ export async function renderExpenses(container) {
 async function renderExpensesContent(subContainer) {
   subContainer.innerHTML = `
     <!-- Barra de Filtros y Acción -->
-    <div class="toolbar-container" style="margin-bottom: 16px;">
+    <div class="toolbar-container" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <div class="toolbar-left">
         <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--primary); margin: 0;">
           🧾 Gastos Registrados de Contado
@@ -67,18 +70,41 @@ async function renderExpensesContent(subContainer) {
       </div>
     </div>
 
-    <!-- Píldoras de Categoría -->
-    <div class="expenses-category-pills" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-      <button class="expense-pill ${activeCategory === 'ALL' ? 'active' : ''}" data-cat="ALL">Todos los Gastos</button>
-      <button class="expense-pill ${activeCategory === 'INFRAESTRUCTURA' ? 'active' : ''}" data-cat="INFRAESTRUCTURA">🏗️ Infraestructura / Equipos</button>
-      <button class="expense-pill ${activeCategory === 'SERVICIOS' ? 'active' : ''}" data-cat="SERVICIOS">💡 Gas / Energía / Agua</button>
-      <button class="expense-pill ${activeCategory === 'TRANSPORTE' ? 'active' : ''}" data-cat="TRANSPORTE">🛵 Domicilio / Gasolina</button>
-      <button class="expense-pill ${activeCategory === 'PUBLICIDAD' ? 'active' : ''}" data-cat="PUBLICIDAD">📢 Publicidad y Volantes</button>
-      <button class="expense-pill ${activeCategory === 'INSUMOS_EXTRA' ? 'active' : ''}" data-cat="INSUMOS_EXTRA">🍓 Insumos Extra</button>
-      <button class="expense-pill ${activeCategory === 'OTRO' ? 'active' : ''}" data-cat="OTRO">📦 Otros Gastos</button>
-      <button class="btn btn-sm btn-outline" id="btnClearExpenseFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 6px 14px;" title="Restablecer filtros de gastos">
-        <span>🧹</span> Limpiar Filtros
-      </button>
+    <!-- Fila Unificada: Buscador Ágil y 4 Chips Consolidados -->
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px;">
+      <!-- Buscador Ágil con Debounce (300ms) -->
+      <div style="position: relative; min-width: 260px; flex: 1; max-width: 380px;">
+        <input
+          type="text"
+          id="expensesSearchInput"
+          class="form-input"
+          placeholder="🔍 Buscar por descripción o responsable..."
+          value="${expensesSearchQuery}"
+          style="padding-left: 36px; padding-right: 32px; font-size: 0.88rem; font-weight: 600;"
+        />
+        <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 0.95rem; color: var(--text-muted); pointer-events: none;">🔍</span>
+        ${
+          expensesSearchQuery
+            ? `<button type="button" id="btnClearExpenseSearch" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 0.9rem;" title="Limpiar búsqueda">✕</button>`
+            : ''
+        }
+      </div>
+
+      <!-- Tira Reducida a 4 Chips Directos -->
+      <div class="filter-chip-group" id="expensesCategoryChips">
+        <button class="filter-chip ${activeCategory === 'ALL' ? 'active' : ''}" data-cat="ALL">
+          📋 Todos los Gastos
+        </button>
+        <button class="filter-chip ${activeCategory === 'TRANSPORTE' ? 'active' : ''}" data-cat="TRANSPORTE">
+          🛵 Domicilio y Gasolina
+        </button>
+        <button class="filter-chip ${activeCategory === 'SERVICES_INFRA' ? 'active' : ''}" data-cat="SERVICES_INFRA">
+          💡 Servicios e Infraestructura
+        </button>
+        <button class="filter-chip ${activeCategory === 'OPERATIONS_OTHER' ? 'active' : ''}" data-cat="OPERATIONS_OTHER">
+          📦 Operativos y Varios
+        </button>
+      </div>
     </div>
 
     <!-- Tabla de Gastos -->
@@ -100,156 +126,196 @@ async function renderExpensesContent(subContainer) {
     </div>
   `;
 
-  // Listener para limpiar filtros
-  subContainer.querySelector('#btnClearExpenseFilters')?.addEventListener('click', () => {
-    activeCategory = 'ALL';
-    expensesCurrentPage = 1;
-    renderExpensesContent(subContainer);
+  const searchInput = subContainer.querySelector('#expensesSearchInput');
+  const clearSearchBtn = subContainer.querySelector('#btnClearExpenseSearch');
+
+  searchInput?.addEventListener('input', (e) => {
+    expensesSearchQuery = e.target.value;
+    clearTimeout(expensesSearchTimer);
+    expensesSearchTimer = setTimeout(() => {
+      expensesCurrentPage = 1;
+      filterAndRenderExpensesTable(subContainer);
+    }, 300);
   });
 
-  // Listeners de categorías
-  subContainer.querySelectorAll('.expense-pill').forEach((btn) => {
+  clearSearchBtn?.addEventListener('click', () => {
+    expensesSearchQuery = '';
+    if (searchInput) searchInput.value = '';
+    expensesCurrentPage = 1;
+    filterAndRenderExpensesTable(subContainer);
+  });
+
+  subContainer.querySelectorAll('#expensesCategoryChips .filter-chip').forEach((btn) => {
     btn.addEventListener('click', (e) => {
-      subContainer.querySelectorAll('.expense-pill').forEach((b) => b.classList.remove('active'));
-      e.target.classList.add('active');
-      activeCategory = e.target.dataset.cat;
+      subContainer.querySelectorAll('#expensesCategoryChips .filter-chip').forEach((b) => b.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      activeCategory = e.currentTarget.dataset.cat;
       expensesCurrentPage = 1;
-      loadExpensesList(subContainer);
+      filterAndRenderExpensesTable(subContainer);
     });
   });
 
   subContainer.querySelector('#btnOpenExpenseModal')?.addEventListener('click', () => {
-    openExpenseModal(() => renderExpensesContent(subContainer));
+    openExpenseModal(() => loadExpensesList(subContainer));
   });
 
   await loadExpensesList(subContainer);
 }
 
 async function loadExpensesList(container) {
+  try {
+    const data = await api.getExpenses({});
+    cachedExpensesList = data.expenses || [];
+    filterAndRenderExpensesTable(container);
+  } catch (error) {
+    console.error('Error loading expenses:', error);
+    const tableContainer = container.querySelector('#expensesTableContainer');
+    if (tableContainer) {
+      tableContainer.innerHTML = `
+        <div style="text-align: center; padding: 20px; color: var(--danger); font-weight: 700;">
+          Error al cargar los gastos: ${error.message}
+        </div>
+      `;
+    }
+  }
+}
+
+function filterAndRenderExpensesTable(container) {
   const tableContainer = container.querySelector('#expensesTableContainer');
   const sumDisplay = container.querySelector('#totalExpensesSumDisplay');
   if (!tableContainer) return;
 
-  try {
-    const params = {};
-    if (activeCategory !== 'ALL') {
-      params.category = activeCategory;
-    }
+  let filtered = cachedExpensesList || [];
 
-    const data = await api.getExpenses(params);
-    const { expenses, totalAmount } = data;
-
-    if (sumDisplay) {
-      sumDisplay.textContent = `Total Filtrado: ${formatCOP(totalAmount)}`;
-    }
-
-    if (!expenses || expenses.length === 0) {
-      tableContainer.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-state-icon">🧾</div>
-          <div class="empty-state-title">No hay gastos en esta categoría</div>
-          <div class="empty-state-text">Registra compras de equipos, gas, energía o transporte.</div>
-          <button class="btn btn-primary" id="btnNewExpenseEmpty">+ Registrar Gasto</button>
-        </div>
-      `;
-      tableContainer.querySelector('#btnNewExpenseEmpty')?.addEventListener('click', () => {
-        openExpenseModal(() => renderExpenses(container));
-      });
-      return;
-    }
-
-    const categoryLabels = {
-      INFRAESTRUCTURA: '🏗️ Infraestructura / Equipos',
-      SERVICIOS: '💡 Servicios Públicos',
-      TRANSPORTE: '🛵 Transporte / Domicilio',
-      PUBLICIDAD: '📢 Publicidad',
-      INSUMOS_EXTRA: '🍓 Insumos Extra',
-      OTRO: '📦 Otro',
-    };
-
-    const { pageItems, totalPages, totalItems, currentPage } = paginateArray(expenses, expensesCurrentPage, 15);
-    expensesCurrentPage = currentPage;
-
-    tableContainer.innerHTML = `
-      <div class="table-responsive">
-        <table class="app-table">
-          <thead>
-            <tr>
-              <th>Categoría</th>
-              <th>Descripción</th>
-              <th>Monto</th>
-              <th>Medio de Pago</th>
-              <th>Fecha</th>
-              <th>Notas</th>
-              <th>Responsable</th>
-              <th style="text-align: right;">Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${pageItems
-              .map(
-                (e) => `
-              <tr>
-                <td>
-                  <span class="badge" style="background: var(--bg-subtle); color: var(--primary);">
-                    ${categoryLabels[e.category] || e.category}
-                  </span>
-                </td>
-                <td><strong>${e.description}</strong></td>
-                <td><strong style="color: var(--danger); font-size: 1rem;">${formatCOP(e.amount)}</strong></td>
-                <td>${formatPaymentBadge(e.paymentMethod)}</td>
-                <td>${formatDate(e.expenseDate)}</td>
-                <td><small style="color: var(--text-muted);">${e.notes || '-'}</small></td>
-                <td><small>${e.registeredBy || 'Edier'}</small></td>
-                <td style="text-align: right;">
-                  <button class="btn btn-outline btn-sm btn-delete-expense" data-id="${e.id}" style="color: var(--danger);" title="Eliminar gasto">
-                    🗑️
-                  </button>
-                </td>
-              </tr>
-            `
-              )
-              .join('')}
-          </tbody>
-        </table>
-      </div>
-      ${renderPaginationHtml({
-        currentPage: expensesCurrentPage,
-        totalPages,
-        totalItems,
-        pageSize: 15,
-        itemName: 'gastos',
-        paginationId: 'expensesPagination',
-      })}
-    `;
-
-    attachPaginationEvents(
-      tableContainer,
-      'expensesPagination',
-      (newPage) => {
-        expensesCurrentPage = newPage;
-        loadExpensesList(container);
-      },
-      tableContainer
-    );
-
-    tableContainer.querySelectorAll('.btn-delete-expense').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
-        const id = e.currentTarget.dataset.id;
-        if (confirm('¿Deseas eliminar este registro de gasto?')) {
-          try {
-            await api.deleteExpense(id);
-            showToast('Gasto eliminado correctamente');
-            loadExpensesList(container);
-          } catch (err) {
-            showToast('Error al eliminar gasto', 'danger');
-          }
-        }
-      });
-    });
-  } catch (error) {
-    console.error('Error loading expenses:', error);
+  // 1. Filtrar por categoría consolidada
+  if (activeCategory === 'TRANSPORTE') {
+    filtered = filtered.filter((e) => e.category === 'TRANSPORTE');
+  } else if (activeCategory === 'SERVICES_INFRA') {
+    filtered = filtered.filter((e) => e.category === 'SERVICIOS' || e.category === 'INFRAESTRUCTURA');
+  } else if (activeCategory === 'OPERATIONS_OTHER') {
+    filtered = filtered.filter((e) => e.category === 'PUBLICIDAD' || e.category === 'INSUMOS_EXTRA' || e.category === 'OTRO');
   }
+
+  // 2. Filtrar por texto de búsqueda (descripción, responsable, notas)
+  if (expensesSearchQuery && expensesSearchQuery.trim()) {
+    const q = expensesSearchQuery.toLowerCase().trim();
+    filtered = filtered.filter((e) => {
+      const desc = (e.description || '').toLowerCase();
+      const notes = (e.notes || '').toLowerCase();
+      const resp = (e.registeredBy || '').toLowerCase();
+      return desc.includes(q) || notes.includes(q) || resp.includes(q);
+    });
+  }
+
+  const filteredTotal = filtered.reduce((sum, e) => sum + (e.amount || 0), 0);
+  if (sumDisplay) {
+    sumDisplay.textContent = `Total Filtrado: ${formatCOP(filteredTotal)}`;
+  }
+
+  if (filtered.length === 0) {
+    tableContainer.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">🧾</div>
+        <div class="empty-state-title">No hay gastos que coincidan</div>
+        <div class="empty-state-text">Prueba ajustando el término de búsqueda o la categoría seleccionada.</div>
+        <button class="btn btn-primary" id="btnNewExpenseEmpty">+ Registrar Gasto</button>
+      </div>
+    `;
+    tableContainer.querySelector('#btnNewExpenseEmpty')?.addEventListener('click', () => {
+      openExpenseModal(() => loadExpensesList(container));
+    });
+    return;
+  }
+
+  const categoryLabels = {
+    INFRAESTRUCTURA: '🏗️ Infraestructura / Equipos',
+    SERVICIOS: '💡 Servicios Públicos',
+    TRANSPORTE: '🛵 Domicilio y Gasolina',
+    PUBLICIDAD: '📢 Publicidad',
+    INSUMOS_EXTRA: '🍓 Insumos Extra',
+    OTRO: '📦 Otro',
+  };
+
+  const { pageItems, totalPages, totalItems, currentPage } = paginateArray(filtered, expensesCurrentPage, 15);
+  expensesCurrentPage = currentPage;
+
+  tableContainer.innerHTML = `
+    <div class="table-responsive">
+      <table class="app-table">
+        <thead>
+          <tr>
+            <th>Categoría</th>
+            <th>Descripción</th>
+            <th>Monto</th>
+            <th>Medio de Pago</th>
+            <th>Fecha</th>
+            <th>Notas</th>
+            <th>Responsable</th>
+            <th style="text-align: right;">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pageItems
+            .map(
+              (e) => `
+            <tr>
+              <td>
+                <span class="badge" style="background: var(--bg-subtle); color: var(--primary);">
+                  ${categoryLabels[e.category] || e.category}
+                </span>
+              </td>
+              <td><strong>${e.description}</strong></td>
+              <td><strong style="color: var(--danger); font-size: 1rem;">${formatCOP(e.amount)}</strong></td>
+              <td>${formatPaymentBadge(e.paymentMethod)}</td>
+              <td>${formatDate(e.expenseDate)}</td>
+              <td><small style="color: var(--text-muted);">${e.notes || '-'}</small></td>
+              <td><small>${e.registeredBy || 'Edier'}</small></td>
+              <td style="text-align: right;">
+                <button class="btn btn-outline btn-sm btn-delete-expense" data-id="${e.id}" style="color: var(--danger);" title="Eliminar gasto">
+                  🗑️
+                </button>
+              </td>
+            </tr>
+          `
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>
+    ${renderPaginationHtml({
+      currentPage: expensesCurrentPage,
+      totalPages,
+      totalItems,
+      pageSize: 15,
+      itemName: 'gastos',
+      paginationId: 'expensesPagination',
+    })}
+  `;
+
+  attachPaginationEvents(
+    tableContainer,
+    'expensesPagination',
+    (newPage) => {
+      expensesCurrentPage = newPage;
+      filterAndRenderExpensesTable(container);
+    },
+    tableContainer
+  );
+
+  tableContainer.querySelectorAll('.btn-delete-expense').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.dataset.id;
+      if (confirm('¿Estás seguro de que deseas eliminar este registro de gasto?')) {
+        try {
+          await api.deleteExpense(id);
+          showToast('Gasto eliminado correctamente 🗑️', 'success');
+          loadExpensesList(container);
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar el gasto', 'danger');
+        }
+      }
+    });
+  });
 }
 
 // -----------------------------------------------------------------

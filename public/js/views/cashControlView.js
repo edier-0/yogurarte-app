@@ -49,27 +49,22 @@ export async function renderCashControl(container) {
     <!-- Barra de Filtros de Período y Acciones -->
     <div class="orders-toolbar-card" style="margin-bottom: 20px;">
       
-      <!-- Fila Superior: Botones Rápidos de Período y Acciones -->
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+      <!-- Fila Superior: Control Segmentado de Período y Acciones -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
         
-        <!-- Píldoras de Período -->
+        <!-- Control Segmentado Limpio de Período (4 opciones ergonómicas) -->
         <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
           <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); margin-right: 4px;">📅 Período:</span>
-          <button class="btn btn-sm ${cashFilters.period === 'all' ? 'btn-primary' : 'btn-outline'}" data-period="all">Todo el Historial</button>
-          <button class="btn btn-sm ${cashFilters.period === 'today' ? 'btn-primary' : 'btn-outline'}" data-period="today">Hoy</button>
-          <button class="btn btn-sm ${cashFilters.period === 'yesterday' ? 'btn-primary' : 'btn-outline'}" data-period="yesterday">Ayer</button>
-          <button class="btn btn-sm ${cashFilters.period === 'this_week' ? 'btn-primary' : 'btn-outline'}" data-period="this_week">Esta Semana</button>
-          <button class="btn btn-sm ${cashFilters.period === 'this_month' ? 'btn-primary' : 'btn-outline'}" data-period="this_month">Este Mes</button>
-          <button class="btn btn-sm ${cashFilters.period === 'custom_date' ? 'btn-primary' : 'btn-outline'}" data-period="custom_date">Día Exacto</button>
-          <button class="btn btn-sm ${cashFilters.period === 'custom_range' ? 'btn-primary' : 'btn-outline'}" data-period="custom_range">Rango Fechas</button>
-          <button class="btn btn-sm ${cashFilters.period === 'custom_month' ? 'btn-primary' : 'btn-outline'}" data-period="custom_month">Por Mes</button>
-          <button class="btn btn-sm btn-outline" id="btnClearCashFilters" style="font-weight: 700; color: var(--text-muted); border-color: var(--border-color); display: inline-flex; align-items: center; gap: 4px;" title="Restablecer filtros de caja a 'Todo el Historial'">
-            <span>🧹</span> Limpiar Filtros
-          </button>
+          <div class="filter-chip-group" id="cashPeriodSegmented">
+            <button class="filter-chip ${cashFilters.period === 'today' ? 'active' : ''}" data-period="today">📅 Hoy</button>
+            <button class="filter-chip ${cashFilters.period === 'this_week' ? 'active' : ''}" data-period="this_week">Esta Semana</button>
+            <button class="filter-chip ${cashFilters.period === 'this_month' ? 'active' : ''}" data-period="this_month">Este Mes</button>
+            <button class="filter-chip ${cashFilters.period === 'custom_range' || cashFilters.period === 'all' ? 'active' : ''}" data-period="custom_range">Histórico / Rango</button>
+          </div>
         </div>
 
         <!-- Botones de Acción Rápida -->
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <div class="cash-action-buttons-grid">
           <button class="btn btn-primary" id="btnCashAddBase" style="font-weight: 800;">
             <span>➕</span> Base / Aporte
           </button>
@@ -89,37 +84,22 @@ export async function renderCashControl(container) {
 
       </div>
 
-      <!-- Controles de Fecha Personalizada (Visibles según filtro) -->
-      <div id="cashCustomFiltersRow" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding-top: 10px; border-top: 1px dashed var(--border-color); ${cashFilters.period.startsWith('custom_') ? '' : 'display: none;'}">
-        
-        <div id="cashSpecificDateGroup" style="display: ${cashFilters.period === 'custom_date' ? 'flex' : 'none'}; gap: 8px; align-items: center;">
-          <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">Seleccionar Día:</label>
-          <input type="date" id="cashSpecificDateInput" class="form-input" style="padding: 6px 10px; font-size: 0.85rem;" value="${cashFilters.specificDate || getTodayLocalDateStr()}" />
-          <button class="btn btn-sm btn-primary" id="btnApplyCashSpecificDate">Filtrar Día</button>
+      <!-- Control de Rango de Fecha Personalizada (Visible cuando se activa Histórico / Rango) -->
+      <div id="cashRangeDateGroup" class="cash-range-date-wrapper" style="display: ${cashFilters.period === 'custom_range' || cashFilters.period === 'all' ? 'flex' : 'none'};">
+        <div class="cash-range-inputs-grid">
+          <div class="cash-range-field">
+            <label for="cashStartDateInput">Desde:</label>
+            <input type="date" id="cashStartDateInput" class="form-input" value="${cashFilters.startDate || ''}" />
+          </div>
+          <div class="cash-range-field">
+            <label for="cashEndDateInput">Hasta:</label>
+            <input type="date" id="cashEndDateInput" class="form-input" value="${cashFilters.endDate || ''}" />
+          </div>
         </div>
-
-        <div id="cashRangeDateGroup" style="display: ${cashFilters.period === 'custom_range' ? 'flex' : 'none'}; gap: 8px; align-items: center; flex-wrap: wrap;">
-          <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">Desde:</label>
-          <input type="date" id="cashStartDateInput" class="form-input" style="padding: 6px 10px; font-size: 0.85rem;" value="${cashFilters.startDate || ''}" />
-          <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">Hasta:</label>
-          <input type="date" id="cashEndDateInput" class="form-input" style="padding: 6px 10px; font-size: 0.85rem;" value="${cashFilters.endDate || ''}" />
-          <button class="btn btn-sm btn-primary" id="btnApplyCashRange">Filtrar Rango</button>
+        <div class="cash-range-actions-row">
+          <button class="btn btn-sm btn-primary" id="btnApplyCashRange" style="font-weight: 700;">🔍 Filtrar Rango</button>
+          <button class="btn btn-sm btn-outline" id="btnApplyCashAllHistory" style="font-weight: 700;" title="Ver todos los registros históricos sin límite de fecha">📜 Ver Todo</button>
         </div>
-
-        <div id="cashMonthGroup" style="display: ${cashFilters.period === 'custom_month' ? 'flex' : 'none'}; gap: 8px; align-items: center;">
-          <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">Seleccionar Mes:</label>
-          <select id="cashMonthSelect" class="form-select" style="padding: 6px 10px; font-size: 0.85rem;">
-            ${monthOptions
-              .map(
-                (m) => `
-              <option value="${m.val}" ${cashFilters.month === m.val ? 'selected' : ''}>${m.label}</option>
-            `
-              )
-              .join('')}
-          </select>
-          <button class="btn btn-sm btn-primary" id="btnApplyCashMonth">Filtrar Mes</button>
-        </div>
-
       </div>
 
     </div>
@@ -132,74 +112,48 @@ export async function renderCashControl(container) {
     </div>
   `;
 
-  // Listeners de período
-  container.querySelectorAll('[data-period]').forEach((btn) => {
+  // Listeners de período segmentado
+  container.querySelectorAll('#cashPeriodSegmented [data-period]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
-      const p = e.target.dataset.period;
-      cashFilters.period = p;
-
-      const customRow = container.querySelector('#cashCustomFiltersRow');
-      const grpDate = container.querySelector('#cashSpecificDateGroup');
+      const p = e.currentTarget.dataset.period;
       const grpRange = container.querySelector('#cashRangeDateGroup');
-      const grpMonth = container.querySelector('#cashMonthGroup');
 
-      if (p === 'custom_date') {
-        customRow.style.display = 'flex';
-        grpDate.style.display = 'flex';
-        grpRange.style.display = 'none';
-        grpMonth.style.display = 'none';
-      } else if (p === 'custom_range') {
-        customRow.style.display = 'flex';
-        grpDate.style.display = 'none';
-        grpRange.style.display = 'flex';
-        grpMonth.style.display = 'none';
-      } else if (p === 'custom_month') {
-        customRow.style.display = 'flex';
-        grpDate.style.display = 'none';
-        grpRange.style.display = 'none';
-        grpMonth.style.display = 'flex';
+      if (p === 'custom_range') {
+        cashFilters.period = 'custom_range';
+        if (grpRange) grpRange.style.display = 'flex';
+        if (cashFilters.startDate || cashFilters.endDate) {
+          loadCashData(container);
+        }
       } else {
-        customRow.style.display = 'none';
-        grpDate.style.display = 'none';
-        grpRange.style.display = 'none';
-        grpMonth.style.display = 'none';
+        cashFilters.period = p;
+        cashFilters.startDate = '';
+        cashFilters.endDate = '';
+        if (grpRange) grpRange.style.display = 'none';
         loadCashData(container);
       }
 
-      container.querySelectorAll('[data-period]').forEach((b) => {
-        b.className = b.dataset.period === p ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline';
+      container.querySelectorAll('#cashPeriodSegmented [data-period]').forEach((b) => {
+        b.classList.toggle('active', b.dataset.period === p);
       });
     });
   });
 
-  container.querySelector('#btnApplyCashSpecificDate')?.addEventListener('click', () => {
-    cashFilters.specificDate = container.querySelector('#cashSpecificDateInput').value;
-    loadCashData(container);
-  });
-
   container.querySelector('#btnApplyCashRange')?.addEventListener('click', () => {
+    cashFilters.period = 'custom_range';
     cashFilters.startDate = container.querySelector('#cashStartDateInput').value;
     cashFilters.endDate = container.querySelector('#cashEndDateInput').value;
     loadCashData(container);
   });
 
-  container.querySelector('#btnApplyCashMonth')?.addEventListener('click', () => {
-    cashFilters.month = container.querySelector('#cashMonthSelect').value;
+  container.querySelector('#btnApplyCashAllHistory')?.addEventListener('click', () => {
+    cashFilters.period = 'all';
+    cashFilters.startDate = '';
+    cashFilters.endDate = '';
+    const startIn = container.querySelector('#cashStartDateInput');
+    const endIn = container.querySelector('#cashEndDateInput');
+    if (startIn) startIn.value = '';
+    if (endIn) endIn.value = '';
     loadCashData(container);
-  });
-
-  container.querySelector('#btnClearCashFilters')?.addEventListener('click', () => {
-    cashFilters = {
-      period: 'all',
-      specificDate: '',
-      startDate: '',
-      endDate: '',
-      month: '',
-    };
-    activeMovementTab = 'ALL';
-    searchFilter = '';
-    cashCurrentPage = 1;
-    renderCashControl(container);
   });
 
   // Acciones Rápidas
@@ -276,15 +230,12 @@ async function loadCashData(container) {
       })),
     ].sort(compareMovementsDesc);
 
-    // Conteo por categorías
+    // Conteo consolidado en 5 categorías clave
     const countAll = allMovements.filter((m) => m.flowType !== 'TRANSFER').length;
-    const countBase = allMovements.filter((m) => m.tabCategory === 'BASE').length;
-    const countAdjustments = allMovements.filter((m) => m.tabCategory === 'ADJUSTMENTS').length;
     const countSales = allMovements.filter((m) => m.tabCategory === 'SALES').length;
-    const countPurchases = allMovements.filter((m) => m.tabCategory === 'PURCHASES').length;
-    const countExpenses = allMovements.filter((m) => m.tabCategory === 'EXPENSES').length;
-    const countPayroll = allMovements.filter((m) => m.tabCategory === 'PAYROLL').length;
-    const countTransfers = allMovements.filter((m) => m.tabCategory === 'TRANSFERS').length;
+    const countPurchasesAndExpenses = allMovements.filter((m) => m.tabCategory === 'PURCHASES' || m.tabCategory === 'EXPENSES').length;
+    const countCapitalAndPartners = allMovements.filter((m) => m.tabCategory === 'BASE' || m.tabCategory === 'PAYROLL' || m.tabCategory === 'ADJUSTMENTS').length;
+    const countTransfers = allMovements.filter((m) => m.flowType === 'TRANSFER' || m.tabCategory === 'TRANSFERS').length;
 
     mainContent.innerHTML = `
       <!-- Tarjetas KPIs Dinámicas que se actualizan según el filtro -->
@@ -292,31 +243,22 @@ async function loadCashData(container) {
         <!-- Inyectado dinámicamente -->
       </div>
 
-      <!-- Pestañas de Filtrado del Libro de Caja -->
-      <div class="expenses-category-pills" style="margin-bottom: 16px;">
-        <button class="expense-pill ${activeMovementTab === 'ALL' ? 'active' : ''}" data-mtab="ALL">
-          📊 Todos los Movimientos (${countAll})
+      <!-- Pestañas de Filtrado del Libro de Caja (5 chips clave) -->
+      <div class="filter-chip-group" style="margin-bottom: 16px;">
+        <button class="filter-chip ${activeMovementTab === 'ALL' ? 'active' : ''}" data-mtab="ALL">
+          📋 Todos (${countAll})
         </button>
-        <button class="expense-pill ${activeMovementTab === 'BASE' ? 'active' : ''}" data-mtab="BASE">
-          🏦 Bases y Aportes (${countBase})
+        <button class="filter-chip ${activeMovementTab === 'SALES' ? 'active' : ''}" data-mtab="SALES">
+          🟢 Cobros de Ventas (${countSales})
         </button>
-        <button class="expense-pill ${activeMovementTab === 'ADJUSTMENTS' ? 'active' : ''}" data-mtab="ADJUSTMENTS" style="${activeMovementTab === 'ADJUSTMENTS' ? 'background: #7C3AED; border-color: #7C3AED; color: white;' : 'color: #7C3AED; font-weight: 700; border-color: #DDD6FE;'}">
-          ⚖️ Historial Ajustes y 4x1000 (${countAdjustments})
+        <button class="filter-chip ${activeMovementTab === 'OUTFLOWS_ALL' ? 'active' : ''}" data-mtab="OUTFLOWS_ALL">
+          🔴 Compras y Gastos (${countPurchasesAndExpenses})
         </button>
-        <button class="expense-pill ${activeMovementTab === 'SALES' ? 'active' : ''}" data-mtab="SALES">
-          🥛 Cobros de Ventas (${countSales})
+        <button class="filter-chip ${activeMovementTab === 'CAPITAL_ALL' ? 'active' : ''}" data-mtab="CAPITAL_ALL">
+          💼 Bases y Retiros (${countCapitalAndPartners})
         </button>
-        <button class="expense-pill ${activeMovementTab === 'PURCHASES' ? 'active' : ''}" data-mtab="PURCHASES">
-          🥛 Compras de Insumos (${countPurchases})
-        </button>
-        <button class="expense-pill ${activeMovementTab === 'EXPENSES' ? 'active' : ''}" data-mtab="EXPENSES">
-          ⚙️ Gastos Operativos (${countExpenses})
-        </button>
-        <button class="expense-pill ${activeMovementTab === 'PAYROLL' ? 'active' : ''}" data-mtab="PAYROLL">
-          👥 Nómina y Retiros (${countPayroll})
-        </button>
-        <button class="expense-pill ${activeMovementTab === 'TRANSFERS' ? 'active' : ''}" data-mtab="TRANSFERS">
-          🔄 Transferencias y Traslados (${countTransfers})
+        <button class="filter-chip ${activeMovementTab === 'TRANSFERS' ? 'active' : ''}" data-mtab="TRANSFERS">
+          🔄 Traslados / Transferencias (${countTransfers})
         </button>
       </div>
 
@@ -361,7 +303,7 @@ async function loadCashData(container) {
       });
     });
 
-    // Buscador en vivo con debounce de 250ms
+    // Buscador en vivo con debounce de 300ms
     const searchInput = mainContent.querySelector('#cashSearchInput');
     let cashDebounceTimer;
     searchInput?.addEventListener('input', (e) => {
@@ -370,7 +312,7 @@ async function loadCashData(container) {
         searchFilter = e.target.value.toLowerCase().trim();
         cashCurrentPage = 1;
         updateViewWithFilters(mainContent, allMovements, container);
-      }, 250);
+      }, 300);
     });
 
     updateViewWithFilters(mainContent, allMovements, container);
@@ -407,6 +349,14 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
   if (activeMovementTab === 'ALL') {
     // En todos los movimientos mostramos todas las entradas y salidas reales del negocio
     filtered = filtered.filter((m) => m.flowType !== 'TRANSFER');
+  } else if (activeMovementTab === 'SALES') {
+    filtered = filtered.filter((m) => m.tabCategory === 'SALES');
+  } else if (activeMovementTab === 'OUTFLOWS_ALL') {
+    filtered = filtered.filter((m) => m.tabCategory === 'PURCHASES' || m.tabCategory === 'EXPENSES');
+  } else if (activeMovementTab === 'CAPITAL_ALL') {
+    filtered = filtered.filter((m) => m.tabCategory === 'BASE' || m.tabCategory === 'PAYROLL' || m.tabCategory === 'ADJUSTMENTS');
+  } else if (activeMovementTab === 'TRANSFERS') {
+    filtered = filtered.filter((m) => m.flowType === 'TRANSFER' || m.tabCategory === 'TRANSFERS');
   } else {
     filtered = filtered.filter((m) => m.tabCategory === activeMovementTab);
   }
@@ -428,12 +378,28 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
   const totalWithdrawals = Number(kpis.totalWithdrawals || 0);
   const totalSalesCollected = Number(kpis.totalCashCollected || 0);
 
+  // Cálculos de saldo físico (efectivo en mano) vs fondos digitales (bancos / Nequi)
+  const cashInflows = allMovements.filter((m) => m.flowType === 'INFLOW' && isCash(m.paymentMethod)).reduce((s, m) => s + m.amount, 0);
+  const cashTransfersIn = allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_BANCO_A_EFECTIVO').reduce((s, m) => s + m.amount, 0);
+  const cashOutflows = allMovements.filter((m) => m.flowType === 'OUTFLOW' && isCash(m.paymentMethod)).reduce((s, m) => s + m.amount, 0);
+  const cashTransfersOut = allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_EFECTIVO_A_BANCO').reduce((s, m) => s + m.amount, 0);
+  const calcCashInHand = (cashInflows + cashTransfersIn) - (cashOutflows + cashTransfersOut);
+
+  const bankInflows = allMovements.filter((m) => m.flowType === 'INFLOW' && !isCash(m.paymentMethod)).reduce((s, m) => s + m.amount, 0);
+  const bankTransfersIn = allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_EFECTIVO_A_BANCO').reduce((s, m) => s + m.amount, 0);
+  const bankOutflows = allMovements.filter((m) => m.flowType === 'OUTFLOW' && !isCash(m.paymentMethod)).reduce((s, m) => s + m.amount, 0);
+  const bankTransfersOut = allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_BANCO_A_EFECTIVO').reduce((s, m) => s + m.amount, 0);
+  const calcDigitalBank = (bankInflows + bankTransfersIn) - (bankOutflows + bankTransfersOut);
+
+  const cashInHand = kpis.cashInHand !== undefined && kpis.cashInHand !== null ? Number(kpis.cashInHand) : calcCashInHand;
+  const digitalBank = kpis.digitalBank !== undefined && kpis.digitalBank !== null ? Number(kpis.digitalBank) : calcDigitalBank;
+
   // 3. Renderizar KPIs según pestaña activa con interactividad
   if (activeMovementTab === 'ALL') {
     // PESTAÑA PRINCIPAL: Todos los Movimientos
     kpisGrid.innerHTML = `
-      <!-- Dinero en Caja (Saldo Real) -->
-      <div class="kpi-clickable-card" id="kpiAllBalance" style="cursor: pointer; background: ${netFilteredBalance >= 0 ? '#ECFDF5' : '#FFFBEB'}; padding: 18px; border-radius: var(--radius-md); border: 2.5px solid ${netFilteredBalance >= 0 ? '#10B981' : '#F59E0B'}; transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver el desglose completo del saldo de caja">
+      <!-- Dinero en Caja (Saldo Real) con Desglose Físico vs Bancos -->
+      <div class="kpi-clickable-card" id="kpiAllBalance" style="cursor: pointer; background: ${netFilteredBalance >= 0 ? '#ECFDF5' : '#FFFBEB'}; padding: 18px; border-radius: var(--radius-md); border: 2.5px solid ${netFilteredBalance >= 0 ? '#10B981' : '#F59E0B'}; transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para auditar el desglose completo del saldo de caja">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size: 0.76rem; font-weight: 800; color: ${netFilteredBalance >= 0 ? '#065F46' : '#92400E'};">💰 DINERO EN CAJA (SALDO REAL) 🔍</span>
           <span style="font-size: 1.2rem;">💵</span>
@@ -441,9 +407,22 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
         <div style="font-size: 1.7rem; font-weight: 900; color: ${netFilteredBalance >= 0 ? '#047857' : '#D97706'}; margin: 6px 0;">
           ${formatCOP(netFilteredBalance)}
         </div>
+
+        <!-- Sub-bloque visible: Desglose de Dinero Físico vs. Bancos / Digital -->
+        <div style="display: flex; flex-direction: column; gap: 4px; margin: 8px 0; padding: 6px 10px; background: rgba(0,0,0,0.04); border-radius: var(--radius-sm, 6px); font-size: 0.76rem;">
+          <div id="btnSubCashInHand" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 2px 0;" title="Ver movimientos en efectivo">
+            <span style="font-weight: 700; color: ${netFilteredBalance >= 0 ? '#065F46' : '#92400E'};">💵 En Efectivo:</span>
+            <strong style="font-weight: 800; color: ${cashInHand >= 0 ? '#047857' : '#DC2626'};">${formatCOP(cashInHand)} ➔</strong>
+          </div>
+          <div id="btnSubDigitalBank" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 2px 0;" title="Ver movimientos en bancos / digital">
+            <span style="font-weight: 700; color: ${netFilteredBalance >= 0 ? '#065F46' : '#92400E'};">📱 En Bancos / Digital:</span>
+            <strong style="font-weight: 800; color: ${digitalBank >= 0 ? '#047857' : '#DC2626'};">${formatCOP(digitalBank)} ➔</strong>
+          </div>
+        </div>
+
         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: ${netFilteredBalance >= 0 ? '#065F46' : '#92400E'}; font-weight: 700;">
           <span>${netFilteredBalance >= 0 ? '✅ Efectivo y dinero disponible en caja' : '⚠️ Egresos superan lo recaudado'}</span>
-          <span style="text-decoration: underline; font-size: 0.72rem;">Ver origen ➔</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver origen en caja ➔</span>
         </div>
       </div>
 
@@ -494,10 +473,48 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
     `;
 
     // Listeners interactivos para la pestaña ALL
+    kpisGrid.querySelector('#btnSubCashInHand')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const cashItems = [
+        ...allMovements.filter((m) => m.flowType === 'INFLOW' && isCash(m.paymentMethod)),
+        ...allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_BANCO_A_EFECTIVO').map((t) => ({ ...t, flowType: 'INFLOW', categoryLabel: '🔄 Retiro de Banco a Efectivo' })),
+        ...allMovements.filter((m) => m.flowType === 'OUTFLOW' && isCash(m.paymentMethod)),
+        ...allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_EFECTIVO_A_BANCO').map((t) => ({ ...t, flowType: 'OUTFLOW', categoryLabel: '🔄 Consignación de Efectivo a Banco' })),
+      ].sort(compareMovementsDesc);
+
+      openCashKpiDetailModal({
+        title: '💵 Desglose de Dinero en Efectivo (Caja Menor)',
+        subtitle: 'Cobros, compras, retiros y traslados físicos en billetes y monedas',
+        totalAmount: cashInHand,
+        badgeText: 'SALDO DISPONIBLE EN EFECTIVO',
+        items: cashItems,
+        isNet: true,
+      });
+    });
+
+    kpisGrid.querySelector('#btnSubDigitalBank')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const bankItems = [
+        ...allMovements.filter((m) => m.flowType === 'INFLOW' && !isCash(m.paymentMethod)),
+        ...allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_EFECTIVO_A_BANCO').map((t) => ({ ...t, flowType: 'INFLOW', categoryLabel: '🔄 Consignación desde Efectivo' })),
+        ...allMovements.filter((m) => m.flowType === 'OUTFLOW' && !isCash(m.paymentMethod)),
+        ...allMovements.filter((m) => m.flowType === 'TRANSFER' && m.type === 'TRASLADO_BANCO_A_EFECTIVO').map((t) => ({ ...t, flowType: 'OUTFLOW', categoryLabel: '🔄 Retiro hacia Efectivo' })),
+      ].sort(compareMovementsDesc);
+
+      openCashKpiDetailModal({
+        title: '📱 Desglose de Fondos en Bancos y Digital (Nequi)',
+        subtitle: 'Cobros por QR/transferencia, pagos electrónicos y consignaciones bancarias',
+        totalAmount: digitalBank,
+        badgeText: 'SALDO DISPONIBLE EN BANCOS / DIGITAL',
+        items: bankItems,
+        isNet: true,
+      });
+    });
+
     kpisGrid.querySelector('#kpiAllBalance')?.addEventListener('click', () => {
       openCashKpiDetailModal({
         title: '💰 Balance de Dinero en Caja (Saldo Real)',
-        subtitle: 'Ingresos totales recaudados menos egresos pagados en este período',
+        subtitle: `Auditoría global: Efectivo (${formatCOP(cashInHand)}) + Bancos/Digital (${formatCOP(digitalBank)})`,
         totalAmount: netFilteredBalance,
         badgeText: 'SALDO NETO REAL',
         items: allMovements.filter((m) => m.flowType !== 'TRANSFER'),
@@ -1051,6 +1068,224 @@ function updateViewWithFilters(mainContent, allMovements, mainContainer) {
         <span>Litros: <strong>${salesLiters} L</strong></span>
         <span style="background: #16A34A; color: #FFF; padding: 4px 10px; border-radius: 20px; font-weight: 800;">
           Total Cobrado: +${formatCOP(salesSum)}
+        </span>
+      </div>
+    `;
+  } else if (activeMovementTab === 'OUTFLOWS_ALL') {
+    const totalOut = filtered.filter((m) => m.flowType === 'OUTFLOW').reduce((sum, m) => sum + m.amount, 0);
+    const purchasesSum = filtered.filter((m) => m.tabCategory === 'PURCHASES').reduce((sum, m) => sum + m.amount, 0);
+    const expensesSum = filtered.filter((m) => m.tabCategory === 'EXPENSES').reduce((sum, m) => sum + m.amount, 0);
+
+    kpisGrid.innerHTML = `
+      <div class="kpi-clickable-card" id="kpiOutflowsTotal" style="cursor: pointer; background: #FEF2F2; padding: 18px; border-radius: var(--radius-md); border: 2.5px solid #EF4444; transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver todos los egresos operativos">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: #991B1B;">🔴 TOTAL COMPRAS Y GASTOS 🔍</span>
+          <span style="font-size: 1.2rem;">📤</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: #DC2626; margin: 6px 0;">
+          -${formatCOP(totalOut)}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #991B1B; font-weight: 600;">
+          <span>Insumos y operación en este período</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver detalle ➔</span>
+        </div>
+      </div>
+
+      <div class="kpi-clickable-card" id="kpiPurchasesPart" style="cursor: pointer; background: #FFFBEB; padding: 18px; border-radius: var(--radius-md); border: 1.5px solid #FDE68A; transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver compras de insumos">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: #92400E;">🥛 COMPRAS MATERIA PRIMA 🔍</span>
+          <span style="font-size: 1.2rem;">🐄</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: #D97706; margin: 6px 0;">
+          -${formatCOP(purchasesSum)}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #92400E; font-weight: 600;">
+          <span>Leche, frutas y fermentos</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver compras ➔</span>
+        </div>
+      </div>
+
+      <div class="kpi-clickable-card" id="kpiExpensesPart" style="cursor: pointer; background: #F8FAFC; padding: 18px; border-radius: var(--radius-md); border: 1.5px solid var(--border-color); transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver gastos generales">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: var(--text-main);">🧾 GASTOS GENERALES / SERVICIOS 🔍</span>
+          <span style="font-size: 1.2rem;">⚙️</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: var(--text-main); margin: 6px 0;">
+          -${formatCOP(expensesSum)}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: var(--text-muted); font-weight: 600;">
+          <span>Luz, gas, gasolina, etc.</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver gastos ➔</span>
+        </div>
+      </div>
+
+      <div class="kpi-clickable-card" id="kpiOutflowsCount" style="cursor: pointer; background: #F8FAFC; padding: 18px; border-radius: var(--radius-md); border: 1.5px solid var(--border-color); transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver el listado total">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: var(--text-muted);">📑 TOTAL REGISTROS 🔍</span>
+          <span style="font-size: 1.2rem;">📊</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: var(--primary); margin: 6px 0;">
+          ${filtered.length}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: var(--text-muted); font-weight: 600;">
+          <span>Egresos registrados</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver listado ➔</span>
+        </div>
+      </div>
+    `;
+
+    kpisGrid.querySelector('#kpiOutflowsTotal')?.addEventListener('click', () => {
+      openCashKpiDetailModal({
+        title: '🔴 Desglose de Compras y Gastos Operativos',
+        subtitle: 'Todos los pagos por compras de insumos y gastos generales',
+        totalAmount: totalOut,
+        badgeText: 'TOTAL COMPRAS Y GASTOS',
+        items: filtered,
+      });
+    });
+
+    kpisGrid.querySelector('#kpiPurchasesPart')?.addEventListener('click', () => {
+      openCashKpiDetailModal({
+        title: '🥛 Compras de Materia Prima e Insumos',
+        subtitle: 'Pagos a proveedores de leche, frutas y envases',
+        totalAmount: purchasesSum,
+        badgeText: 'MATERIA PRIMA',
+        items: filtered.filter((m) => m.tabCategory === 'PURCHASES'),
+      });
+    });
+
+    kpisGrid.querySelector('#kpiExpensesPart')?.addEventListener('click', () => {
+      openCashKpiDetailModal({
+        title: '🧾 Gastos Operativos y Servicios',
+        subtitle: 'Pagos de servicios públicos, transporte, gas e infraestructura',
+        totalAmount: expensesSum,
+        badgeText: 'GASTOS GENERALES',
+        items: filtered.filter((m) => m.tabCategory === 'EXPENSES'),
+      });
+    });
+
+    banner.style.background = '#FEF2F2';
+    banner.style.border = '1.5px solid #FECACA';
+    banner.style.color = '#991B1B';
+    banner.innerHTML = `
+      <div>
+        <span>🔴 Filtrando: <strong>Compras de Insumos y Gastos Operativos</strong> (${filtered.length} registros)</span>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <span>Compras: <strong>-${formatCOP(purchasesSum)}</strong></span>
+        <span>Gastos: <strong>-${formatCOP(expensesSum)}</strong></span>
+        <span style="background: #DC2626; color: #FFF; padding: 4px 10px; border-radius: 20px; font-weight: 800;">
+          Total: -${formatCOP(totalOut)}
+        </span>
+      </div>
+    `;
+  } else if (activeMovementTab === 'CAPITAL_ALL') {
+    const baseNet = filtered.filter((m) => m.tabCategory === 'BASE').reduce((sum, m) => sum + (m.flowType === 'INFLOW' ? m.amount : -m.amount), 0);
+    const payrollSum = filtered.filter((m) => m.tabCategory === 'PAYROLL').reduce((sum, m) => sum + m.amount, 0);
+    const adjNet = filtered.filter((m) => m.tabCategory === 'ADJUSTMENTS').reduce((sum, m) => sum + (m.flowType === 'INFLOW' ? m.amount : -m.amount), 0);
+
+    kpisGrid.innerHTML = `
+      <div class="kpi-clickable-card" id="kpiCapBase" style="cursor: pointer; background: #ECFDF5; padding: 18px; border-radius: var(--radius-md); border: 2.5px solid #10B981; transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver bases y aportes">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: #065F46;">🏦 BASE Y APORTES PROPIOS 🔍</span>
+          <span style="font-size: 1.2rem;">💼</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: #047857; margin: 6px 0;">
+          ${formatCOP(baseNet)}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #065F46; font-weight: 700;">
+          <span>Fondo de sencillo y capital propio</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver aportes ➔</span>
+        </div>
+      </div>
+
+      <div class="kpi-clickable-card" id="kpiCapPayroll" style="cursor: pointer; background: #FAF5FF; padding: 18px; border-radius: var(--radius-md); border: 1.5px solid #DDD6FE; transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver nómina y retiros de socios">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: #6B21A8;">👥 NÓMINA Y RETIROS DE SOCIOS 🔍</span>
+          <span style="font-size: 1.2rem;">💵</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: #7C3AED; margin: 6px 0;">
+          -${formatCOP(payrollSum)}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #6B21A8; font-weight: 600;">
+          <span>Pagos de colaboradores y socios</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver detalle ➔</span>
+        </div>
+      </div>
+
+      <div class="kpi-clickable-card" id="kpiCapAdjustments" style="cursor: pointer; background: #F8FAFC; padding: 18px; border-radius: var(--radius-md); border: 1.5px solid var(--border-color); transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver ajustes y 4x1000">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: var(--text-main);">⚖️ AJUSTES Y 4x1000 🔍</span>
+          <span style="font-size: 1.2rem;">🪙</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: ${adjNet >= 0 ? 'var(--primary)' : '#DC2626'}; margin: 6px 0;">
+          ${adjNet >= 0 ? '+' : ''}${formatCOP(adjNet)}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: var(--text-muted); font-weight: 600;">
+          <span>Sobrantes, faltantes y comisiones</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver balance ➔</span>
+        </div>
+      </div>
+
+      <div class="kpi-clickable-card" id="kpiCapCount" style="cursor: pointer; background: #F8FAFC; padding: 18px; border-radius: var(--radius-md); border: 1.5px solid var(--border-color); transition: transform 0.15s ease, box-shadow 0.15s ease;" title="🔍 Haz clic para ver el total">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; font-weight: 800; color: var(--text-muted);">📑 TOTAL REGISTROS 🔍</span>
+          <span style="font-size: 1.2rem;">📊</span>
+        </div>
+        <div style="font-size: 1.7rem; font-weight: 900; color: var(--primary); margin: 6px 0;">
+          ${filtered.length}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: var(--text-muted); font-weight: 600;">
+          <span>Movimientos de capital</span>
+          <span style="text-decoration: underline; font-size: 0.72rem;">Ver todos ➔</span>
+        </div>
+      </div>
+    `;
+
+    kpisGrid.querySelector('#kpiCapBase')?.addEventListener('click', () => {
+      openCashKpiDetailModal({
+        title: '🏦 Desglose de Bases y Aportes Propios',
+        subtitle: 'Bases para dar vuelto, aportes de bolsillo y devoluciones',
+        totalAmount: baseNet,
+        badgeText: 'BASE NETA',
+        items: filtered.filter((m) => m.tabCategory === 'BASE'),
+        isNet: true,
+      });
+    });
+
+    kpisGrid.querySelector('#kpiCapPayroll')?.addEventListener('click', () => {
+      openCashKpiDetailModal({
+        title: '👥 Nómina y Retiros de Socios',
+        subtitle: 'Pagos a colaboradores y retiros de utilidades / socios',
+        totalAmount: -payrollSum,
+        badgeText: 'NÓMINA Y RETIROS',
+        items: filtered.filter((m) => m.tabCategory === 'PAYROLL'),
+      });
+    });
+
+    kpisGrid.querySelector('#kpiCapAdjustments')?.addEventListener('click', () => {
+      openCashKpiDetailModal({
+        title: '⚖️ Ajustes de Caja y 4x1000',
+        subtitle: 'Faltantes, sobrantes y comisiones bancarias',
+        totalAmount: adjNet,
+        badgeText: 'AJUSTES',
+        items: filtered.filter((m) => m.tabCategory === 'ADJUSTMENTS'),
+        isNet: true,
+      });
+    });
+
+    banner.style.background = '#F5F3FF';
+    banner.style.border = '1.5px solid #DDD6FE';
+    banner.style.color = '#5B21B6';
+    banner.innerHTML = `
+      <div>
+        <span>💼 Filtrando: <strong>Bases, Retiros, Nómina y Ajustes de Capital</strong> (${filtered.length} registros)</span>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <span>Base Neta: <strong>${formatCOP(baseNet)}</strong></span>
+        <span>Nómina/Retiros: <strong>-${formatCOP(payrollSum)}</strong></span>
+        <span style="background: #7C3AED; color: #FFF; padding: 4px 10px; border-radius: 20px; font-weight: 800;">
+          ${filtered.length} Movimientos
         </span>
       </div>
     `;

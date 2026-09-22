@@ -18,44 +18,40 @@ let batchStatusFilter = 'ALL'; // 'ALL' | 'COMPLETADO' | 'AGOTADO' | 'ARCHIVED'
 
 export async function renderBatches(container) {
   container.innerHTML = `
-    <!-- Encabezado de Sección -->
-    <div class="section-header-card" style="margin-bottom: 20px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-        <div>
-          <h2 class="view-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
-            🍶 Control de Lotes y Producción
-          </h2>
-          <p class="view-subtitle" style="margin: 4px 0 0 0;">
-            Registra tu fermentación, calcula rendimientos, costos y establece precios de venta por lote.
-          </p>
-        </div>
-        <button class="btn btn-primary" id="btnOpenNewBatchModal" style="padding: 10px 20px; font-weight: 800;">
-          + Registrar Nuevo Lote
-        </button>
-      </div>
+    <!-- Encabezado de Sección Compacto -->
+    <div class="batches-view-header" style="margin-bottom: 12px;">
+      <h2 class="view-title" style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1.25rem;">
+        🍶 Control de Lotes y Producción
+      </h2>
+      <p class="view-subtitle" style="margin: 2px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">
+        Registra tu fermentación, calcula rendimientos, costos y establece precios de venta por lote.
+      </p>
     </div>
 
-    <!-- Toolbar de Búsqueda y Filtros de Lotes -->
-    <div class="orders-toolbar-card" style="margin-bottom: 16px;">
-      <div class="orders-toolbar-main-row" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
-        <div class="orders-search-group" style="flex: 1 1 280px; min-width: 220px;">
-          <div class="search-box input-with-icon" style="width: 100%;">
-            <span class="input-icon">🔍</span>
-            <input 
-              type="text" 
-              id="batchSearchInput" 
-              class="form-input" 
-              style="height: 42px; width: 100%; font-weight: 600;"
-              placeholder="Buscar lote por código (LOT-...) o sabor..." 
-              value="${escapeHtml(batchSearchQuery)}"
-              autocomplete="off"
-            />
-          </div>
+    <!-- Toolbar de Búsqueda y Filtros de Lotes (Compacto y Equilibrado) -->
+    <div class="orders-toolbar-card batches-toolbar-card">
+      <div class="batches-search-row">
+        <div class="search-box input-with-icon" style="flex: 1 1 auto; min-width: 0;">
+          <span class="input-icon">🔍</span>
+          <input 
+            type="text" 
+            id="batchSearchInput" 
+            class="form-input" 
+            placeholder="Buscar lote por código (LOT-...) o sabor..." 
+            value="${escapeHtml(batchSearchQuery)}"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="batches-toolbar-actions">
+          <button class="btn btn-primary" id="btnOpenNewBatchModal" style="white-space: nowrap; font-weight: 800; display: inline-flex; align-items: center; gap: 6px;">
+            <span>+</span> Registrar Nuevo Lote
+          </button>
         </div>
       </div>
 
-      <!-- Tira de Chips Unificada (4 chips operativos) -->
-      <div style="padding-top: 10px; border-top: 1px solid var(--border-subtle); width: 100%; box-sizing: border-box;">
+      <!-- Tira de Chips Unificada (4 chips operativos) en una sola fila táctil compacta -->
+      <div class="batches-chips-wrapper">
         <div class="horizontal-chip-scroll" id="batchStatusChips">
           <button class="filter-chip ${batchStatusFilter === 'ALL' ? 'active' : ''}" data-status="ALL">
             📋 Todos los Lotes
