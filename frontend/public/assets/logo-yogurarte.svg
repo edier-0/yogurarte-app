@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 180" width="100%" height="100%">
+  <defs>
+    <!-- Gradient for YogurArte Script -->
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4A154B"/>
+      <stop offset="100%" stop-color="#301042"/>
+    </linearGradient>
+    <linearGradient id="magentaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E91E63"/>
+      <stop offset="100%" stop-color="#C2185B"/>
+    </linearGradient>
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#66BB6A"/>
+      <stop offset="100%" stop-color="#2E7D32"/>
+    </linearGradient>
+    <filter id="subtleShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- Background Glow & Card -->
+  <rect width="100%" height="100%" rx="16" fill="transparent"/>
+
+  <!-- Decorative Sparkles / Milk Splashes Left -->
+  <g transform="translate(45, 45) scale(0.9)">
+    <path d="M0,0 Q10,-15 15,-2 C12,5 5,5 0,0 Z" fill="#E91E63"/>
+    <circle cx="22" cy="-8" r="3.5" fill="#E91E63"/>
+    <path d="M-8,12 Q-18,18 -12,25 C-5,24 -2,18 -8,12 Z" fill="#E91E63"/>
+  </g>
+
+  <!-- MAIN BRAND TEXT: YogurArte -->
+  <g filter="url(#subtleShadow)">
+    <!-- "Yogur" in deep royal purple script style -->
+    <text x="75" y="90" font-family="'Brush Script MT', 'Dancing Script', 'Pacifico', 'Caveat', cursive, sans-serif" font-size="78" font-weight="bold" fill="url(#purpleGrad)" letter-spacing="-1">Yogur</text>
+    
+    <!-- "Arte" in magenta vibrant script style -->
+    <text x="268" y="90" font-family="'Brush Script MT', 'Dancing Script', 'Pacifico', 'Caveat', cursive, sans-serif" font-size="82" font-weight="bold" fill="url(#magentaGrad)" letter-spacing="-1">Arte</text>
+  </g>
+
+  <!-- Decorative Swashes on "Arte" -->
+  <path d="M380,50 Q395,40 398,48 C392,54 385,55 380,50 Z" fill="#E91E63"/>
+  <path d="M392,62 Q404,58 405,65 C398,69 393,67 392,62 Z" fill="#E91E63"/>
+  <path d="M375,95 Q410,95 405,112 Q395,120 380,110 Q370,105 375,95 Z" fill="#C2185B" opacity="0.85"/>
+
+  <!-- Banner: YOGUR ARTESANAL NATURAL -->
+  <g transform="translate(110, 108)">
+    <path d="M 0,14 Q 5,0 20,0 L 260,0 Q 275,0 280,14 Q 275,28 260,28 L 20,28 Q 5,28 0,14 Z" fill="#3D1E6D"/>
+    <text x="140" y="19" font-family="'Segoe UI', 'Montserrat', 'Arial', sans-serif" font-size="13.5" font-weight="900" fill="#FFFFFF" text-anchor="middle" letter-spacing="1.5">YOGUR ARTESANAL NATURAL</text>
+  </g>
+
+  <!-- Slogan with Leaf Accents: Hecho con ingredientes naturales -->
+  <g transform="translate(250, 156)" text-anchor="middle">
+    <!-- Left Leaf -->
+    <g transform="translate(-130, -6) scale(0.7)">
+      <path d="M0,10 C-10,0 0,-15 15,-10 C20,5 10,15 0,10 Z" fill="url(#leafGrad)"/>
+      <path d="M12,-7 C3,0 2,8 -2,12" stroke="#FFFFFF" stroke-width="1.2" fill="none"/>
+    </g>
+    
+    <!-- Slogan Text -->
+    <text x="0" y="0" font-family="'Segoe Script', 'Caveat', 'Comic Sans MS', cursive, sans-serif" font-size="15" font-style="italic" font-weight="bold" fill="#C2185B">Hecho con ingredientes naturales</text>
+    
+    <!-- Little Heart below slogan -->
+    <path d="M0,5 C-4,1 -8,6 0,12 C8,6 4,1 0,5 Z" fill="#E91E63" transform="translate(0, 4) scale(0.85)"/>
+
+    <!-- Right Leaf -->
+    <g transform="translate(130, -6) scale(0.7) scale(-1, 1)">
+      <path d="M0,10 C-10,0 0,-15 15,-10 C20,5 10,15 0,10 Z" fill="url(#leafGrad)"/>
+      <path d="M12,-7 C3,0 2,8 -2,12" stroke="#FFFFFF" stroke-width="1.2" fill="none"/>
+    </g>
+  </g>
+
+  <!-- Seal: HECHO EN FONSECA -->
+  <g transform="translate(440, 65)">
+    <!-- Outer dashed stamp ring -->
+    <circle cx="0" cy="0" r="32" fill="#FFFFFF" stroke="#3D1E6D" stroke-width="2.5" filter="url(#subtleShadow)"/>
+    <circle cx="0" cy="0" r="28" fill="none" stroke="#C2185B" stroke-width="1" stroke-dasharray="3,2"/>
+    
+    <!-- Top Leaf -->
+    <g transform="translate(-14, -28) scale(0.65)">
+      <path d="M0,10 C-8,0 0,-12 12,-8 C16,4 8,12 0,10 Z" fill="url(#leafGrad)"/>
+      <path d="M10,-5 C3,0 2,6 -1,10" stroke="#FFFFFF" stroke-width="1.2" fill="none"/>
+    </g>
+
+    <!-- Text -->
+    <text x="0" y="-8" font-family="'Segoe UI', 'Arial', sans-serif" font-size="7.5" font-weight="900" fill="#3D1E6D" text-anchor="middle" letter-spacing="0.5">HECHO EN</text>
+    <text x="0" y="8" font-family="'Segoe UI', 'Arial Black', sans-serif" font-size="12" font-weight="900" fill="#C2185B" text-anchor="middle" letter-spacing="0.5">FONSECA</text>
+    
+    <!-- Heart -->
+    <path d="M0,13 C-3,10 -6,14 0,19 C6,14 3,10 0,13 Z" fill="#E91E63" transform="scale(0.8) translate(0, 3)"/>
+  </g>
+</svg>

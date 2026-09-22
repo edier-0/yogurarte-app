@@ -157,14 +157,17 @@ app.use('/api/credits', requireAuth, creditsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/crm', requireAuth, crmRoutes);
 
-// 10. Manejador 404 para rutas API no encontradas
-app.use(notFoundHandler);
-
-// 11. Fallback para SPA: cualquier ruta no-API sirve index.html
-app.get('*', (req: Request, res: Response) => {
+// 10. Fallback para SPA en Express: soporte para Vue Router en modo history
+app.get('*', (req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+    return next();
+  }
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.sendFile(path.join(publicPath, 'index.html'));
+  res.sendFile(path.resolve(__dirname, '../public/index.html'));
 });
+
+// 11. Manejador 404 para rutas API no encontradas
+app.use(notFoundHandler);
 
 // 12. Manejador centralizado de errores
 app.use(errorHandler);

@@ -1,271 +1,36 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>YogurArte | Sistema de Gestión y Control</title>
-  <meta name="description" content="Sistema integral para gestión de pedidos, producción, inventario y finanzas de YogurArte - Yogur Artesanal Natural en Fonseca.">
-  <link rel="icon" type="image/svg+xml" href="/assets/logo-icon.svg">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>YogurArte • Sistema Operativo Integral</title>
+  <meta name="description" content="Sistema de gestión y producción artesanal para YogurArte" />
   
   <!-- Anti-FOUC Theme Detection Script -->
   <script>
-    (function() {
+    (function () {
       try {
         const saved = localStorage.getItem('yogurarte_theme') || 'system';
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         if (saved === 'dark' || (saved === 'system' && prefersDark)) {
           document.documentElement.classList.add('dark');
-          document.documentElement.setAttribute('data-theme', 'dark');
         } else {
           document.documentElement.classList.remove('dark');
-          document.documentElement.setAttribute('data-theme', 'light');
         }
       } catch (e) {}
     })();
   </script>
-  <meta name="theme-color" content="#F8FAFC">
-  
-  <!-- Google Fonts: Plus Jakarta Sans + Caveat -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <!-- Estilos del Sistema -->
-  <link rel="stylesheet" href="/css/variables.css?v=20260922_ux_v11">
-  <link rel="stylesheet" href="/css/layout.css?v=20260922_ux_v11">
-  <link rel="stylesheet" href="/css/components.css?v=20260922_ux_v11">
-  <link rel="stylesheet" href="/css/pages.css?v=20260922_ux_v11">
+  <!-- Google Fonts: Plus Jakarta Sans & Caveat -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script type="module" crossorigin src="/assets/index-DUFuGXR_.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/vue-vendor-BPYee1h8.js">
+  <link rel="modulepreload" crossorigin href="/assets/ui-vendor-D2qVoTMc.js">
+  <link rel="stylesheet" crossorigin href="/assets/index-DvqLrQLZ.css">
 </head>
-<body>
-
-  <div class="app-container">
-    
-    <!-- Barra Lateral de Navegación (Desktop) -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <img src="/assets/logo-icon.svg" alt="YogurArte Logo" class="sidebar-logo">
-        <div class="sidebar-brand-text">
-          <span class="sidebar-brand-title">YogurArte</span>
-          <span class="sidebar-brand-subtitle">Fonseca • Artesanal</span>
-        </div>
-      </div>
-
-      <nav class="sidebar-nav">
-        <button class="nav-item active" data-tab="dashboard">
-          <span class="nav-icon">📊</span>
-          <span>Panel de Control</span>
-        </button>
-
-        <button class="nav-item" data-tab="delivery" id="navItemDelivery" style="display: none;">
-          <span class="nav-icon">🛵</span>
-          <span>Mis Domicilios de Hoy</span>
-        </button>
-
-        <button class="nav-item" data-tab="crm">
-          <span class="nav-icon">💬</span>
-          <span>CRM / WhatsApp</span>
-        </button>
-
-        <button class="nav-item" data-tab="orders">
-          <span class="nav-icon">🥛</span>
-          <span>Pedidos y Ventas</span>
-        </button>
-
-        <button class="nav-item" data-tab="cashControl">
-          <span class="nav-icon">💵</span>
-          <span>Control de Caja</span>
-        </button>
-
-        <button class="nav-item" data-tab="batches">
-          <span class="nav-icon">🍶</span>
-          <span>Producción (Lotes)</span>
-        </button>
-
-        <button class="nav-item" data-tab="inventory">
-          <span class="nav-icon">📦</span>
-          <span>Materia Prima</span>
-        </button>
-
-        <button class="nav-item" data-tab="expenses">
-          <span class="nav-icon">🧾</span>
-          <span>Gastos / Infraestructura</span>
-        </button>
-
-        <button class="nav-item" data-tab="staff">
-          <span class="nav-icon">👥</span>
-          <span>Nómina y Personal</span>
-        </button>
-
-        <button class="nav-item" data-tab="customers">
-          <span class="nav-icon">🤝</span>
-          <span>Clientes</span>
-        </button>
-      </nav>
-
-      <!-- Selector de Usuario Activo (Desktop) -->
-      <div class="sidebar-footer">
-        <div class="user-selector-box">
-          <div class="user-avatar" id="userAvatar">E</div>
-          <div class="user-info">
-            <span class="user-label">Conectado como</span>
-            <span id="activeUserNameDisplay" style="font-size: 0.88rem; font-weight: 800; color: var(--primary);">Edier</span>
-          </div>
-          <button class="theme-toggle-btn" id="btnThemeToggleSidebar" title="Cambiar tema (Claro/Oscuro/Sistema)" aria-label="Cambiar tema" style="width: 32px; height: 32px; margin-right: 4px;">
-            🌓
-          </button>
-          <button class="btn-logout" id="btnLogoutDesktop" title="Cerrar sesión">
-            🚪
-          </button>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Contenido Principal -->
-    <div class="main-wrapper">
-      
-      <!-- Encabezado Superior -->
-      <header class="top-header">
-        <div class="header-title-container">
-          <h1 class="page-title" id="pageTitle">Panel de Control</h1>
-        </div>
-
-        <div class="header-actions">
-          <div class="header-secondary-controls">
-            <!-- Botón de Modo Oscuro / Claro en Header -->
-            <button class="theme-toggle-btn" id="btnThemeToggleHeader" title="Cambiar tema (Claro/Oscuro/Sistema)" aria-label="Cambiar tema">
-              🌓
-            </button>
-
-            <!-- Insignia de Usuario para Móvil y Tablet con opción de salir -->
-            <div class="header-user-badge" id="headerUserBadge">
-              <div class="user-avatar" id="headerUserAvatar">E</div>
-              <span id="headerUserNameDisplay" style="font-size: 0.85rem; font-weight: 800; color: var(--text-main);">Edier</span>
-              <button class="btn-logout-mini" id="btnLogoutMobile" title="Cerrar sesión">
-                🚪
-              </button>
-            </div>
-          </div>
-
-          <button class="btn btn-accent" id="btnNewOrderGlobal">
-            <span>+</span> <span class="btn-order-label">Nuevo Pedido</span>
-          </button>
-        </div>
-      </header>
-
-      <!-- Cuerpo Dinámico -->
-      <main class="content-body" id="contentContainer">
-        <!-- Vistas inyectadas dinámicamente por JavaScript -->
-      </main>
-
-    </div>
-
-    <!-- Barra de Navegación Inferior (Móvil) -->
-    <nav class="mobile-nav">
-      <button class="mobile-nav-btn active" data-tab="dashboard">
-        <span class="icon">📊</span>
-        <span>Inicio</span>
-      </button>
-
-      <button class="mobile-nav-btn" data-tab="delivery" id="mobileNavItemDelivery" style="display: none;">
-        <span class="icon">🛵</span>
-        <span>Domicilios</span>
-      </button>
-
-      <button class="mobile-nav-btn" data-tab="orders">
-        <span class="icon">🥛</span>
-        <span>Pedidos</span>
-      </button>
-
-      <button class="mobile-nav-btn" data-tab="cashControl">
-        <span class="icon">💵</span>
-        <span>Caja</span>
-      </button>
-
-      <button class="mobile-nav-btn" data-tab="batches">
-        <span class="icon">🍶</span>
-        <span>Lotes</span>
-      </button>
-
-      <button class="mobile-nav-btn" id="btnMobileMore" title="Más opciones">
-        <span class="icon" id="mobileMoreIcon">☰</span>
-        <span id="mobileMoreLabel">Más</span>
-      </button>
-    </nav>
-
-    <!-- Panel Desplegable Inferior para Móvil (Bottom Sheet "Más") -->
-    <div class="mobile-more-overlay" id="mobileMoreOverlay">
-      <div class="mobile-more-sheet" id="mobileMoreSheet">
-        <div class="mobile-more-handle"></div>
-        <div class="mobile-more-header">
-          <div class="mobile-more-title">
-            <span>✨ Más Opciones y Módulos</span>
-          </div>
-          <button class="mobile-more-close" id="btnCloseMobileMore" title="Cerrar">✕</button>
-        </div>
-        <div class="mobile-more-grid">
-          <button class="mobile-more-item" data-tab="crm">
-            <span class="more-item-icon">💬</span>
-            <div class="more-item-info">
-              <span class="more-item-title">CRM / WhatsApp</span>
-              <span class="more-item-desc">Mensajes y atención</span>
-            </div>
-          </button>
-
-          <button class="mobile-more-item" data-tab="inventory">
-            <span class="more-item-icon">📦</span>
-            <div class="more-item-info">
-              <span class="more-item-title">Materia Prima</span>
-              <span class="more-item-desc">Insumos y stock</span>
-            </div>
-          </button>
-
-          <button class="mobile-more-item" data-tab="expenses">
-            <span class="more-item-icon">🧾</span>
-            <div class="more-item-info">
-              <span class="more-item-title">Gastos y Créditos</span>
-              <span class="more-item-desc">Operativos y cuotas</span>
-            </div>
-          </button>
-
-          <button class="mobile-more-item" data-tab="staff">
-            <span class="more-item-icon">👥</span>
-            <div class="more-item-info">
-              <span class="more-item-title">Nómina y Personal</span>
-              <span class="more-item-desc">Equipo y retiros</span>
-            </div>
-          </button>
-
-          <button class="mobile-more-item" data-tab="customers">
-            <span class="more-item-icon">🤝</span>
-            <div class="more-item-info">
-              <span class="more-item-title">Clientes</span>
-              <span class="more-item-desc">Directorio y deudas</span>
-            </div>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Botón Flotante para Móvil (FAB) -->
-    <button class="mobile-fab" id="mobileFabOrder" title="Nuevo Pedido">
-      +
-    </button>
-
-    <!-- Contenedor para Modales Dinámicos -->
-    <div id="modalContainer"></div>
-
-    <!-- Pantalla de Login / Bloqueo -->
-    <div id="loginScreenContainer"></div>
-
-    <!-- Contenedor de Notificaciones Toast -->
-    <div class="toast-container" id="toastContainer"></div>
-
-  </div>
-
-  <!-- Socket.IO Client para Tiempo Real -->
-  <script src="/socket.io/socket.io.js"></script>
-
-  <!-- JavaScript Modular -->
-  <script type="module" src="/js/app.js?v=20260922_ux_v11"></script>
+<body class="bg-surface-light-canvas dark:bg-surface-dark-canvas text-slate-800 dark:text-slate-100 font-sans antialiased min-h-screen selection:bg-accent-500 selection:text-white">
+  <div id="app"></div>
 </body>
 </html>

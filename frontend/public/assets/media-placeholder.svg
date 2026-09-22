@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="140" height="140" viewBox="0 0 140 140" fill="none">
+  <rect width="140" height="140" rx="16" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+  <circle cx="70" cy="55" r="22" fill="#EDE9FE"/>
+  <path d="M59 55C59 48.9249 63.9249 44 70 44C76.0751 44 81 48.9249 81 55C81 61.0751 76.0751 66 70 66C63.9249 66 59 61.0751 59 55Z" fill="#8B5CF6" fill-opacity="0.2"/>
+  <path d="M64 53C64 51.8954 64.8954 51 66 51C67.1046 51 68 51.8954 68 53C68 54.1046 67.1046 55 66 55C64.8954 55 64 54.1046 64 53ZM72 53C72 51.8954 72.8954 51 74 51C75.1046 51 76 51.8954 76 53C76 54.1046 75.1046 55 74 55C72.8954 55 72 54.1046 72 53Z" fill="#7C3AED"/>
+  <path d="M65 60C66.5 62 73.5 62 75 60" stroke="#7C3AED" stroke-width="2" stroke-linecap="round"/>
+  <text x="70" y="95" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#64748B">✨ Sticker</text>
+  <text x="70" y="112" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9.5" font-weight="500" fill="#94A3B8">Archivo no disponible</text>
+</svg>

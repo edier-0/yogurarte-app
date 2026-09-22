@@ -10,6 +10,7 @@
     "dev:client": "vite frontend",
     "build": "rimraf dist && tsc && prisma generate",
     "build:client": "vue-tsc --noEmit -p frontend/tsconfig.json && vite build frontend",
+    "build:prod": "npm --prefix frontend run build",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -35,7 +36,6 @@
   "dependencies": {
     "@formkit/auto-animate": "^0.8.2",
     "@prisma/client": "^5.19.1",
-    "@vee-validate/zod": "^4.14.7",
     "@vueuse/core": "^11.1.0",
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "axios": "^1.7.7",
@@ -55,7 +55,6 @@
     "reka-ui": "^2.10.5",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.0",
-    "vee-validate": "^4.14.7",
     "vue": "^3.5.10",
     "vue-router": "^4.4.5",
     "vue-sonner": "^1.3.0",
