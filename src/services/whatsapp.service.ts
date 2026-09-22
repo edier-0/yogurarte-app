@@ -24,8 +24,22 @@ class WhatsAppService {
   private qrCodeDataUrl: string | null = null;
   private isInitializing: boolean = false;
   private reconnectAttempts: number = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS: number = 5;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private connectionStableTimeout: NodeJS.Timeout | null = null;
 
   constructor() {}
+
+  private clearTimers() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.connectionStableTimeout) {
+      clearTimeout(this.connectionStableTimeout);
+      this.connectionStableTimeout = null;
+    }
+  }
 
   public setSocketServer(io: SocketIOServer) {
     this.io = io;
@@ -51,6 +65,7 @@ class WhatsAppService {
 
   public async init() {
     if (this.isInitializing) return;
+    this.clearTimers();
     this.isInitializing = true;
     this.status = 'CONNECTING';
     this.broadcastStatus();
@@ -106,35 +121,57 @@ class WhatsAppService {
         }
 
         if (connection === 'close') {
+          this.clearTimers();
           const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+          const isTerminalError =
+            statusCode === DisconnectReason.loggedOut ||          // 401
+            statusCode === DisconnectReason.connectionReplaced || // 440
+            statusCode === DisconnectReason.multideviceMismatch ||// 411
+            statusCode === DisconnectReason.badSession;           // 500
 
-          console.log(`⚠️ Conexión de WhatsApp cerrada. Código: ${statusCode}. Reconectar: ${shouldReconnect}`);
+          console.log(`⚠️ Conexión de WhatsApp cerrada. Código: ${statusCode}. Terminal: ${isTerminalError}`);
           this.status = 'DISCONNECTED';
           this.qrCodeDataUrl = null;
+          this.sock = null;
+          this.isInitializing = false;
           this.broadcastStatus();
 
-          if (statusCode === DisconnectReason.loggedOut) {
-            console.log('🚪 Sesión cerrada por el usuario. Limpiando credenciales de Neon DB...');
+          if (isTerminalError) {
+            console.log(`🚪 Sesión terminada/revocada (Código ${statusCode}). Purgando credenciales de Neon DB...`);
             await this.clearAuthData();
-            this.isInitializing = false;
-            setTimeout(() => this.init(), 2000);
-          } else if (shouldReconnect) {
-            this.reconnectAttempts++;
-            const delay = Math.min(10000, 2000 * this.reconnectAttempts);
-            console.log(`🔄 Reintentando conexión a WhatsApp en ${delay / 1000}s (Intento ${this.reconnectAttempts})...`);
-            this.isInitializing = false;
-            setTimeout(() => this.init(), delay);
+            this.reconnectAttempts = 0;
+            // Detener por completo la reconexión automática
           } else {
-            this.isInitializing = false;
+            // Errores transitorios de red (408, 515, 428, etc.)
+            this.reconnectAttempts++;
+            if (this.reconnectAttempts > this.MAX_RECONNECT_ATTEMPTS) {
+              console.warn(`🛑 Límite máximo de ${this.MAX_RECONNECT_ATTEMPTS} reintentos de reconexión alcanzado. Purgando credenciales y deteniendo reconexión.`);
+              await this.clearAuthData();
+              this.reconnectAttempts = 0;
+              this.broadcastStatus();
+            } else {
+              const delay = Math.min(15000, 2000 * this.reconnectAttempts);
+              console.log(`🔄 Reintentando conexión a WhatsApp en ${delay / 1000}s (Intento ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})...`);
+              this.reconnectTimeout = setTimeout(() => {
+                this.init().catch((err) => console.error('Error en reintento de conexión WhatsApp:', err));
+              }, delay);
+            }
           }
         } else if (connection === 'open') {
           console.log(`✅ ¡WhatsApp de YogurArte conectado exitosamente! Usuario: ${this.sock?.user?.id}`);
           this.status = 'CONNECTED';
           this.qrCodeDataUrl = null;
-          this.reconnectAttempts = 0;
           this.isInitializing = false;
           this.broadcastStatus();
+
+          // Estabilización: solo tras 15 segundos de conexión estable ininterrumpida se resetea el contador
+          if (this.connectionStableTimeout) {
+            clearTimeout(this.connectionStableTimeout);
+          }
+          this.connectionStableTimeout = setTimeout(() => {
+            console.log('📶 Conexión de WhatsApp estabilizada (15s activos). Contador de reintentos reseteado a 0.');
+            this.reconnectAttempts = 0;
+          }, 15000);
 
           // Limpiar/unificar chats duplicados por LID
           this.mergeDuplicateConversations().catch((e) => console.warn('Aviso merge chats:', e));
@@ -171,6 +208,9 @@ class WhatsAppService {
   }
 
   public async logout() {
+    this.clearTimers();
+    this.reconnectAttempts = 0;
+
     try {
       if (this.sock) {
         await this.sock.logout();
@@ -185,11 +225,12 @@ class WhatsAppService {
     this.isInitializing = false;
     this.broadcastStatus();
 
-    setTimeout(() => this.init(), 1500);
     return { success: true, message: 'Sesión de WhatsApp cerrada' };
   }
 
   public async refreshQR() {
+    this.clearTimers();
+
     try {
       if (this.sock) {
         try {
@@ -198,11 +239,10 @@ class WhatsAppService {
       }
     } catch (e) {}
 
-    // Limpiar claves incompletas previas si se fuerza nuevo QR
-    if (this.status !== 'CONNECTED') {
-      await this.clearAuthData();
-    }
+    // Forzar siempre la purga de credenciales obsoletas/huérfanas para generar nuevo QR
+    await this.clearAuthData();
 
+    this.reconnectAttempts = 0;
     this.status = 'CONNECTING';
     this.qrCodeDataUrl = null;
     this.sock = null;
