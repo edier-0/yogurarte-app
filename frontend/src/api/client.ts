@@ -30,7 +30,9 @@ apiClient.interceptors.request.use(
         config.url?.includes('/auth/public-list') ||
         config.url?.includes('/users/public-list') ||
         config.url?.includes('/auth/forgot-password') ||
-        config.url?.includes('/auth/reset-password');
+        config.url?.includes('/users/forgot-password') ||
+        config.url?.includes('/auth/reset-password') ||
+        config.url?.includes('/users/reset-password');
 
       if (isPublicEndpoint) {
         return config;

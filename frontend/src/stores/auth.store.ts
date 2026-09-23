@@ -166,19 +166,28 @@ export const useAuthStore = defineStore('auth', () => {
     isLoading.value = true;
     error.value = null;
     try {
-      const res = await http.post<{
-        message: string;
-        token: string;
-        user: {
-          id: number;
-          name: string;
-          username: string;
-          role: string;
-          phone?: string | null;
-          email?: string | null;
-          bankInfo?: string | null;
-        };
-      }>('/auth/login', { username, password });
+      let res: any;
+      try {
+        res = await http.post<{
+          message: string;
+          token: string;
+          user: {
+            id: number;
+            name: string;
+            username: string;
+            role: string;
+            phone?: string | null;
+            email?: string | null;
+            bankInfo?: string | null;
+          };
+        }>('/auth/login', { username, password });
+      } catch (err: any) {
+        if (err?.response?.status === 404) {
+          res = await http.post('/users/login', { username, password });
+        } else {
+          throw err;
+        }
+      }
 
       if (res?.token && res?.user) {
         if (isTokenExpired(res.token)) {
@@ -219,7 +228,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Sincronizar y validar perfil del usuario actual desde /api/auth/me
+   * Sincronizar y validar perfil del usuario actual desde /api/auth/me o /api/users/me
    */
   async function fetchMe() {
     if (!token.value || isTokenExpired(token.value)) {
@@ -228,7 +237,17 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     try {
-      const res = await http.get<{ user: any }>('/auth/me');
+      let res: any;
+      try {
+        res = await http.get<{ user: any }>('/auth/me');
+      } catch (err: any) {
+        if (err?.response?.status === 404) {
+          res = await http.get<{ user: any }>('/users/me');
+        } else {
+          throw err;
+        }
+      }
+
       if (res?.user) {
         const normRole = normalizeRole(res.user.role) || 'OPERADOR';
         const syncedUser: AuthUser = {
@@ -252,9 +271,18 @@ export const useAuthStore = defineStore('auth', () => {
     isLoading.value = true;
     error.value = null;
     try {
-      return await http.post<ForgotPasswordResponse>('/auth/forgot-password', {
-        identifier: identifier.trim(),
-      });
+      try {
+        return await http.post<ForgotPasswordResponse>('/auth/forgot-password', {
+          identifier: identifier.trim(),
+        });
+      } catch (err: any) {
+        if (err?.response?.status === 404) {
+          return await http.post<ForgotPasswordResponse>('/users/forgot-password', {
+            identifier: identifier.trim(),
+          });
+        }
+        throw err;
+      }
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
@@ -279,7 +307,14 @@ export const useAuthStore = defineStore('auth', () => {
     isLoading.value = true;
     error.value = null;
     try {
-      return await http.post<{ message: string }>('/auth/reset-password', payload);
+      try {
+        return await http.post<{ message: string }>('/auth/reset-password', payload);
+      } catch (err: any) {
+        if (err?.response?.status === 404) {
+          return await http.post<{ message: string }>('/users/reset-password', payload);
+        }
+        throw err;
+      }
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
