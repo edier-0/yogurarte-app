@@ -44,8 +44,10 @@ interface DashboardData {
     netProfit: number;
     deliveredPendingToCollect: number;
     ordersCount?: number;
+    totalBatchesCount?: number;
+    totalLitersInProcess?: number;
   };
-  periodBatches?: Array<{
+  periodBatches: Array<{
     id: number;
     code: string;
     flavor: string;
@@ -53,7 +55,7 @@ interface DashboardData {
     status: string;
     efficiencyRate?: number;
   }>;
-  allActiveBatches?: Array<{
+  allActiveBatches: Array<{
     id: number;
     code: string;
     flavor: string;
@@ -69,15 +71,16 @@ interface DashboardData {
     minStockAlert: number;
     unit: string;
   }>;
-  creditSummary?: {
+  creditSummary: {
     totalRemainingDebt: number;
     activeCreditsCount: number;
   };
-  recentOrders?: Array<{
+  recentOrders: Array<{
     id: number;
     orderNumber: string;
     customerName?: string;
     total: number;
+    totalAmount?: number;
     status: string;
     deliveryStatus: string;
   }>;
@@ -93,6 +96,9 @@ const dashboardData = ref<DashboardData>({
     totalExpenses: 0,
     netProfit: 0,
     deliveredPendingToCollect: 0,
+    ordersCount: 0,
+    totalBatchesCount: 0,
+    totalLitersInProcess: 0,
   },
   periodBatches: [],
   allActiveBatches: [],
@@ -107,14 +113,53 @@ const dashboardData = ref<DashboardData>({
 async function loadDashboard() {
   isLoading.value = true;
   try {
-    const res = await http.get<DashboardData>('/dashboard/summary', {
+    const res = await http.get<any>('/dashboard/summary', {
       params: { period: selectedPeriod.value },
     });
     if (res && res.kpis) {
-      dashboardData.value = res;
+      const kpis = res.kpis || {};
+      dashboardData.value = {
+        kpis: {
+          totalSalesAmount: Number(kpis.totalSalesAmount ?? 0),
+          totalSalesLiters: Number(
+            kpis.totalSalesLiters ??
+            kpis.totalLitersSold ??
+            kpis.deliveredLiters ??
+            kpis.totalLitersAll ??
+            0
+          ),
+          cashBalance: Number(kpis.cashBalance ?? 0),
+          cashInHand: Number(kpis.cashInHand ?? 0),
+          digitalBank: Number(kpis.digitalBank ?? 0),
+          totalExpenses: Number(kpis.totalExpenses ?? 0),
+          netProfit: Number(kpis.netProfit ?? 0),
+          deliveredPendingToCollect: Number(kpis.deliveredPendingToCollect ?? 0),
+          ordersCount: Number(kpis.totalOrdersCount ?? 0),
+          totalBatchesCount: Number(kpis.totalBatchesCountAllTime ?? kpis.totalBatchesCountPeriod ?? 0),
+          totalLitersInProcess: Number(kpis.inProcessLiters ?? kpis.totalLitersProducedPeriod ?? 0),
+        },
+        periodBatches: Array.isArray(res.periodBatches) ? res.periodBatches : [],
+        allActiveBatches: Array.isArray(res.allActiveBatches) ? res.allActiveBatches : [],
+        lowStockAlerts: Array.isArray(res.lowStockAlerts) ? res.lowStockAlerts : [],
+        creditSummary: {
+          totalRemainingDebt: Number(res.creditSummary?.totalRemainingDebt ?? 0),
+          activeCreditsCount: Number(res.creditSummary?.activeCreditsCount ?? 0),
+        },
+        recentOrders: Array.isArray(res.recentOrders)
+          ? res.recentOrders.map((o: any) => ({
+              id: o.id,
+              orderNumber: o.orderNumber || 'PED-000',
+              customerName: o.customer?.fullName || o.customerName || 'Cliente mostrador',
+              total: Number(o.totalAmount ?? o.total ?? 0),
+              totalAmount: Number(o.totalAmount ?? o.total ?? 0),
+              status: o.paymentStatus || o.status || 'PENDING',
+              deliveryStatus: o.deliveryStatus || 'PENDING',
+            }))
+          : [],
+      };
     }
-  } catch {
-    // Si falla, mantener estado seguro
+  } catch (err) {
+    console.error('Error al cargar datos del dashboard:', err);
   } finally {
     isLoading.value = false;
   }
@@ -125,12 +170,12 @@ function changePeriod(p: PeriodOption) {
   loadDashboard();
 }
 
-function formatCurrency(val: number): string {
+function formatCurrency(val?: number | null): string {
   return new Intl.NumberFormat('es-CO', {
     style: 'currency',
     currency: 'COP',
     maximumFractionDigits: 0,
-  }).format(val || 0);
+  }).format(Number(val) || 0);
 }
 
 onMounted(() => {
@@ -257,12 +302,12 @@ onMounted(() => {
         </div>
         <div class="mt-3">
           <p class="text-2xl font-black text-slate-900 dark:text-white">
-            {{ formatCurrency(dashboardData.kpis.totalSalesAmount) }}
+            {{ formatCurrency(dashboardData.kpis?.totalSalesAmount) }}
           </p>
           <div class="mt-1 flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-            <span>{{ dashboardData.kpis.totalSalesLiters.toFixed(1) }} L vendidos</span>
+            <span>{{ (dashboardData.kpis?.totalSalesLiters ?? 0).toFixed(1) }} L vendidos</span>
             <span class="text-slate-300 dark:text-slate-600">•</span>
-            <span class="text-emerald-600 dark:text-emerald-400">Utilidad: {{ formatCurrency(dashboardData.kpis.netProfit) }}</span>
+            <span class="text-emerald-600 dark:text-emerald-400">Utilidad: {{ formatCurrency(dashboardData.kpis?.netProfit) }}</span>
           </div>
         </div>
       </div>
@@ -279,16 +324,16 @@ onMounted(() => {
         </div>
         <div class="mt-3">
           <p class="text-2xl font-black text-slate-900 dark:text-white">
-            {{ formatCurrency(dashboardData.kpis.cashBalance) }}
+            {{ formatCurrency(dashboardData.kpis?.cashBalance) }}
           </p>
           <div class="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-surface-light-canvas p-1.5 text-[11px] font-bold dark:bg-surface-dark-canvas">
             <div class="flex items-center gap-1 text-slate-600 dark:text-slate-300">
               <Banknote class="h-3 w-3 text-amber-600" />
-              <span>{{ formatCurrency(dashboardData.kpis.cashInHand) }}</span>
+              <span>{{ formatCurrency(dashboardData.kpis?.cashInHand) }}</span>
             </div>
             <div class="flex items-center gap-1 text-slate-600 dark:text-slate-300">
               <Smartphone class="h-3 w-3 text-purple-600" />
-              <span>{{ formatCurrency(dashboardData.kpis.digitalBank) }}</span>
+              <span>{{ formatCurrency(dashboardData.kpis?.digitalBank) }}</span>
             </div>
           </div>
         </div>
@@ -306,15 +351,14 @@ onMounted(() => {
         </div>
         <div class="mt-3">
           <p class="text-2xl font-black text-slate-900 dark:text-white">
-            {{ (dashboardData.allActiveBatches || []).length }} Lotes
+            {{ (dashboardData.allActiveBatches && dashboardData.allActiveBatches.length > 0) ? dashboardData.allActiveBatches.length : (dashboardData.kpis?.totalBatchesCount || 0) }} Lotes
           </p>
           <div class="mt-1 flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
             <span>
               {{
-                (dashboardData.allActiveBatches || []).reduce(
-                  (sum, b) => sum + (b.totalLiters || 0),
-                  0
-                )
+                (dashboardData.allActiveBatches && dashboardData.allActiveBatches.length > 0)
+                  ? dashboardData.allActiveBatches.reduce((sum, b) => sum + (b.totalLiters || 0), 0)
+                  : (dashboardData.kpis?.totalLitersInProcess || 0)
               }} L en proceso
             </span>
             <RouterLink
@@ -340,7 +384,7 @@ onMounted(() => {
         </div>
         <div class="mt-3">
           <p class="text-2xl font-black text-amber-600 dark:text-amber-400">
-            {{ formatCurrency(dashboardData.kpis.deliveredPendingToCollect) }}
+            {{ formatCurrency(dashboardData.kpis?.deliveredPendingToCollect) }}
           </p>
           <div class="mt-1 flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
             <span>Cartera en calle</span>
@@ -376,13 +420,13 @@ onMounted(() => {
           </div>
           <span
             class="rounded-full px-2.5 py-0.5 text-[11px] font-extrabold"
-            :class="dashboardData.lowStockAlerts.length > 0 ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'"
+            :class="(dashboardData.lowStockAlerts || []).length > 0 ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'"
           >
-            {{ dashboardData.lowStockAlerts.length }} alertas
+            {{ (dashboardData.lowStockAlerts || []).length }} alertas
           </span>
         </div>
 
-        <div v-if="dashboardData.lowStockAlerts.length === 0" class="flex flex-col items-center justify-center py-8 text-center">
+        <div v-if="!dashboardData.lowStockAlerts || dashboardData.lowStockAlerts.length === 0" class="flex flex-col items-center justify-center py-8 text-center">
           <Sparkles class="h-8 w-8 text-emerald-500" />
           <p class="mt-2 text-xs font-bold text-slate-700 dark:text-slate-300">
             Niveles de inventario óptimos
@@ -394,7 +438,7 @@ onMounted(() => {
 
         <div v-else class="mt-4 space-y-2.5">
           <div
-            v-for="item in dashboardData.lowStockAlerts"
+            v-for="item in (dashboardData.lowStockAlerts || [])"
             :key="item.id"
             class="flex items-center justify-between rounded-2xl border border-rose-100 bg-rose-50/50 p-3 dark:border-rose-900/30 dark:bg-rose-950/20"
           >
@@ -450,7 +494,7 @@ onMounted(() => {
 
         <div v-else class="mt-4 space-y-2">
           <div
-            v-for="order in dashboardData.recentOrders"
+            v-for="order in (dashboardData.recentOrders || [])"
             :key="order.id"
             class="flex items-center justify-between rounded-2xl border border-surface-light-border bg-surface-light-canvas p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas"
           >
@@ -468,7 +512,7 @@ onMounted(() => {
               </p>
             </div>
             <span class="text-xs font-black text-slate-900 dark:text-white">
-              {{ formatCurrency(order.total) }}
+              {{ formatCurrency(order.totalAmount ?? order.total ?? 0) }}
             </span>
           </div>
         </div>

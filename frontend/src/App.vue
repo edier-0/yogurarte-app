@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onErrorCaptured } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Toaster, toast } from 'vue-sonner';
 import { useTheme } from '@/composables/useTheme';
@@ -10,6 +10,12 @@ import MobileBottomNav from '@/components/layout/MobileBottomNav.vue';
 const { isDark } = useTheme();
 const route = useRoute();
 const router = useRouter();
+
+// Blindaje contra errores de renderizado en vistas hijas (evita que la pantalla quede en blanco)
+onErrorCaptured((err) => {
+  console.error('[Vue Boundary] Error capturado en la vista:', err);
+  return false;
+});
 
 const isAuthLayout = computed(() => {
   return route.meta?.layout === 'auth';
