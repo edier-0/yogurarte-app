@@ -133,7 +133,7 @@ export const createUser = async (data: CreateUserInput) => {
     throw new ConflictError('El nombre de usuario ya está registrado');
   }
 
-  const validRoles = ['ADMIN', 'PRODUCCION', 'VENTAS', 'DOMICILIARIO'];
+  const validRoles = ['ADMIN', 'PRODUCCION', 'OPERADOR', 'VENTAS', 'DOMICILIARIO'];
   const assignedRole = role && validRoles.includes(role.toUpperCase()) ? role.toUpperCase() : 'VENTAS';
 
   // Hashear contraseña y PIN con bcrypt
@@ -199,7 +199,7 @@ export const updateUser = async (id: number, data: UpdateUserInput) => {
     updateData.pin = String(pin).trim();
   }
   if (role) {
-    const validRoles = ['ADMIN', 'PRODUCCION', 'VENTAS', 'DOMICILIARIO'];
+    const validRoles = ['ADMIN', 'PRODUCCION', 'OPERADOR', 'VENTAS', 'DOMICILIARIO'];
     if (validRoles.includes(role.toUpperCase())) {
       updateData.role = role.toUpperCase();
     }

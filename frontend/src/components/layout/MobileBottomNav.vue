@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
-import { ShoppingBag, Bike, FlaskConical, Wallet, MessageSquare, Boxes, Plus } from 'lucide-vue-next';
+import { ShoppingBag, Bike, FlaskConical, Wallet, Boxes, Plus } from 'lucide-vue-next';
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -24,7 +24,7 @@ const isActive = (prefix: string) => {
     <nav
       class="flex h-16 w-full items-center justify-around border-t border-surface-light-border bg-surface-light-card/95 px-2 backdrop-blur-lg pb-safe dark:border-surface-dark-border dark:bg-surface-dark-card/95"
     >
-      <!-- Pedidos -->
+      <!-- 1. Pedidos (Acceso para todos los roles) -->
       <RouterLink
         to="/operaciones/pedidos"
         class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
@@ -34,8 +34,9 @@ const isActive = (prefix: string) => {
         <span>Pedidos</span>
       </RouterLink>
 
-      <!-- Domicilios -->
+      <!-- 2. Domicilios (Admin y Domiciliario) -->
       <RouterLink
+        v-if="authStore.isAdmin || authStore.isDriver"
         to="/operaciones/domicilios"
         class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
         :class="isActive('/operaciones/domicilios') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
@@ -44,7 +45,7 @@ const isActive = (prefix: string) => {
         <span>Rutas</span>
       </RouterLink>
 
-      <!-- FAB: Center Quick Action Button -->
+      <!-- FAB: Botón central de acción rápida -->
       <div class="flex flex-1 items-center justify-center">
         <button
           type="button"
@@ -56,29 +57,20 @@ const isActive = (prefix: string) => {
         </button>
       </div>
 
-      <!-- Producción (Lotes) -->
+      <!-- 3. Lotes (Admin y Operador) -->
       <RouterLink
-        v-if="authStore.canAccessProduction || authStore.isAdmin"
+        v-if="authStore.isAdmin || authStore.isOperator"
         to="/produccion/lotes"
         class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
-        :class="isActive('/produccion') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
+        :class="isActive('/produccion/lotes') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
       >
         <FlaskConical class="h-5 w-5" />
         <span>Lotes</span>
       </RouterLink>
-      <RouterLink
-        v-else
-        to="/operaciones/crm"
-        class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
-        :class="isActive('/operaciones/crm') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
-      >
-        <MessageSquare class="h-5 w-5" />
-        <span>Chat</span>
-      </RouterLink>
 
-      <!-- Cuarta pestaña dinámica según Rol -->
+      <!-- 4. Cuarta Pestaña Dinámica: Caja (Admin) o Insumos (Operador) -->
       <RouterLink
-        v-if="authStore.canAccessFinance"
+        v-if="authStore.isAdmin"
         to="/finanzas/caja"
         class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
         :class="isActive('/finanzas') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
@@ -86,6 +78,7 @@ const isActive = (prefix: string) => {
         <Wallet class="h-5 w-5" />
         <span>Caja</span>
       </RouterLink>
+
       <RouterLink
         v-else-if="authStore.isOperator"
         to="/produccion/inventario"
@@ -94,15 +87,6 @@ const isActive = (prefix: string) => {
       >
         <Boxes class="h-5 w-5" />
         <span>Insumos</span>
-      </RouterLink>
-      <RouterLink
-        v-else
-        to="/operaciones/crm"
-        class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
-        :class="isActive('/operaciones/crm') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
-      >
-        <MessageSquare class="h-5 w-5" />
-        <span>CRM</span>
       </RouterLink>
     </nav>
   </div>

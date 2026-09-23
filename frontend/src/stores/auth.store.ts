@@ -3,8 +3,10 @@ import { ref, computed } from 'vue';
 import { http } from '@/api/client';
 import { router } from '@/router';
 import { toast } from 'vue-sonner';
+import { parseJwtPayload, isTokenExpired, purgeAuthStorage } from '@/utils/jwt';
+import { disconnectSocket } from '@/api/socket';
 
-export type UserRole = 'ADMIN' | 'PRODUCCION' | 'VENTAS' | 'DOMICILIARIO';
+export type UserRole = 'ADMIN' | 'OPERADOR' | 'DOMICILIARIO';
 
 export interface AuthUser {
   id: number;
@@ -33,54 +35,111 @@ export interface ForgotPasswordResponse {
   admins?: Array<{ name: string; phone: string }>;
 }
 
-export const useAuthStore = defineStore('auth', () => {
-  // Inicialización de estado desde localStorage
-  const savedToken = localStorage.getItem('yogurarte_token') || localStorage.getItem('token');
-  const savedUser = localStorage.getItem('yogurarte_user');
+/**
+ * Normaliza cualquier variante de rol (ej: PRODUCCION -> OPERADOR)
+ */
+export function normalizeRole(rawRole?: string | null): UserRole | null {
+  if (!rawRole) return null;
+  const upper = rawRole.toUpperCase().trim();
+  if (upper === 'ADMIN') return 'ADMIN';
+  if (upper === 'OPERADOR' || upper === 'PRODUCCION') return 'OPERADOR';
+  if (upper === 'DOMICILIARIO' || upper === 'REPARTIDOR') return 'DOMICILIARIO';
+  return null;
+}
 
-  const token = ref<string | null>(savedToken);
-  const user = ref<AuthUser | null>(savedUser ? JSON.parse(savedUser) : null);
+export const useAuthStore = defineStore('auth', () => {
+  // Inicialización segura y validación inmediata de expiración
+  const rawSavedToken =
+    localStorage.getItem('yogurarte_token') ||
+    localStorage.getItem('token') ||
+    localStorage.getItem('auth_token');
+
+  let initialToken: string | null = null;
+  let initialUser: AuthUser | null = null;
+
+  if (rawSavedToken && !isTokenExpired(rawSavedToken)) {
+    initialToken = rawSavedToken;
+    const rawSavedUser = localStorage.getItem('yogurarte_user') || localStorage.getItem('user');
+    if (rawSavedUser) {
+      try {
+        const parsed = JSON.parse(rawSavedUser);
+        const normRole = normalizeRole(parsed.role);
+        if (normRole) {
+          initialUser = {
+            ...parsed,
+            role: normRole,
+          };
+        }
+      } catch {
+        initialUser = null;
+      }
+    }
+
+    // Si no había user en storage pero el JWT es válido, extraer datos básicos del JWT
+    if (!initialUser) {
+      const payload = parseJwtPayload(rawSavedToken);
+      if (payload) {
+        const normRole = normalizeRole(payload.role);
+        if (normRole) {
+          initialUser = {
+            id: payload.id || 0,
+            name: payload.name || payload.username || 'Usuario',
+            username: payload.username || '',
+            role: normRole,
+          };
+        }
+      }
+    }
+  } else if (rawSavedToken) {
+    // Token expirado o corrupto detectado al inicio: purgar de inmediato
+    purgeAuthStorage();
+  }
+
+  const token = ref<string | null>(initialToken);
+  const user = ref<AuthUser | null>(initialUser);
   const isLoading = ref<boolean>(false);
   const publicUsers = ref<PublicUserItem[]>([]);
   const error = ref<string | null>(null);
 
-  // Getters reactivos de autenticación y roles
-  const isAuthenticated = computed(() => !!token.value);
-  const userRole = computed<UserRole>(() => (user.value?.role as UserRole) || 'VENTAS');
+  // Getters reactivos blindados: Erradicar fallback a roles por defecto sin autenticación
+  const isAuthenticated = computed(() => {
+    return !!token.value && !isTokenExpired(token.value) && !!user.value;
+  });
 
-  const isAdmin = computed(() => user.value?.role === 'ADMIN');
-  const isOperator = computed(() => user.value?.role === 'PRODUCCION');
-  const isDriver = computed(() => user.value?.role === 'DOMICILIARIO');
-  const isSales = computed(() => user.value?.role === 'VENTAS');
+  const userRole = computed<UserRole | null>(() => {
+    if (!isAuthenticated.value || !user.value) return null;
+    return user.value.role;
+  });
+
+  const isAdmin = computed(() => isAuthenticated.value && user.value?.role === 'ADMIN');
+  const isOperator = computed(() => isAuthenticated.value && user.value?.role === 'OPERADOR');
+  const isDriver = computed(() => isAuthenticated.value && user.value?.role === 'DOMICILIARIO');
 
   // Permisos granulares por dominio
-  const canAccessFinance = computed(() => user.value?.role === 'ADMIN');
-  const canAccessDirectory = computed(() => user.value?.role === 'ADMIN');
-  const canAccessProduction = computed(() => ['ADMIN', 'PRODUCCION'].includes(user.value?.role || ''));
-  const canAccessOperations = computed(() =>
-    ['ADMIN', 'VENTAS', 'DOMICILIARIO', 'PRODUCCION'].includes(user.value?.role || '')
-  );
+  const canAccessFinance = computed(() => isAdmin.value);
+  const canAccessDirectory = computed(() => isAdmin.value);
+  const canAccessProduction = computed(() => isAdmin.value || isOperator.value);
+  const canAccessOperations = computed(() => isAdmin.value || isDriver.value);
 
   /**
    * Obtiene la ruta inicial por defecto según el rol del usuario
    */
-  function getHomeRouteForRole(role?: string): string {
-    const currentRole = role || user.value?.role;
-    switch (currentRole) {
+  function getHomeRouteForRole(role?: string | null): string {
+    const norm = normalizeRole(role) || userRole.value;
+    switch (norm) {
       case 'ADMIN':
         return '/dashboard';
-      case 'PRODUCCION':
+      case 'OPERADOR':
         return '/produccion/lotes';
       case 'DOMICILIARIO':
         return '/operaciones/domicilios';
-      case 'VENTAS':
       default:
-        return '/operaciones/pedidos';
+        return '/login';
     }
   }
 
   /**
-   * Carga la lista pública de usuarios activos para acceso rápido
+   * Carga la lista pública de usuarios activos para selector táctil
    */
   async function fetchPublicUsers() {
     try {
@@ -89,7 +148,6 @@ export const useAuthStore = defineStore('auth', () => {
         publicUsers.value = res;
       }
     } catch {
-      // Fallback a endpoint alterno si aplica
       try {
         const res = await http.get<PublicUserItem[]>('/users/public-list');
         if (Array.isArray(res)) {
@@ -102,7 +160,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Iniciar sesión institucional
+   * Iniciar sesión institucional y asentar JWT
    */
   async function login(username: string, password: string) {
     isLoading.value = true;
@@ -111,23 +169,48 @@ export const useAuthStore = defineStore('auth', () => {
       const res = await http.post<{
         message: string;
         token: string;
-        user: AuthUser;
+        user: {
+          id: number;
+          name: string;
+          username: string;
+          role: string;
+          phone?: string | null;
+          email?: string | null;
+          bankInfo?: string | null;
+        };
       }>('/auth/login', { username, password });
 
       if (res?.token && res?.user) {
+        if (isTokenExpired(res.token)) {
+          throw new Error('El token emitido por el servidor ya se encuentra expirado');
+        }
+
+        const normalizedRole = normalizeRole(res.user.role) || 'OPERADOR';
+        const authenticatedUser: AuthUser = {
+          ...res.user,
+          role: normalizedRole,
+        };
+
         token.value = res.token;
-        user.value = res.user;
+        user.value = authenticatedUser;
 
         localStorage.setItem('yogurarte_token', res.token);
         localStorage.setItem('token', res.token);
-        localStorage.setItem('yogurarte_user', JSON.stringify(res.user));
+        localStorage.setItem('yogurarte_user', JSON.stringify(authenticatedUser));
 
-        return res;
+        return {
+          ...res,
+          user: authenticatedUser,
+        };
       } else {
         throw new Error('Respuesta inválida del servidor de autenticación');
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Error al iniciar sesión';
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        'Error al iniciar sesión';
       error.value = msg;
       throw err;
     } finally {
@@ -136,36 +219,48 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Validar y refrescar perfil actual
+   * Sincronizar y validar perfil del usuario actual desde /api/auth/me
    */
   async function fetchMe() {
-    if (!token.value) return null;
+    if (!token.value || isTokenExpired(token.value)) {
+      logout(true);
+      return null;
+    }
+
     try {
-      const res = await http.get<{ user: AuthUser }>('/auth/me');
+      const res = await http.get<{ user: any }>('/auth/me');
       if (res?.user) {
-        user.value = res.user;
-        localStorage.setItem('yogurarte_user', JSON.stringify(res.user));
-        return res.user;
+        const normRole = normalizeRole(res.user.role) || 'OPERADOR';
+        const syncedUser: AuthUser = {
+          ...res.user,
+          role: normRole,
+        };
+        user.value = syncedUser;
+        localStorage.setItem('yogurarte_user', JSON.stringify(syncedUser));
+        return syncedUser;
       }
     } catch {
-      logout();
+      logout(true);
     }
     return null;
   }
 
   /**
-   * Solicitar recuperación de contraseña
+   * Solicitar código de recuperación de contraseña
    */
   async function forgotPassword(identifier: string): Promise<ForgotPasswordResponse> {
     isLoading.value = true;
     error.value = null;
     try {
-      const res = await http.post<ForgotPasswordResponse>('/auth/forgot-password', {
+      return await http.post<ForgotPasswordResponse>('/auth/forgot-password', {
         identifier: identifier.trim(),
       });
-      return res;
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Error al procesar solicitud';
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        'Error al procesar solicitud';
       error.value = msg;
       throw err;
     } finally {
@@ -184,10 +279,13 @@ export const useAuthStore = defineStore('auth', () => {
     isLoading.value = true;
     error.value = null;
     try {
-      const res = await http.post<{ message: string }>('/auth/reset-password', payload);
-      return res;
+      return await http.post<{ message: string }>('/auth/reset-password', payload);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Error al restablecer contraseña';
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        'Error al restablecer contraseña';
       error.value = msg;
       throw err;
     } finally {
@@ -196,18 +294,30 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Cerrar sesión y limpiar credenciales
+   * Cierre forzado y determinístico de sesión
+   * Limpia llaves en localStorage, desconecta sockets y redirige a /login
    */
-  function logout() {
+  function logout(silent = false) {
     token.value = null;
     user.value = null;
-    localStorage.removeItem('yogurarte_token');
-    localStorage.removeItem('token');
-    localStorage.removeItem('yogurarte_user');
-    toast.info('Sesión Finalizada', {
-      description: 'Has cerrado sesión correctamente.',
-    });
-    router.push('/login');
+    purgeAuthStorage();
+
+    // Desconectar sockets en tiempo real
+    try {
+      disconnectSocket();
+    } catch (err) {
+      console.warn('Advertencia al desconectar socket en logout:', err);
+    }
+
+    if (!silent) {
+      toast.info('Sesión Finalizada', {
+        description: 'Has cerrado sesión correctamente.',
+      });
+    }
+
+    if (router.currentRoute.value.path !== '/login') {
+      router.push('/login');
+    }
   }
 
   return {
@@ -221,7 +331,6 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isOperator,
     isDriver,
-    isSales,
     canAccessFinance,
     canAccessDirectory,
     canAccessProduction,

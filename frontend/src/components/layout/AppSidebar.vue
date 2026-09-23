@@ -38,16 +38,38 @@ const authStore = useAuthStore();
 const rawSections: NavSection[] = [
   {
     domain: 'Operaciones',
-    roles: ['ADMIN', 'VENTAS', 'DOMICILIARIO', 'PRODUCCION'],
+    roles: ['ADMIN', 'OPERADOR', 'DOMICILIARIO'],
     items: [
-      { id: 'orders', label: 'Pedidos y Ventas', path: '/operaciones/pedidos', icon: ShoppingBag, badge: 'Hoy', badgeColor: 'bg-accent-500 text-white', roles: ['ADMIN', 'VENTAS', 'DOMICILIARIO', 'PRODUCCION'] },
-      { id: 'delivery', label: 'Domicilios de Hoy', path: '/operaciones/domicilios', icon: Bike, roles: ['ADMIN', 'VENTAS', 'DOMICILIARIO'] },
-      { id: 'crm', label: 'CRM WhatsApp', path: '/operaciones/crm', icon: MessageCircle, badge: 'En Vivo', badgeColor: 'bg-emerald-500 text-white', roles: ['ADMIN', 'VENTAS'] },
+      {
+        id: 'orders',
+        label: 'Pedidos y Ventas',
+        path: '/operaciones/pedidos',
+        icon: ShoppingBag,
+        badge: 'Hoy',
+        badgeColor: 'bg-accent-500 text-white',
+        roles: ['ADMIN', 'OPERADOR', 'DOMICILIARIO'],
+      },
+      {
+        id: 'delivery',
+        label: 'Domicilios de Hoy',
+        path: '/operaciones/domicilios',
+        icon: Bike,
+        roles: ['ADMIN', 'DOMICILIARIO'],
+      },
+      {
+        id: 'crm',
+        label: 'CRM WhatsApp',
+        path: '/operaciones/crm',
+        icon: MessageCircle,
+        badge: 'En Vivo',
+        badgeColor: 'bg-emerald-500 text-white',
+        roles: ['ADMIN'],
+      },
     ],
   },
   {
     domain: 'Planta & Producción',
-    roles: ['ADMIN', 'PRODUCCION'],
+    roles: ['ADMIN', 'OPERADOR'],
     items: [
       { id: 'batches', label: 'Lotes y Rendimiento', path: '/produccion/lotes', icon: FlaskConical },
       { id: 'inventory', label: 'Materia Prima e Insumos', path: '/produccion/inventario', icon: Boxes },
@@ -73,13 +95,16 @@ const rawSections: NavSection[] = [
 
 const currentRole = computed(() => authStore.userRole);
 
-// Secciones filtradas por RBAC
+// Secciones filtradas estrictamente por RBAC
 const visibleSections = computed(() => {
+  if (!currentRole.value) return [];
+  const role = currentRole.value;
+
   return rawSections
-    .filter((sec) => !sec.roles || sec.roles.includes(currentRole.value))
+    .filter((sec) => !sec.roles || sec.roles.includes(role))
     .map((sec) => ({
       ...sec,
-      items: sec.items.filter((item) => !item.roles || item.roles.includes(currentRole.value)),
+      items: sec.items.filter((item) => !item.roles || item.roles.includes(role)),
     }))
     .filter((sec) => sec.items.length > 0);
 });
@@ -184,7 +209,7 @@ const isItemActive = (itemPath: string) => {
         </div>
         <div class="flex items-center gap-1 text-[10px] font-bold text-slate-400">
           <CheckCircle2 class="h-3.5 w-3.5 text-emerald-500 stroke-[2]" />
-          <span>77 Tests</span>
+          <span>Seguro</span>
         </div>
       </div>
     </div>

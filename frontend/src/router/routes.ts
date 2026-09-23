@@ -1,7 +1,21 @@
 import type { RouteRecordRaw } from 'vue-router';
 
+export type AllowedRole = 'ADMIN' | 'OPERADOR' | 'DOMICILIARIO';
+
+declare module 'vue-router' {
+  interface RouteMeta {
+    title?: string;
+    domain?: string;
+    icon?: string;
+    layout?: string;
+    requiresAuth: boolean;
+    guestOnly?: boolean;
+    roles?: AllowedRole[];
+  }
+}
+
 export const routes: RouteRecordRaw[] = [
-  // Rutas de Autenticación (Públicas, sin layout de navegación)
+  // Rutas de Autenticación (Públicas para invitados, sin layout institucional)
   {
     path: '/login',
     name: 'auth-login',
@@ -10,16 +24,19 @@ export const routes: RouteRecordRaw[] = [
       title: 'Iniciar Sesión',
       layout: 'auth',
       guestOnly: true,
+      requiresAuth: false,
     },
   },
   {
     path: '/recuperar',
+    alias: '/forgot-password',
     name: 'auth-forgot-password',
     component: () => import('@/views/auth/ForgotPasswordView.vue'),
     meta: {
       title: 'Recuperar Contraseña',
       layout: 'auth',
       guestOnly: true,
+      requiresAuth: false,
     },
   },
 
@@ -27,6 +44,9 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     redirect: '/dashboard',
+    meta: {
+      requiresAuth: false,
+    },
   },
 
   // 0. Dashboard Analítico Ejecutivo (ADMIN)
@@ -39,6 +59,7 @@ export const routes: RouteRecordRaw[] = [
       domain: 'Dashboard',
       icon: 'LayoutDashboard',
       requiresAuth: true,
+      guestOnly: false,
       roles: ['ADMIN'],
     },
   },
@@ -47,6 +68,9 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/operaciones',
     redirect: '/operaciones/pedidos',
+    meta: {
+      requiresAuth: true,
+    },
     children: [
       {
         path: 'pedidos',
@@ -57,7 +81,8 @@ export const routes: RouteRecordRaw[] = [
           domain: 'Operaciones',
           icon: 'ShoppingBag',
           requiresAuth: true,
-          roles: ['ADMIN', 'VENTAS', 'DOMICILIARIO', 'PRODUCCION'],
+          guestOnly: false,
+          roles: ['ADMIN', 'OPERADOR', 'DOMICILIARIO'],
         },
       },
       {
@@ -69,7 +94,8 @@ export const routes: RouteRecordRaw[] = [
           domain: 'Operaciones',
           icon: 'Bike',
           requiresAuth: true,
-          roles: ['ADMIN', 'VENTAS', 'DOMICILIARIO'],
+          guestOnly: false,
+          roles: ['ADMIN', 'DOMICILIARIO'],
         },
       },
       {
@@ -81,7 +107,8 @@ export const routes: RouteRecordRaw[] = [
           domain: 'Operaciones',
           icon: 'MessageSquare',
           requiresAuth: true,
-          roles: ['ADMIN', 'VENTAS'],
+          guestOnly: false,
+          roles: ['ADMIN'],
         },
       },
     ],
@@ -91,6 +118,9 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/produccion',
     redirect: '/produccion/lotes',
+    meta: {
+      requiresAuth: true,
+    },
     children: [
       {
         path: 'lotes',
@@ -101,7 +131,8 @@ export const routes: RouteRecordRaw[] = [
           domain: 'Planta & Producción',
           icon: 'FlaskConical',
           requiresAuth: true,
-          roles: ['ADMIN', 'PRODUCCION'],
+          guestOnly: false,
+          roles: ['ADMIN', 'OPERADOR'],
         },
       },
       {
@@ -113,7 +144,8 @@ export const routes: RouteRecordRaw[] = [
           domain: 'Planta & Producción',
           icon: 'Boxes',
           requiresAuth: true,
-          roles: ['ADMIN', 'PRODUCCION'],
+          guestOnly: false,
+          roles: ['ADMIN', 'OPERADOR'],
         },
       },
     ],
@@ -123,6 +155,9 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/finanzas',
     redirect: '/finanzas/caja',
+    meta: {
+      requiresAuth: true,
+    },
     children: [
       {
         path: 'caja',
@@ -133,6 +168,7 @@ export const routes: RouteRecordRaw[] = [
           domain: 'Finanzas',
           icon: 'Wallet',
           requiresAuth: true,
+          guestOnly: false,
           roles: ['ADMIN'],
         },
       },
@@ -145,6 +181,7 @@ export const routes: RouteRecordRaw[] = [
           domain: 'Finanzas',
           icon: 'Receipt',
           requiresAuth: true,
+          guestOnly: false,
           roles: ['ADMIN'],
         },
       },
@@ -155,6 +192,9 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/directorio',
     redirect: '/directorio/clientes',
+    meta: {
+      requiresAuth: true,
+    },
     children: [
       {
         path: 'clientes',
@@ -165,6 +205,7 @@ export const routes: RouteRecordRaw[] = [
           domain: 'Directorio',
           icon: 'Users',
           requiresAuth: true,
+          guestOnly: false,
           roles: ['ADMIN'],
         },
       },
@@ -177,6 +218,7 @@ export const routes: RouteRecordRaw[] = [
           domain: 'Directorio',
           icon: 'Briefcase',
           requiresAuth: true,
+          guestOnly: false,
           roles: ['ADMIN'],
         },
       },
@@ -187,5 +229,8 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/:pathMatch(.*)*',
     redirect: '/dashboard',
+    meta: {
+      requiresAuth: false,
+    },
   },
 ];
