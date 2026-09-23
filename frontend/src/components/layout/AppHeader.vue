@@ -1,13 +1,30 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useTheme } from '@/composables/useTheme';
-import { Sun, Moon, Wifi } from 'lucide-vue-next';
+import { useAuthStore } from '@/stores/auth.store';
+import { Sun, Moon, Wifi, LogOut } from 'lucide-vue-next';
 
 const { isDark, toggleTheme } = useTheme();
+const authStore = useAuthStore();
 
 defineProps<{
   title?: string;
   subtitle?: string;
 }>();
+
+const userInitials = computed(() => {
+  const name = authStore.user?.name;
+  if (!name) return 'YA';
+  const parts = name.trim().split(' ');
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+});
+
+function handleLogout() {
+  authStore.logout();
+}
 </script>
 
 <template>
@@ -38,7 +55,7 @@ defineProps<{
       </div>
     </div>
 
-    <!-- Actions / Theme / Status -->
+    <!-- Actions / Theme / User / Logout -->
     <div class="flex items-center gap-2 sm:gap-3">
       <!-- Status Badge CRM -->
       <div
@@ -59,13 +76,33 @@ defineProps<{
         <Sun v-else class="h-4 w-4 text-amber-500 transition-transform" />
       </button>
 
-      <!-- Active User Profile Avatar -->
+      <!-- Active User Profile Avatar & Name -->
       <div class="flex items-center gap-2 pl-1">
+        <div class="hidden text-right sm:block">
+          <p class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">
+            {{ authStore.user?.name || 'Usuario' }}
+          </p>
+          <span class="rounded bg-brand-50 px-1.5 py-0.2 text-[9px] font-extrabold uppercase text-brand-800 dark:bg-brand-950 dark:text-brand-300">
+            {{ authStore.user?.role || 'Invitado' }}
+          </span>
+        </div>
+
         <div
           class="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-200 bg-brand-50 font-bold text-brand-800 shadow-sm dark:border-brand-900 dark:bg-brand-950 dark:text-brand-300"
+          :title="authStore.user?.name || 'Perfil'"
         >
-          <span class="text-sm">YA</span>
+          <span class="text-xs font-black">{{ userInitials }}</span>
         </div>
+
+        <!-- Botón Cerrar Sesión -->
+        <button
+          type="button"
+          @click="handleLogout"
+          class="flex h-9 w-9 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-500 transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400 dark:hover:border-rose-900/40 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
+          title="Cerrar sesión"
+        >
+          <LogOut class="h-4 w-4 stroke-[2]" />
+        </button>
       </div>
     </div>
   </header>

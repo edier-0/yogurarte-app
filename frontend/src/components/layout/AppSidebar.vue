@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { useAuthStore } from '@/stores/auth.store';
 import {
+  LayoutDashboard,
   ShoppingBag,
   Bike,
   MessageCircle,
@@ -11,7 +13,7 @@ import {
   Receipt,
   Users,
   Briefcase,
-  CheckCircle2
+  CheckCircle2,
 } from 'lucide-vue-next';
 
 interface NavItem {
@@ -21,26 +23,31 @@ interface NavItem {
   icon: any;
   badge?: string;
   badgeColor?: string;
+  roles?: string[];
 }
 
 interface NavSection {
   domain: string;
+  roles?: string[];
   items: NavItem[];
 }
 
 const route = useRoute();
+const authStore = useAuthStore();
 
-const sections: NavSection[] = [
+const rawSections: NavSection[] = [
   {
     domain: 'Operaciones',
+    roles: ['ADMIN', 'VENTAS', 'DOMICILIARIO', 'PRODUCCION'],
     items: [
-      { id: 'orders', label: 'Pedidos y Ventas', path: '/operaciones/pedidos', icon: ShoppingBag, badge: 'Hoy', badgeColor: 'bg-accent-500 text-white' },
-      { id: 'delivery', label: 'Domicilios de Hoy', path: '/operaciones/domicilios', icon: Bike },
-      { id: 'crm', label: 'CRM WhatsApp', path: '/operaciones/crm', icon: MessageCircle, badge: 'En Vivo', badgeColor: 'bg-emerald-500 text-white' },
+      { id: 'orders', label: 'Pedidos y Ventas', path: '/operaciones/pedidos', icon: ShoppingBag, badge: 'Hoy', badgeColor: 'bg-accent-500 text-white', roles: ['ADMIN', 'VENTAS', 'DOMICILIARIO', 'PRODUCCION'] },
+      { id: 'delivery', label: 'Domicilios de Hoy', path: '/operaciones/domicilios', icon: Bike, roles: ['ADMIN', 'VENTAS', 'DOMICILIARIO'] },
+      { id: 'crm', label: 'CRM WhatsApp', path: '/operaciones/crm', icon: MessageCircle, badge: 'En Vivo', badgeColor: 'bg-emerald-500 text-white', roles: ['ADMIN', 'VENTAS'] },
     ],
   },
   {
     domain: 'Planta & Producción',
+    roles: ['ADMIN', 'PRODUCCION'],
     items: [
       { id: 'batches', label: 'Lotes y Rendimiento', path: '/produccion/lotes', icon: FlaskConical },
       { id: 'inventory', label: 'Materia Prima e Insumos', path: '/produccion/inventario', icon: Boxes },
@@ -48,6 +55,7 @@ const sections: NavSection[] = [
   },
   {
     domain: 'Finanzas',
+    roles: ['ADMIN'],
     items: [
       { id: 'cash', label: 'Control de Caja', path: '/finanzas/caja', icon: Wallet },
       { id: 'expenses', label: 'Gastos y Compras', path: '/finanzas/gastos', icon: Receipt },
@@ -55,12 +63,26 @@ const sections: NavSection[] = [
   },
   {
     domain: 'Directorio',
+    roles: ['ADMIN'],
     items: [
       { id: 'customers', label: 'Clientes Frecuentes', path: '/directorio/clientes', icon: Users },
       { id: 'staff', label: 'Nómina y Personal', path: '/directorio/personal', icon: Briefcase },
     ],
   },
 ];
+
+const currentRole = computed(() => authStore.userRole);
+
+// Secciones filtradas por RBAC
+const visibleSections = computed(() => {
+  return rawSections
+    .filter((sec) => !sec.roles || sec.roles.includes(currentRole.value))
+    .map((sec) => ({
+      ...sec,
+      items: sec.items.filter((item) => !item.roles || item.roles.includes(currentRole.value)),
+    }))
+    .filter((sec) => sec.items.length > 0);
+});
 
 const currentPath = computed(() => route.path);
 
@@ -88,9 +110,34 @@ const isItemActive = (itemPath: string) => {
       </div>
     </div>
 
-    <!-- Navigation List (4 Domains) -->
-    <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-      <div v-for="section in sections" :key="section.domain" class="space-y-1">
+    <!-- Navigation List -->
+    <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+      <!-- Item Principal: Panel Analítico (Solo ADMIN) -->
+      <div v-if="authStore.isAdmin" class="space-y-1">
+        <RouterLink
+          to="/dashboard"
+          class="group flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold transition-all"
+          :class="[
+            isItemActive('/dashboard')
+              ? 'bg-brand-50 text-brand-800 shadow-sm dark:bg-brand-darkSurface dark:text-brand-darkText'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200'
+          ]"
+        >
+          <div class="flex items-center gap-2.5">
+            <LayoutDashboard
+              class="h-4 w-4 transition-colors"
+              :class="isItemActive('/dashboard') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300'"
+            />
+            <span>Panel Analítico</span>
+          </div>
+          <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[9px] font-black uppercase text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+            KPIs
+          </span>
+        </RouterLink>
+      </div>
+
+      <!-- Secciones dinámicas por Dominio -->
+      <div v-for="section in visibleSections" :key="section.domain" class="space-y-1">
         <h3 class="px-3 text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
           {{ section.domain }}
         </h3>
@@ -133,7 +180,7 @@ const isItemActive = (itemPath: string) => {
       <div class="flex items-center justify-between rounded-xl bg-surface-light-canvas p-2.5 dark:bg-surface-dark-canvas">
         <div class="flex items-center gap-2">
           <span class="flex h-2 w-2 rounded-full bg-emerald-500"></span>
-          <span class="text-xs font-bold text-slate-700 dark:text-slate-300">API Modular v1.0</span>
+          <span class="text-xs font-bold text-slate-700 dark:text-slate-300">RBAC Activo</span>
         </div>
         <div class="flex items-center gap-1 text-[10px] font-bold text-slate-400">
           <CheckCircle2 class="h-3.5 w-3.5 text-emerald-500 stroke-[2]" />

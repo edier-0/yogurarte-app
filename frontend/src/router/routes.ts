@@ -1,10 +1,46 @@
 import type { RouteRecordRaw } from 'vue-router';
 
 export const routes: RouteRecordRaw[] = [
+  // Rutas de Autenticación (Públicas, sin layout de navegación)
+  {
+    path: '/login',
+    name: 'auth-login',
+    component: () => import('@/views/auth/LoginView.vue'),
+    meta: {
+      title: 'Iniciar Sesión',
+      layout: 'auth',
+      guestOnly: true,
+    },
+  },
+  {
+    path: '/recuperar',
+    name: 'auth-forgot-password',
+    component: () => import('@/views/auth/ForgotPasswordView.vue'),
+    meta: {
+      title: 'Recuperar Contraseña',
+      layout: 'auth',
+      guestOnly: true,
+    },
+  },
+
   // Redirección raíz
   {
     path: '/',
-    redirect: '/operaciones/pedidos',
+    redirect: '/dashboard',
+  },
+
+  // 0. Dashboard Analítico Ejecutivo (ADMIN)
+  {
+    path: '/dashboard',
+    name: 'dashboard',
+    component: () => import('@/views/dashboard/DashboardView.vue'),
+    meta: {
+      title: 'Panel Analítico',
+      domain: 'Dashboard',
+      icon: 'LayoutDashboard',
+      requiresAuth: true,
+      roles: ['ADMIN'],
+    },
   },
 
   // 1. Dominio Operaciones
@@ -20,6 +56,8 @@ export const routes: RouteRecordRaw[] = [
           title: 'Pedidos y Ventas',
           domain: 'Operaciones',
           icon: 'ShoppingBag',
+          requiresAuth: true,
+          roles: ['ADMIN', 'VENTAS', 'DOMICILIARIO', 'PRODUCCION'],
         },
       },
       {
@@ -30,6 +68,8 @@ export const routes: RouteRecordRaw[] = [
           title: 'Rutas de Domicilio',
           domain: 'Operaciones',
           icon: 'Bike',
+          requiresAuth: true,
+          roles: ['ADMIN', 'VENTAS', 'DOMICILIARIO'],
         },
       },
       {
@@ -40,6 +80,8 @@ export const routes: RouteRecordRaw[] = [
           title: 'CRM & WhatsApp',
           domain: 'Operaciones',
           icon: 'MessageSquare',
+          requiresAuth: true,
+          roles: ['ADMIN', 'VENTAS'],
         },
       },
     ],
@@ -58,6 +100,8 @@ export const routes: RouteRecordRaw[] = [
           title: 'Lotes y Rendimiento',
           domain: 'Planta & Producción',
           icon: 'FlaskConical',
+          requiresAuth: true,
+          roles: ['ADMIN', 'PRODUCCION'],
         },
       },
       {
@@ -68,12 +112,14 @@ export const routes: RouteRecordRaw[] = [
           title: 'Materia Prima e Insumos',
           domain: 'Planta & Producción',
           icon: 'Boxes',
+          requiresAuth: true,
+          roles: ['ADMIN', 'PRODUCCION'],
         },
       },
     ],
   },
 
-  // 3. Dominio Finanzas
+  // 3. Dominio Finanzas (Exclusivo ADMIN)
   {
     path: '/finanzas',
     redirect: '/finanzas/caja',
@@ -86,6 +132,8 @@ export const routes: RouteRecordRaw[] = [
           title: 'Control de Caja y Finanzas',
           domain: 'Finanzas',
           icon: 'Wallet',
+          requiresAuth: true,
+          roles: ['ADMIN'],
         },
       },
       {
@@ -96,12 +144,14 @@ export const routes: RouteRecordRaw[] = [
           title: 'Gastos y Compras',
           domain: 'Finanzas',
           icon: 'Receipt',
+          requiresAuth: true,
+          roles: ['ADMIN'],
         },
       },
     ],
   },
 
-  // 4. Dominio Directorio
+  // 4. Dominio Directorio (Exclusivo ADMIN)
   {
     path: '/directorio',
     redirect: '/directorio/clientes',
@@ -114,6 +164,8 @@ export const routes: RouteRecordRaw[] = [
           title: 'Clientes Frecuentes',
           domain: 'Directorio',
           icon: 'Users',
+          requiresAuth: true,
+          roles: ['ADMIN'],
         },
       },
       {
@@ -124,6 +176,8 @@ export const routes: RouteRecordRaw[] = [
           title: 'Nómina y Personal',
           domain: 'Directorio',
           icon: 'Briefcase',
+          requiresAuth: true,
+          roles: ['ADMIN'],
         },
       },
     ],
@@ -132,6 +186,6 @@ export const routes: RouteRecordRaw[] = [
   // Ruta comodín para capturar cualquier ruta no definida
   {
     path: '/:pathMatch(.*)*',
-    redirect: '/operaciones/pedidos',
+    redirect: '/dashboard',
   },
 ];

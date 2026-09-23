@@ -142,6 +142,7 @@ app.get('/api/health', (req: Request, res: Response) => {
 
 // Rutas de Autenticación y Usuarios (Login público + Me y Admin protegidos)
 app.use('/api/users', authRoutes);
+app.use('/api/auth', authRoutes);
 
 // 9. Rutas Protegidas de la API (Requieren Token JWT Válido)
 app.use('/api/orders', requireAuth, ordersRoutes);

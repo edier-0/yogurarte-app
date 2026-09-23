@@ -11,6 +11,10 @@ const { isDark } = useTheme();
 const route = useRoute();
 const router = useRouter();
 
+const isAuthLayout = computed(() => {
+  return route.meta?.layout === 'auth';
+});
+
 const headerTitle = computed(() => {
   return (route.meta?.title as string) || 'YogurArte';
 });
@@ -29,8 +33,32 @@ const onNewOrder = () => {
 </script>
 
 <template>
-  <div class="flex min-h-screen w-full bg-surface-light-canvas dark:bg-surface-dark-canvas transition-colors">
-    <!-- Desktop Sidebar (4 Domains) -->
+  <!-- Layout para Pantallas de Autenticación (Login / Recuperar Contraseña) -->
+  <div
+    v-if="isAuthLayout"
+    class="min-h-screen w-full bg-surface-light-canvas dark:bg-surface-dark-canvas transition-colors"
+  >
+    <RouterView v-slot="{ Component }">
+      <transition name="fade" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </RouterView>
+
+    <!-- Global Toast Container (Vue Sonner) -->
+    <Toaster
+      position="top-right"
+      :theme="isDark ? 'dark' : 'light'"
+      rich-colors
+      close-button
+    />
+  </div>
+
+  <!-- Layout Estándar de la Aplicación (Sidebar, Header, Main, BottomNav) -->
+  <div
+    v-else
+    class="flex min-h-screen w-full bg-surface-light-canvas dark:bg-surface-dark-canvas transition-colors"
+  >
+    <!-- Desktop Sidebar (4 Domains + Dashboard) -->
     <AppSidebar />
 
     <!-- Main Content Area -->

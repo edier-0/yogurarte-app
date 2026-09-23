@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { ShoppingBag, Bike, FlaskConical, Wallet, Plus } from 'lucide-vue-next';
+import { useAuthStore } from '@/stores/auth.store';
+import { ShoppingBag, Bike, FlaskConical, Wallet, MessageSquare, Boxes, Plus } from 'lucide-vue-next';
 
 const route = useRoute();
+const authStore = useAuthStore();
 
 const emit = defineEmits<{
   (e: 'newOrder'): void;
@@ -54,8 +56,9 @@ const isActive = (prefix: string) => {
         </button>
       </div>
 
-      <!-- Producción -->
+      <!-- Producción (Lotes) -->
       <RouterLink
+        v-if="authStore.canAccessProduction || authStore.isAdmin"
         to="/produccion/lotes"
         class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
         :class="isActive('/produccion') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
@@ -63,15 +66,43 @@ const isActive = (prefix: string) => {
         <FlaskConical class="h-5 w-5" />
         <span>Lotes</span>
       </RouterLink>
-
-      <!-- Caja -->
       <RouterLink
+        v-else
+        to="/operaciones/crm"
+        class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
+        :class="isActive('/operaciones/crm') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
+      >
+        <MessageSquare class="h-5 w-5" />
+        <span>Chat</span>
+      </RouterLink>
+
+      <!-- Cuarta pestaña dinámica según Rol -->
+      <RouterLink
+        v-if="authStore.canAccessFinance"
         to="/finanzas/caja"
         class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
         :class="isActive('/finanzas') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
       >
         <Wallet class="h-5 w-5" />
         <span>Caja</span>
+      </RouterLink>
+      <RouterLink
+        v-else-if="authStore.isOperator"
+        to="/produccion/inventario"
+        class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
+        :class="isActive('/produccion/inventario') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
+      >
+        <Boxes class="h-5 w-5" />
+        <span>Insumos</span>
+      </RouterLink>
+      <RouterLink
+        v-else
+        to="/operaciones/crm"
+        class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
+        :class="isActive('/operaciones/crm') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
+      >
+        <MessageSquare class="h-5 w-5" />
+        <span>CRM</span>
       </RouterLink>
     </nav>
   </div>
