@@ -343,7 +343,7 @@ export const useFinanceStore = defineStore('finance', () => {
           (type === 'TRASLADO_EFECTIVO_A_BANCO'
             ? 'Consignación de efectivo a cuenta digital / Nequi'
             : 'Retiro de banco a efectivo'),
-        paymentMethod: type === 'TRASLADO_EFECTIVO_A_BANCO' ? 'TRANSFERENCIA' : 'EFECTIVO',
+        paymentMethod: type === 'TRASLADO_EFECTIVO_A_BANCO' ? 'NEQUI_BANCOLOMBIA' : 'EFECTIVO',
         movementDate: payload.movementDate || getTodayDateBogota(),
         notes: payload.notes || null,
       };

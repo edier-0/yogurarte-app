@@ -524,10 +524,8 @@ const formatCurrency = (val: number) => {
                   v-model="paymentMethod"
                   class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-semibold dark:border-slate-700 dark:bg-surface-dark-card"
                 >
-                  <option value="EFECTIVO">Efectivo</option>
-                  <option value="NEQUI">Nequi</option>
-                  <option value="BANCOLOMBIA">Bancolombia</option>
-                  <option value="DAVIPLATA">Daviplata</option>
+                  <option value="EFECTIVO">Efectivo Caja Menor</option>
+                  <option value="NEQUI_BANCOLOMBIA">Nequi o Bancolombia</option>
                 </select>
               </div>
             </div>

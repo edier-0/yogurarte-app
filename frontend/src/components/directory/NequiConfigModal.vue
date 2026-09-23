@@ -37,7 +37,6 @@ const nequiNumber = ref('');
 const bankName = ref('Nequi / Bancolombia');
 const bankHolder = ref('Edier / YogurArte');
 const paymentInstructions = ref('Transferencias vía Nequi o Bancolombia a la mano');
-const daviplataNumber = ref('');
 const bancolombiaAccount = ref('');
 const instagramUrl = ref('');
 
@@ -56,7 +55,6 @@ async function loadSettings() {
       bankName.value = res.bankName || 'Nequi / Bancolombia';
       bankHolder.value = res.bankHolder || 'Edier / YogurArte';
       paymentInstructions.value = res.paymentInstructions || 'Transferencias vía Nequi o Bancolombia';
-      daviplataNumber.value = res.daviplataNumber || '';
       bancolombiaAccount.value = res.bancolombiaAccount || '';
       instagramUrl.value = res.instagramUrl || '';
     }
@@ -103,7 +101,6 @@ async function handleSubmit() {
       bankName: bankName.value.trim(),
       bankHolder: bankHolder.value.trim(),
       paymentInstructions: paymentInstructions.value.trim(),
-      daviplataNumber: daviplataNumber.value.trim(),
       bancolombiaAccount: bancolombiaAccount.value.trim(),
       instagramUrl: instagramUrl.value.trim(),
     });
@@ -256,32 +253,18 @@ async function handleSubmit() {
             </div>
           </div>
 
-          <!-- Cuentas Adicionales: Bancolombia / Daviplata -->
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Cuenta Bancolombia / A la Mano
-              </label>
-              <div class="relative">
-                <CreditCard class="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 stroke-[2]" />
-                <input
-                  v-model="bancolombiaAccount"
-                  type="text"
-                  placeholder="Número de cuenta o tarjeta"
-                  class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-10 pr-3.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Número Daviplata (Opcional)
-              </label>
+          <!-- Cuenta Bancolombia / A la Mano -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Cuenta Bancolombia / A la Mano
+            </label>
+            <div class="relative">
+              <CreditCard class="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 stroke-[2]" />
               <input
-                v-model="daviplataNumber"
+                v-model="bancolombiaAccount"
                 type="text"
-                placeholder="Número celular Daviplata"
-                class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                placeholder="Número de cuenta o tarjeta Bancolombia"
+                class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-10 pr-3.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               />
             </div>
           </div>
