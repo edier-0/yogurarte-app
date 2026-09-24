@@ -1276,6 +1276,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
       totalBatchesCountAllTime,
       totalLitersProducedPeriod,
       totalBatchesCountPeriod,
+      totalLitersProduced: totalLitersProducedPeriod ?? totalLitersProducedAllTime ?? 0,
     },
     deliveredStats: {
       deliveredOrdersCount: deliveredOrders.length,
@@ -1683,7 +1684,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
         },
       },
     },
-    lowStockAlerts: lowStockMaterials.map((m) => ({
+    lowStockAlerts: lowStockMaterials.slice(0, 5).map((m) => ({
       id: m.id,
       name: m.name,
       code: m.code,
@@ -1695,6 +1696,28 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
       totalRemainingDebt: activeCreditObligations.reduce((sum, c) => sum + c.remainingBalance, 0),
       activeCreditsCount: activeCreditObligations.length,
       activeCredits: activeCreditObligations,
+    },
+    dispatchSummary: {
+      clientDeliveries: {
+        ordersCount: deliveredOrders.length,
+        liters: deliveredLiters,
+        totalAmount: deliveredTotalSales,
+        paidAmount: deliveredPaidAmount,
+        pendingAmount: deliveredPendingToCollect,
+      },
+      partnerConsumptions: {
+        dischargesCount: partnerDischarges.length,
+        liters: totalPartnerDischargedLiters,
+        totalAmount: totalPartnerDischargedAmount,
+      },
+      totalDispatchedLiters,
+      inProcessOrders: {
+        ordersCount: inProcessOrders.length,
+        liters: inProcessLiters,
+        totalAmount: inProcessTotalSales,
+        paidAmount: inProcessPaidAmount,
+        pendingAmount: inProcessPendingToCollect,
+      },
     },
     allActiveBatches: allActiveBatches.map((b) => ({
       id: b.id,
@@ -1711,7 +1734,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
       status: 'TERMINADO',
       efficiencyRate: b.yieldPercentage,
     })),
-    recentOrders: orders.slice(0, 8).map((o) => ({
+    recentOrders: orders.slice(0, 5).map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
       customerName: o.customer?.fullName || 'Cliente mostrador',

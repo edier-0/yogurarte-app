@@ -17,6 +17,11 @@ import {
   RotateCw,
   Clock,
   Sparkles,
+  Truck,
+  Briefcase,
+  Milk,
+  CheckCircle2,
+  DollarSign,
 } from 'lucide-vue-next';
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
 import ExpenseModal from '@/components/finance/ExpenseModal.vue';
@@ -46,6 +51,34 @@ interface DashboardData {
     ordersCount?: number;
     totalBatchesCount?: number;
     totalLitersInProcess?: number;
+    totalLitersProduced?: number;
+    deliveredLiters?: number;
+    partnerDischargedLiters?: number;
+    partnerDischargedAmount?: number;
+    totalDispatchedLiters?: number;
+    inProcessLiters?: number;
+  };
+  dispatchSummary: {
+    clientDeliveries: {
+      ordersCount: number;
+      liters: number;
+      totalAmount: number;
+      paidAmount: number;
+      pendingAmount: number;
+    };
+    partnerConsumptions: {
+      dischargesCount: number;
+      liters: number;
+      totalAmount: number;
+    };
+    totalDispatchedLiters: number;
+    inProcessOrders: {
+      ordersCount: number;
+      liters: number;
+      totalAmount: number;
+      paidAmount: number;
+      pendingAmount: number;
+    };
   };
   periodBatches: Array<{
     id: number;
@@ -99,6 +132,34 @@ const dashboardData = ref<DashboardData>({
     ordersCount: 0,
     totalBatchesCount: 0,
     totalLitersInProcess: 0,
+    totalLitersProduced: 0,
+    deliveredLiters: 0,
+    partnerDischargedLiters: 0,
+    partnerDischargedAmount: 0,
+    totalDispatchedLiters: 0,
+    inProcessLiters: 0,
+  },
+  dispatchSummary: {
+    clientDeliveries: {
+      ordersCount: 0,
+      liters: 0,
+      totalAmount: 0,
+      paidAmount: 0,
+      pendingAmount: 0,
+    },
+    partnerConsumptions: {
+      dischargesCount: 0,
+      liters: 0,
+      totalAmount: 0,
+    },
+    totalDispatchedLiters: 0,
+    inProcessOrders: {
+      ordersCount: 0,
+      liters: 0,
+      totalAmount: 0,
+      paidAmount: 0,
+      pendingAmount: 0,
+    },
   },
   periodBatches: [],
   allActiveBatches: [],
@@ -137,25 +198,86 @@ async function loadDashboard() {
           ordersCount: Number(kpis.totalOrdersCount ?? 0),
           totalBatchesCount: Number(kpis.totalBatchesCountAllTime ?? kpis.totalBatchesCountPeriod ?? 0),
           totalLitersInProcess: Number(kpis.inProcessLiters ?? kpis.totalLitersProducedPeriod ?? 0),
+          totalLitersProduced: Number(
+            kpis.totalLitersProduced ??
+            kpis.totalLitersProducedPeriod ??
+            kpis.totalLitersProducedAllTime ??
+            0
+          ),
+          deliveredLiters: Number(kpis.deliveredLiters ?? 0),
+          partnerDischargedLiters: Number(kpis.partnerDischargedLiters ?? 0),
+          partnerDischargedAmount: Number(kpis.partnerDischargedAmount ?? 0),
+          totalDispatchedLiters: Number(kpis.totalDispatchedLiters ?? 0),
+          inProcessLiters: Number(kpis.inProcessLiters ?? 0),
         },
+        dispatchSummary: res.dispatchSummary
+          ? {
+              clientDeliveries: {
+                ordersCount: Number(res.dispatchSummary.clientDeliveries?.ordersCount ?? 0),
+                liters: Number(res.dispatchSummary.clientDeliveries?.liters ?? 0),
+                totalAmount: Number(res.dispatchSummary.clientDeliveries?.totalAmount ?? 0),
+                paidAmount: Number(res.dispatchSummary.clientDeliveries?.paidAmount ?? 0),
+                pendingAmount: Number(res.dispatchSummary.clientDeliveries?.pendingAmount ?? 0),
+              },
+              partnerConsumptions: {
+                dischargesCount: Number(res.dispatchSummary.partnerConsumptions?.dischargesCount ?? 0),
+                liters: Number(res.dispatchSummary.partnerConsumptions?.liters ?? 0),
+                totalAmount: Number(res.dispatchSummary.partnerConsumptions?.totalAmount ?? 0),
+              },
+              totalDispatchedLiters: Number(res.dispatchSummary.totalDispatchedLiters ?? 0),
+              inProcessOrders: {
+                ordersCount: Number(res.dispatchSummary.inProcessOrders?.ordersCount ?? 0),
+                liters: Number(res.dispatchSummary.inProcessOrders?.liters ?? 0),
+                totalAmount: Number(res.dispatchSummary.inProcessOrders?.totalAmount ?? 0),
+                paidAmount: Number(res.dispatchSummary.inProcessOrders?.paidAmount ?? 0),
+                pendingAmount: Number(res.dispatchSummary.inProcessOrders?.pendingAmount ?? 0),
+              },
+            }
+          : {
+              clientDeliveries: {
+                ordersCount: Number(res.deliveredStats?.deliveredOrdersCount ?? 0),
+                liters: Number(kpis.deliveredLiters ?? 0),
+                totalAmount: Number(kpis.deliveredTotalSales ?? 0),
+                paidAmount: Number(kpis.deliveredPaidAmount ?? 0),
+                pendingAmount: Number(kpis.deliveredPendingToCollect ?? 0),
+              },
+              partnerConsumptions: {
+                dischargesCount: Number(
+                  res.detailedBreakdowns?.salesByBatchAndFlavor?.dischargesSummary?.dischargesCount ?? 0
+                ),
+                liters: Number(kpis.partnerDischargedLiters ?? 0),
+                totalAmount: Number(kpis.partnerDischargedAmount ?? 0),
+              },
+              totalDispatchedLiters: Number(
+                kpis.totalDispatchedLiters ??
+                (Number(kpis.deliveredLiters ?? 0) + Number(kpis.partnerDischargedLiters ?? 0))
+              ),
+              inProcessOrders: {
+                ordersCount: Number(res.inProcessStats?.inProcessOrdersCount ?? 0),
+                liters: Number(kpis.inProcessLiters ?? 0),
+                totalAmount: Number(kpis.inProcessTotalSales ?? 0),
+                paidAmount: Number(kpis.inProcessPaidAmount ?? 0),
+                pendingAmount: Number(kpis.inProcessPendingToCollect ?? 0),
+              },
+            },
         periodBatches: Array.isArray(res.periodBatches) ? res.periodBatches : [],
         allActiveBatches: Array.isArray(res.allActiveBatches) ? res.allActiveBatches : [],
-        lowStockAlerts: Array.isArray(res.lowStockAlerts) ? res.lowStockAlerts : [],
+        lowStockAlerts: (Array.isArray(res.lowStockAlerts) ? res.lowStockAlerts : []).slice(0, 5),
         creditSummary: {
           totalRemainingDebt: Number(res.creditSummary?.totalRemainingDebt ?? 0),
           activeCreditsCount: Number(res.creditSummary?.activeCreditsCount ?? 0),
         },
-        recentOrders: Array.isArray(res.recentOrders)
-          ? res.recentOrders.map((o: any) => ({
-              id: o.id,
-              orderNumber: o.orderNumber || 'PED-000',
-              customerName: o.customer?.fullName || o.customerName || 'Cliente mostrador',
-              total: Number(o.totalAmount ?? o.total ?? 0),
-              totalAmount: Number(o.totalAmount ?? o.total ?? 0),
-              status: o.paymentStatus || o.status || 'PENDING',
-              deliveryStatus: o.deliveryStatus || 'PENDING',
-            }))
-          : [],
+        recentOrders: (Array.isArray(res.recentOrders) ? res.recentOrders : [])
+          .slice(0, 5)
+          .map((o: any) => ({
+            id: o.id,
+            orderNumber: o.orderNumber || 'PED-000',
+            customerName: o.customer?.fullName || o.customerName || 'Cliente mostrador',
+            total: Number(o.totalAmount ?? o.total ?? 0),
+            totalAmount: Number(o.totalAmount ?? o.total ?? 0),
+            status: o.paymentStatus || o.status || 'PENDING',
+            deliveryStatus: o.deliveryStatus || 'PENDING',
+          })),
       };
     }
   } catch (err) {
@@ -306,8 +428,6 @@ onMounted(() => {
           </p>
           <div class="mt-1 flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
             <span>{{ (dashboardData.kpis?.totalSalesLiters ?? 0).toFixed(1) }} L vendidos</span>
-            <span class="text-slate-300 dark:text-slate-600">•</span>
-            <span class="text-emerald-600 dark:text-emerald-400">Utilidad: {{ formatCurrency(dashboardData.kpis?.netProfit) }}</span>
           </div>
         </div>
       </div>
@@ -355,11 +475,7 @@ onMounted(() => {
           </p>
           <div class="mt-1 flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
             <span>
-              {{
-                (dashboardData.allActiveBatches && dashboardData.allActiveBatches.length > 0)
-                  ? dashboardData.allActiveBatches.reduce((sum, b) => sum + (b.totalLiters || 0), 0)
-                  : (dashboardData.kpis?.totalLitersInProcess || 0)
-              }} L en proceso
+              {{ dashboardData.kpis?.totalLitersProduced ?? 0 }} L producidos
             </span>
             <RouterLink
               to="/produccion/lotes"
@@ -395,6 +511,150 @@ onMounted(() => {
               <span>Cobrar</span>
               <ArrowRight class="h-3 w-3" />
             </RouterLink>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nuevo Bloque: Desglose de Entregas, Litros y Pagos -->
+    <div class="rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <div class="flex items-center gap-2.5">
+          <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-800 dark:bg-brand-950/50 dark:text-brand-300">
+            <Truck class="h-5 w-5 stroke-[2.2]" />
+          </div>
+          <div>
+            <h2 class="text-sm font-extrabold text-slate-900 dark:text-white">
+              Desglose de Entregas, Litros y Pagos
+            </h2>
+            <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              Auditoría consolidada de despachos a clientes, consumo de socios y pedidos en curso
+            </p>
+          </div>
+        </div>
+
+        <!-- Balance Total Despachado (Cápsula Destacada) -->
+        <div class="inline-flex items-center gap-2 self-start rounded-2xl border border-brand-200 bg-brand-50/80 px-3.5 py-1.5 dark:border-brand-900/60 dark:bg-brand-950/40 sm:self-auto">
+          <Milk class="h-4 w-4 text-brand-800 dark:text-brand-300" />
+          <div class="text-xs font-extrabold text-brand-900 dark:text-brand-200">
+            <span>{{ (dashboardData.dispatchSummary?.totalDispatchedLiters ?? dashboardData.kpis?.totalDispatchedLiters ?? 0).toFixed(1) }} L</span>
+            <span class="ml-1 text-[11px] font-bold text-brand-700 dark:text-brand-400">Despachados en Total</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grid de 3 Columnas Ergonómicas -->
+      <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <!-- 1. Entregas a Clientes -->
+        <div class="flex flex-col justify-between rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 dark:border-emerald-900/30 dark:bg-emerald-950/20">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
+                Entregas a Clientes
+              </span>
+              <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                <Truck class="h-3.5 w-3.5 stroke-[2.2]" />
+              </div>
+            </div>
+            <div class="mt-2">
+              <p class="text-xl font-black text-slate-900 dark:text-white">
+                {{ (dashboardData.dispatchSummary?.clientDeliveries?.liters ?? 0).toFixed(1) }} L
+              </p>
+              <p class="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                {{ dashboardData.dispatchSummary?.clientDeliveries?.ordersCount ?? 0 }} pedidos entregados • {{ formatCurrency(dashboardData.dispatchSummary?.clientDeliveries?.totalAmount) }}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-3.5 space-y-1.5 border-t border-emerald-200/60 pt-3 dark:border-emerald-900/40 text-[11px] font-bold">
+            <div class="flex items-center justify-between text-emerald-700 dark:text-emerald-300">
+              <span class="flex items-center gap-1">
+                <CheckCircle2 class="h-3 w-3" />
+                Cobrado
+              </span>
+              <span>{{ formatCurrency(dashboardData.dispatchSummary?.clientDeliveries?.paidAmount) }}</span>
+            </div>
+            <div class="flex items-center justify-between text-amber-700 dark:text-amber-400">
+              <span class="flex items-center gap-1">
+                <Clock class="h-3 w-3" />
+                Saldo por cobrar
+              </span>
+              <span>{{ formatCurrency(dashboardData.dispatchSummary?.clientDeliveries?.pendingAmount) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Entregado a Socios (Consumo) -->
+        <div class="flex flex-col justify-between rounded-2xl border border-purple-100 bg-purple-50/40 p-4 dark:border-purple-900/30 dark:bg-purple-950/20">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-purple-800 dark:text-purple-400">
+                Consumo de Socios
+              </span>
+              <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
+                <Briefcase class="h-3.5 w-3.5 stroke-[2.2]" />
+              </div>
+            </div>
+            <div class="mt-2">
+              <p class="text-xl font-black text-slate-900 dark:text-white">
+                {{ (dashboardData.dispatchSummary?.partnerConsumptions?.liters ?? 0).toFixed(1) }} L
+              </p>
+              <p class="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                {{ dashboardData.dispatchSummary?.partnerConsumptions?.dischargesCount ?? 0 }} retiros registrados
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-3.5 space-y-1.5 border-t border-purple-200/60 pt-3 dark:border-purple-900/40 text-[11px] font-bold">
+            <div class="flex items-center justify-between text-purple-700 dark:text-purple-300">
+              <span class="flex items-center gap-1">
+                <DollarSign class="h-3 w-3" />
+                Valor estimado
+              </span>
+              <span>{{ formatCurrency(dashboardData.dispatchSummary?.partnerConsumptions?.totalAmount) }}</span>
+            </div>
+            <p class="text-[10px] font-medium text-slate-500 dark:text-slate-400">
+              Auto-consumo y degustación de socios
+            </p>
+          </div>
+        </div>
+
+        <!-- 3. Pedidos en Preparación / Ruta -->
+        <div class="flex flex-col justify-between rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 dark:border-indigo-900/30 dark:bg-indigo-950/20">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-800 dark:text-indigo-400">
+                En Preparación / Ruta
+              </span>
+              <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
+                <Clock class="h-3.5 w-3.5 stroke-[2.2]" />
+              </div>
+            </div>
+            <div class="mt-2">
+              <p class="text-xl font-black text-slate-900 dark:text-white">
+                {{ (dashboardData.dispatchSummary?.inProcessOrders?.liters ?? 0).toFixed(1) }} L
+              </p>
+              <p class="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                {{ dashboardData.dispatchSummary?.inProcessOrders?.ordersCount ?? 0 }} pedidos activos • {{ formatCurrency(dashboardData.dispatchSummary?.inProcessOrders?.totalAmount) }}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-3.5 space-y-1.5 border-t border-indigo-200/60 pt-3 dark:border-indigo-900/40 text-[11px] font-bold">
+            <div class="flex items-center justify-between text-indigo-700 dark:text-indigo-300">
+              <span class="flex items-center gap-1">
+                <DollarSign class="h-3 w-3" />
+                Pagado anticipado
+              </span>
+              <span>{{ formatCurrency(dashboardData.dispatchSummary?.inProcessOrders?.paidAmount) }}</span>
+            </div>
+            <div class="flex items-center justify-between text-amber-700 dark:text-amber-400">
+              <span class="flex items-center gap-1">
+                <AlertCircle class="h-3 w-3" />
+                Por recaudar en calle
+              </span>
+              <span>{{ formatCurrency(dashboardData.dispatchSummary?.inProcessOrders?.pendingAmount) }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -438,7 +698,7 @@ onMounted(() => {
 
         <div v-else class="mt-4 space-y-2.5">
           <div
-            v-for="item in (dashboardData.lowStockAlerts || [])"
+            v-for="item in (dashboardData.lowStockAlerts || []).slice(0, 5)"
             :key="item.id"
             class="flex items-center justify-between rounded-2xl border border-rose-100 bg-rose-50/50 p-3 dark:border-rose-900/30 dark:bg-rose-950/20"
           >
@@ -494,7 +754,7 @@ onMounted(() => {
 
         <div v-else class="mt-4 space-y-2">
           <div
-            v-for="order in (dashboardData.recentOrders || [])"
+            v-for="order in (dashboardData.recentOrders || []).slice(0, 5)"
             :key="order.id"
             class="flex items-center justify-between rounded-2xl border border-surface-light-border bg-surface-light-canvas p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas"
           >
