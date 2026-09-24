@@ -42,18 +42,22 @@ const productionStore = useProductionStore();
 
 const isEditing = computed(() => Boolean(props.orderToEdit));
 
-// Sabores base del catálogo institucional YogurArte
-const CATALOG_FLAVORS = [
-  'Natural',
-  'Fresa',
-  'Melocotón',
-  'Mora',
-  'Frutos Rojos',
-  'Maracuyá',
-  'Guanábana',
-  'Arequipe',
-  'Piña',
-];
+// Sabores base del catálogo institucional YogurArte obtenidos dinámicamente
+const activeCatalogFlavors = computed(() => {
+  const list = productionStore.activeFlavors.map((f) => f.name);
+  if (list.length > 0) return list;
+  return [
+    'Natural',
+    'Fresa',
+    'Melocotón',
+    'Mora',
+    'Frutos Rojos',
+    'Maracuyá',
+    'Guanábana',
+    'Arequipe',
+    'Piña',
+  ];
+});
 
 const BOTTLE_SIZES = [
   { label: '1 Litro (1L)', value: '1L', defaultPrice: 12000 },
@@ -128,7 +132,7 @@ function isCustomOptionNeeded(item: OrderItem): boolean {
   if (item.batchId) {
     return !activeBatches.value.some((b) => b.id === item.batchId);
   }
-  return !CATALOG_FLAVORS.includes(item.flavor);
+  return !activeCatalogFlavors.value.includes(item.flavor);
 }
 
 // Sugerencias predictivas de clientes
@@ -231,6 +235,7 @@ watch(
       if (store.customers.length === 0) store.fetchCustomers();
       if (store.drivers.length === 0) store.fetchDrivers();
       if (productionStore.batches.length === 0) productionStore.fetchBatches();
+      if (productionStore.flavors.length === 0) productionStore.fetchFlavors(true);
 
       if (props.orderToEdit) {
         const o = props.orderToEdit;
@@ -534,7 +539,7 @@ const formatCurrency = (val: number) => {
                     <!-- Grupo 2: Pre-venta (Sin Lote Asignado) -->
                     <optgroup label="Pre-venta (Encargo sin lote asignado)">
                       <option
-                        v-for="fl in CATALOG_FLAVORS"
+                        v-for="fl in activeCatalogFlavors"
                         :key="`ps_${fl}`"
                         :value="`presale_${fl}`"
                       >

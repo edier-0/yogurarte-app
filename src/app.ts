@@ -11,6 +11,7 @@ import { Server as SocketIOServer } from 'socket.io';
 
 import ordersRoutes from './modules/orders/orders.routes.js';
 import batchesRoutes from './modules/batches/batches.routes.js';
+import flavorsRoutes from './modules/production/flavors.routes.js';
 import customersRoutes from './modules/customers/customers.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import {
@@ -147,6 +148,7 @@ app.use('/api/auth', authRoutes);
 // 9. Rutas Protegidas de la API (Requieren Token JWT Válido)
 app.use('/api/orders', requireAuth, ordersRoutes);
 app.use('/api/batches', requireAuth, batchesRoutes);
+app.use('/api/production/flavors', requireAuth, flavorsRoutes);
 app.use('/api/inventory', requireAuth, inventoryRoutes);
 app.use('/api/preparations', requireAuth, preparationsRoutes);
 app.use('/api/expenses', requireAuth, expensesRoutes);

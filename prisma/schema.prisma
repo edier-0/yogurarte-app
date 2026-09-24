@@ -537,5 +537,16 @@ model CrmQuickReply {
   @@index([category])
 }
 
+model ProductFlavor {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([isActive])
+  @@index([name])
+}
+
 
 

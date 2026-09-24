@@ -13,15 +13,19 @@ import {
   CheckCircle2,
   RefreshCw,
   SlidersHorizontal,
+  Sparkles,
 } from 'lucide-vue-next';
 import { useProductionStore, type BatchItem } from '@/stores/production.store';
 import BatchModal from '@/components/production/BatchModal.vue';
+import FlavorsManagementModal from '@/components/production/FlavorsManagementModal.vue';
 
 const productionStore = useProductionStore();
 const isBatchModalOpen = ref(false);
+const isFlavorsModalOpen = ref(false);
 
 onMounted(() => {
   productionStore.fetchBatches();
+  productionStore.fetchFlavors();
 });
 
 // Formateador de fecha en Colombia
@@ -86,6 +90,17 @@ function handleAdjustLiters(batch: BatchItem) {
         >
           <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': productionStore.isLoading }" />
           <span class="hidden sm:inline">Refrescar</span>
+        </button>
+
+        <button
+          type="button"
+          @click="isFlavorsModalOpen = true"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50/70 px-3.5 py-2.5 text-xs font-bold text-purple-700 shadow-sm transition-all active:scale-95 hover:bg-purple-100/80 dark:border-purple-800/40 dark:bg-purple-950/30 dark:text-purple-300 dark:hover:bg-purple-900/40"
+          title="Gestionar catálogo de sabores"
+        >
+          <Sparkles class="h-4 w-4 stroke-[2]" />
+          <span class="hidden sm:inline">Gestionar Sabores</span>
+          <span class="sm:hidden">Sabores</span>
         </button>
 
         <button
@@ -412,6 +427,9 @@ function handleAdjustLiters(batch: BatchItem) {
       v-model:open="isBatchModalOpen"
       @saved="productionStore.fetchBatches"
     />
+
+    <!-- Modal de Catálogo de Sabores -->
+    <FlavorsManagementModal v-model:open="isFlavorsModalOpen" />
   </div>
 </template>
 

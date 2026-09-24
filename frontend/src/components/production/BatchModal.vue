@@ -28,18 +28,24 @@ const emit = defineEmits<{
 
 const productionStore = useProductionStore();
 
-const flavors = [
-  'Natural',
-  'Fresa',
-  'Melocotón',
-  'Mora',
-  'Frutos Rojos',
-  'Maracuyá',
-  'Guanábana',
-  'Arequipe',
-  'Piña',
-  'Personalizado',
-];
+const flavors = computed(() => {
+  const activeNames = productionStore.activeFlavors.map((f) => f.name);
+  if (activeNames.length === 0) {
+    return [
+      'Natural',
+      'Fresa',
+      'Melocotón',
+      'Mora',
+      'Frutos Rojos',
+      'Maracuyá',
+      'Guanábana',
+      'Arequipe',
+      'Piña',
+      'Personalizado',
+    ];
+  }
+  return [...activeNames, 'Personalizado'];
+});
 
 const cultureTypes = [
   'Cultivo Termófilo Tradicional (Streptococcus thermophilus + Lactobacillus bulgaricus)',
@@ -93,6 +99,7 @@ watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) {
+      productionStore.fetchFlavors(true);
       batchCode.value = generateBatchCode();
       baseFlavor.value = 'Natural';
       flavorVariant.value = '';

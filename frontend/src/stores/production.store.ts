@@ -36,6 +36,14 @@ export interface BatchItem {
   }>;
 }
 
+export interface ProductFlavor {
+  id: number;
+  name: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface CreateBatchPayload {
   milkUsedLiters: number;
   totalLitersProduced?: number;
@@ -51,6 +59,11 @@ export const useProductionStore = defineStore('production', () => {
   const batches = ref<BatchItem[]>([]);
   const isLoading = ref<boolean>(false);
   const error = ref<string | null>(null);
+
+  // Catálogo de Sabores Dinámico
+  const flavors = ref<ProductFlavor[]>([]);
+  const isLoadingFlavors = ref<boolean>(false);
+  const activeFlavors = computed(() => flavors.value.filter((f) => f.isActive));
 
   // Filtros
   const activeChip = ref<BatchChip>('ALL');
@@ -213,6 +226,72 @@ export const useProductionStore = defineStore('production', () => {
     }
   }
 
+  // Catálogo de Sabores Dinámico
+  async function fetchFlavors(activeOnly = false) {
+    isLoadingFlavors.value = true;
+    try {
+      const data = await http.get<ProductFlavor[]>('/production/flavors', {
+        params: activeOnly ? { activeOnly: true } : undefined,
+      });
+      flavors.value = data;
+      return data;
+    } catch {
+      // Manejado por interceptor
+      return [];
+    } finally {
+      isLoadingFlavors.value = false;
+    }
+  }
+
+  async function createFlavor(name: string) {
+    try {
+      const newFlavor = await http.post<ProductFlavor>('/production/flavors', { name });
+      toast.success('Sabor Registrado', {
+        description: `El sabor "${newFlavor.name}" ha sido agregado al catálogo.`,
+      });
+      await fetchFlavors();
+      return newFlavor;
+    } catch {
+      // Manejado por interceptor
+      return null;
+    }
+  }
+
+  async function toggleFlavor(id: number) {
+    try {
+      const updated = await http.patch<ProductFlavor>(`/production/flavors/${id}/toggle`);
+      const statusText = updated.isActive ? 'activado' : 'pausado';
+      toast.success('Estado Actualizado', {
+        description: `El sabor "${updated.name}" ahora está ${statusText}.`,
+      });
+      await fetchFlavors();
+      return updated;
+    } catch {
+      // Manejado por interceptor
+      return null;
+    }
+  }
+
+  async function deleteFlavor(id: number) {
+    try {
+      const res = await http.delete<{ message: string; deactivated?: boolean }>(`/production/flavors/${id}`);
+      if (res?.deactivated) {
+        toast.info('Sabor Desactivado', {
+          description: 'El sabor tiene historial de producción o pedidos, por lo que fue pausado en lugar de eliminarse.',
+        });
+      } else {
+        toast.success('Sabor Eliminado', {
+          description: 'El sabor ha sido eliminado del catálogo.',
+        });
+      }
+      await fetchFlavors();
+      return true;
+    } catch {
+      // Manejado por interceptor
+      return false;
+    }
+  }
+
   return {
     batches,
     isLoading,
@@ -230,5 +309,14 @@ export const useProductionStore = defineStore('production', () => {
     finishFermentation,
     adjustBatchLiters,
     archiveBatch,
+    // Catálogo de Sabores
+    flavors,
+    isLoadingFlavors,
+    activeFlavors,
+    fetchFlavors,
+    createFlavor,
+    toggleFlavor,
+    deleteFlavor,
   };
 });
+
