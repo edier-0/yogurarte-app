@@ -21,6 +21,7 @@ import {
   UpdateOrderInput,
   UpdateOrderPaymentInput,
 } from './orders.schema.js';
+import { syncBatchStatusBidirectional } from '../batches/batches.service.js';
 
 /**
  * Obtener listado de pedidos con filtros avanzados, búsqueda y ordenamiento jerárquico
@@ -997,6 +998,19 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
       }
     }
 
+    const affectedBatchIds = new Set<number>();
+    if (currentOrder.batchId) affectedBatchIds.add(currentOrder.batchId);
+    if (updatedOrder.batchId) affectedBatchIds.add(updatedOrder.batchId);
+    (currentOrder.items || []).forEach((it: any) => {
+      if (it.batchId) affectedBatchIds.add(it.batchId);
+    });
+    (updatedOrder.items || []).forEach((it: any) => {
+      if (it.batchId) affectedBatchIds.add(it.batchId);
+    });
+    for (const bId of affectedBatchIds) {
+      await syncBatchStatusBidirectional(tx, bId);
+    }
+
     return updatedOrder;
   });
 };
@@ -1109,7 +1123,7 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
       updateData.notes = notes;
     }
 
-    return tx.order.update({
+    const updated = await tx.order.update({
       where: { id },
       data: updateData,
       include: {
@@ -1121,6 +1135,21 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
         },
       },
     });
+
+    const isCancelling = deliveryStatus === 'CANCELLED' && existing.deliveryStatus !== 'CANCELLED';
+    const isUncancelling = existing.deliveryStatus === 'CANCELLED' && Boolean(deliveryStatus) && (deliveryStatus as string) !== 'CANCELLED';
+    if (isCancelling || isUncancelling) {
+      const affectedBatchIds = new Set<number>();
+      if (updated.batchId) affectedBatchIds.add(updated.batchId);
+      (updated.items || []).forEach((it: any) => {
+        if (it.batchId) affectedBatchIds.add(it.batchId);
+      });
+      for (const bId of affectedBatchIds) {
+        await syncBatchStatusBidirectional(tx, bId);
+      }
+    }
+
+    return updated;
   });
 };
 
@@ -1346,9 +1375,29 @@ export const deleteOrderPayment = async (orderId: number, paymentId: number) => 
  * Eliminar pedido
  */
 export const deleteOrder = async (id: number) => {
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { items: true },
+  });
+
+  if (!order) {
+    throw new NotFoundError('Pedido no encontrado');
+  }
+
+  const affectedBatchIds = new Set<number>();
+  if (order.batchId) affectedBatchIds.add(order.batchId);
+  order.items.forEach((it) => {
+    if (it.batchId) affectedBatchIds.add(it.batchId);
+  });
+
   await prisma.order.delete({
     where: { id },
   });
+
+  for (const bId of affectedBatchIds) {
+    await syncBatchStatusBidirectional(prisma, bId);
+  }
+
   return { message: 'Pedido eliminado exitosamente', id };
 };
 

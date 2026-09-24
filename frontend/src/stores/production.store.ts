@@ -8,25 +8,125 @@ import { getTodayDateBogota } from './finance.store';
 
 export type BatchChip = 'ALL' | 'ACTIVE' | 'DEPLETED' | 'ARCHIVED';
 
+export interface BatchPackagingItem {
+  id: number;
+  batchId: number;
+  flavor: string;
+  bottles1L: number;
+  bottles2L: number;
+  totalLiters: number;
+  fruitRawMaterialId?: number | null;
+  fruitQuantityUsed?: number;
+  fruitUnitCost?: number;
+  packagingCost: number;
+  notes?: string | null;
+  packagedBy?: string;
+  packagedAt: string;
+  createdAt: string;
+}
+
+export interface BatchPackagingPayload {
+  flavor: string;
+  bottles1L: number;
+  bottles2L: number;
+  fruitRawMaterialId?: number | null;
+  fruitQuantityUsed?: number;
+  notes?: string | null;
+  packagedBy?: string;
+  packagedAt?: string;
+  linkOrderIds?: number[];
+}
+
+export interface PartnerWithdrawalPayload {
+  bottleSize?: string;
+  quantityBottles: number;
+  staffMemberId: number;
+  notes?: string | null;
+  registeredBy?: string;
+  dischargeDate?: string;
+}
+
+export interface BatchSummaryData {
+  batch: {
+    id: number;
+    batchCode: string;
+    flavor: string;
+    status: string;
+    isActive: boolean;
+    preparationDate: string;
+    expirationDate?: string | null;
+    notes?: string | null;
+    registeredBy?: string;
+    cultureType?: string | null;
+  };
+  rawMaterialsBalance: {
+    milkUsedLiters: number;
+    totalLitersProduced: number;
+    packagedLiters: number;
+    unpackagedLiters: number;
+    yieldPercentage: number;
+    totalCost: number;
+    costPerLiter: number;
+  };
+  bottlesBreakdown: {
+    total1L: number;
+    total2L: number;
+    sold1L: number;
+    sold2L: number;
+    discharged1L: number;
+    discharged2L: number;
+    free1L: number;
+    free2L: number;
+  };
+  volumeBalance: {
+    totalProduced: number;
+    totalSold: number;
+    totalDischarged: number;
+    partnerConsumed: number;
+    remainingAvailable: number;
+  };
+  packagings: BatchPackagingItem[];
+  linkedOrders: Array<{
+    id: number;
+    orderNumber: string;
+    customer: { id: number; fullName: string; phone?: string | null };
+    totalAmount: number;
+    totalLiters: number;
+    quantityBottles: number;
+    deliveryStatus: string;
+    paymentStatus: string;
+    orderDate: string;
+    items: any[];
+  }>;
+  discharges: any[];
+  itemsUsed: any[];
+}
+
 export interface BatchItem {
   id: number;
   batchCode: string;
   flavor: string;
   milkUsedLiters: number;
   totalLitersProduced: number;
+  packagedLiters?: number;
+  unpackagedLiters?: number;
   bottles1LProduced: number;
   bottles2LProduced: number;
   yieldPercentage: number;
   costPerLiter?: number;
+  cultureType?: string | null;
+  initialSugarGrams?: number;
+  powderedMilkGrams?: number;
   preparationDate: string;
   expirationDate?: string | null;
-  status: 'EN_FERMENTACION' | 'DISPONIBLE' | 'AGOTADO' | 'ARCHIVADO' | string;
+  status: 'EN_FERMENTACION' | 'DISPONIBLE' | 'AGOTADO' | 'ARCHIVADO' | 'COMPLETADO' | string;
   isActive: boolean;
   notes?: string | null;
   registeredBy?: string;
   totalSoldLiters: number;
   totalDischargedLiters: number;
   remainingAvailableLiters: number;
+  packagings?: BatchPackagingItem[];
   discharges?: Array<{
     id: number;
     bottleSize: string;
@@ -49,6 +149,9 @@ export interface CreateBatchPayload {
   milkUsedLiters: number;
   totalLitersProduced?: number;
   flavor: string;
+  cultureType?: string;
+  initialSugarGrams?: number;
+  powderedMilkGrams?: number;
   preparationDate?: string;
   expirationDate?: string;
   notes?: string | null;
@@ -60,6 +163,12 @@ export const useProductionStore = defineStore('production', () => {
   const batches = ref<BatchItem[]>([]);
   const isLoading = ref<boolean>(false);
   const error = ref<string | null>(null);
+
+  // Paginación reactiva estricta a 5 lotes
+  const currentPage = ref<number>(1);
+  const limit = ref<number>(5);
+  const totalBatches = ref<number>(0);
+  const totalPages = ref<number>(1);
 
   // Catálogo de Sabores Dinámico
   const flavors = ref<ProductFlavor[]>([]);
@@ -96,9 +205,9 @@ export const useProductionStore = defineStore('production', () => {
 
   // Conteos por chip
   const chipCounts = computed(() => {
-    const all = batches.value.length;
+    const all = totalBatches.value || batches.value.length;
     const active = batches.value.filter(
-      (b) => b.isActive !== false && (b.status === 'DISPONIBLE' || b.status === 'EN_FERMENTACION') && (b.remainingAvailableLiters > 0 || b.status === 'EN_FERMENTACION')
+      (b) => b.isActive !== false && (b.status === 'DISPONIBLE' || b.status === 'COMPLETADO' || b.status === 'EN_FERMENTACION')
     ).length;
     const depleted = batches.value.filter(
       (b) => b.isActive !== false && (b.status === 'AGOTADO' || (b.remainingAvailableLiters <= 0 && b.status !== 'EN_FERMENTACION'))
@@ -115,7 +224,7 @@ export const useProductionStore = defineStore('production', () => {
     // 1. Filtro por chip
     if (activeChip.value === 'ACTIVE') {
       result = result.filter(
-        (b) => b.isActive !== false && (b.status === 'DISPONIBLE' || b.status === 'EN_FERMENTACION') && (b.remainingAvailableLiters > 0 || b.status === 'EN_FERMENTACION')
+        (b) => b.isActive !== false && (b.status === 'DISPONIBLE' || b.status === 'COMPLETADO' || b.status === 'EN_FERMENTACION') && (b.remainingAvailableLiters > 0 || b.status === 'EN_FERMENTACION')
       );
     } else if (activeChip.value === 'DEPLETED') {
       result = result.filter(
@@ -140,16 +249,35 @@ export const useProductionStore = defineStore('production', () => {
     return result;
   });
 
-  // Cargar lotes desde /api/batches
-  async function fetchBatches() {
+  // Cargar lotes desde /api/batches con soporte para paginación
+  async function fetchBatches(page = 1, statusFilter?: string) {
     isLoading.value = true;
     error.value = null;
     try {
-      const data = await http.get<BatchItem[]>('/batches', {
-        params: { includeInactive: 'true' },
+      let resolvedStatus = statusFilter;
+      if (!resolvedStatus && activeChip.value !== 'ALL') {
+        resolvedStatus = activeChip.value;
+      }
+
+      const res = await http.get<any>('/batches', {
+        params: {
+          page,
+          limit: limit.value,
+          includeInactive: 'true',
+          status: resolvedStatus && resolvedStatus !== 'ALL' ? resolvedStatus : undefined,
+        },
       });
-      if (Array.isArray(data)) {
-        batches.value = data;
+
+      if (res && res.data && res.pagination) {
+        batches.value = res.data;
+        currentPage.value = res.pagination.page;
+        limit.value = res.pagination.limit;
+        totalBatches.value = res.pagination.total;
+        totalPages.value = res.pagination.totalPages;
+      } else if (Array.isArray(res)) {
+        batches.value = res;
+        totalBatches.value = res.length;
+        totalPages.value = Math.ceil(res.length / limit.value) || 1;
       }
     } catch (err: any) {
       error.value = err?.message || 'Error al cargar lotes de producción';
@@ -158,7 +286,13 @@ export const useProductionStore = defineStore('production', () => {
     }
   }
 
-  // Crear lote de producción
+  // Navegación de páginas
+  async function goToPage(page: number) {
+    if (page < 1 || page > totalPages.value || page === currentPage.value) return;
+    await fetchBatches(page);
+  }
+
+  // Crear lote de producción (Fase A)
   async function createBatch(payload: CreateBatchPayload) {
     isLoading.value = true;
     try {
@@ -169,10 +303,82 @@ export const useProductionStore = defineStore('production', () => {
       toast.success('¡Lote Creado con Éxito!', {
         description: `Lote ${res.batchCode || ''} registrado para ${res.flavor}.`,
       });
-      await fetchBatches();
+      await fetchBatches(1);
       return res;
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  // Registrar fraccionamiento y envasado (Fase B)
+  async function packageBatch(batchId: number, payload: BatchPackagingPayload) {
+    isLoading.value = true;
+    try {
+      const res = await http.post<{ message: string; packaging: BatchPackagingItem; batch: BatchItem }>(
+        `/batches/${batchId}/packaging`,
+        payload
+      );
+      toast.success('¡Envasado Registrado!', {
+        description: res.message || 'Fracción de lote envasada con éxito.',
+      });
+      await fetchBatches(currentPage.value);
+      return res;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Desvincular pedido de un lote
+  async function unlinkOrder(batchId: number, orderId: number) {
+    try {
+      const res = await http.delete<{ message: string }>(`/batches/${batchId}/orders/${orderId}`);
+      toast.success('Pedido Desvinculado', {
+        description: res.message || 'El pedido regresó a pre-venta y se reintegró el saldo al lote.',
+      });
+      await fetchBatches(currentPage.value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Registrar retiro de socio
+  async function registerPartnerWithdrawal(batchId: number, payload: PartnerWithdrawalPayload) {
+    try {
+      const res = await http.post<any>(`/batches/${batchId}/partner-withdrawal`, payload);
+      toast.success('Retiro Registrado', {
+        description: res.message || 'Consumo de socio registrado y descontado del lote.',
+      });
+      await fetchBatches(currentPage.value);
+      return res;
+    } catch {
+      return null;
+    }
+  }
+
+  // Obtener resumen y auditoría detallada
+  async function fetchBatchSummary(batchId: number): Promise<BatchSummaryData | null> {
+    try {
+      return await http.get<BatchSummaryData>(`/batches/${batchId}/summary`);
+    } catch {
+      return null;
+    }
+  }
+
+  // Consultar pedidos en pre-venta pendientes por sabor
+  async function fetchPendingOrders(flavor?: string) {
+    try {
+      const res = await http.get<{
+        count: number;
+        totalLiters: number;
+        totalAmount: number;
+        orders: any[];
+      }>('/batches/pending-orders', {
+        params: flavor && flavor !== 'ALL' ? { flavor } : undefined,
+      });
+      return res;
+    } catch {
+      return { count: 0, totalLiters: 0, totalAmount: 0, orders: [] };
     }
   }
 
@@ -306,6 +512,13 @@ export const useProductionStore = defineStore('production', () => {
     batches,
     isLoading,
     error,
+    // Paginación
+    currentPage,
+    limit,
+    totalBatches,
+    totalPages,
+    goToPage,
+    // Filtros
     activeChip,
     searchQuery,
     debouncedSearch,
@@ -314,8 +527,14 @@ export const useProductionStore = defineStore('production', () => {
     averageYield,
     chipCounts,
     filteredBatches,
+    // Acciones Lotes
     fetchBatches,
     createBatch,
+    packageBatch,
+    unlinkOrder,
+    registerPartnerWithdrawal,
+    fetchBatchSummary,
+    fetchPendingOrders,
     finishFermentation,
     adjustBatchLiters,
     archiveBatch,

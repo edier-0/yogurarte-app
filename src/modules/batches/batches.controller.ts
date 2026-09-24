@@ -82,3 +82,43 @@ export const deleteBatchDischarge = async (req: Request, res: Response, next: Ne
     next(error);
   }
 };
+
+export const createBatchPackaging = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.createBatchPackaging(Number(req.params.id), req.body);
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const unlinkOrderFromBatch = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.unlinkOrderFromBatch(
+      Number(req.params.id),
+      Number(req.params.orderId)
+    );
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getBatchSummary = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.getBatchSummary(Number(req.params.id));
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const recordPartnerWithdrawal = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.recordPartnerWithdrawal(Number(req.params.id), req.body);
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+

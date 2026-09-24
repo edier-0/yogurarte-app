@@ -158,7 +158,11 @@ model ProductionBatch {
   flavor              String            @default("Natural")
   price1L             Float             @default(12000)
   price2L             Float             @default(24000)
-  status              String            @default("COMPLETADO") // COMPLETADO, AGOTADO, EN_FERMENTACION, DESCARTADO
+  status              String            @default("COMPLETADO") // COMPLETADO, AGOTADO, EN_FERMENTACION, DESCARTADO, DISPONIBLE
+  cultureType         String?
+  initialSugarGrams   Float?            @default(0)
+  powderedMilkGrams   Float?            @default(0)
+  packagedLiters      Float             @default(0)
   preparationDate     DateTime          @default(now())
   expirationDate      DateTime?
   totalCost           Float             @default(0)
@@ -173,6 +177,7 @@ model ProductionBatch {
   orders              Order[]
   orderItems          OrderItem[]
   discharges          BatchDischarge[]
+  packagings          BatchPackaging[]
 
   @@index([preparationDate])
   @@index([flavor])
@@ -180,6 +185,29 @@ model ProductionBatch {
   @@index([isActive])
   @@index([isActive, status])
   @@index([isActive, preparationDate])
+}
+
+model BatchPackaging {
+  id                 Int              @id @default(autoincrement())
+  batchId            Int
+  batch              ProductionBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  flavor             String
+  bottles1L          Int              @default(0)
+  bottles2L          Int              @default(0)
+  totalLiters        Float
+  fruitRawMaterialId Int?
+  fruitQuantityUsed  Float?           @default(0)
+  fruitUnitCost      Float?           @default(0)
+  packagingCost      Float            @default(0)
+  notes              String?
+  packagedBy         String?          @default("Edier")
+  packagedAt         DateTime         @default(now())
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @default(now()) @updatedAt
+
+  @@index([batchId])
+  @@index([flavor])
+  @@index([packagedAt])
 }
 
 model BatchDischarge {

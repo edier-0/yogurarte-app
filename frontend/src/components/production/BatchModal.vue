@@ -76,6 +76,10 @@ const resolvedFlavor = computed(() => {
 const milkUsedLiters = ref<number | ''>(50);
 const expectedLiters = ref<number | ''>(48);
 const cultureType = ref(cultureTypes[0]);
+const useSugar = ref(true);
+const sugarGramsPerLiter = ref<number | ''>(80);
+const usePowderedMilk = ref(false);
+const powderedMilkGramsPerLiter = ref<number | ''>(30);
 const preparationDate = ref(getTodayDateBogota());
 const ripeningDate = ref('');
 const status = ref<'EN_FERMENTACION' | 'DISPONIBLE'>('EN_FERMENTACION');
@@ -105,6 +109,11 @@ watch(
       flavorVariant.value = '';
       customFlavorName.value = '';
       preparationDate.value = getTodayDateBogota();
+      status.value = 'EN_FERMENTACION';
+      useSugar.value = true;
+      sugarGramsPerLiter.value = 80;
+      usePowderedMilk.value = false;
+      powderedMilkGramsPerLiter.value = 30;
       updateEstimatedRipening();
       errorMessage.value = '';
     }
@@ -150,6 +159,7 @@ async function handleSubmit() {
 
     await productionStore.createBatch({
       flavor: resolvedFlavor.value.trim(),
+      cultureType: cultureType.value,
       milkUsedLiters: milkUsedLiters.value,
       totalLitersProduced: expectedLiters.value ? Number(expectedLiters.value) : milkUsedLiters.value,
       preparationDate: preparationDate.value,
@@ -201,6 +211,19 @@ async function handleSubmit() {
         </div>
 
         <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+          <!-- Banner Informativo Fase A -->
+          <div class="rounded-2xl border border-purple-200 bg-purple-50/70 p-3.5 text-xs text-purple-900 dark:border-purple-800/40 dark:bg-purple-950/30 dark:text-purple-300">
+            <div class="flex items-start gap-2.5">
+              <FlaskConical class="h-4 w-4 shrink-0 mt-0.5 text-purple-600 dark:text-purple-400" />
+              <div>
+                <p class="font-extrabold text-xs">Fase A · Fermentación del Lote Base</p>
+                <p class="mt-0.5 text-[11px] leading-relaxed opacity-90">
+                  Este registro descuenta únicamente la leche e insumos base en inventario. El fraccionamiento por sabores, botellas (1L y 2L), tapas y etiquetas se realiza en la Fase B al envasar.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Código de Lote Autogenerado y Sabor Base -->
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
@@ -314,6 +337,59 @@ async function handleSubmit() {
           <div class="flex items-center justify-between rounded-xl bg-natural-50/50 p-2.5 text-xs text-natural-700 dark:bg-emerald-950/20 dark:text-emerald-300">
             <span class="font-bold">Rendimiento proyectado:</span>
             <span class="font-black">{{ expectedYield }}%</span>
+          </div>
+
+          <!-- Insumos Base de Fermentación (Azúcar y Leche en Polvo) -->
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div class="rounded-xl border border-surface-light-border bg-slate-50/40 p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas/50">
+              <div class="flex items-center justify-between">
+                <label class="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Azúcar Inicial
+                </label>
+                <input
+                  v-model="useSugar"
+                  type="checkbox"
+                  class="h-4 w-4 rounded text-brand-800 focus:ring-brand-800"
+                />
+              </div>
+              <div v-if="useSugar" class="mt-2 relative">
+                <input
+                  v-model.number="sugarGramsPerLiter"
+                  type="number"
+                  min="0"
+                  step="5"
+                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
+                />
+                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400">
+                  g / Litro
+                </span>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-surface-light-border bg-slate-50/40 p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas/50">
+              <div class="flex items-center justify-between">
+                <label class="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Leche en Polvo
+                </label>
+                <input
+                  v-model="usePowderedMilk"
+                  type="checkbox"
+                  class="h-4 w-4 rounded text-brand-800 focus:ring-brand-800"
+                />
+              </div>
+              <div v-if="usePowderedMilk" class="mt-2 relative">
+                <input
+                  v-model.number="powderedMilkGramsPerLiter"
+                  type="number"
+                  min="0"
+                  step="5"
+                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
+                />
+                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400">
+                  g / Litro
+                </span>
+              </div>
+            </div>
           </div>
 
           <!-- Tipo de Cultivo / Fermento -->

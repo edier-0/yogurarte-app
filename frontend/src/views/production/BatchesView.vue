@@ -10,21 +10,33 @@ import {
   Archive,
   Plus,
   Search,
-  CheckCircle2,
   RefreshCw,
-  SlidersHorizontal,
   Sparkles,
+  PackageCheck,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-vue-next';
-import { useProductionStore, type BatchItem } from '@/stores/production.store';
+import { useProductionStore, type BatchItem, type BatchChip } from '@/stores/production.store';
 import BatchModal from '@/components/production/BatchModal.vue';
 import FlavorsManagementModal from '@/components/production/FlavorsManagementModal.vue';
+import PackagingModal from '@/components/production/PackagingModal.vue';
+import BatchSummaryModal from '@/components/production/BatchSummaryModal.vue';
 
 const productionStore = useProductionStore();
+
 const isBatchModalOpen = ref(false);
 const isFlavorsModalOpen = ref(false);
 
+// Modales Fase B y Auditoría
+const isPackagingModalOpen = ref(false);
+const selectedBatchForPackaging = ref<BatchItem | null>(null);
+
+const isSummaryModalOpen = ref(false);
+const selectedBatchIdForSummary = ref<number | null>(null);
+
 onMounted(() => {
-  productionStore.fetchBatches();
+  productionStore.fetchBatches(1);
   productionStore.fetchFlavors();
 });
 
@@ -43,27 +55,22 @@ const formatDate = (dateStr?: string | null) => {
   }
 };
 
-// Acciones sobre lote
-function handleFinishFermentation(batch: BatchItem) {
-  const produced = window.prompt(
-    `Ingresa los litros finales obtenidos para el lote ${batch.batchCode} (Leche usada: ${batch.milkUsedLiters}L):`,
-    String(batch.totalLitersProduced || batch.milkUsedLiters)
-  );
-  if (!produced) return;
-  const num = Number(produced);
-  if (isNaN(num) || num <= 0) return;
-  productionStore.finishFermentation(batch.id, num);
+// Selección de chip con recarga en página 1
+async function handleSelectChip(chip: BatchChip) {
+  productionStore.activeChip = chip;
+  await productionStore.fetchBatches(1);
 }
 
-function handleAdjustLiters(batch: BatchItem) {
-  const newLiters = window.prompt(
-    `Ajustar litros totales producidos para el lote ${batch.batchCode}:`,
-    String(batch.totalLitersProduced)
-  );
-  if (!newLiters) return;
-  const num = Number(newLiters);
-  if (isNaN(num) || num < 0) return;
-  productionStore.adjustBatchLiters(batch.id, num);
+// Abrir modal de envasado
+function openPackagingModal(batch: BatchItem) {
+  selectedBatchForPackaging.value = batch;
+  isPackagingModalOpen.value = true;
+}
+
+// Abrir modal de resumen y auditoría
+function openSummaryModal(batch: BatchItem) {
+  selectedBatchIdForSummary.value = batch.id;
+  isSummaryModalOpen.value = true;
 }
 </script>
 
@@ -76,14 +83,14 @@ function handleAdjustLiters(batch: BatchItem) {
           Lotes y Rendimiento
         </h1>
         <p class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-          Control de fermentación, trazabilidad de leche, descargos de mermas y costos por litro.
+          Control en 2 fases: Fermentación base, envasado multi-sabor, vinculación de pre-ventas y auditoría láctea.
         </p>
       </div>
 
       <div class="flex items-center gap-2">
         <button
           type="button"
-          @click="productionStore.fetchBatches"
+          @click="productionStore.fetchBatches(productionStore.currentPage)"
           :disabled="productionStore.isLoading"
           class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-surface-light-card px-3 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all active:scale-95 hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-200"
           title="Actualizar lotes"
@@ -109,7 +116,7 @@ function handleAdjustLiters(batch: BatchItem) {
           class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-4 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95"
         >
           <Plus class="h-4 w-4 stroke-[2.5]" />
-          <span>Registrar Lote</span>
+          <span>Fase A · Registrar Lote</span>
         </button>
       </div>
     </div>
@@ -119,7 +126,7 @@ function handleAdjustLiters(batch: BatchItem) {
       <!-- Litros en Fermentación -->
       <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-5 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card">
         <span class="text-xs font-bold uppercase tracking-wider text-slate-400">
-          Litros en Fermentación
+          Litros en Fermentación (Fase A)
         </span>
         <div class="mt-2 flex items-baseline justify-between">
           <span class="text-2xl font-black text-slate-900 dark:text-white sm:text-3xl">
@@ -190,7 +197,7 @@ function handleAdjustLiters(batch: BatchItem) {
           <!-- 1. Todos los Lotes -->
           <button
             type="button"
-            @click="productionStore.activeChip = 'ALL'"
+            @click="handleSelectChip('ALL')"
             class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all"
             :class="
               productionStore.activeChip === 'ALL'
@@ -205,7 +212,7 @@ function handleAdjustLiters(batch: BatchItem) {
           <!-- 2. Disponibles / Activos -->
           <button
             type="button"
-            @click="productionStore.activeChip = 'ACTIVE'"
+            @click="handleSelectChip('ACTIVE')"
             class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all"
             :class="
               productionStore.activeChip === 'ACTIVE'
@@ -220,7 +227,7 @@ function handleAdjustLiters(batch: BatchItem) {
           <!-- 3. Agotados -->
           <button
             type="button"
-            @click="productionStore.activeChip = 'DEPLETED'"
+            @click="handleSelectChip('DEPLETED')"
             class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all"
             :class="
               productionStore.activeChip === 'DEPLETED'
@@ -235,7 +242,7 @@ function handleAdjustLiters(batch: BatchItem) {
           <!-- 4. Archivados -->
           <button
             type="button"
-            @click="productionStore.activeChip = 'ARCHIVED'"
+            @click="handleSelectChip('ARCHIVED')"
             class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all"
             :class="
               productionStore.activeChip === 'ARCHIVED'
@@ -262,7 +269,7 @@ function handleAdjustLiters(batch: BatchItem) {
           No hay lotes en esta categoría
         </h3>
         <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Inicia un nuevo lote de producción presionando el botón "Registrar Lote".
+          Inicia un nuevo lote de producción presionando el botón "Fase A · Registrar Lote".
         </p>
       </div>
 
@@ -290,7 +297,7 @@ function handleAdjustLiters(batch: BatchItem) {
                 :class="
                   batch.status === 'EN_FERMENTACION'
                     ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300'
-                    : batch.status === 'DISPONIBLE' && batch.remainingAvailableLiters > 0
+                    : (batch.status === 'DISPONIBLE' || batch.status === 'COMPLETADO') && batch.remainingAvailableLiters > 0
                     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
                     : batch.status === 'AGOTADO' || batch.remainingAvailableLiters <= 0
                     ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
@@ -307,12 +314,15 @@ function handleAdjustLiters(batch: BatchItem) {
               </span>
             </div>
 
-            <!-- Fechas -->
+            <!-- Fechas e información del lote -->
             <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
               <span>Elaborado: {{ formatDate(batch.preparationDate) }}</span>
               <span>•</span>
               <span>Vencimiento: {{ formatDate(batch.expirationDate) }}</span>
               <span v-if="batch.registeredBy">• Por: {{ batch.registeredBy }}</span>
+              <span v-if="batch.packagings && batch.packagings.length > 0" class="rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-black text-purple-800 dark:bg-purple-950/40 dark:text-purple-300">
+                {{ batch.packagings.length }} fracción(es) envasada(s)
+              </span>
             </div>
 
             <p v-if="batch.notes" class="mt-1.5 text-xs text-slate-500 dark:text-slate-400 italic">
@@ -326,7 +336,7 @@ function handleAdjustLiters(batch: BatchItem) {
               <span class="text-xs font-bold text-slate-400">Disponible:</span>
               <div class="text-xl font-black text-natural-500 sm:text-2xl">
                 {{ batch.remainingAvailableLiters }} L
-                <span class="text-xs font-normal text-slate-400">/ {{ batch.totalLitersProduced }} L</span>
+                <span class="text-xs font-normal text-slate-400">/ {{ batch.totalLitersProduced || batch.milkUsedLiters }} L</span>
               </div>
             </div>
 
@@ -335,12 +345,12 @@ function handleAdjustLiters(batch: BatchItem) {
               <span class="font-extrabold text-dairy-500">
                 {{
                   batch.yieldPercentage ||
-                  Math.round((batch.totalLitersProduced / (batch.milkUsedLiters || 1)) * 1000) / 10
+                  Math.round(((batch.totalLitersProduced || batch.milkUsedLiters) / (batch.milkUsedLiters || 1)) * 1000) / 10
                 }}%
               </span>
               <span class="text-slate-300">•</span>
               <span class="text-slate-400">
-                Merma: {{ Math.max(0, batch.milkUsedLiters - batch.totalLitersProduced) }} L
+                Envasado: {{ batch.packagedLiters || 0 }} L
               </span>
             </div>
           </div>
@@ -355,12 +365,12 @@ function handleAdjustLiters(batch: BatchItem) {
               ({{
                 Math.round(
                   (((batch.totalSoldLiters || 0) + (batch.totalDischargedLiters || 0)) /
-                    (batch.totalLitersProduced || 1)) *
+                    (batch.totalLitersProduced || batch.milkUsedLiters || 1)) *
                     100
                 )
               }}%)
             </span>
-            <span>Leche Utilizada: {{ batch.milkUsedLiters }} L</span>
+            <span>Leche Inoculada: {{ batch.milkUsedLiters }} L</span>
           </div>
 
           <div class="h-2.5 w-full overflow-hidden rounded-full bg-surface-light-canvas dark:bg-surface-dark-canvas border border-surface-light-border dark:border-surface-dark-border">
@@ -377,7 +387,7 @@ function handleAdjustLiters(batch: BatchItem) {
                 width: `${Math.min(
                   100,
                   Math.round(
-                    ((batch.remainingAvailableLiters) / (batch.totalLitersProduced || 1)) * 100
+                    ((batch.remainingAvailableLiters) / (batch.totalLitersProduced || batch.milkUsedLiters || 1)) * 100
                   )
                 )}%`,
               }"
@@ -387,25 +397,27 @@ function handleAdjustLiters(batch: BatchItem) {
 
         <!-- Acciones Directas por Tarjeta -->
         <div class="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
-          <!-- Finalizar Fermentación -->
+          <!-- Acción Fase B: Envasar / Fraccionar Lote -->
           <button
-            v-if="batch.status === 'EN_FERMENTACION'"
+            v-if="batch.status !== 'ARCHIVADO' && (batch.remainingAvailableLiters > 0 || batch.status === 'EN_FERMENTACION')"
             type="button"
-            @click="handleFinishFermentation(batch)"
-            class="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm transition-transform active:scale-95 hover:bg-purple-700"
+            @click="openPackagingModal(batch)"
+            class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm transition-transform active:scale-95 hover:bg-emerald-700"
+            title="Fraccionar por sabor, botellas 1L/2L y vincular pre-ventas"
           >
-            <CheckCircle2 class="h-3.5 w-3.5 stroke-[2.5]" />
-            <span>Finalizar Fermentación</span>
+            <PackageCheck class="h-3.5 w-3.5 stroke-[2.5]" />
+            <span>Envasar / Fraccionar</span>
           </button>
 
-          <!-- Ajustar Litros -->
+          <!-- Acción Auditoría y Detalle -->
           <button
             type="button"
-            @click="handleAdjustLiters(batch)"
-            class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300"
+            @click="openSummaryModal(batch)"
+            class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300"
+            title="Ver balance lácteo, pedidos vinculados y retiros de socios"
           >
-            <SlidersHorizontal class="h-3.5 w-3.5 text-slate-500" />
-            <span>Ajustar Litros</span>
+            <Eye class="h-3.5 w-3.5 text-slate-500" />
+            <span>Auditoría y Detalle</span>
           </button>
 
           <!-- Archivar Lote -->
@@ -422,14 +434,61 @@ function handleAdjustLiters(batch: BatchItem) {
       </div>
     </div>
 
-    <!-- Modal de Registro de Lote -->
+    <!-- 4. Barra de Paginación Institucional (Estricta a 5 lotes por página) -->
+    <div
+      v-if="productionStore.totalBatches > 0"
+      class="flex flex-col items-center justify-between gap-3 rounded-2xl border border-surface-light-border bg-surface-light-card p-4 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card sm:flex-row"
+    >
+      <div class="text-xs font-bold text-slate-600 dark:text-slate-400">
+        Página
+        <span class="font-black text-slate-900 dark:text-white">{{ productionStore.currentPage }}</span>
+        de
+        <span class="font-black text-slate-900 dark:text-white">{{ productionStore.totalPages }}</span>
+        <span class="ml-1 text-slate-400">({{ productionStore.totalBatches }} lotes en total)</span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          @click="productionStore.goToPage(productionStore.currentPage - 1)"
+          :disabled="productionStore.currentPage <= 1 || productionStore.isLoading"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all active:scale-95 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <ChevronLeft class="h-4 w-4" />
+          <span>Anterior</span>
+        </button>
+
+        <button
+          type="button"
+          @click="productionStore.goToPage(productionStore.currentPage + 1)"
+          :disabled="productionStore.currentPage >= productionStore.totalPages || productionStore.isLoading"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all active:scale-95 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <span>Siguiente</span>
+          <ChevronRight class="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Modales -->
     <BatchModal
       v-model:open="isBatchModalOpen"
-      @saved="productionStore.fetchBatches"
+      @saved="productionStore.fetchBatches(1)"
     />
 
-    <!-- Modal de Catálogo de Sabores -->
     <FlavorsManagementModal v-model:open="isFlavorsModalOpen" />
+
+    <PackagingModal
+      v-model:open="isPackagingModalOpen"
+      :batch="selectedBatchForPackaging"
+      @packaged="productionStore.fetchBatches(productionStore.currentPage)"
+    />
+
+    <BatchSummaryModal
+      v-model:open="isSummaryModalOpen"
+      :batch-id="selectedBatchIdForSummary"
+      @updated="productionStore.fetchBatches(productionStore.currentPage)"
+    />
   </div>
 </template>
 
