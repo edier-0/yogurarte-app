@@ -66,6 +66,7 @@ export interface Order {
   pendingBalance?: number;
   pendingAmount?: number;
   deliveryFee: number;
+  discount?: number;
   notes?: string | null;
   customer?: Customer;
   customerId?: number | null;

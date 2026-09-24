@@ -18,9 +18,14 @@ import {
   MapPin,
   Sparkles,
   ShoppingBag,
-  Search
+  Search,
+  Calendar,
+  Percent,
+  DollarSign,
+  Tag,
 } from 'lucide-vue-next';
 import { useOperationsStore, type Order, type OrderItem } from '@/stores/operations.store';
+import { useProductionStore } from '@/stores/production.store';
 
 const props = defineProps<{
   open: boolean;
@@ -33,11 +38,13 @@ const emit = defineEmits<{
 }>();
 
 const store = useOperationsStore();
+const productionStore = useProductionStore();
 
 const isEditing = computed(() => Boolean(props.orderToEdit));
 
-// Sabores y presentaciones oficiales de YogurArte
-const FLAVORS = [
+// Sabores base del catálogo institucional YogurArte
+const CATALOG_FLAVORS = [
+  'Natural',
   'Fresa',
   'Melocotón',
   'Mora',
@@ -46,7 +53,6 @@ const FLAVORS = [
   'Guanábana',
   'Arequipe',
   'Piña',
-  'Natural',
 ];
 
 const BOTTLE_SIZES = [
@@ -60,6 +66,7 @@ const customerName = ref('');
 const customerPhone = ref('');
 const customerAddress = ref('');
 const deliveryType = ref<'PROPIO' | 'DOMICILIARIO' | 'LOCAL'>('PROPIO');
+const deliveryDate = ref('');
 const deliveryDriverId = ref<number | null>(null);
 const deliveryFee = ref<number>(0);
 const paidAmount = ref<number>(0);
@@ -69,15 +76,60 @@ const isSubmitting = ref(false);
 const customerSearch = ref('');
 const showSuggestions = ref(false);
 
+// Módulo de Descuentos
+const discountMode = ref<'NONE' | 'PERCENTAGE' | 'FIXED'>('NONE');
+const discountPercentage = ref<number | ''>('');
+const discountFixedAmount = ref<number | ''>('');
+
 const items = ref<OrderItem[]>([
   {
+    batchId: null,
     bottleSize: '1L',
-    flavor: 'Fresa',
+    flavor: 'Natural',
     quantity: 1,
     unitPrice: 12000,
     totalPrice: 12000,
   },
 ]);
+
+// Lotes activos disponibles para asignación
+const activeBatches = computed(() => {
+  return productionStore.batches.filter(
+    (b) =>
+      b.isActive !== false &&
+      (b.status === 'DISPONIBLE' || b.status === 'EN_FERMENTACION')
+  );
+});
+
+// Helper de selección de lote vs pre-venta
+function getItemSelectionKey(item: OrderItem): string {
+  if (item.batchId) {
+    return `batch_${item.batchId}`;
+  }
+  return `presale_${item.flavor}`;
+}
+
+function setItemSelectionKey(item: OrderItem, key: string) {
+  if (key.startsWith('batch_')) {
+    const bId = Number(key.replace('batch_', ''));
+    const b = productionStore.batches.find((x) => x.id === bId);
+    item.batchId = bId;
+    if (b) {
+      item.flavor = b.flavor;
+    }
+  } else if (key.startsWith('presale_')) {
+    const fl = key.replace('presale_', '');
+    item.batchId = null;
+    item.flavor = fl;
+  }
+}
+
+function isCustomOptionNeeded(item: OrderItem): boolean {
+  if (item.batchId) {
+    return !activeBatches.value.some((b) => b.id === item.batchId);
+  }
+  return !CATALOG_FLAVORS.includes(item.flavor);
+}
 
 // Sugerencias predictivas de clientes
 const customerSuggestions = computed(() => {
@@ -105,8 +157,9 @@ const selectCustomer = (c: { id: number; fullName: string; phone: string; addres
 // Items helpers
 const addItem = () => {
   items.value.push({
+    batchId: null,
     bottleSize: '1L',
-    flavor: 'Fresa',
+    flavor: 'Natural',
     quantity: 1,
     unitPrice: 12000,
     totalPrice: 12000,
@@ -127,13 +180,43 @@ const onItemChange = (item: OrderItem) => {
   item.totalPrice = (item.quantity || 1) * (item.unitPrice || 0);
 };
 
+function isCustomUnitPrice(item: OrderItem): boolean {
+  const sizeObj = BOTTLE_SIZES.find((s) => s.value === item.bottleSize);
+  return sizeObj ? Number(item.unitPrice) !== sizeObj.defaultPrice : false;
+}
+
+// Control de modo de descuento
+function setDiscountMode(mode: 'NONE' | 'PERCENTAGE' | 'FIXED') {
+  discountMode.value = mode;
+  if (mode === 'NONE') {
+    discountPercentage.value = '';
+    discountFixedAmount.value = '';
+  } else if (mode === 'PERCENTAGE' && discountPercentage.value === '') {
+    discountPercentage.value = 10;
+  } else if (mode === 'FIXED' && discountFixedAmount.value === '') {
+    discountFixedAmount.value = 2000;
+  }
+}
+
 // Totales automáticos
 const itemsSubtotal = computed(() => {
   return items.value.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0);
 });
 
+const discountAmount = computed(() => {
+  if (discountMode.value === 'PERCENTAGE') {
+    const pct = Math.max(0, Math.min(100, Number(discountPercentage.value) || 0));
+    return Math.round((itemsSubtotal.value * pct) / 100);
+  }
+  if (discountMode.value === 'FIXED') {
+    const fixed = Math.max(0, Number(discountFixedAmount.value) || 0);
+    return Math.min(itemsSubtotal.value, fixed);
+  }
+  return 0;
+});
+
 const grandTotal = computed(() => {
-  return itemsSubtotal.value + Number(deliveryFee.value || 0);
+  return Math.max(0, itemsSubtotal.value - discountAmount.value + Number(deliveryFee.value || 0));
 });
 
 const pendingBalance = computed(() => {
@@ -147,6 +230,7 @@ watch(
     if (val) {
       if (store.customers.length === 0) store.fetchCustomers();
       if (store.drivers.length === 0) store.fetchDrivers();
+      if (productionStore.batches.length === 0) productionStore.fetchBatches();
 
       if (props.orderToEdit) {
         const o = props.orderToEdit;
@@ -155,18 +239,33 @@ watch(
         customerPhone.value = o.customerPhone || o.customer?.phone || '';
         customerAddress.value = o.customerAddress || o.customer?.address || '';
         deliveryType.value = (o.deliveryType as any) || 'PROPIO';
+        deliveryDate.value = o.deliveryDate ? o.deliveryDate.split('T')[0] : '';
         deliveryDriverId.value = o.deliveryDriverId || null;
         deliveryFee.value = o.deliveryFee || 0;
         paidAmount.value = o.paidAmount || o.totalPaid || 0;
+        paymentMethod.value = 'EFECTIVO';
         notes.value = o.notes || '';
+
+        // Restaurar descuento previo si existe
+        if (o.discount && o.discount > 0) {
+          discountMode.value = 'FIXED';
+          discountFixedAmount.value = o.discount;
+          discountPercentage.value = '';
+        } else {
+          discountMode.value = 'NONE';
+          discountFixedAmount.value = '';
+          discountPercentage.value = '';
+        }
+
         if (o.items && o.items.length > 0) {
           items.value = o.items.map((it) => ({
             id: it.id,
+            batchId: it.batchId || null,
             bottleSize: it.bottleSize || '1L',
-            flavor: it.flavor || 'Fresa',
+            flavor: it.flavor || 'Natural',
             quantity: it.quantity || 1,
-            unitPrice: it.unitPrice || 12000,
-            totalPrice: it.totalPrice || (it.quantity || 1) * 12000,
+            unitPrice: it.unitPrice || (it.bottleSize === '2L' ? 22000 : 12000),
+            totalPrice: it.totalPrice || (it.quantity || 1) * (it.unitPrice || 12000),
           }));
         }
       } else {
@@ -176,15 +275,20 @@ watch(
         customerPhone.value = '';
         customerAddress.value = '';
         deliveryType.value = 'PROPIO';
+        deliveryDate.value = '';
         deliveryDriverId.value = null;
         deliveryFee.value = 0;
         paidAmount.value = 0;
         paymentMethod.value = 'EFECTIVO';
+        discountMode.value = 'NONE';
+        discountPercentage.value = '';
+        discountFixedAmount.value = '';
         notes.value = '';
         items.value = [
           {
+            batchId: null,
             bottleSize: '1L',
-            flavor: 'Fresa',
+            flavor: 'Natural',
             quantity: 1,
             unitPrice: 12000,
             totalPrice: 12000,
@@ -214,13 +318,16 @@ const handleSubmit = async () => {
       customerPhone: customerPhone.value.trim(),
       customerAddress: customerAddress.value.trim(),
       deliveryType: deliveryType.value,
+      deliveryDate: deliveryDate.value ? deliveryDate.value : undefined,
       deliveryDriverId: deliveryType.value === 'DOMICILIARIO' ? deliveryDriverId.value : null,
       deliveryFee: Number(deliveryFee.value) || 0,
+      discount: discountAmount.value,
       totalAmount: grandTotal.value,
       paidAmount: Number(paidAmount.value) || 0,
       paymentMethod: paymentMethod.value,
       notes: notes.value.trim() || undefined,
       items: items.value.map((it) => ({
+        batchId: it.batchId !== undefined ? it.batchId : null,
         bottleSize: it.bottleSize,
         flavor: it.flavor,
         quantity: it.quantity,
@@ -272,7 +379,7 @@ const formatCurrency = (val: number) => {
                 {{ isEditing ? 'Editar Pedido' : 'Nuevo Pedido Artesanal' }}
               </DialogTitle>
               <DialogDescription class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {{ isEditing ? 'Actualiza los datos y productos de la comanda' : 'Registra la comanda de venta con abono y entrega' }}
+                {{ isEditing ? 'Actualiza los datos, lotes, descuentos y entrega' : 'Registra la comanda de venta con abono, lote y entrega' }}
               </DialogDescription>
             </div>
           </div>
@@ -370,7 +477,7 @@ const formatCurrency = (val: number) => {
             </div>
           </div>
 
-          <!-- 2. Sección Productos / Ítems -->
+          <!-- 2. Sección Productos / Ítems vinculados a Lote o Pre-venta -->
           <div class="rounded-2xl bg-surface-light-canvas p-4 dark:bg-surface-dark-canvas space-y-4">
             <div class="flex items-center justify-between">
               <span class="text-xs font-extrabold uppercase tracking-wide text-brand-800 dark:text-brand-darkText">
@@ -391,14 +498,56 @@ const formatCurrency = (val: number) => {
                 :key="idx"
                 class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-surface-light-card p-3 dark:border-slate-700 dark:bg-surface-dark-card sm:flex-nowrap"
               >
-                <!-- Sabor -->
+                <!-- Selector de Sabor vinculado a Lotes Activos / Pre-venta -->
                 <div class="w-full sm:flex-1">
-                  <label class="block text-[10px] font-bold uppercase text-slate-400 mb-0.5">Sabor</label>
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[10px] font-bold uppercase text-slate-400">Sabor y Lote</label>
+                    <span
+                      v-if="item.batchId"
+                      class="text-[9px] font-extrabold text-brand-800 dark:text-emerald-400"
+                    >
+                      Lote Asignado
+                    </span>
+                    <span
+                      v-else
+                      class="text-[9px] font-bold text-amber-600 dark:text-amber-400"
+                    >
+                      Pre-venta
+                    </span>
+                  </div>
                   <select
-                    v-model="item.flavor"
-                    class="w-full rounded-lg border border-slate-200 bg-surface-light-canvas py-1.5 px-2 text-xs font-semibold dark:border-slate-700 dark:bg-surface-dark-canvas"
+                    :value="getItemSelectionKey(item)"
+                    @change="setItemSelectionKey(item, ($event.target as HTMLSelectElement).value)"
+                    class="w-full rounded-lg border border-slate-200 bg-surface-light-canvas py-1.5 px-2 text-xs font-semibold text-slate-900 focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-100"
                   >
-                    <option v-for="fl in FLAVORS" :key="fl" :value="fl">{{ fl }}</option>
+                    <!-- Grupo 1: Lotes Activos en Producción -->
+                    <optgroup v-if="activeBatches.length > 0" label="Lotes Activos en Producción">
+                      <option
+                        v-for="b in activeBatches"
+                        :key="`b_${b.id}`"
+                        :value="`batch_${b.id}`"
+                      >
+                        {{ b.flavor }} — Lote {{ b.batchCode }} ({{ b.status === 'EN_FERMENTACION' ? 'En Fermentación' : `${b.remainingAvailableLiters ?? b.totalLitersProduced}L disp.` }})
+                      </option>
+                    </optgroup>
+
+                    <!-- Grupo 2: Pre-venta (Sin Lote Asignado) -->
+                    <optgroup label="Pre-venta (Encargo sin lote asignado)">
+                      <option
+                        v-for="fl in CATALOG_FLAVORS"
+                        :key="`ps_${fl}`"
+                        :value="`presale_${fl}`"
+                      >
+                        {{ fl }} — Pre-venta (Encargo anticipado)
+                      </option>
+                    </optgroup>
+
+                    <!-- Opción preservada si el sabor asignado es personalizado -->
+                    <optgroup v-if="isCustomOptionNeeded(item)" label="Sabor Actual Asignado">
+                      <option :value="getItemSelectionKey(item)">
+                        {{ item.flavor }} (Asignado al pedido)
+                      </option>
+                    </optgroup>
                   </select>
                 </div>
 
@@ -426,9 +575,18 @@ const formatCurrency = (val: number) => {
                   />
                 </div>
 
-                <!-- Precio Unitario -->
+                <!-- Precio Unitario (Modo C: Manual por ítem) -->
                 <div class="w-28">
-                  <label class="block text-[10px] font-bold uppercase text-slate-400 mb-0.5">Precio Unit.</label>
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[10px] font-bold uppercase text-slate-400">Precio Unit.</label>
+                    <span
+                      v-if="isCustomUnitPrice(item)"
+                      class="text-[9px] font-extrabold text-amber-600 dark:text-amber-400"
+                      title="Precio personalizado sobreescrito"
+                    >
+                      Manual
+                    </span>
+                  </div>
                   <input
                     type="number"
                     step="500"
@@ -459,13 +617,128 @@ const formatCurrency = (val: number) => {
             </div>
           </div>
 
-          <!-- 3. Entrega & Flete -->
+          <!-- 3. Módulo de Descuentos Ágiles -->
+          <div class="rounded-2xl bg-surface-light-canvas p-4 dark:bg-surface-dark-canvas space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <Tag class="h-4 w-4 text-brand-800 dark:text-brand-darkText" />
+                <span class="text-xs font-extrabold uppercase tracking-wide text-brand-800 dark:text-brand-darkText">
+                  3. Descuento de la Comanda
+                </span>
+              </div>
+              <span
+                v-if="discountAmount > 0"
+                class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+              >
+                Ahorro: {{ formatCurrency(discountAmount) }}
+              </span>
+            </div>
+
+            <!-- Selector de Modos de Descuento -->
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                @click="setDiscountMode('NONE')"
+                class="rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
+                :class="
+                  discountMode === 'NONE'
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                    : 'border border-slate-200 bg-surface-light-card text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-300'
+                "
+              >
+                Sin Descuento
+              </button>
+
+              <button
+                type="button"
+                @click="setDiscountMode('PERCENTAGE')"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
+                :class="
+                  discountMode === 'PERCENTAGE'
+                    ? 'bg-brand-800 text-white dark:bg-brand-500 shadow-sm'
+                    : 'border border-slate-200 bg-surface-light-card text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-300'
+                "
+              >
+                <Percent class="h-3.5 w-3.5" /> Porcentaje (%)
+              </button>
+
+              <button
+                type="button"
+                @click="setDiscountMode('FIXED')"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
+                :class="
+                  discountMode === 'FIXED'
+                    ? 'bg-brand-800 text-white dark:bg-brand-500 shadow-sm'
+                    : 'border border-slate-200 bg-surface-light-card text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-300'
+                "
+              >
+                <DollarSign class="h-3.5 w-3.5" /> Monto Directo ($)
+              </button>
+
+              <span class="ml-auto hidden text-[11px] font-semibold text-slate-400 sm:inline-block">
+                * O ajusta el precio unitario en la fila del producto
+              </span>
+            </div>
+
+            <!-- Campos interactivos según el modo de descuento -->
+            <div v-if="discountMode === 'PERCENTAGE'" class="flex items-center gap-3 pt-1">
+              <div class="w-48">
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Porcentaje a Descontar (%)
+                </label>
+                <div class="relative">
+                  <Percent class="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    v-model.number="discountPercentage"
+                    placeholder="10"
+                    class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 pl-9 pr-3 text-xs font-bold text-slate-900 focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
+                  />
+                </div>
+              </div>
+              <div class="pt-4 text-xs font-bold text-slate-500 dark:text-slate-400">
+                Descuento liquidado:
+                <span class="font-black text-amber-600 dark:text-amber-400">
+                  -{{ formatCurrency(discountAmount) }}
+                </span>
+              </div>
+            </div>
+
+            <div v-if="discountMode === 'FIXED'" class="flex items-center gap-3 pt-1">
+              <div class="w-48">
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Monto Fijo a Descontar ($ COP)
+                </label>
+                <div class="relative">
+                  <DollarSign class="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="number"
+                    min="500"
+                    step="500"
+                    v-model.number="discountFixedAmount"
+                    placeholder="2000"
+                    class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 pl-9 pr-3 text-xs font-bold text-slate-900 focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
+                  />
+                </div>
+              </div>
+              <div class="pt-4 text-xs font-bold text-slate-500 dark:text-slate-400">
+                Descuento liquidado:
+                <span class="font-black text-amber-600 dark:text-amber-400">
+                  -{{ formatCurrency(discountAmount) }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Modalidad y Programación de Entrega -->
           <div class="rounded-2xl bg-surface-light-canvas p-4 dark:bg-surface-dark-canvas space-y-4">
             <span class="text-xs font-extrabold uppercase tracking-wide text-brand-800 dark:text-brand-darkText">
-              3. Modalidad de Entrega
+              4. Modalidad y Programación de Entrega
             </span>
 
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Tipo de Entrega</label>
                 <select
@@ -478,6 +751,23 @@ const formatCurrency = (val: number) => {
                 </select>
               </div>
 
+              <!-- Fecha Estimada de Entrega -->
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Fecha Estimada de Entrega
+                </label>
+                <div class="relative">
+                  <Calendar class="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="date"
+                    v-model="deliveryDate"
+                    class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 pl-9 pr-3 text-xs font-semibold text-slate-800 focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-100"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div v-if="deliveryType === 'DOMICILIARIO'">
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Repartidor Asignado</label>
                 <select
@@ -503,8 +793,12 @@ const formatCurrency = (val: number) => {
             </div>
           </div>
 
-          <!-- 4. Pago y Totales -->
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/40 space-y-4">
+          <!-- 5. Abono Inicial y Método de Pago -->
+          <div class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/40 space-y-4">
+            <span class="text-xs font-extrabold uppercase tracking-wide text-brand-800 dark:text-brand-darkText">
+              5. Abono Inicial y Forma de Pago
+            </span>
+
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Abono Inicial ($)</label>
@@ -529,12 +823,61 @@ const formatCurrency = (val: number) => {
                 </select>
               </div>
             </div>
+          </div>
 
-            <!-- Resumen Total y Saldo -->
-            <div class="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-700">
+          <!-- 6. Desglose Financiero en el Pie del Modal -->
+          <div class="rounded-2xl border border-slate-200 bg-surface-light-canvas p-4 dark:border-slate-700 dark:bg-surface-dark-canvas space-y-3">
+            <div class="flex items-center justify-between border-b border-slate-200/80 pb-2 dark:border-slate-700/80">
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Liquidación Financiera
+              </span>
+              <span class="text-[10px] font-bold text-slate-400">
+                Subtotal - Descuento + Flete - Abono
+              </span>
+            </div>
+
+            <!-- Desglose en 4 bloques -->
+            <div class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <div class="rounded-xl border border-slate-200/80 bg-surface-light-card p-2.5 dark:border-slate-700/80 dark:bg-surface-dark-card">
+                <span class="block text-[10px] font-bold uppercase text-slate-400">Subtotal Productos</span>
+                <span class="text-sm font-black text-slate-900 dark:text-white">
+                  {{ formatCurrency(itemsSubtotal) }}
+                </span>
+              </div>
+
+              <div class="rounded-xl border border-slate-200/80 bg-surface-light-card p-2.5 dark:border-slate-700/80 dark:bg-surface-dark-card">
+                <span class="block text-[10px] font-bold uppercase text-slate-400">Descuento</span>
+                <span
+                  class="text-sm font-black"
+                  :class="discountAmount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'"
+                >
+                  {{ discountAmount > 0 ? `-${formatCurrency(discountAmount)}` : '$0' }}
+                </span>
+              </div>
+
+              <div class="rounded-xl border border-slate-200/80 bg-surface-light-card p-2.5 dark:border-slate-700/80 dark:bg-surface-dark-card">
+                <span class="block text-[10px] font-bold uppercase text-slate-400">Flete Domicilio</span>
+                <span class="text-sm font-black text-slate-800 dark:text-slate-200">
+                  {{ deliveryFee > 0 ? `+${formatCurrency(deliveryFee)}` : '$0' }}
+                </span>
+              </div>
+
+              <div class="rounded-xl border border-slate-200/80 bg-surface-light-card p-2.5 dark:border-slate-700/80 dark:bg-surface-dark-card">
+                <span class="block text-[10px] font-bold uppercase text-slate-400">Abono Inicial</span>
+                <span
+                  class="text-sm font-black"
+                  :class="paidAmount > 0 ? 'text-brand-800 dark:text-emerald-400' : 'text-slate-400'"
+                >
+                  {{ paidAmount > 0 ? `-${formatCurrency(paidAmount)}` : '$0' }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Resumen Total y Saldo Pendiente -->
+            <div class="flex items-center justify-between border-t border-slate-200/80 pt-3 dark:border-slate-700/80">
               <div>
                 <span class="block text-[11px] font-bold uppercase text-slate-400">Total Comanda</span>
-                <span class="text-xl font-black text-slate-900 dark:text-white">
+                <span class="text-2xl font-black text-slate-900 dark:text-white">
                   {{ formatCurrency(grandTotal) }}
                 </span>
               </div>
@@ -542,7 +885,7 @@ const formatCurrency = (val: number) => {
               <div class="text-right">
                 <span class="block text-[11px] font-bold uppercase text-slate-400">Saldo Pendiente</span>
                 <span
-                  class="text-xl font-black"
+                  class="text-2xl font-black"
                   :class="pendingBalance > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'"
                 >
                   {{ formatCurrency(pendingBalance) }}
@@ -551,7 +894,7 @@ const formatCurrency = (val: number) => {
             </div>
           </div>
 
-          <!-- 5. Notas -->
+          <!-- 7. Notas -->
           <div>
             <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Notas de la Comanda</label>
             <textarea

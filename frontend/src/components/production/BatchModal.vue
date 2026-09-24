@@ -29,6 +29,7 @@ const emit = defineEmits<{
 const productionStore = useProductionStore();
 
 const flavors = [
+  'Natural',
   'Fresa',
   'Melocotón',
   'Mora',
@@ -37,7 +38,7 @@ const flavors = [
   'Guanábana',
   'Arequipe',
   'Piña',
-  'Natural',
+  'Personalizado',
 ];
 
 const cultureTypes = [
@@ -54,7 +55,18 @@ function generateBatchCode(): string {
 }
 
 const batchCode = ref(generateBatchCode());
-const flavor = ref('Fresa');
+const baseFlavor = ref('Natural');
+const flavorVariant = ref('');
+const customFlavorName = ref('');
+
+const resolvedFlavor = computed(() => {
+  if (baseFlavor.value === 'Personalizado') {
+    return customFlavorName.value.trim() || 'Artesanal';
+  }
+  const variant = flavorVariant.value.trim();
+  return variant ? `${baseFlavor.value} ${variant}` : baseFlavor.value;
+});
+
 const milkUsedLiters = ref<number | ''>(50);
 const expectedLiters = ref<number | ''>(48);
 const cultureType = ref(cultureTypes[0]);
@@ -82,6 +94,9 @@ watch(
   (isOpen) => {
     if (isOpen) {
       batchCode.value = generateBatchCode();
+      baseFlavor.value = 'Natural';
+      flavorVariant.value = '';
+      customFlavorName.value = '';
       preparationDate.value = getTodayDateBogota();
       updateEstimatedRipening();
       errorMessage.value = '';
@@ -100,7 +115,7 @@ const isFormValid = computed(() => {
   return (
     typeof milkUsedLiters.value === 'number' &&
     milkUsedLiters.value > 0 &&
-    flavor.value.trim().length > 0
+    resolvedFlavor.value.trim().length > 0
   );
 });
 
@@ -111,7 +126,7 @@ function handleClose() {
 
 async function handleSubmit() {
   if (!isFormValid.value || typeof milkUsedLiters.value !== 'number') {
-    errorMessage.value = 'Por favor ingresa los litros de leche y selecciona el sabor.';
+    errorMessage.value = 'Por favor ingresa los litros de leche y especifica el sabor del lote.';
     return;
   }
 
@@ -127,7 +142,7 @@ async function handleSubmit() {
       .join(' | ');
 
     await productionStore.createBatch({
-      flavor: flavor.value,
+      flavor: resolvedFlavor.value.trim(),
       milkUsedLiters: milkUsedLiters.value,
       totalLitersProduced: expectedLiters.value ? Number(expectedLiters.value) : milkUsedLiters.value,
       preparationDate: preparationDate.value,
@@ -179,7 +194,7 @@ async function handleSubmit() {
         </div>
 
         <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
-          <!-- Código de Lote Autogenerado y Sabor -->
+          <!-- Código de Lote Autogenerado y Sabor Base -->
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -195,16 +210,54 @@ async function handleSubmit() {
 
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Sabor del Yogur *
+                Sabor Base *
               </label>
               <select
-                v-model="flavor"
+                v-model="baseFlavor"
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               >
                 <option v-for="fl in flavors" :key="fl" :value="fl">
                   {{ fl }}
                 </option>
               </select>
+            </div>
+          </div>
+
+          <!-- Variante de Sabor / Personalizado y Vista Previa -->
+          <div class="rounded-2xl border border-surface-light-border bg-slate-50/60 p-3.5 dark:border-surface-dark-border dark:bg-surface-dark-canvas">
+            <div v-if="baseFlavor === 'Personalizado'" class="space-y-1.5">
+              <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                Nombre del Sabor Artesanal *
+              </label>
+              <input
+                v-model="customFlavorName"
+                type="text"
+                required
+                placeholder="Ej. Vainilla Moka, Frutos del Bosque..."
+                class="w-full rounded-xl border border-slate-200 bg-surface-light-card px-3.5 py-2 text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
+              />
+            </div>
+
+            <div v-else class="space-y-1.5">
+              <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                Variante o Especificación <span class="font-normal text-slate-400">(Opcional)</span>
+              </label>
+              <input
+                v-model="flavorVariant"
+                type="text"
+                placeholder="Ej. bajo en azúcar, con stevia, tradicional..."
+                class="w-full rounded-xl border border-slate-200 bg-surface-light-card px-3.5 py-2 text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
+              />
+            </div>
+
+            <!-- Previsualización del Sabor Final que se guardará -->
+            <div class="mt-2.5 flex items-center justify-between border-t border-slate-200/60 pt-2 dark:border-slate-700/60">
+              <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                Sabor Registrado para Pedidos:
+              </span>
+              <span class="inline-flex items-center rounded-lg bg-brand-50 px-2 py-0.5 text-xs font-black text-brand-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+                {{ resolvedFlavor }}
+              </span>
             </div>
           </div>
 
