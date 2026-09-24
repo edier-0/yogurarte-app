@@ -142,7 +142,7 @@ function handleClose() {
             placeholder="Nuevo sabor (ej. Café Mocaccino, Arequipe Coco)..."
             maxlength="50"
             :disabled="isSubmitting"
-            class="flex-1 rounded-xl border border-surface-light-border bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-900 placeholder-slate-400 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-surface-dark-border dark:bg-surface-dark-base dark:text-white dark:placeholder-slate-500"
+            class="flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-900 placeholder-slate-400 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-slate-700/80 dark:bg-slate-900/80 dark:text-white dark:placeholder-slate-500"
           />
           <button
             type="submit"
@@ -162,7 +162,7 @@ function handleClose() {
             v-model="searchQuery"
             type="text"
             placeholder="Filtrar sabores existentes..."
-            class="w-full rounded-xl border border-surface-light-border bg-slate-50/60 pl-8 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:border-purple-500 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-base/50 dark:text-slate-200 dark:placeholder-slate-500"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-8 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:border-purple-500 focus:outline-none dark:border-slate-700/80 dark:bg-slate-900/80 dark:text-slate-100 dark:placeholder-slate-500"
           />
         </div>
 
@@ -182,40 +182,40 @@ function handleClose() {
             </p>
           </div>
 
-          <ul v-else v-auto-animate class="space-y-2">
+          <ul v-else v-auto-animate class="space-y-2.5">
             <li
               v-for="flavor in filteredFlavors"
               :key="flavor.id"
-              class="flex items-center justify-between rounded-2xl border border-surface-light-border bg-white px-3.5 py-2.5 shadow-sm transition-all dark:border-surface-dark-border dark:bg-surface-dark-base hover:border-purple-200 dark:hover:border-purple-900/40"
+              class="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all dark:border-slate-700/80 dark:bg-slate-800/90 hover:border-purple-300 dark:hover:border-purple-500/40"
             >
-              <div class="flex items-center gap-2.5">
+              <div class="flex items-center gap-3">
                 <span
-                  class="flex h-2.5 w-2.5 rounded-full"
+                  class="flex h-3 w-3 rounded-full"
                   :class="flavor.isActive ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-400 dark:bg-slate-600'"
                 />
                 <div>
-                  <p class="text-xs font-bold text-slate-900 dark:text-white">
+                  <p class="font-bold text-base text-slate-900 dark:text-white">
                     {{ flavor.name }}
                   </p>
-                  <p class="text-[10px] font-medium text-slate-400 dark:text-slate-500">
-                    {{ flavor.isActive ? 'Disponible en selección' : 'Pausado temporalmente' }}
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    {{ flavor.isActive ? 'Disponible en selección' : 'En pausa' }}
                   </p>
                 </div>
               </div>
 
-              <div class="flex items-center gap-1.5">
+              <div class="flex items-center gap-2">
                 <!-- Badge Estado -->
                 <span
-                  class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-bold"
+                  class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold"
                   :class="
                     flavor.isActive
-                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
-                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                      : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-500/20'
                   "
                 >
-                  <CheckCircle2 v-if="flavor.isActive" class="h-3 w-3" />
-                  <PauseCircle v-else class="h-3 w-3" />
-                  {{ flavor.isActive ? 'Activo' : 'Pausado' }}
+                  <CheckCircle2 v-if="flavor.isActive" class="h-3.5 w-3.5" />
+                  <PauseCircle v-else class="h-3.5 w-3.5" />
+                  {{ flavor.isActive ? 'Activo' : 'Inactivo' }}
                 </span>
 
                 <!-- Botón Alternar Estado (Toggle) -->
@@ -224,10 +224,10 @@ function handleClose() {
                   @click="handleToggle(flavor)"
                   :disabled="actionInProgressId === flavor.id"
                   :title="flavor.isActive ? 'Pausar sabor' : 'Activar sabor'"
-                  class="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors disabled:opacity-40"
+                  class="rounded-xl p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-700/70 dark:hover:text-white transition-colors disabled:opacity-40"
                 >
-                  <Loader2 v-if="actionInProgressId === flavor.id" class="h-3.5 w-3.5 animate-spin" />
-                  <Power v-else class="h-3.5 w-3.5" :class="flavor.isActive ? 'text-emerald-500' : 'text-slate-400'" />
+                  <Loader2 v-if="actionInProgressId === flavor.id" class="h-4 w-4 animate-spin" />
+                  <Power v-else class="h-4 w-4" :class="flavor.isActive ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'" />
                 </button>
 
                 <!-- Botón Eliminar / Desactivar -->
@@ -236,9 +236,9 @@ function handleClose() {
                   @click="handleDelete(flavor)"
                   :disabled="actionInProgressId === flavor.id"
                   title="Eliminar sabor del catálogo"
-                  class="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 dark:hover:text-rose-400 transition-colors disabled:opacity-40"
+                  class="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300 transition-colors disabled:opacity-40"
                 >
-                  <Trash2 class="h-3.5 w-3.5" />
+                  <Trash2 class="h-4 w-4" />
                 </button>
               </div>
             </li>
