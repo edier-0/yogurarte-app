@@ -23,6 +23,7 @@ import {
   type PeriodFilter,
   getTodayDateBogota,
 } from '@/stores/finance.store';
+import { useConfirm } from '@/composables/useConfirm';
 import TransferModal from '@/components/finance/TransferModal.vue';
 import CashMovementModal, { type MovementMode } from '@/components/finance/CashMovementModal.vue';
 import CashAuditBreakdownModal from '@/components/finance/CashAuditBreakdownModal.vue';
@@ -117,9 +118,17 @@ function openAddExpense() {
   router.push('/finanzas/gastos');
 }
 
-function confirmDelete(id: number | string, isCash: boolean | undefined) {
+async function confirmDelete(id: number | string, isCash: boolean | undefined) {
   if (!isCash || typeof id !== 'number') return;
-  if (window.confirm('¿Deseas eliminar este movimiento de caja?')) {
+  const { confirm } = useConfirm();
+  const ok = await confirm({
+    title: 'Eliminar Movimiento de Caja',
+    message: '¿Deseas eliminar este movimiento de caja? Se recalculará automáticamente el saldo físico y contable.',
+    confirmText: 'Eliminar Movimiento',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+  });
+  if (ok) {
     financeStore.deleteMovement(id);
   }
 }

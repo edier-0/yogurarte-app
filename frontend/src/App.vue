@@ -6,6 +6,7 @@ import { useTheme } from '@/composables/useTheme';
 import AppHeader from '@/components/layout/AppHeader.vue';
 import AppSidebar from '@/components/layout/AppSidebar.vue';
 import MobileBottomNav from '@/components/layout/MobileBottomNav.vue';
+import ConfirmModal from '@/components/common/ConfirmModal.vue';
 
 const { isDark } = useTheme();
 const route = useRoute();
@@ -98,6 +99,9 @@ const onNewOrder = () => {
       close-button
     />
   </div>
+
+  <!-- Diálogo de Confirmación Asíncrono Global -->
+  <ConfirmModal />
 </template>
 
 <style scoped>

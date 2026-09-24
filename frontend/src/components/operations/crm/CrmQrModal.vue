@@ -18,6 +18,7 @@ import {
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
+import { useConfirm } from '@/composables/useConfirm';
 
 defineProps<{
   open: boolean;
@@ -31,6 +32,8 @@ const emit = defineEmits<{
   (e: 'refresh'): void;
 }>();
 
+const { confirm } = useConfirm();
+
 async function handleRefreshQR() {
   try {
     await http.post('/crm/refresh-qr');
@@ -42,7 +45,15 @@ async function handleRefreshQR() {
 }
 
 async function handleLogout() {
-  if (!window.confirm('¿Seguro que deseas desconectar la sesión actual de WhatsApp?')) return;
+  const ok = await confirm({
+    title: 'Desconectar WhatsApp',
+    message: '¿Seguro que deseas desconectar la sesión actual de WhatsApp? Deberás escanear nuevamente el código QR para restablecer la sincronización.',
+    confirmText: 'Desconectar Sesión',
+    cancelText: 'Mantener Conectado',
+    variant: 'danger',
+  });
+  if (!ok) return;
+
   try {
     await http.post('/crm/logout');
     toast.success('Sesión de WhatsApp desconectada');

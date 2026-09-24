@@ -20,6 +20,7 @@ import {
   PauseCircle,
 } from 'lucide-vue-next';
 import { useProductionStore, type ProductFlavor } from '@/stores/production.store';
+import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps<{
   open: boolean;
@@ -30,6 +31,7 @@ const emit = defineEmits<{
 }>();
 
 const productionStore = useProductionStore();
+const { confirm } = useConfirm();
 
 const newFlavorName = ref('');
 const searchQuery = ref('');
@@ -86,7 +88,14 @@ async function handleToggle(flavor: ProductFlavor) {
 
 async function handleDelete(flavor: ProductFlavor) {
   if (actionInProgressId.value !== null) return;
-  if (!window.confirm(`¿Confirmas la eliminación o desactivación del sabor "${flavor.name}"?`)) return;
+  const ok = await confirm({
+    title: 'Eliminar Sabor',
+    message: `¿Confirmas la eliminación o desactivación del sabor "${flavor.name}"? Si tiene histórico de producción o ventas, se pausará para conservar los registros.`,
+    confirmText: 'Eliminar Sabor',
+    cancelText: 'Conservar',
+    variant: 'danger',
+  });
+  if (!ok) return;
 
   actionInProgressId.value = flavor.id;
   try {

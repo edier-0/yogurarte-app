@@ -26,6 +26,7 @@ import {
 } from 'lucide-vue-next';
 import { useOperationsStore, type Order, type OrderItem } from '@/stores/operations.store';
 import { useProductionStore } from '@/stores/production.store';
+import { toast } from 'vue-sonner';
 
 const props = defineProps<{
   open: boolean;
@@ -311,7 +312,9 @@ const handleClose = () => {
 
 const handleSubmit = async () => {
   if (!customerName.value.trim()) {
-    alert('Ingresa el nombre del cliente');
+    toast.error('Nombre Requerido', {
+      description: 'Por favor ingresa el nombre del cliente para procesar el pedido.',
+    });
     return;
   }
 

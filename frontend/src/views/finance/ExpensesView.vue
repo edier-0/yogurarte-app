@@ -21,6 +21,7 @@ import {
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
+import { useConfirm } from '@/composables/useConfirm';
 import ExpenseModal from '@/components/finance/ExpenseModal.vue';
 
 interface ExpenseItem {
@@ -217,7 +218,16 @@ const totalFilteredAmount = computed(() => {
 
 // Eliminar un gasto
 async function deleteExpense(id: number) {
-  if (!window.confirm('¿Seguro que deseas eliminar este gasto?')) return;
+  const { confirm } = useConfirm();
+  const ok = await confirm({
+    title: 'Eliminar Gasto',
+    message: '¿Seguro que deseas eliminar este gasto? El egreso será removido del libro de compras y del cálculo financiero.',
+    confirmText: 'Eliminar Gasto',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+  });
+  if (!ok) return;
+
   try {
     await http.delete(`/expenses/${id}`);
     toast.success('Gasto Eliminado', {
@@ -262,7 +272,16 @@ async function payInstallment(credit: CreditItem) {
 
 // Eliminar obligación de crédito
 async function deleteCredit(id: number) {
-  if (!window.confirm('¿Seguro que deseas eliminar este crédito u obligación financiada?')) return;
+  const { confirm } = useConfirm();
+  const ok = await confirm({
+    title: 'Eliminar Crédito',
+    message: '¿Seguro que deseas eliminar este crédito u obligación financiada? La obligación a cuotas será cancelada.',
+    confirmText: 'Eliminar Crédito',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+  });
+  if (!ok) return;
+
   try {
     await http.delete(`/credits/${id}`);
     toast.success('Crédito Eliminado', {

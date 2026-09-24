@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { refDebounced } from '@vueuse/core';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
+import { useConfirm } from '@/composables/useConfirm';
 
 export type CustomerChip = 'ALL' | 'DEBT' | 'ORDERS' | 'UP_TO_DATE';
 
@@ -189,9 +190,16 @@ export const useDirectoryStore = defineStore('directory', () => {
 
   // Desactivar / Eliminar cliente (soft delete)
   async function deleteCustomer(id: number) {
-    if (!window.confirm('¿Seguro que deseas desactivar este cliente del directorio?')) {
-      return;
-    }
+    const { confirm } = useConfirm();
+    const ok = await confirm({
+      title: 'Desactivar Cliente',
+      message: '¿Seguro que deseas desactivar este cliente del directorio? Sus pedidos y registros históricos se conservarán.',
+      confirmText: 'Desactivar Cliente',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await http.delete(`/customers/${id}`);
       toast.success('Cliente Desactivado', {

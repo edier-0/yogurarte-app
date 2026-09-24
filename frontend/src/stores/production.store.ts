@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { refDebounced } from '@vueuse/core';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
+import { useConfirm } from '@/composables/useConfirm';
 import { getTodayDateBogota } from './finance.store';
 
 export type BatchChip = 'ALL' | 'ACTIVE' | 'DEPLETED' | 'ARCHIVED';
@@ -210,7 +211,16 @@ export const useProductionStore = defineStore('production', () => {
 
   // Archivar lote
   async function archiveBatch(id: number) {
-    if (!window.confirm('¿Deseas archivar este lote de producción?')) return;
+    const { confirm } = useConfirm();
+    const ok = await confirm({
+      title: 'Archivar Lote de Producción',
+      message: '¿Deseas archivar este lote de producción? El lote será trasladado al histórico y dejará de estar visible en el flujo operativo activo.',
+      confirmText: 'Archivar Lote',
+      cancelText: 'Cancelar',
+      variant: 'warning',
+    });
+    if (!ok) return;
+
     try {
       await http.put(`/batches/${id}/deactivate`, {
         reason: 'Archivado manual desde panel de lotes',
