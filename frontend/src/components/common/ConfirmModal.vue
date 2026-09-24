@@ -49,11 +49,11 @@ const confirmButtonStyle = computed(() => {
 
 <template>
   <AlertDialogRoot :open="isOpen" @update:open="(val: boolean) => !val && handleCancel()">
-    <AlertDialogPortal>
-      <AlertDialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity" />
+    <AlertDialogPortal to="body">
+      <AlertDialogOverlay class="fixed inset-0 z-[9998] bg-black/70 backdrop-blur-sm transition-opacity" />
 
       <AlertDialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl transition-all focus:outline-none dark:border-slate-700/80 dark:bg-slate-900 sm:p-7"
+        class="fixed left-1/2 top-1/2 z-[9999] w-[95%] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl transition-all focus:outline-none dark:border-slate-700/80 dark:bg-slate-900 sm:p-7"
       >
         <div class="flex items-start gap-4">
           <div
