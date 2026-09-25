@@ -118,10 +118,10 @@ const isItemActive = (itemPath: string) => {
 
 <template>
   <aside
-    class="hidden w-64 flex-col border-r border-surface-light-border bg-surface-light-card transition-colors dark:border-surface-dark-border dark:bg-surface-dark-card lg:flex"
+    class="hidden lg:flex h-screen w-64 flex-shrink-0 sticky top-0 flex-col overflow-y-auto border-r border-slate-200 bg-surface-light-card transition-colors dark:border-slate-800 dark:bg-surface-dark-card"
   >
     <!-- Brand Header -->
-    <div class="flex h-16 items-center gap-3 border-b border-surface-light-border px-5 dark:border-surface-dark-border">
+    <div class="flex h-16 shrink-0 items-center gap-3 border-b border-surface-light-border px-5 dark:border-surface-dark-border">
       <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-hero-gradient text-white shadow-card">
         <span class="text-xl font-bold font-handwritten">Y</span>
       </div>
@@ -201,7 +201,7 @@ const isItemActive = (itemPath: string) => {
     </nav>
 
     <!-- Footer System Status -->
-    <div class="border-t border-surface-light-border p-4 dark:border-surface-dark-border">
+    <div class="shrink-0 border-t border-surface-light-border p-4 dark:border-surface-dark-border">
       <div class="flex items-center justify-between rounded-xl bg-surface-light-canvas p-2.5 dark:bg-surface-dark-canvas">
         <div class="flex items-center gap-2">
           <span class="flex h-2 w-2 rounded-full bg-emerald-500"></span>

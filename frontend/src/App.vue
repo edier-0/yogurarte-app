@@ -3,9 +3,7 @@ import { computed, onErrorCaptured } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Toaster, toast } from 'vue-sonner';
 import { useTheme } from '@/composables/useTheme';
-import AppHeader from '@/components/layout/AppHeader.vue';
-import AppSidebar from '@/components/layout/AppSidebar.vue';
-import MobileBottomNav from '@/components/layout/MobileBottomNav.vue';
+import AppLayout from '@/layouts/AppLayout.vue';
 import ConfirmModal from '@/components/common/ConfirmModal.vue';
 
 const { isDark } = useTheme();
@@ -50,55 +48,29 @@ const onNewOrder = () => {
         <component :is="Component" />
       </transition>
     </RouterView>
-
-    <!-- Global Toast Container (Vue Sonner) -->
-    <Toaster
-      position="top-right"
-      :theme="isDark ? 'dark' : 'light'"
-      rich-colors
-      close-button
-    />
   </div>
 
-  <!-- Layout Estándar de la Aplicación (Sidebar, Header, Main, BottomNav) -->
-  <div
+  <!-- Layout Estándar de la Aplicación (Sidebar Fijo en Escritorio y Scroll Independiente en Main) -->
+  <AppLayout
     v-else
-    class="flex min-h-screen w-full bg-surface-light-canvas dark:bg-surface-dark-canvas transition-colors"
+    :header-title="headerTitle"
+    :header-subtitle="headerSubtitle"
+    @new-order="onNewOrder"
   >
-    <!-- Desktop Sidebar (4 Domains + Dashboard) -->
-    <AppSidebar />
+    <RouterView v-slot="{ Component }">
+      <transition name="fade" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </RouterView>
+  </AppLayout>
 
-    <!-- Main Content Area -->
-    <div class="flex flex-1 flex-col overflow-hidden pb-20 lg:pb-0">
-      <!-- Sticky Top Header with dynamic title -->
-      <AppHeader
-        :title="headerTitle"
-        :subtitle="headerSubtitle"
-      />
-
-      <!-- Dynamic Workspace / View Container -->
-      <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-        <div class="mx-auto max-w-7xl">
-          <RouterView v-slot="{ Component }">
-            <transition name="fade" mode="out-in">
-              <component :is="Component" />
-            </transition>
-          </RouterView>
-        </div>
-      </main>
-    </div>
-
-    <!-- Mobile Bottom Navigation -->
-    <MobileBottomNav @new-order="onNewOrder" />
-
-    <!-- Global Toast Container (Vue Sonner) -->
-    <Toaster
-      position="top-right"
-      :theme="isDark ? 'dark' : 'light'"
-      rich-colors
-      close-button
-    />
-  </div>
+  <!-- Global Toast Container (Vue Sonner) -->
+  <Toaster
+    position="top-right"
+    :theme="isDark ? 'dark' : 'light'"
+    rich-colors
+    close-button
+  />
 
   <!-- Diálogo de Confirmación Asíncrono Global -->
   <ConfirmModal />
