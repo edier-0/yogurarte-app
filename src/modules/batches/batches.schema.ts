@@ -30,6 +30,8 @@ export const createBatchSchema = z.object({
     rawMaterialId: z.coerce.number().int().positive(),
     quantityUsed: z.coerce.number().positive(),
     unitCost: z.coerce.number().optional(),
+    dosagePerLiter: z.coerce.number().optional(),
+    dosageUnit: z.string().optional(),
   })).optional(),
   price1L: z.coerce.number().optional(),
   price2L: z.coerce.number().optional(),
@@ -57,6 +59,8 @@ export const updateBatchSchema = z.object({
     rawMaterialId: z.coerce.number().int().positive(),
     quantityUsed: z.coerce.number().min(0),
     unitCost: z.coerce.number().optional(),
+    dosagePerLiter: z.coerce.number().optional(),
+    dosageUnit: z.string().optional(),
   })).optional(),
 });
 

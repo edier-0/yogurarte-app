@@ -512,4 +512,73 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
     expect(updatePkgRes.body).toHaveProperty('packaging');
     expect(updatePkgRes.body.packaging.bottles1L).toBe(pkg.bottles1L - 1);
   });
+
+  it('Dosificación en Fase A: Formulación de 108.333 g/L para 24 L de leche descuenta exactamente 2.6 kg de azúcar', async () => {
+    // 1. Asegurar azúcar en inventario
+    const sugar = await prisma.rawMaterial.upsert({
+      where: { code: 'AZUCAR' },
+      update: { currentStock: 100, avgCost: 4500, unit: 'Kilogramos', isActive: true },
+      create: {
+        code: 'AZUCAR',
+        name: 'Azúcar Blanca Refinada',
+        unit: 'Kilogramos',
+        currentStock: 100,
+        avgCost: 4500,
+        category: 'MATERIAS_PRIMAS',
+        isActive: true,
+      },
+    });
+
+    const initialStock = sugar.currentStock;
+
+    // 2. Simular cálculo de formulación del frontend:
+    // Dosis: 108.333 g/L, Leche: 24 L
+    const dosagePerLiter = 108.333;
+    const milkUsedLiters = 24;
+    const totalGrams = Math.round(dosagePerLiter * milkUsedLiters); // 2600 g
+    const quantityUsedKg = Number((totalGrams / 1000).toFixed(4)); // 2.6 kg
+
+    expect(totalGrams).toBe(2600);
+    expect(quantityUsedKg).toBe(2.6);
+
+    // 3. Crear lote en Fase A enviando la cantidad convertida a kg en dynamicItems
+    const res = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters,
+        totalLitersProduced: 23,
+        flavor: 'Yogur Dosificación Exacta',
+        cultureType: 'Cultivo Tradicional',
+        fermentationHours: 8,
+        status: 'EN_FERMENTACION',
+        dynamicItems: [
+          {
+            rawMaterialId: sugar.id,
+            quantityUsed: quantityUsedKg,
+            dosagePerLiter,
+            dosageUnit: 'g/L',
+          },
+        ],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.batchCode).toBeDefined();
+
+    // 4. Verificar descuento exacto de 2.6 kg en inventario de azúcar
+    const updatedSugar = await prisma.rawMaterial.findUnique({
+      where: { id: sugar.id },
+    });
+    expect(updatedSugar).not.toBeNull();
+    expect(updatedSugar!.currentStock).toBeCloseTo(initialStock - 2.6, 4);
+
+    // 5. Verificar registro de BatchItemUsage con 2.6 kg exactos
+    const batchInDb = await prisma.productionBatch.findUnique({
+      where: { id: res.body.id },
+      include: { itemsUsed: true },
+    });
+    const sugarUsage = batchInDb?.itemsUsed.find((u) => u.rawMaterialId === sugar.id);
+    expect(sugarUsage).toBeDefined();
+    expect(sugarUsage!.quantityUsed).toBe(2.6);
+  });
 });

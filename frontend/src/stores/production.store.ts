@@ -164,6 +164,8 @@ export interface DynamicBatchItem {
   rawMaterialId: number;
   quantityUsed: number;
   unitCost?: number;
+  dosagePerLiter?: number;
+  dosageUnit?: string;
 }
 
 export interface CreateBatchPayload {
@@ -175,6 +177,8 @@ export interface CreateBatchPayload {
   fermentationHours?: number;
   initialSugarGrams?: number;
   powderedMilkGrams?: number;
+  useSugar?: boolean;
+  usePowderedMilk?: boolean;
   preparationDate?: string;
   expirationDate?: string;
   notes?: string | null;

@@ -102,7 +102,57 @@ interface DynamicChecklistItem {
   currentStock: number;
   avgCost: number;
   selected: boolean;
-  quantityUsed: number | '';
+  dosage: number | '';
+}
+
+function isKgUnit(unit?: string): boolean {
+  if (!unit) return false;
+  const u = unit.trim().toUpperCase();
+  return (
+    u === 'KG' ||
+    u === 'KILOGRAMO' ||
+    u === 'KILOGRAMOS' ||
+    u === 'KGS' ||
+    u === 'KILO' ||
+    u === 'KILOS'
+  );
+}
+
+function getItemCalculations(item: DynamicChecklistItem) {
+  const isKg = isKgUnit(item.unit);
+  const dosage = typeof item.dosage === 'number' && !isNaN(item.dosage) ? item.dosage : 0;
+  const milkLiters = Number(milkUsedLiters.value) || 0;
+
+  if (isKg) {
+    // Dosis en g/L, leche en L -> gramos totales = Math.round(dosis * litros)
+    const totalGrams = Math.round(dosage * milkLiters);
+    const quantityUsedKg = Number((totalGrams / 1000).toFixed(4));
+    const totalCost = quantityUsedKg * (item.avgCost || 0);
+
+    return {
+      isKg: true,
+      totalGrams,
+      quantityUsed: quantityUsedKg,
+      totalCost,
+      displayText:
+        totalGrams > 0
+          ? `Consumo total: ${totalGrams.toLocaleString('es-CO')} g (${quantityUsedKg.toFixed(2)} kg)`
+          : '0 g',
+    };
+  } else {
+    // Unidades enteras
+    const totalUnits = Math.round(dosage);
+    const totalCost = totalUnits * (item.avgCost || 0);
+
+    return {
+      isKg: false,
+      totalGrams: 0,
+      quantityUsed: totalUnits,
+      totalCost,
+      displayText:
+        totalUnits > 0 ? `Consumo total: ${totalUnits} ${item.unit}` : `0 ${item.unit}`,
+    };
+  }
 }
 
 const rawMaterials = ref<InventoryMaterialItem[]>([]);
@@ -159,12 +209,19 @@ async function loadInventoryMaterials() {
       // Mapear al checklist
       dynamicItems.value = candidateMaterials.map((m) => {
         let preSelected = false;
-        let preQty: number | '' = '';
+        let preDosage: number | '' = '';
         if (props.batchToEdit && Array.isArray((props.batchToEdit as any).itemsUsed)) {
           const used = (props.batchToEdit as any).itemsUsed.find((u: any) => u.rawMaterialId === m.id);
           if (used) {
             preSelected = true;
-            preQty = used.quantityUsed;
+            const isKg = isKgUnit(m.unit);
+            const milk = Number(props.batchToEdit.milkUsedLiters) || Number(milkUsedLiters.value) || 1;
+            if (isKg) {
+              // used.quantityUsed está en kg -> convertir a dosis g/L
+              preDosage = Math.round(((used.quantityUsed * 1000) / milk) * 1000) / 1000;
+            } else {
+              preDosage = used.quantityUsed;
+            }
           }
         }
         return {
@@ -175,7 +232,7 @@ async function loadInventoryMaterials() {
           currentStock: m.currentStock,
           avgCost: m.avgCost,
           selected: preSelected,
-          quantityUsed: preQty,
+          dosage: preDosage,
         };
       });
     }
@@ -186,17 +243,21 @@ async function loadInventoryMaterials() {
   }
 }
 
-// Redondear a 2 decimales automáticamente
-function handleQuantityInput(item: DynamicChecklistItem) {
-  if (typeof item.quantityUsed === 'number' && !isNaN(item.quantityUsed)) {
-    item.quantityUsed = Math.round(item.quantityUsed * 100) / 100;
-  }
-}
-
 function toggleItemSelection(item: DynamicChecklistItem) {
   item.selected = !item.selected;
-  if (item.selected && (!item.quantityUsed || item.quantityUsed <= 0)) {
-    item.quantityUsed = 1;
+  if (item.selected && (!item.dosage || item.dosage <= 0)) {
+    if (isKgUnit(item.unit)) {
+      const lower = item.name.toLowerCase();
+      if (lower.includes('azúcar') || lower.includes('azucar')) {
+        item.dosage = 108.333;
+      } else if (lower.includes('polvo')) {
+        item.dosage = 30;
+      } else {
+        item.dosage = 10;
+      }
+    } else {
+      item.dosage = 1;
+    }
   }
 }
 
@@ -273,8 +334,11 @@ const financialProjection = computed(() => {
   const milkCost = milkLiters * milkAvgCost.value;
 
   const itemsCost = dynamicItems.value
-    .filter((it) => it.selected && typeof it.quantityUsed === 'number' && it.quantityUsed > 0)
-    .reduce((sum, it) => sum + (Number(it.quantityUsed) * (it.avgCost || 0)), 0);
+    .filter((it) => it.selected)
+    .reduce((sum, it) => {
+      const calc = getItemCalculations(it);
+      return sum + calc.totalCost;
+    }, 0);
 
   const totalCost = milkCost + itemsCost;
   const yieldLiters = Number(expectedLiters.value) || milkLiters || 1;
@@ -315,12 +379,19 @@ async function handleSubmit() {
 
   try {
     const selectedDynamicItems = dynamicItems.value
-      .filter((it) => it.selected && typeof it.quantityUsed === 'number' && it.quantityUsed > 0)
-      .map((it) => ({
-        rawMaterialId: it.rawMaterialId,
-        quantityUsed: Number(it.quantityUsed),
-        unitCost: it.avgCost || 0,
-      }));
+      .filter((it) => it.selected)
+      .map((it) => {
+        const calc = getItemCalculations(it);
+        const isKg = isKgUnit(it.unit);
+        return {
+          rawMaterialId: it.rawMaterialId,
+          quantityUsed: calc.quantityUsed,
+          unitCost: it.avgCost || 0,
+          dosagePerLiter: isKg && typeof it.dosage === 'number' ? it.dosage : undefined,
+          dosageUnit: isKg ? 'g/L' : it.unit,
+        };
+      })
+      .filter((it) => it.quantityUsed > 0);
 
     if (isEditMode.value && props.batchToEdit) {
       await productionStore.updateBatch(props.batchToEdit.id, {
@@ -345,6 +416,8 @@ async function handleSubmit() {
         preparationDate: preparationDate.value,
         notes: notes.value.trim() || undefined,
         status: status.value,
+        useSugar: false,
+        usePowderedMilk: false,
         dynamicItems: selectedDynamicItems,
       });
     }
@@ -588,7 +661,7 @@ async function handleSubmit() {
                 Insumos de Fermentación Adicionales
               </label>
               <span class="text-[11px] text-slate-400">
-                Checklist con dosis exacta (step 0.01)
+                Dosificación en g/L con cálculo de pesaje exacto
               </span>
             </div>
 
@@ -603,50 +676,74 @@ async function handleSubmit() {
               No hay materias primas adicionales registradas en inventario.
             </div>
 
-            <div v-else class="max-h-48 space-y-2 overflow-y-auto rounded-2xl border border-surface-light-border bg-slate-50/40 p-2.5 dark:border-surface-dark-border dark:bg-surface-dark-canvas/50">
+            <div v-else class="max-h-56 space-y-2.5 overflow-y-auto rounded-2xl border border-surface-light-border bg-slate-50/40 p-2.5 dark:border-surface-dark-border dark:bg-surface-dark-canvas/50">
               <div
                 v-for="item in dynamicItems"
                 :key="item.rawMaterialId"
-                class="flex flex-col gap-2 rounded-xl border p-2.5 transition-all sm:flex-row sm:items-center sm:justify-between"
+                class="flex flex-col gap-2 rounded-xl border p-3 transition-all"
                 :class="
                   item.selected
                     ? 'border-purple-300 bg-purple-50/50 dark:border-purple-800/80 dark:bg-purple-950/20'
                     : 'border-slate-200/80 bg-white dark:border-slate-800 dark:bg-surface-dark-card'
                 "
               >
-                <div class="flex items-center gap-2.5 cursor-pointer" @click="toggleItemSelection(item)">
-                  <button type="button" class="text-purple-600 dark:text-purple-400">
-                    <CheckSquare v-if="item.selected" class="h-4 w-4" />
-                    <Square v-else class="h-4 w-4 text-slate-400" />
-                  </button>
-                  <div>
-                    <span class="text-xs font-bold text-slate-900 dark:text-white">
-                      {{ item.name }}
-                    </span>
-                    <span class="ml-2 text-[10px] text-slate-400">
-                      Stock: {{ item.currentStock }} {{ item.unit }}
-                    </span>
+                <div class="flex items-start justify-between gap-3">
+                  <!-- Checkbox, Nombre, Stock y Total calculado -->
+                  <div class="flex items-start gap-2.5 cursor-pointer flex-1 min-w-0" @click="toggleItemSelection(item)">
+                    <button type="button" class="mt-0.5 text-purple-600 dark:text-purple-400 shrink-0">
+                      <CheckSquare v-if="item.selected" class="h-4 w-4" />
+                      <Square v-else class="h-4 w-4 text-slate-400" />
+                    </button>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-bold text-slate-900 dark:text-white">
+                          {{ item.name }}
+                        </span>
+                        <span class="text-[10px] text-slate-400">
+                          Stock: {{ item.currentStock }} {{ item.unit }}
+                        </span>
+                      </div>
+                      <!-- Despliegue de pesaje calculado -->
+                      <div v-if="item.selected && getItemCalculations(item).quantityUsed > 0" class="mt-1 flex items-center gap-1.5 text-[11px] font-extrabold text-purple-700 dark:text-purple-300">
+                        <span>{{ getItemCalculations(item).displayText }}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
 
-                <div v-if="item.selected" class="flex items-center gap-2 self-end sm:self-auto">
-                  <div class="relative w-28">
-                    <input
-                      v-model.number="item.quantityUsed"
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      placeholder="0.00"
-                      @input="handleQuantityInput(item)"
-                      class="w-full rounded-lg border border-purple-200 bg-white px-2.5 py-1 text-xs font-black text-slate-900 focus:border-purple-600 focus:outline-none dark:border-purple-800 dark:bg-slate-900 dark:text-white"
-                    />
-                    <span class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400">
-                      {{ item.unit }}
+                  <!-- Campo de dosificación y costo a la derecha -->
+                  <div v-if="item.selected" class="flex flex-col items-end gap-1 shrink-0">
+                    <div class="flex items-center gap-2">
+                      <div class="relative w-32">
+                        <input
+                          v-if="isKgUnit(item.unit)"
+                          v-model.number="item.dosage"
+                          type="number"
+                          min="0.001"
+                          step="0.001"
+                          placeholder="Dosis g/L"
+                          class="w-full rounded-lg border border-purple-200 bg-white px-2.5 py-1 text-xs font-black text-slate-900 focus:border-purple-600 focus:outline-none dark:border-purple-800 dark:bg-slate-900 dark:text-white text-right pr-9"
+                        />
+                        <input
+                          v-else
+                          v-model.number="item.dosage"
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="Cant."
+                          class="w-full rounded-lg border border-purple-200 bg-white px-2.5 py-1 text-xs font-black text-slate-900 focus:border-purple-600 focus:outline-none dark:border-purple-800 dark:bg-slate-900 dark:text-white text-right pr-9"
+                        />
+                        <span class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 pointer-events-none">
+                          {{ isKgUnit(item.unit) ? 'g/L' : item.unit }}
+                        </span>
+                      </div>
+                      <span class="text-[11px] font-black text-slate-700 dark:text-slate-300 min-w-16 text-right">
+                        {{ formatCOP(getItemCalculations(item).totalCost) }}
+                      </span>
+                    </div>
+                    <span v-if="isKgUnit(item.unit)" class="text-[10px] text-slate-400">
+                      Dosis por litro
                     </span>
                   </div>
-                  <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 min-w-16 text-right">
-                    {{ formatCOP((Number(item.quantityUsed) || 0) * (item.avgCost || 0)) }}
-                  </span>
                 </div>
               </div>
             </div>

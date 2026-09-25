@@ -612,59 +612,55 @@ export const createBatch = async (data: CreateBatchInput) => {
   }
 
   // 4. Validar Stock de Azúcar
-  const shouldUseSugar = useSugar !== false;
+  const sugarMaterial = await prisma.rawMaterial.findFirst({
+    where: {
+      OR: [
+        { code: 'AZUCAR' },
+        { name: { contains: 'azucar', mode: 'insensitive' } },
+        { name: { contains: 'azúcar', mode: 'insensitive' } },
+      ],
+      isActive: true,
+    },
+  });
+
+  const hasSugarInDynamic = Array.isArray(dynamicItems) && sugarMaterial && dynamicItems.some((d) => d.rawMaterialId === sugarMaterial.id);
+  const effectiveShouldUseSugar = (useSugar !== false) && !hasSugarInDynamic;
   const sugarGramsPerL = sugarGramsPerLiter !== undefined ? Number(sugarGramsPerLiter) : 80;
-  const totalSugarGrams = shouldUseSugar ? sugarGramsPerL * milkUsed : 0;
+  const totalSugarGrams = effectiveShouldUseSugar ? sugarGramsPerL * milkUsed : 0;
 
-  let sugarMaterial = null;
-  if (shouldUseSugar && totalSugarGrams > 0) {
-    sugarMaterial = await prisma.rawMaterial.findFirst({
-      where: {
-        OR: [
-          { code: 'AZUCAR' },
-          { name: { contains: 'azucar', mode: 'insensitive' } },
-          { name: { contains: 'azúcar', mode: 'insensitive' } },
-        ],
-        isActive: true,
-      },
-    });
-
-    if (sugarMaterial) {
-      const sugarQtyNeeded = isKgUnit(sugarMaterial.unit) ? totalSugarGrams / 1000 : totalSugarGrams;
-      if (sugarMaterial.currentStock < sugarQtyNeeded) {
-        const unitLabel = isKgUnit(sugarMaterial.unit) ? 'kg' : 'g';
-        throw new BadRequestError(
-          `Stock insuficiente de azúcar. Tienes ${sugarMaterial.currentStock} ${unitLabel} en inventario y requieres ${totalSugarGrams} g (${sugarQtyNeeded.toFixed(2)} ${unitLabel}). Registra la compra de azúcar primero.`
-        );
-      }
+  if (effectiveShouldUseSugar && totalSugarGrams > 0 && sugarMaterial) {
+    const sugarQtyNeeded = isKgUnit(sugarMaterial.unit) ? totalSugarGrams / 1000 : totalSugarGrams;
+    if (sugarMaterial.currentStock < sugarQtyNeeded) {
+      const unitLabel = isKgUnit(sugarMaterial.unit) ? 'kg' : 'g';
+      throw new BadRequestError(
+        `Stock insuficiente de azúcar. Tienes ${sugarMaterial.currentStock} ${unitLabel} en inventario y requieres ${totalSugarGrams} g (${sugarQtyNeeded.toFixed(2)} ${unitLabel}). Registra la compra de azúcar primero.`
+      );
     }
   }
 
   // 5. Validar Stock de Leche en Polvo
-  const shouldUsePowderedMilk = usePowderedMilk !== false;
+  const powderedMilkMaterial = await prisma.rawMaterial.findFirst({
+    where: {
+      OR: [
+        { code: 'LECHE_POLVO' },
+        { name: { contains: 'polvo', mode: 'insensitive' } },
+      ],
+      isActive: true,
+    },
+  });
+
+  const hasPowderInDynamic = Array.isArray(dynamicItems) && powderedMilkMaterial && dynamicItems.some((d) => d.rawMaterialId === powderedMilkMaterial.id);
+  const effectiveShouldUsePowderedMilk = (usePowderedMilk !== false) && !hasPowderInDynamic;
   const powderedMilkGramsPerL = powderedMilkGramsPerLiter !== undefined ? Number(powderedMilkGramsPerLiter) : 30;
-  const totalPowderedMilkGrams = shouldUsePowderedMilk ? powderedMilkGramsPerL * milkUsed : 0;
+  const totalPowderedMilkGrams = effectiveShouldUsePowderedMilk ? powderedMilkGramsPerL * milkUsed : 0;
 
-  let powderedMilkMaterial = null;
-  if (shouldUsePowderedMilk && totalPowderedMilkGrams > 0) {
-    powderedMilkMaterial = await prisma.rawMaterial.findFirst({
-      where: {
-        OR: [
-          { code: 'LECHE_POLVO' },
-          { name: { contains: 'polvo', mode: 'insensitive' } },
-        ],
-        isActive: true,
-      },
-    });
-
-    if (powderedMilkMaterial) {
-      const powderQtyNeeded = isKgUnit(powderedMilkMaterial.unit) ? totalPowderedMilkGrams / 1000 : totalPowderedMilkGrams;
-      if (powderedMilkMaterial.currentStock < powderQtyNeeded) {
-        const unitLabel = isKgUnit(powderedMilkMaterial.unit) ? 'kg' : 'g';
-        throw new BadRequestError(
-          `Stock insuficiente de leche en polvo. Tienes ${powderedMilkMaterial.currentStock} ${unitLabel} en inventario y requieres ${totalPowderedMilkGrams} g (${powderQtyNeeded.toFixed(2)} ${unitLabel}). Registra la compra de leche en polvo primero.`
-        );
-      }
+  if (effectiveShouldUsePowderedMilk && totalPowderedMilkGrams > 0 && powderedMilkMaterial) {
+    const powderQtyNeeded = isKgUnit(powderedMilkMaterial.unit) ? totalPowderedMilkGrams / 1000 : totalPowderedMilkGrams;
+    if (powderedMilkMaterial.currentStock < powderQtyNeeded) {
+      const unitLabel = isKgUnit(powderedMilkMaterial.unit) ? 'kg' : 'g';
+      throw new BadRequestError(
+        `Stock insuficiente de leche en polvo. Tienes ${powderedMilkMaterial.currentStock} ${unitLabel} en inventario y requieres ${totalPowderedMilkGrams} g (${powderQtyNeeded.toFixed(2)} ${unitLabel}). Registra la compra de leche en polvo primero.`
+      );
     }
   }
 
@@ -727,7 +723,7 @@ export const createBatch = async (data: CreateBatchInput) => {
     }
 
     // 2. Descontar Azúcar
-    if (shouldUseSugar && totalSugarGrams > 0 && sugarMaterial) {
+    if (effectiveShouldUseSugar && totalSugarGrams > 0 && sugarMaterial) {
       const sugarMat = await tx.rawMaterial.findUnique({ where: { id: sugarMaterial.id } });
       if (sugarMat) {
         let qtyToDeduct = totalSugarGrams;
@@ -757,7 +753,7 @@ export const createBatch = async (data: CreateBatchInput) => {
     }
 
     // 3. Descontar Leche en Polvo
-    if (shouldUsePowderedMilk && totalPowderedMilkGrams > 0 && powderedMilkMaterial) {
+    if (effectiveShouldUsePowderedMilk && totalPowderedMilkGrams > 0 && powderedMilkMaterial) {
       const powderMat = await tx.rawMaterial.findUnique({ where: { id: powderedMilkMaterial.id } });
       if (powderMat) {
         let qtyToDeduct = totalPowderedMilkGrams;
@@ -931,7 +927,7 @@ export const createBatch = async (data: CreateBatchInput) => {
     if (Array.isArray(dynamicItems) && dynamicItems.length > 0) {
       for (const item of dynamicItems) {
         const matId = Number(item.rawMaterialId);
-        const qty = Number(item.quantityUsed);
+        const qty = Number(Number(item.quantityUsed).toFixed(4));
         if (matId && qty > 0) {
           const material = await tx.rawMaterial.findUnique({ where: { id: matId } });
           if (material) {
@@ -941,7 +937,7 @@ export const createBatch = async (data: CreateBatchInput) => {
               );
             }
             const unitCost = Number(item.unitCost) || material.avgCost || 0;
-            const itemCost = qty * unitCost;
+            const itemCost = Number((qty * unitCost).toFixed(2));
             totalBatchCost += itemCost;
 
             usageRecords.push({
@@ -953,7 +949,7 @@ export const createBatch = async (data: CreateBatchInput) => {
 
             await tx.rawMaterial.update({
               where: { id: matId },
-              data: { currentStock: Math.max(0, material.currentStock - qty) },
+              data: { currentStock: Number(Math.max(0, material.currentStock - qty).toFixed(4)) },
             });
           }
         }
@@ -974,8 +970,8 @@ export const createBatch = async (data: CreateBatchInput) => {
         flavor: flavor ? flavor.trim() : 'Natural',
         cultureType: cultureType || null,
         fermentationHours: fermentationHours !== undefined ? Number(fermentationHours) : 8,
-        initialSugarGrams: shouldUseSugar ? totalSugarGrams : 0,
-        powderedMilkGrams: shouldUsePowderedMilk ? totalPowderedMilkGrams : 0,
+        initialSugarGrams: effectiveShouldUseSugar ? totalSugarGrams : 0,
+        powderedMilkGrams: effectiveShouldUsePowderedMilk ? totalPowderedMilkGrams : 0,
         price1L: price1L !== undefined && Number(price1L) > 0 ? Number(price1L) : 12000,
         price2L: price2L !== undefined && Number(price2L) > 0 ? Number(price2L) : 24000,
         preparationDate: dateObj,
@@ -1176,7 +1172,7 @@ export const updateBatch = async (id: number, data: UpdateBatchInput) => {
       // B. Insumos agregados o modificados
       for (const item of dynamicItems) {
         const matId = Number(item.rawMaterialId);
-        const newQty = Number(item.quantityUsed);
+        const newQty = Number(Number(item.quantityUsed).toFixed(4));
         if (!matId || newQty < 0) continue;
 
         const existingUsage = nonMilkUsages.find((u) => u.rawMaterialId === matId);
@@ -1186,7 +1182,7 @@ export const updateBatch = async (id: number, data: UpdateBatchInput) => {
         const unitCost = Number(item.unitCost) || material.avgCost || 0;
 
         if (existingUsage) {
-          const deltaQty = newQty - existingUsage.quantityUsed;
+          const deltaQty = Number((newQty - existingUsage.quantityUsed).toFixed(4));
           if (Math.abs(deltaQty) > 0.0001) {
             if (deltaQty > 0 && material.currentStock < deltaQty) {
               throw new BadRequestError(
@@ -1195,10 +1191,10 @@ export const updateBatch = async (id: number, data: UpdateBatchInput) => {
             }
             await tx.rawMaterial.update({
               where: { id: matId },
-              data: { currentStock: Math.max(0, material.currentStock - deltaQty) },
+              data: { currentStock: Number(Math.max(0, material.currentStock - deltaQty).toFixed(4)) },
             });
             const oldCost = existingUsage.totalCost;
-            const newCost = newQty * unitCost;
+            const newCost = Number((newQty * unitCost).toFixed(2));
             totalBatchCost = totalBatchCost - oldCost + newCost;
 
             await tx.batchItemUsage.update({
@@ -1218,9 +1214,9 @@ export const updateBatch = async (id: number, data: UpdateBatchInput) => {
           }
           await tx.rawMaterial.update({
             where: { id: matId },
-            data: { currentStock: Math.max(0, material.currentStock - newQty) },
+            data: { currentStock: Number(Math.max(0, material.currentStock - newQty).toFixed(4)) },
           });
-          const itemCost = newQty * unitCost;
+          const itemCost = Number((newQty * unitCost).toFixed(2));
           totalBatchCost += itemCost;
 
           await tx.batchItemUsage.create({
