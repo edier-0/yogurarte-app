@@ -66,6 +66,8 @@ export const createPurchaseSchema = z.object({
   paymentMethod: z.string().optional().default('EFECTIVO'),
   notes: z.string().optional().nullable(),
   registeredBy: z.string().optional(),
+  registerExpense: z.boolean().optional().default(false),
+  expenseCategory: z.string().optional().default('INSUMOS_EXTRA'),
 });
 
 export const updatePurchaseSchema = z.object({

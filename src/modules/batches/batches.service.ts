@@ -1652,6 +1652,8 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
     bottles2L,
     fruitRawMaterialId,
     fruitQuantityUsed,
+    fruitDosageGramsPerLiter,
+    useLabels,
     notes,
     packagedBy,
     packagedAt,
@@ -1721,7 +1723,12 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
 
   // 3. Validar Stock de Fruta / Mermelada (si aplica)
   let fruitMat: any = null;
-  const fruitQty = Number(fruitQuantityUsed) || 0;
+  let fruitQty = Number(fruitQuantityUsed) || 0;
+  if (!fruitQty && fruitDosageGramsPerLiter && Number(fruitDosageGramsPerLiter) > 0) {
+    const totalGrams = Math.round(Number(fruitDosageGramsPerLiter) * totalPackagingLiters);
+    fruitQty = Math.round(totalGrams) / 1000;
+  }
+
   if (fruitRawMaterialId && fruitQty > 0) {
     fruitMat = await prisma.rawMaterial.findUnique({
       where: { id: Number(fruitRawMaterialId) },
@@ -1784,8 +1791,8 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
       }
     }
 
-    // Descontar etiquetas
-    if (totalBottles > 0) {
+    // Descontar etiquetas (solo si useLabels !== false)
+    if (useLabels !== false && totalBottles > 0) {
       const labelMat = await tx.rawMaterial.findFirst({
         where: {
           OR: [
@@ -1930,6 +1937,8 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       bottles2L,
       fruitRawMaterialId,
       fruitQuantityUsed,
+      fruitDosageGramsPerLiter,
+      useLabels,
       notes,
       packagedBy,
       packagedAt,
@@ -2025,27 +2034,32 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
         deltaPackagingCost += deltaTotalBottles * (capMat.avgCost || 0);
       }
 
-      const labelMat = await tx.rawMaterial.findFirst({
-        where: {
-          OR: [
-            { code: 'ETIQUETA' },
-            { name: { contains: 'etiqueta', mode: 'insensitive' } },
-          ],
-          isActive: true,
-        },
-      });
-      if (labelMat) {
-        await tx.rawMaterial.update({
-          where: { id: labelMat.id },
-          data: { currentStock: Math.max(0, labelMat.currentStock - deltaTotalBottles) },
+      if (useLabels !== false) {
+        const labelMat = await tx.rawMaterial.findFirst({
+          where: {
+            OR: [
+              { code: 'ETIQUETA' },
+              { name: { contains: 'etiqueta', mode: 'insensitive' } },
+            ],
+            isActive: true,
+          },
         });
-        deltaPackagingCost += deltaTotalBottles * (labelMat.avgCost || 0);
+        if (labelMat) {
+          await tx.rawMaterial.update({
+            where: { id: labelMat.id },
+            data: { currentStock: Math.max(0, labelMat.currentStock - deltaTotalBottles) },
+          });
+          deltaPackagingCost += deltaTotalBottles * (labelMat.avgCost || 0);
+        }
       }
     }
 
     // Delta Fruta / Mermelada
     let targetFruitId = fruitRawMaterialId !== undefined ? (fruitRawMaterialId ? Number(fruitRawMaterialId) : null) : pkg.fruitRawMaterialId;
     let targetFruitQty = fruitQuantityUsed !== undefined ? Number(fruitQuantityUsed) : (pkg.fruitQuantityUsed || 0);
+    if (fruitQuantityUsed === undefined && fruitDosageGramsPerLiter !== undefined && Number(fruitDosageGramsPerLiter) > 0) {
+      targetFruitQty = Math.round(Number(fruitDosageGramsPerLiter) * newPkgLiters) / 1000;
+    }
     let fruitUnitCost = pkg.fruitUnitCost || 0;
 
     if (pkg.fruitRawMaterialId !== targetFruitId || (pkg.fruitQuantityUsed || 0) !== targetFruitQty) {

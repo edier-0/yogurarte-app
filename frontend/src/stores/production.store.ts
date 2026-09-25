@@ -32,6 +32,8 @@ export interface BatchPackagingPayload {
   bottles2L: number;
   fruitRawMaterialId?: number | null;
   fruitQuantityUsed?: number;
+  fruitDosageGramsPerLiter?: number;
+  useLabels?: boolean;
   notes?: string | null;
   packagedBy?: string;
   packagedAt?: string;
@@ -44,6 +46,8 @@ export interface UpdateBatchPackagingPayload {
   bottles2L?: number;
   fruitRawMaterialId?: number | null;
   fruitQuantityUsed?: number;
+  fruitDosageGramsPerLiter?: number;
+  useLabels?: boolean;
   notes?: string | null;
   packagedBy?: string;
   packagedAt?: string;

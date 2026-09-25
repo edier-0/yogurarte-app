@@ -581,4 +581,181 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
     expect(sugarUsage).toBeDefined();
     expect(sugarUsage!.quantityUsed).toBe(2.6);
   });
+
+  it('Compras con Egreso Automático: POST /api/inventory/purchases incrementa stock, recalcula PMP y genera Expense', async () => {
+    // 1. Asegurar material de prueba para compra
+    const testMat = await prisma.rawMaterial.upsert({
+      where: { code: 'PULPA_TEST' },
+      update: { currentStock: 10, avgCost: 10000, isActive: true },
+      create: {
+        code: 'PULPA_TEST',
+        name: 'Pulpa de Fruta Test Compras',
+        unit: 'Kilogramos',
+        currentStock: 10,
+        avgCost: 10000,
+        category: 'INSUMO',
+        isActive: true,
+      },
+    });
+
+    // 2. Registrar compra de 10 kg a $12.000 c/u (Total: $120.000) con egreso automático
+    // Stock anterior: 10 kg @ $10.000 = $100.000
+    // Compra: 10 kg @ $12.000 = $120.000
+    // Nuevo stock: 20 kg
+    // Nuevo avgCost: (100.000 + 120.000) / 20 = $11.000
+    const res = await request(app)
+      .post('/api/inventory/purchases')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        rawMaterialId: testMat.id,
+        quantity: 10,
+        unitCost: 12000,
+        totalCost: 120000,
+        supplier: 'Distribuidora Frutas del Valle',
+        paymentMethod: 'TRANSFERENCIA',
+        notes: 'Compra de prueba con egreso automático',
+        registerExpense: true,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.quantity).toBe(10);
+    expect(res.body.totalCost).toBe(120000);
+
+    // 3. Validar actualización de stock y PMP en base de datos
+    const updatedMat = await prisma.rawMaterial.findUnique({
+      where: { id: testMat.id },
+    });
+    expect(updatedMat?.currentStock).toBe(20);
+    expect(updatedMat?.avgCost).toBe(11000);
+
+    // 4. Validar creación automática del Expense en caja
+    const expense = await prisma.expense.findFirst({
+      where: {
+        description: { contains: 'Pulpa de Fruta Test Compras' },
+        amount: 120000,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(expense).not.toBeNull();
+    expect(expense?.category).toBe('INSUMOS_EXTRA');
+    expect(expense?.paymentMethod).toBe('TRANSFERENCIA');
+  });
+
+  it('Fase B Dosificación y Pesaje al Gramo Entero: Envasado con pulpa en g/L descuenta kg exactos y absorbe costos', async () => {
+    // 1. Crear insumo de pulpa de fresa para envasado
+    const strawberryPulp = await prisma.rawMaterial.upsert({
+      where: { code: 'PULPA_FRESA_TEST' },
+      update: { currentStock: 50, avgCost: 8000, unit: 'Kilogramos', isActive: true },
+      create: {
+        code: 'PULPA_FRESA_TEST',
+        name: 'Pulpa de Fresa Pasteurizada Test',
+        unit: 'Kilogramos',
+        currentStock: 50,
+        avgCost: 8000,
+        category: 'INSUMO',
+        isActive: true,
+      },
+    });
+
+    // 2. Crear lote base en fermentación de 30L
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 30,
+        totalLitersProduced: 30,
+        flavor: 'Base Para Fraccionamiento Fruta',
+        cultureType: 'Cultivo Test',
+        status: 'EN_FERMENTACION',
+      });
+
+    expect(batchRes.status).toBe(201);
+    const fruitBatchId = batchRes.body.id;
+
+    // 3. Fraccionar 15L (5 botellas 1L + 5 botellas 2L) con dosis de 125.5 g/L
+    // Litros: 5*1 + 5*2 = 15L
+    // Gramos totales = Math.round(125.5 * 15) = 1883 g
+    // Kg a descontar = 1.883 kg
+    const dosageGramsPerLiter = 125.5;
+    const packagingRes = await request(app)
+      .post(`/api/batches/${fruitBatchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Fresa Artesanal',
+        bottles1L: 5,
+        bottles2L: 5,
+        fruitRawMaterialId: strawberryPulp.id,
+        fruitDosageGramsPerLiter: dosageGramsPerLiter,
+        useLabels: true,
+        notes: 'Envasado con dosificación exacta de fresa',
+      });
+
+    expect(packagingRes.status).toBe(201);
+    expect(packagingRes.body.packaging.totalLiters).toBe(15);
+    expect(packagingRes.body.packaging.fruitQuantityUsed).toBe(1.883);
+
+    // 4. Validar descuento exacto en inventario de pulpa
+    const updatedPulp = await prisma.rawMaterial.findUnique({
+      where: { id: strawberryPulp.id },
+    });
+    expect(updatedPulp?.currentStock).toBeCloseTo(50 - 1.883, 3);
+
+    // 5. Validar impacto financiero en packagingCost
+    // Costo fruta: 1.883 * 8000 = $15.064
+    // Costo botellas 1L (5 * 650 = 3250)
+    // Costo botellas 2L (5 * 1100 = 5500)
+    // Costo tapas (10 * 120 = 1200)
+    // Costo etiquetas si existen
+    expect(packagingRes.body.packaging.packagingCost).toBeGreaterThanOrEqual(15064);
+  });
+
+  it('Fase B Control de Etiquetas: useLabels=false no descuenta etiquetas ni agrega su costo', async () => {
+    // 1. Asegurar stock de etiquetas
+    await prisma.rawMaterial.upsert({
+      where: { code: 'ETIQUETA' },
+      update: { currentStock: 500, avgCost: 200, isActive: true },
+      create: {
+        code: 'ETIQUETA',
+        name: 'Etiqueta Corporativa Test',
+        unit: 'Unidades',
+        currentStock: 500,
+        avgCost: 200,
+        category: 'ENVASES',
+        isActive: true,
+      },
+    });
+
+    const labelsBefore = await prisma.rawMaterial.findFirst({ where: { code: 'ETIQUETA' } });
+    const stockBefore = labelsBefore?.currentStock || 0;
+
+    // 2. Crear lote base
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 10,
+        totalLitersProduced: 10,
+        flavor: 'Base Sin Etiquetas',
+        status: 'EN_FERMENTACION',
+      });
+
+    const noLabelBatchId = batchRes.body.id;
+
+    // 3. Envasar 4 botellas de 1L con useLabels: false
+    const pkgRes = await request(app)
+      .post(`/api/batches/${noLabelBatchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Natural Sin Marca',
+        bottles1L: 4,
+        bottles2L: 0,
+        useLabels: false,
+      });
+
+    expect(pkgRes.status).toBe(201);
+
+    // 4. Verificar que el stock de etiquetas no cambió
+    const labelsAfter = await prisma.rawMaterial.findFirst({ where: { code: 'ETIQUETA' } });
+    expect(labelsAfter?.currentStock).toBe(stockBefore);
+  });
 });

@@ -174,6 +174,8 @@ export const createPurchase = async (data: CreatePurchaseInput) => {
     paymentMethod,
     notes,
     registeredBy,
+    registerExpense,
+    expenseCategory,
   } = data;
 
   const parsedQty = Number(quantity);
@@ -239,7 +241,31 @@ export const createPurchase = async (data: CreatePurchaseInput) => {
       },
     });
 
-    return purchase;
+    let expense = null;
+    if (registerExpense) {
+      expense = await tx.expense.create({
+        data: {
+          category: expenseCategory || 'INSUMOS_EXTRA',
+          description: `Compra de ${material.name} (${parsedQty} ${material.unit}) - Prov: ${supplier ? supplier.trim() : 'Varios'}`,
+          amount: Math.round(parsedTotalCost),
+          expenseDate: dateObj,
+          paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
+          notes: notes ? notes.trim() : null,
+          registeredBy: registeredBy || 'Edier',
+        },
+      });
+    }
+
+    return {
+      ...purchase,
+      expense,
+      material: {
+        id: material.id,
+        name: material.name,
+        currentStock: newStock,
+        avgCost: newAvgCost,
+      },
+    };
   });
 };
 

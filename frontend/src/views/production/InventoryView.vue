@@ -26,7 +26,8 @@ import {
   User,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
-import InventoryMovementModal, { type MaterialOption } from '@/components/production/InventoryMovementModal.vue';
+import InventoryMovementModal from '@/components/production/InventoryMovementModal.vue';
+import PurchaseStockModal from '@/components/production/PurchaseStockModal.vue';
 
 export interface MaterialItem {
   id: number;
@@ -81,10 +82,6 @@ const debouncedMaterialSearch = refDebounced(searchMaterial, 300);
 // Filtros para Kardex
 const searchKardex = ref<string>('');
 const debouncedKardexSearch = refDebounced(searchKardex, 300);
-
-// Modal de Movimiento de Kardex
-const isMovementModalOpen = ref<boolean>(false);
-const preselectedMaterialId = ref<number | null>(null);
 
 // Formateadores de moneda y números
 const formatCurrency = (val: number) => {
@@ -246,7 +243,17 @@ const filteredAdjustments = computed(() => {
   return result;
 });
 
-// Apertura del modal
+// Modal de Movimiento de Kardex y Compra
+const isMovementModalOpen = ref<boolean>(false);
+const isPurchaseModalOpen = ref<boolean>(false);
+const preselectedMaterialId = ref<number | null>(null);
+
+function openPurchaseModal(materialId?: number) {
+  preselectedMaterialId.value = materialId || null;
+  isPurchaseModalOpen.value = true;
+}
+
+// Apertura del modal de Kardex
 function openMovementModal(materialId?: number) {
   preselectedMaterialId.value = materialId || null;
   isMovementModalOpen.value = true;
@@ -257,7 +264,7 @@ function handleMovementSaved() {
 }
 
 // Opciones de insumo para el modal
-const materialOptions = computed<MaterialOption[]>(() => {
+const materialOptions = computed<any[]>(() => {
   return materials.value.map((m) => ({
     id: m.id,
     name: m.name,
@@ -265,6 +272,8 @@ const materialOptions = computed<MaterialOption[]>(() => {
     unit: m.unit,
     currentStock: m.currentStock,
     minStockAlert: m.minStockAlert,
+    avgCost: m.avgCost,
+    code: m.code,
   }));
 });
 </script>
@@ -297,10 +306,20 @@ const materialOptions = computed<MaterialOption[]>(() => {
         <button
           type="button"
           @click="openMovementModal()"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-surface-light-border bg-surface-light-card px-3.5 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-200 dark:hover:bg-slate-800"
+          title="Ajuste o regularización física de inventario"
+        >
+          <ArrowUpDown class="h-4 w-4 stroke-[2]" />
+          <span>Ajuste / Kardex</span>
+        </button>
+
+        <button
+          type="button"
+          @click="openPurchaseModal()"
           class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-4 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95"
         >
           <Plus class="h-4 w-4 stroke-[2.5]" />
-          <span>Movimiento de Kardex</span>
+          <span>Registrar Compra / Entrada</span>
         </button>
       </div>
     </div>
@@ -593,14 +612,25 @@ const materialOptions = computed<MaterialOption[]>(() => {
             </div>
 
             <!-- Botón de Acción -->
-            <div class="mt-5 border-t border-surface-light-border pt-4 dark:border-surface-dark-border">
+            <div class="mt-5 grid grid-cols-2 gap-2 border-t border-surface-light-border pt-4 dark:border-surface-dark-border">
+              <button
+                type="button"
+                @click="openPurchaseModal(mat.id)"
+                class="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-50 py-2 text-xs font-extrabold text-brand-800 transition-colors hover:bg-brand-100 dark:bg-brand-900/40 dark:text-brand-darkText dark:hover:bg-brand-900/60"
+                title="Registrar compra de este insumo"
+              >
+                <Plus class="h-3.5 w-3.5 stroke-[2.5]" />
+                <span>Comprar</span>
+              </button>
+
               <button
                 type="button"
                 @click="openMovementModal(mat.id)"
-                class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-xs font-extrabold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                class="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                title="Ajuste o regularización física de stock"
               >
                 <ArrowUpDown class="h-3.5 w-3.5 stroke-[2]" />
-                <span>Ajustar Stock / Movimiento</span>
+                <span>Kardex</span>
               </button>
             </div>
           </div>
@@ -729,6 +759,14 @@ const materialOptions = computed<MaterialOption[]>(() => {
       :materials="materialOptions"
       :preselected-material-id="preselectedMaterialId"
       @saved="handleMovementSaved"
+    />
+
+    <!-- Modal de Compra / Entrada de Stock -->
+    <PurchaseStockModal
+      v-model:open="isPurchaseModalOpen"
+      :materials="materialOptions"
+      :preselected-material-id="preselectedMaterialId"
+      @saved="refreshAll"
     />
   </div>
 </template>
