@@ -16,13 +16,14 @@ import {
   Sparkles,
   Milk,
 } from 'lucide-vue-next';
-import { useProductionStore, type BatchItem, type BatchPackagingPayload } from '@/stores/production.store';
+import { useProductionStore, type BatchItem, type BatchPackagingItem, type BatchPackagingPayload } from '@/stores/production.store';
 import { getTodayDateBogota } from '@/stores/finance.store';
 import { http } from '@/api/client';
 
 const props = defineProps<{
   open: boolean;
   batch: BatchItem | null;
+  packagingToEdit?: BatchPackagingItem | null;
 }>();
 
 const emit = defineEmits<{
@@ -97,6 +98,8 @@ const resolvedFlavor = computed(() => {
   return baseFlavor.value;
 });
 
+const isEditMode = computed(() => !!props.packagingToEdit);
+
 // Litros requeridos por las botellas
 const requiredLiters = computed(() => {
   const b1 = Number(bottles1L.value) || 0;
@@ -104,12 +107,15 @@ const requiredLiters = computed(() => {
   return b1 * 1.0 + b2 * 2.0;
 });
 
-// Litros sin envasar del lote
+// Litros sin envasar del lote (sumando el volumen actual del fraccionamiento si estamos editando)
 const unpackagedLiters = computed(() => {
   if (!props.batch) return 0;
   const total = Number(props.batch.totalLitersProduced) || Number(props.batch.milkUsedLiters) || 0;
   const packaged = Number(props.batch.packagedLiters) || 0;
-  return Math.max(0, Math.round((total - packaged) * 100) / 100);
+  const alreadyInThisPkg = props.packagingToEdit
+    ? (Number(props.packagingToEdit.bottles1L) * 1.0 + Number(props.packagingToEdit.bottles2L) * 2.0)
+    : 0;
+  return Math.max(0, Math.round((total - packaged + alreadyInThisPkg) * 100) / 100);
 });
 
 // Validación de capacidad
@@ -192,23 +198,43 @@ function toggleAllOrders() {
   }
 }
 
-// Observador cuando cambia el modal o el lote
+// Observador cuando cambia el modal, el lote o el fraccionamiento a editar
 watch(
-  () => [props.open, props.batch],
-  async ([isOpen, currentBatch]) => {
+  () => [props.open, props.batch, props.packagingToEdit],
+  async ([isOpen, currentBatch, currentPkg]) => {
     if (isOpen && currentBatch) {
       errorMessage.value = null;
-      baseFlavor.value = (currentBatch as BatchItem).flavor || 'Natural';
-      customFlavorName.value = '';
-      flavorVariant.value = '';
-      bottles1L.value = 0;
-      bottles2L.value = 0;
-      fruitRawMaterialId.value = null;
-      fruitQuantityUsed.value = 0;
-      notes.value = '';
-      packagedBy.value = 'Edier';
-      packagedAt.value = getTodayDateBogota();
-      selectedOrderIds.value = [];
+
+      if (currentPkg) {
+        const pkg = currentPkg as BatchPackagingItem;
+        baseFlavor.value = flavors.value.includes(pkg.flavor) ? pkg.flavor : 'Personalizado';
+        if (baseFlavor.value === 'Personalizado') {
+          customFlavorName.value = pkg.flavor;
+        } else {
+          customFlavorName.value = '';
+        }
+        flavorVariant.value = '';
+        bottles1L.value = pkg.bottles1L;
+        bottles2L.value = pkg.bottles2L;
+        fruitRawMaterialId.value = pkg.fruitRawMaterialId || null;
+        fruitQuantityUsed.value = pkg.fruitQuantityUsed || 0;
+        notes.value = pkg.notes || '';
+        packagedBy.value = pkg.packagedBy || 'Edier';
+        packagedAt.value = pkg.packagedAt ? pkg.packagedAt.split('T')[0] : getTodayDateBogota();
+        selectedOrderIds.value = [];
+      } else {
+        baseFlavor.value = (currentBatch as BatchItem).flavor || 'Natural';
+        customFlavorName.value = '';
+        flavorVariant.value = '';
+        bottles1L.value = 0;
+        bottles2L.value = 0;
+        fruitRawMaterialId.value = null;
+        fruitQuantityUsed.value = 0;
+        notes.value = '';
+        packagedBy.value = 'Edier';
+        packagedAt.value = getTodayDateBogota();
+        selectedOrderIds.value = [];
+      }
 
       await Promise.all([loadFruitMaterials(), loadPendingOrders(resolvedFlavor.value)]);
     }
@@ -249,11 +275,15 @@ async function handleSubmit() {
       linkOrderIds: selectedOrderIds.value.length > 0 ? selectedOrderIds.value : undefined,
     };
 
-    await productionStore.packageBatch(props.batch.id, payload);
+    if (isEditMode.value && props.packagingToEdit) {
+      await productionStore.updateBatchPackaging(props.packagingToEdit.id, payload);
+    } else {
+      await productionStore.packageBatch(props.batch.id, payload);
+    }
     emit('packaged');
     handleClose();
   } catch (err: any) {
-    errorMessage.value = err?.message || 'Error al registrar el envasado';
+    errorMessage.value = err?.message || 'Error al guardar el envasado';
   } finally {
     isSubmitting.value = false;
   }
@@ -276,7 +306,7 @@ async function handleSubmit() {
             </div>
             <div>
               <DialogTitle class="text-base font-extrabold text-slate-900 dark:text-white sm:text-lg">
-                Envasar y Fraccionar Lote
+                {{ isEditMode ? 'Editar Fraccionamiento de Lote' : 'Envasar y Fraccionar Lote' }}
               </DialogTitle>
               <DialogDescription class="text-xs font-semibold text-slate-500 dark:text-slate-400">
                 Fase B · Fraccionamiento multi-sabor, botellas y vinculación de pre-ventas
@@ -650,8 +680,8 @@ async function handleSubmit() {
               class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-5 py-2.5 text-xs font-extrabold text-white shadow-card transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <PackageCheck class="h-4 w-4 stroke-[2.5]" />
-              <span v-if="isSubmitting">Registrando...</span>
-              <span v-else>Confirmar Envasado ({{ requiredLiters }}L)</span>
+              <span v-if="isSubmitting">{{ isEditMode ? 'Guardando...' : 'Registrando...' }}</span>
+              <span v-else>{{ isEditMode ? 'Guardar Cambios' : 'Confirmar Envasado' }} ({{ requiredLiters }}L)</span>
             </button>
           </div>
         </form>

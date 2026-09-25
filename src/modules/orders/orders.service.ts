@@ -507,7 +507,7 @@ export const createOrder = async (data: CreateOrderInput) => {
           where: {
             flavor: { equals: primaryFlavor, mode: 'insensitive' },
             isActive: true,
-            status: { in: ['COMPLETADO', 'EN_FERMENTACION', 'EN_PROCESO'] },
+            status: { in: ['COMPLETADO', 'DISPONIBLE'] },
           },
           include: {
             orders: { select: { id: true, totalLiters: true } },
@@ -556,6 +556,12 @@ export const createOrder = async (data: CreateOrderInput) => {
       });
 
       if (batchObj) {
+        if (batchObj.status === 'EN_FERMENTACION') {
+          throw new BadRequestError(
+            `No es posible vincular pedidos al lote "${batchObj.batchCode}" porque se encuentra en etapa de FERMENTACIÓN BASE. Solo se pueden vincular pedidos a lotes fraccionados y disponibles.`
+          );
+        }
+
         const soldFromItems = batchObj.orderItems.reduce((sum, it) => sum + it.totalLiters, 0);
         const legacyOrdersSold = batchObj.orders
           .filter((o) => !batchObj.orderItems.some((it) => it.orderId === o.id))
@@ -740,6 +746,15 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
 
     let parsedBatchId = batchId !== undefined ? (batchId ? Number(batchId) : null) : currentOrder.batchId;
 
+    if (parsedBatchId && parsedBatchId !== currentOrder.batchId) {
+      const bObj = await tx.productionBatch.findUnique({ where: { id: parsedBatchId } });
+      if (bObj && bObj.status === 'EN_FERMENTACION') {
+        throw new BadRequestError(
+          `No es posible vincular pedidos al lote "${bObj.batchCode}" porque se encuentra en etapa de FERMENTACIÓN BASE. Solo se pueden vincular pedidos a lotes fraccionados y disponibles.`
+        );
+      }
+    }
+
     const updatedDeliveryFee = deliveryFee !== undefined ? Number(deliveryFee) : currentOrder.deliveryFee;
     let updatedDiscount = discount !== undefined ? Number(discount) : (currentOrder.discount || 0);
 
@@ -838,6 +853,12 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
         });
 
         if (batchObj) {
+          if (batchObj.status === 'EN_FERMENTACION') {
+            throw new BadRequestError(
+              `No es posible vincular pedidos al lote "${batchObj.batchCode}" porque se encuentra en etapa de FERMENTACIÓN BASE. Solo se pueden vincular pedidos a lotes fraccionados y disponibles.`
+            );
+          }
+
           const otherItems = batchObj.orderItems.filter((it) => it.orderId !== id);
           const otherLegacyOrders = batchObj.orders.filter((o) => o.id !== id && !batchObj.orderItems.some((it) => it.orderId === o.id));
           const otherSold = otherItems.reduce((sum, it) => sum + it.totalLiters, 0) + otherLegacyOrders.reduce((sum, o) => sum + o.totalLiters, 0);

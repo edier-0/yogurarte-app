@@ -13,6 +13,9 @@ import {
   unlinkOrderFromBatch,
   getBatchSummary,
   recordPartnerWithdrawal,
+  getNextBatchCode,
+  patchBatchStatus,
+  updateBatchPackaging,
 } from './batches.controller.js';
 import { validateBody, validateParams, validateQuery } from '../../shared/middlewares/validate.middleware.js';
 import {
@@ -25,17 +28,23 @@ import {
   pendingOrdersQuerySchema,
   batchPackagingSchema,
   partnerWithdrawalSchema,
+  nextCodeQuerySchema,
+  patchBatchStatusSchema,
+  updateBatchPackagingSchema,
 } from './batches.schema.js';
 import { idParamSchema } from '../../schemas/common.schema.js';
 
 const router = Router();
 
 router.get('/', validateQuery(batchesQuerySchema), getBatches);
+router.get('/next-code', validateQuery(nextCodeQuerySchema), getNextBatchCode);
 router.get('/pending-orders', validateQuery(pendingOrdersQuerySchema), getPendingOrdersByFlavor);
 router.get('/:id/summary', validateParams(idParamSchema), getBatchSummary);
 router.get('/:id', validateParams(idParamSchema), getBatchById);
 router.post('/', validateBody(createBatchSchema), createBatch);
+router.patch('/:id/status', validateParams(idParamSchema), validateBody(patchBatchStatusSchema), patchBatchStatus);
 router.post('/:id/packaging', validateParams(idParamSchema), validateBody(batchPackagingSchema), createBatchPackaging);
+router.put('/packagings/:packagingId', validateBody(updateBatchPackagingSchema), updateBatchPackaging);
 router.post('/:id/partner-withdrawal', validateParams(idParamSchema), validateBody(partnerWithdrawalSchema), recordPartnerWithdrawal);
 router.delete('/:id/orders/:orderId', unlinkOrderFromBatch);
 router.post('/:id/link-orders', validateParams(idParamSchema), validateBody(linkOrdersToBatchSchema), linkOrdersToBatch);

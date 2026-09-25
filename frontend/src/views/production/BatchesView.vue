@@ -16,6 +16,8 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  Pencil,
+  CheckCircle2,
 } from 'lucide-vue-next';
 import { useProductionStore, type BatchItem, type BatchChip } from '@/stores/production.store';
 import BatchModal from '@/components/production/BatchModal.vue';
@@ -27,10 +29,12 @@ const productionStore = useProductionStore();
 
 const isBatchModalOpen = ref(false);
 const isFlavorsModalOpen = ref(false);
+const selectedBatchToEdit = ref<BatchItem | null>(null);
 
 // Modales Fase B y Auditoría
 const isPackagingModalOpen = ref(false);
 const selectedBatchForPackaging = ref<BatchItem | null>(null);
+const selectedPackagingToEdit = ref<any | null>(null);
 
 const isSummaryModalOpen = ref(false);
 const selectedBatchIdForSummary = ref<number | null>(null);
@@ -61,10 +65,35 @@ async function handleSelectChip(chip: BatchChip) {
   await productionStore.fetchBatches(1);
 }
 
+// Abrir modal de creación de lote madre
+function openCreateBatchModal() {
+  selectedBatchToEdit.value = null;
+  isBatchModalOpen.value = true;
+}
+
+// Abrir modal de edición de lote madre
+function openEditBatchModal(batch: BatchItem) {
+  selectedBatchToEdit.value = batch;
+  isBatchModalOpen.value = true;
+}
+
 // Abrir modal de envasado
-function openPackagingModal(batch: BatchItem) {
+function openPackagingModal(batch: BatchItem, pkgToEdit?: any) {
   selectedBatchForPackaging.value = batch;
+  selectedPackagingToEdit.value = pkgToEdit || null;
   isPackagingModalOpen.value = true;
+}
+
+// Editar fraccionamiento desde el modal de auditoría
+function handleEditPackaging(pkg: any) {
+  const batch = productionStore.batches.find((b) => b.id === pkg.batchId) || null;
+  openPackagingModal(batch!, pkg);
+}
+
+// Cambio rápido de estado 1-touch
+async function handleQuickStatusToggle(batch: BatchItem) {
+  const nextStatus = batch.status === 'EN_FERMENTACION' ? 'DISPONIBLE' : 'EN_FERMENTACION';
+  await productionStore.patchBatchStatus(batch.id, nextStatus);
 }
 
 // Abrir modal de resumen y auditoría
@@ -112,7 +141,7 @@ function openSummaryModal(batch: BatchItem) {
 
         <button
           type="button"
-          @click="isBatchModalOpen = true"
+          @click="openCreateBatchModal"
           class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-4 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95"
         >
           <Plus class="h-4 w-4 stroke-[2.5]" />
@@ -291,27 +320,38 @@ function openSummaryModal(batch: BatchItem) {
                 {{ batch.flavor }}
               </span>
 
-              <!-- Badge de Estado -->
-              <span
-                class="rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider"
+              <!-- Badge de Estado Interactivo 1-Touch -->
+              <button
+                type="button"
+                @click.stop="handleQuickStatusToggle(batch)"
+                class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider transition-all hover:scale-105 active:scale-95 shadow-xs"
                 :class="
                   batch.status === 'EN_FERMENTACION'
-                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300'
+                    ? 'border border-purple-200 bg-purple-100 text-purple-800 dark:border-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
                     : (batch.status === 'DISPONIBLE' || batch.status === 'COMPLETADO') && batch.remainingAvailableLiters > 0
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                    ? 'border border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                     : batch.status === 'AGOTADO' || batch.remainingAvailableLiters <= 0
-                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
-                    : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                    ? 'border border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                    : 'border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                "
+                :title="
+                  batch.status === 'EN_FERMENTACION'
+                    ? 'Click para marcar como DISPONIBLE para venta'
+                    : 'Click para alternar a EN FERMENTACIÓN'
                 "
               >
-                {{
-                  batch.status === 'EN_FERMENTACION'
-                    ? 'En Fermentación'
-                    : batch.remainingAvailableLiters > 0
-                    ? 'Disponible'
-                    : 'Agotado'
-                }}
-              </span>
+                <Timer v-if="batch.status === 'EN_FERMENTACION'" class="h-3 w-3 stroke-[2.5]" />
+                <CheckCircle2 v-else-if="batch.remainingAvailableLiters > 0" class="h-3 w-3 stroke-[2.5]" />
+                <span>
+                  {{
+                    batch.status === 'EN_FERMENTACION'
+                      ? 'En Fermentación'
+                      : batch.remainingAvailableLiters > 0
+                      ? 'Disponible'
+                      : 'Agotado'
+                  }}
+                </span>
+              </button>
             </div>
 
             <!-- Fechas e información del lote -->
@@ -397,6 +437,18 @@ function openSummaryModal(batch: BatchItem) {
 
         <!-- Acciones Directas por Tarjeta -->
         <div class="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
+          <!-- Acción Editar Lote Madre -->
+          <button
+            v-if="batch.status !== 'ARCHIVADO'"
+            type="button"
+            @click="openEditBatchModal(batch)"
+            class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300"
+            title="Editar parámetros, tiempo e insumos del lote madre"
+          >
+            <Pencil class="h-3.5 w-3.5 text-slate-500" />
+            <span>Editar Lote</span>
+          </button>
+
           <!-- Acción Fase B: Envasar / Fraccionar Lote -->
           <button
             v-if="batch.status !== 'ARCHIVADO' && (batch.remainingAvailableLiters > 0 || batch.status === 'EN_FERMENTACION')"
@@ -473,7 +525,8 @@ function openSummaryModal(batch: BatchItem) {
     <!-- Modales -->
     <BatchModal
       v-model:open="isBatchModalOpen"
-      @saved="productionStore.fetchBatches(1)"
+      :batch-to-edit="selectedBatchToEdit"
+      @saved="productionStore.fetchBatches(productionStore.currentPage)"
     />
 
     <FlavorsManagementModal v-model:open="isFlavorsModalOpen" />
@@ -481,6 +534,7 @@ function openSummaryModal(batch: BatchItem) {
     <PackagingModal
       v-model:open="isPackagingModalOpen"
       :batch="selectedBatchForPackaging"
+      :packaging-to-edit="selectedPackagingToEdit"
       @packaged="productionStore.fetchBatches(productionStore.currentPage)"
     />
 
@@ -488,6 +542,7 @@ function openSummaryModal(batch: BatchItem) {
       v-model:open="isSummaryModalOpen"
       :batch-id="selectedBatchIdForSummary"
       @updated="productionStore.fetchBatches(productionStore.currentPage)"
+      @edit-packaging="handleEditPackaging"
     />
   </div>
 </template>

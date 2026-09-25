@@ -11,6 +11,7 @@ export type BatchChip = 'ALL' | 'ACTIVE' | 'DEPLETED' | 'ARCHIVED';
 export interface BatchPackagingItem {
   id: number;
   batchId: number;
+  packagingCode?: string | null;
   flavor: string;
   bottles1L: number;
   bottles2L: number;
@@ -37,6 +38,17 @@ export interface BatchPackagingPayload {
   linkOrderIds?: number[];
 }
 
+export interface UpdateBatchPackagingPayload {
+  flavor?: string;
+  bottles1L?: number;
+  bottles2L?: number;
+  fruitRawMaterialId?: number | null;
+  fruitQuantityUsed?: number;
+  notes?: string | null;
+  packagedBy?: string;
+  packagedAt?: string;
+}
+
 export interface PartnerWithdrawalPayload {
   bottleSize?: string;
   quantityBottles: number;
@@ -58,6 +70,7 @@ export interface BatchSummaryData {
     notes?: string | null;
     registeredBy?: string;
     cultureType?: string | null;
+    fermentationHours?: number | null;
   };
   rawMaterialsBalance: {
     milkUsedLiters: number;
@@ -115,6 +128,7 @@ export interface BatchItem {
   yieldPercentage: number;
   costPerLiter?: number;
   cultureType?: string | null;
+  fermentationHours?: number | null;
   initialSugarGrams?: number;
   powderedMilkGrams?: number;
   preparationDate: string;
@@ -127,6 +141,7 @@ export interface BatchItem {
   totalDischargedLiters: number;
   remainingAvailableLiters: number;
   packagings?: BatchPackagingItem[];
+  itemsUsed?: any[];
   discharges?: Array<{
     id: number;
     bottleSize: string;
@@ -145,11 +160,19 @@ export interface ProductFlavor {
   updatedAt?: string;
 }
 
+export interface DynamicBatchItem {
+  rawMaterialId: number;
+  quantityUsed: number;
+  unitCost?: number;
+}
+
 export interface CreateBatchPayload {
+  batchCode?: string;
   milkUsedLiters: number;
   totalLitersProduced?: number;
   flavor: string;
   cultureType?: string;
+  fermentationHours?: number;
   initialSugarGrams?: number;
   powderedMilkGrams?: number;
   preparationDate?: string;
@@ -157,6 +180,23 @@ export interface CreateBatchPayload {
   notes?: string | null;
   registeredBy?: string;
   status?: string;
+  dynamicItems?: DynamicBatchItem[];
+}
+
+export interface UpdateBatchPayload {
+  milkUsedLiters?: number;
+  totalLitersProduced?: number;
+  flavor?: string;
+  cultureType?: string;
+  fermentationHours?: number;
+  initialSugarGrams?: number;
+  powderedMilkGrams?: number;
+  preparationDate?: string;
+  expirationDate?: string;
+  notes?: string | null;
+  registeredBy?: string;
+  status?: string;
+  dynamicItems?: DynamicBatchItem[];
 }
 
 export const useProductionStore = defineStore('production', () => {
@@ -310,6 +350,54 @@ export const useProductionStore = defineStore('production', () => {
     }
   }
 
+  // Obtener siguiente correlativo libre diario
+  async function fetchNextBatchCode(date?: string, batchId?: number) {
+    try {
+      const res = await http.get<{ nextBatchCode?: string; nextPackagingCode?: string; date?: string; batchCode?: string }>(
+        '/batches/next-code',
+        {
+          params: {
+            date: date || undefined,
+            batchId: batchId || undefined,
+          },
+        }
+      );
+      return res;
+    } catch {
+      return null;
+    }
+  }
+
+  // Cambio rápido de estado 1-touch (EN_FERMENTACION <-> DISPONIBLE)
+  async function patchBatchStatus(batchId: number, status: 'EN_FERMENTACION' | 'DISPONIBLE') {
+    try {
+      const res = await http.patch<any>(`/batches/${batchId}/status`, { status });
+      const statusLabel = status === 'EN_FERMENTACION' ? 'En Fermentación' : 'Disponible';
+      toast.success('Estado Actualizado', {
+        description: `El lote ahora está en estado ${statusLabel}.`,
+      });
+      await fetchBatches(currentPage.value);
+      return res;
+    } catch {
+      return null;
+    }
+  }
+
+  // Actualizar lote de producción con balance delta (Fase A)
+  async function updateBatch(batchId: number, payload: UpdateBatchPayload) {
+    isLoading.value = true;
+    try {
+      const res = await http.put<BatchItem>(`/batches/${batchId}`, payload);
+      toast.success('Lote Actualizado', {
+        description: `Cambios guardados para el lote ${res.batchCode || ''}.`,
+      });
+      await fetchBatches(currentPage.value);
+      return res;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   // Registrar fraccionamiento y envasado (Fase B)
   async function packageBatch(batchId: number, payload: BatchPackagingPayload) {
     isLoading.value = true;
@@ -320,6 +408,24 @@ export const useProductionStore = defineStore('production', () => {
       );
       toast.success('¡Envasado Registrado!', {
         description: res.message || 'Fracción de lote envasada con éxito.',
+      });
+      await fetchBatches(currentPage.value);
+      return res;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Actualizar fraccionamiento de lote con balance delta (Fase B)
+  async function updateBatchPackaging(packagingId: number, payload: UpdateBatchPackagingPayload) {
+    isLoading.value = true;
+    try {
+      const res = await http.put<{ message: string; packaging: BatchPackagingItem; batch: BatchItem }>(
+        `/batches/packagings/${packagingId}`,
+        payload
+      );
+      toast.success('Fraccionamiento Actualizado', {
+        description: res.message || 'Fracción de lote actualizada con éxito.',
       });
       await fetchBatches(currentPage.value);
       return res;
@@ -530,7 +636,11 @@ export const useProductionStore = defineStore('production', () => {
     // Acciones Lotes
     fetchBatches,
     createBatch,
+    updateBatch,
+    patchBatchStatus,
+    fetchNextBatchCode,
     packageBatch,
+    updateBatchPackaging,
     unlinkOrder,
     registerPartnerWithdrawal,
     fetchBatchSummary,

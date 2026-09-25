@@ -13,12 +13,19 @@ import {
   X,
   AlertCircle,
   Plus,
+  Save,
+  Clock,
+  Coins,
+  CheckSquare,
+  Square,
 } from 'lucide-vue-next';
-import { useProductionStore } from '@/stores/production.store';
+import { useProductionStore, type BatchItem } from '@/stores/production.store';
 import { getTodayDateBogota } from '@/stores/finance.store';
+import { http } from '@/api/client';
 
 const props = defineProps<{
   open: boolean;
+  batchToEdit?: BatchItem | null;
 }>();
 
 const emit = defineEmits<{
@@ -27,6 +34,8 @@ const emit = defineEmits<{
 }>();
 
 const productionStore = useProductionStore();
+
+const isEditMode = computed(() => !!props.batchToEdit);
 
 const flavors = computed(() => {
   const activeNames = productionStore.activeFlavors.map((f) => f.name);
@@ -53,14 +62,7 @@ const cultureTypes = [
   'Cultivo Artesanal de Cepas Vivas Liofilizadas',
 ];
 
-// Generar código autogenerado LOT-YYYYMMDD-XXX
-function generateBatchCode(): string {
-  const todayStr = getTodayDateBogota().replace(/-/g, '');
-  const randomSuffix = Math.floor(100 + Math.random() * 900);
-  return `LOT-${todayStr}-${randomSuffix}`;
-}
-
-const batchCode = ref(generateBatchCode());
+const batchCode = ref('');
 const baseFlavor = ref('Natural');
 const flavorVariant = ref('');
 const customFlavorName = ref('');
@@ -76,62 +78,224 @@ const resolvedFlavor = computed(() => {
 const milkUsedLiters = ref<number | ''>(50);
 const expectedLiters = ref<number | ''>(48);
 const cultureType = ref(cultureTypes[0]);
-const useSugar = ref(true);
-const sugarGramsPerLiter = ref<number | ''>(80);
-const usePowderedMilk = ref(false);
-const powderedMilkGramsPerLiter = ref<number | ''>(30);
+const fermentationHours = ref<number>(8);
 const preparationDate = ref(getTodayDateBogota());
-const ripeningDate = ref('');
 const status = ref<'EN_FERMENTACION' | 'DISPONIBLE'>('EN_FERMENTACION');
 const notes = ref('');
+
+// Insumos de Inventario para Checklist Dinámico
+interface InventoryMaterialItem {
+  id: number;
+  name: string;
+  code: string;
+  category: string;
+  unit: string;
+  currentStock: number;
+  avgCost: number;
+}
+
+interface DynamicChecklistItem {
+  rawMaterialId: number;
+  code: string;
+  name: string;
+  unit: string;
+  currentStock: number;
+  avgCost: number;
+  selected: boolean;
+  quantityUsed: number | '';
+}
+
+const rawMaterials = ref<InventoryMaterialItem[]>([]);
+const dynamicItems = ref<DynamicChecklistItem[]>([]);
+const milkAvgCost = ref<number>(2800);
+const isLoadingMaterials = ref(false);
 
 const isSubmitting = ref(false);
 const errorMessage = ref('');
 
-// Calcular fecha estimada de maduración (aprox 3 a 5 días)
-function updateEstimatedRipening() {
+// Cargar insumos de inventario y filtrar materias primas no-envases
+async function loadInventoryMaterials() {
+  isLoadingMaterials.value = true;
   try {
-    const d = new Date(preparationDate.value || getTodayDateBogota());
-    d.setDate(d.getDate() + 4);
-    ripeningDate.value = d.toISOString().split('T')[0];
+    const res = await http.get<InventoryMaterialItem[]>('/inventory/materials');
+    if (Array.isArray(res)) {
+      rawMaterials.value = res;
+
+      // Buscar costo promedio de leche cruda/entera
+      const milkMat = res.find(
+        (m) =>
+          m.code === 'LECHE' ||
+          m.code === 'LECHE_TEST' ||
+          m.name.toLowerCase().includes('leche cruda') ||
+          m.name.toLowerCase().includes('leche entera')
+      );
+      if (milkMat && milkMat.avgCost > 0) {
+        milkAvgCost.value = milkMat.avgCost;
+      }
+
+      // Filtrar materiales candidatos para el checklist (excluir envases, botellas, tapas, etiquetas)
+      const candidateMaterials = res.filter((m) => {
+        const cat = (m.category || '').toUpperCase();
+        const code = (m.code || '').toUpperCase();
+        const name = (m.name || '').toLowerCase();
+        const isPackaging =
+          cat === 'EMPAQUE' ||
+          cat === 'ENVASES' ||
+          code === 'BOTELLA_1L' ||
+          code === 'BOTELLA_2L' ||
+          code === 'TAPA' ||
+          code === 'ETIQUETA' ||
+          name.includes('botella') ||
+          name.includes('tapa') ||
+          name.includes('etiqueta');
+        const isMilk =
+          code === 'LECHE' ||
+          code === 'LECHE_TEST' ||
+          name.includes('leche cruda') ||
+          name.includes('leche entera');
+        return !isPackaging && !isMilk;
+      });
+
+      // Mapear al checklist
+      dynamicItems.value = candidateMaterials.map((m) => {
+        let preSelected = false;
+        let preQty: number | '' = '';
+        if (props.batchToEdit && Array.isArray((props.batchToEdit as any).itemsUsed)) {
+          const used = (props.batchToEdit as any).itemsUsed.find((u: any) => u.rawMaterialId === m.id);
+          if (used) {
+            preSelected = true;
+            preQty = used.quantityUsed;
+          }
+        }
+        return {
+          rawMaterialId: m.id,
+          code: m.code,
+          name: m.name,
+          unit: m.unit,
+          currentStock: m.currentStock,
+          avgCost: m.avgCost,
+          selected: preSelected,
+          quantityUsed: preQty,
+        };
+      });
+    }
   } catch {
-    ripeningDate.value = '';
+    dynamicItems.value = [];
+  } finally {
+    isLoadingMaterials.value = false;
+  }
+}
+
+// Redondear a 2 decimales automáticamente
+function handleQuantityInput(item: DynamicChecklistItem) {
+  if (typeof item.quantityUsed === 'number' && !isNaN(item.quantityUsed)) {
+    item.quantityUsed = Math.round(item.quantityUsed * 100) / 100;
+  }
+}
+
+function toggleItemSelection(item: DynamicChecklistItem) {
+  item.selected = !item.selected;
+  if (item.selected && (!item.quantityUsed || item.quantityUsed <= 0)) {
+    item.quantityUsed = 1;
+  }
+}
+
+// Cargar correlativo inteligente
+async function syncNextBatchCode() {
+  if (isEditMode.value) return;
+  const res = await productionStore.fetchNextBatchCode(preparationDate.value);
+  if (res && res.nextBatchCode) {
+    batchCode.value = res.nextBatchCode;
   }
 }
 
 watch(
   () => props.open,
-  (isOpen) => {
+  async (isOpen) => {
     if (isOpen) {
       productionStore.fetchFlavors(true);
-      batchCode.value = generateBatchCode();
-      baseFlavor.value = 'Natural';
-      flavorVariant.value = '';
-      customFlavorName.value = '';
-      preparationDate.value = getTodayDateBogota();
-      status.value = 'EN_FERMENTACION';
-      useSugar.value = true;
-      sugarGramsPerLiter.value = 80;
-      usePowderedMilk.value = false;
-      powderedMilkGramsPerLiter.value = 30;
-      updateEstimatedRipening();
       errorMessage.value = '';
+
+      if (props.batchToEdit) {
+        // Modo Edición
+        const b = props.batchToEdit;
+        batchCode.value = b.batchCode;
+        baseFlavor.value = flavors.value.includes(b.flavor) ? b.flavor : 'Personalizado';
+        if (baseFlavor.value === 'Personalizado') {
+          customFlavorName.value = b.flavor;
+        } else {
+          customFlavorName.value = '';
+        }
+        flavorVariant.value = '';
+        milkUsedLiters.value = b.milkUsedLiters;
+        expectedLiters.value = b.totalLitersProduced;
+        cultureType.value = b.cultureType || cultureTypes[0];
+        fermentationHours.value = (b as any).fermentationHours || 8;
+        preparationDate.value = b.preparationDate ? b.preparationDate.split('T')[0] : getTodayDateBogota();
+        status.value = (b.status as any) || 'EN_FERMENTACION';
+        notes.value = b.notes || '';
+      } else {
+        // Modo Creación
+        baseFlavor.value = 'Natural';
+        flavorVariant.value = '';
+        customFlavorName.value = '';
+        milkUsedLiters.value = 50;
+        expectedLiters.value = 48;
+        cultureType.value = cultureTypes[0];
+        fermentationHours.value = 8;
+        preparationDate.value = getTodayDateBogota();
+        status.value = 'EN_FERMENTACION';
+        notes.value = '';
+        await syncNextBatchCode();
+      }
+
+      await loadInventoryMaterials();
     }
   },
   { immediate: true }
 );
 
-// Calcular rendimiento esperado
+watch(preparationDate, () => {
+  if (props.open && !isEditMode.value) {
+    syncNextBatchCode();
+  }
+});
+
+// Rendimiento esperado
 const expectedYield = computed(() => {
   if (!milkUsedLiters.value || !expectedLiters.value) return 96;
   return Math.round((Number(expectedLiters.value) / Number(milkUsedLiters.value)) * 1000) / 10;
 });
 
+// Proyección Financiera en Tiempo Real (Fase A)
+const financialProjection = computed(() => {
+  const milkLiters = Number(milkUsedLiters.value) || 0;
+  const milkCost = milkLiters * milkAvgCost.value;
+
+  const itemsCost = dynamicItems.value
+    .filter((it) => it.selected && typeof it.quantityUsed === 'number' && it.quantityUsed > 0)
+    .reduce((sum, it) => sum + (Number(it.quantityUsed) * (it.avgCost || 0)), 0);
+
+  const totalCost = milkCost + itemsCost;
+  const yieldLiters = Number(expectedLiters.value) || milkLiters || 1;
+  const costPerLiter = yieldLiters > 0 ? Math.round(totalCost / yieldLiters) : 0;
+
+  return {
+    milkCost,
+    itemsCost,
+    totalCost,
+    costPerLiter,
+  };
+});
+
+const formatCOP = (val: number) => `$ ${Math.round(val).toLocaleString('es-CO')}`;
+
 const isFormValid = computed(() => {
   return (
     typeof milkUsedLiters.value === 'number' &&
     milkUsedLiters.value > 0 &&
-    resolvedFlavor.value.trim().length > 0
+    resolvedFlavor.value.trim().length > 0 &&
+    fermentationHours.value > 0
   );
 });
 
@@ -142,7 +306,7 @@ function handleClose() {
 
 async function handleSubmit() {
   if (!isFormValid.value || typeof milkUsedLiters.value !== 'number') {
-    errorMessage.value = 'Por favor ingresa los litros de leche y especifica el sabor del lote.';
+    errorMessage.value = 'Por favor ingresa los litros de leche, horas de fermentación y sabor.';
     return;
   }
 
@@ -150,28 +314,45 @@ async function handleSubmit() {
   errorMessage.value = '';
 
   try {
-    const fullNotes = [
-      `Cultivo: ${cultureType.value}`,
-      notes.value.trim() ? `Inoculación: ${notes.value.trim()}` : '',
-    ]
-      .filter(Boolean)
-      .join(' | ');
+    const selectedDynamicItems = dynamicItems.value
+      .filter((it) => it.selected && typeof it.quantityUsed === 'number' && it.quantityUsed > 0)
+      .map((it) => ({
+        rawMaterialId: it.rawMaterialId,
+        quantityUsed: Number(it.quantityUsed),
+        unitCost: it.avgCost || 0,
+      }));
 
-    await productionStore.createBatch({
-      flavor: resolvedFlavor.value.trim(),
-      cultureType: cultureType.value,
-      milkUsedLiters: milkUsedLiters.value,
-      totalLitersProduced: expectedLiters.value ? Number(expectedLiters.value) : milkUsedLiters.value,
-      preparationDate: preparationDate.value,
-      expirationDate: ripeningDate.value || undefined,
-      notes: fullNotes,
-      status: status.value,
-    });
+    if (isEditMode.value && props.batchToEdit) {
+      await productionStore.updateBatch(props.batchToEdit.id, {
+        flavor: resolvedFlavor.value.trim(),
+        cultureType: cultureType.value,
+        fermentationHours: Number(fermentationHours.value),
+        milkUsedLiters: milkUsedLiters.value,
+        totalLitersProduced: expectedLiters.value ? Number(expectedLiters.value) : milkUsedLiters.value,
+        preparationDate: preparationDate.value,
+        notes: notes.value.trim() || undefined,
+        status: status.value,
+        dynamicItems: selectedDynamicItems,
+      });
+    } else {
+      await productionStore.createBatch({
+        batchCode: batchCode.value || undefined,
+        flavor: resolvedFlavor.value.trim(),
+        cultureType: cultureType.value,
+        fermentationHours: Number(fermentationHours.value),
+        milkUsedLiters: milkUsedLiters.value,
+        totalLitersProduced: expectedLiters.value ? Number(expectedLiters.value) : milkUsedLiters.value,
+        preparationDate: preparationDate.value,
+        notes: notes.value.trim() || undefined,
+        status: status.value,
+        dynamicItems: selectedDynamicItems,
+      });
+    }
 
     emit('saved');
     handleClose();
   } catch (err: any) {
-    errorMessage.value = err?.message || 'Error al registrar el lote de producción';
+    errorMessage.value = err?.message || 'Error al guardar el lote de producción';
   } finally {
     isSubmitting.value = false;
   }
@@ -184,19 +365,19 @@ async function handleSubmit() {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity" />
 
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7 max-h-[92vh] overflow-y-auto"
+        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7 max-h-[92vh] overflow-y-auto"
       >
         <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
           <div class="flex items-center gap-2.5">
-            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-natural-50 text-natural-500 dark:bg-emerald-950/40 dark:text-emerald-400">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400">
               <FlaskConical class="h-5 w-5 stroke-[2]" />
             </div>
             <div>
               <DialogTitle class="text-base font-extrabold text-slate-900 dark:text-white sm:text-lg">
-                Iniciar Lote de Producción
+                {{ isEditMode ? 'Editar Lote Madre (Fase A)' : 'Iniciar Lote de Producción (Fase A)' }}
               </DialogTitle>
               <DialogDescription class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Inoculación, control de leche, fermentación y rendimiento
+                Inoculación, tiempo en horas, insumos de fermentación y costos
               </DialogDescription>
             </div>
           </div>
@@ -218,24 +399,30 @@ async function handleSubmit() {
               <div>
                 <p class="font-extrabold text-xs">Fase A · Fermentación del Lote Base</p>
                 <p class="mt-0.5 text-[11px] leading-relaxed opacity-90">
-                  Este registro descuenta únicamente la leche e insumos base en inventario. El fraccionamiento por sabores, botellas (1L y 2L), tapas y etiquetas se realiza en la Fase B al envasar.
+                  Descuenta únicamente la leche e insumos base seleccionados. El fraccionamiento por sabores, botellas (1L y 2L), tapas y etiquetas se realiza en la Fase B al envasar.
                 </p>
               </div>
             </div>
           </div>
 
-          <!-- Código de Lote Autogenerado y Sabor Base -->
+          <!-- Código de Lote Inteligente y Sabor Base -->
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Código de Lote
               </label>
-              <input
-                v-model="batchCode"
-                type="text"
-                readonly
-                class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-extrabold text-brand-800 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-brand-darkText cursor-not-allowed"
-              />
+              <div class="relative">
+                <input
+                  v-model="batchCode"
+                  type="text"
+                  :readonly="isEditMode"
+                  class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-extrabold text-purple-800 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-purple-300"
+                  :class="{ 'cursor-not-allowed': isEditMode }"
+                />
+                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 rounded bg-purple-100 dark:bg-purple-900/60 px-1.5 py-0.5 text-[10px] font-bold text-purple-700 dark:text-purple-300">
+                  {{ isEditMode ? 'Existente' : 'Correlativo Libre' }}
+                </span>
+              </div>
             </div>
 
             <div>
@@ -295,7 +482,7 @@ async function handleSubmit() {
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Litros de Leche Utilizados *
+                Litros de Leche Inoculados *
               </label>
               <div class="relative">
                 <input
@@ -339,55 +526,128 @@ async function handleSubmit() {
             <span class="font-black">{{ expectedYield }}%</span>
           </div>
 
-          <!-- Insumos Base de Fermentación (Azúcar y Leche en Polvo) -->
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div class="rounded-xl border border-surface-light-border bg-slate-50/40 p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas/50">
-              <div class="flex items-center justify-between">
-                <label class="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Azúcar Inicial
-                </label>
+          <!-- Tiempo de Fermentación en Horas -->
+          <div class="rounded-2xl border border-surface-light-border bg-slate-50/40 p-3.5 dark:border-surface-dark-border dark:bg-surface-dark-canvas/50">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                <Clock class="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                <span>Tiempo de Fermentación *</span>
+              </label>
+              <span class="text-[11px] font-extrabold text-purple-700 dark:text-purple-300">
+                {{ fermentationHours }} Horas
+              </span>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="relative flex-1">
                 <input
-                  v-model="useSugar"
-                  type="checkbox"
-                  class="h-4 w-4 rounded text-brand-800 focus:ring-brand-800"
-                />
-              </div>
-              <div v-if="useSugar" class="mt-2 relative">
-                <input
-                  v-model.number="sugarGramsPerLiter"
+                  v-model.number="fermentationHours"
                   type="number"
-                  min="0"
-                  step="5"
-                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
+                  min="1"
+                  max="72"
+                  step="0.5"
+                  required
+                  class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
                 />
-                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400">
-                  g / Litro
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                  h
                 </span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  @click="fermentationHours = 6"
+                  class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-300"
+                >
+                  6h
+                </button>
+                <button
+                  type="button"
+                  @click="fermentationHours = 8"
+                  class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-300"
+                >
+                  8h
+                </button>
+                <button
+                  type="button"
+                  @click="fermentationHours = 12"
+                  class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-300"
+                >
+                  12h
+                </button>
               </div>
             </div>
+            <p class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              Estándar recomendado: 8 horas continuas en incubación (42°C - 44°C).
+            </p>
+          </div>
 
-            <div class="rounded-xl border border-surface-light-border bg-slate-50/40 p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas/50">
-              <div class="flex items-center justify-between">
-                <label class="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Leche en Polvo
-                </label>
-                <input
-                  v-model="usePowderedMilk"
-                  type="checkbox"
-                  class="h-4 w-4 rounded text-brand-800 focus:ring-brand-800"
-                />
-              </div>
-              <div v-if="usePowderedMilk" class="mt-2 relative">
-                <input
-                  v-model.number="powderedMilkGramsPerLiter"
-                  type="number"
-                  min="0"
-                  step="5"
-                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
-                />
-                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400">
-                  g / Litro
-                </span>
+          <!-- Checklist Dinámico de Materias Primas / Insumos de Fermentación -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Insumos de Fermentación Adicionales
+              </label>
+              <span class="text-[11px] text-slate-400">
+                Checklist con dosis exacta (step 0.01)
+              </span>
+            </div>
+
+            <div v-if="isLoadingMaterials" class="p-4 text-center text-xs text-slate-400">
+              Cargando catálogo de materias primas...
+            </div>
+
+            <div
+              v-else-if="dynamicItems.length === 0"
+              class="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400 dark:border-slate-700"
+            >
+              No hay materias primas adicionales registradas en inventario.
+            </div>
+
+            <div v-else class="max-h-48 space-y-2 overflow-y-auto rounded-2xl border border-surface-light-border bg-slate-50/40 p-2.5 dark:border-surface-dark-border dark:bg-surface-dark-canvas/50">
+              <div
+                v-for="item in dynamicItems"
+                :key="item.rawMaterialId"
+                class="flex flex-col gap-2 rounded-xl border p-2.5 transition-all sm:flex-row sm:items-center sm:justify-between"
+                :class="
+                  item.selected
+                    ? 'border-purple-300 bg-purple-50/50 dark:border-purple-800/80 dark:bg-purple-950/20'
+                    : 'border-slate-200/80 bg-white dark:border-slate-800 dark:bg-surface-dark-card'
+                "
+              >
+                <div class="flex items-center gap-2.5 cursor-pointer" @click="toggleItemSelection(item)">
+                  <button type="button" class="text-purple-600 dark:text-purple-400">
+                    <CheckSquare v-if="item.selected" class="h-4 w-4" />
+                    <Square v-else class="h-4 w-4 text-slate-400" />
+                  </button>
+                  <div>
+                    <span class="text-xs font-bold text-slate-900 dark:text-white">
+                      {{ item.name }}
+                    </span>
+                    <span class="ml-2 text-[10px] text-slate-400">
+                      Stock: {{ item.currentStock }} {{ item.unit }}
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="item.selected" class="flex items-center gap-2 self-end sm:self-auto">
+                  <div class="relative w-28">
+                    <input
+                      v-model.number="item.quantityUsed"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      placeholder="0.00"
+                      @input="handleQuantityInput(item)"
+                      class="w-full rounded-lg border border-purple-200 bg-white px-2.5 py-1 text-xs font-black text-slate-900 focus:border-purple-600 focus:outline-none dark:border-purple-800 dark:bg-slate-900 dark:text-white"
+                    />
+                    <span class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400">
+                      {{ item.unit }}
+                    </span>
+                  </div>
+                  <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 min-w-16 text-right">
+                    {{ formatCOP((Number(item.quantityUsed) || 0) * (item.avgCost || 0)) }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -407,7 +667,47 @@ async function handleSubmit() {
             </select>
           </div>
 
-          <!-- Fechas: Elaboración y Maduración -->
+          <!-- Tarjeta Financiera Proyectada en Tiempo Real (Fase A) -->
+          <div class="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-800/40 dark:bg-emerald-950/20">
+            <div class="flex items-center justify-between border-b border-emerald-200/60 pb-2 dark:border-emerald-800/60">
+              <span class="flex items-center gap-1.5 text-xs font-extrabold text-emerald-900 dark:text-emerald-300">
+                <Coins class="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Proyección Financiera Base (Fase A)</span>
+              </span>
+              <span class="rounded bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 text-[10px] font-black text-emerald-800 dark:text-emerald-200">
+                $0 en Botellas / Tapas
+              </span>
+            </div>
+
+            <div class="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <div>
+                <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">Leche Inoculada</span>
+                <p class="font-extrabold text-slate-900 dark:text-white">
+                  {{ formatCOP(financialProjection.milkCost) }}
+                </p>
+              </div>
+              <div>
+                <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">Insumos Fermentación</span>
+                <p class="font-extrabold text-slate-900 dark:text-white">
+                  {{ formatCOP(financialProjection.itemsCost) }}
+                </p>
+              </div>
+              <div>
+                <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">Costo Total Base</span>
+                <p class="font-black text-emerald-700 dark:text-emerald-300">
+                  {{ formatCOP(financialProjection.totalCost) }}
+                </p>
+              </div>
+              <div>
+                <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">Costo / Litro Proyectado</span>
+                <p class="font-black text-brand-900 dark:text-white">
+                  {{ formatCOP(financialProjection.costPerLiter) }} / L
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fecha de Inoculación y Estado Inicial -->
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -423,47 +723,35 @@ async function handleSubmit() {
 
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Maduración / Vencimiento
+                Estado del Lote
               </label>
-              <input
-                v-model="ripeningDate"
-                type="date"
-                class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-              />
-            </div>
-          </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  @click="status = 'EN_FERMENTACION'"
+                  class="rounded-xl border p-2 text-xs font-extrabold transition-all"
+                  :class="
+                    status === 'EN_FERMENTACION'
+                      ? 'border-purple-600 bg-purple-50 text-purple-700 dark:border-purple-400 dark:bg-purple-950/40 dark:text-purple-300'
+                      : 'border-surface-light-border bg-surface-light-canvas text-slate-600 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400'
+                  "
+                >
+                  En Fermentación
+                </button>
 
-          <!-- Estado Inicial -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-              Estado Inicial del Lote
-            </label>
-            <div class="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                @click="status = 'EN_FERMENTACION'"
-                class="rounded-xl border p-2.5 text-xs font-extrabold transition-all"
-                :class="
-                  status === 'EN_FERMENTACION'
-                    ? 'border-brand-800 bg-brand-50 text-brand-800 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-darkText'
-                    : 'border-surface-light-border bg-surface-light-canvas text-slate-600 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400'
-                "
-              >
-                En Fermentación
-              </button>
-
-              <button
-                type="button"
-                @click="status = 'DISPONIBLE'"
-                class="rounded-xl border p-2.5 text-xs font-extrabold transition-all"
-                :class="
-                  status === 'DISPONIBLE'
-                    ? 'border-emerald-600 bg-emerald-50 text-emerald-700 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300'
-                    : 'border-surface-light-border bg-surface-light-canvas text-slate-600 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400'
-                "
-              >
-                Listo / Disponible
-              </button>
+                <button
+                  type="button"
+                  @click="status = 'DISPONIBLE'"
+                  class="rounded-xl border p-2 text-xs font-extrabold transition-all"
+                  :class="
+                    status === 'DISPONIBLE'
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300'
+                      : 'border-surface-light-border bg-surface-light-canvas text-slate-600 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400'
+                  "
+                >
+                  Listo / Disponible
+                </button>
+              </div>
             </div>
           </div>
 
@@ -475,7 +763,7 @@ async function handleSubmit() {
             <input
               v-model="notes"
               type="text"
-              placeholder="Ej: pH inicial 6.6, temperatura incubación 42°C..."
+              placeholder="Ej: pH inicial 6.6, tina 1, temperatura incubación 42°C..."
               class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
             />
           </div>
@@ -503,8 +791,11 @@ async function handleSubmit() {
               :disabled="!isFormValid || isSubmitting"
               class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-5 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95 disabled:opacity-50"
             >
-              <Plus class="h-4 w-4 stroke-[2.5]" />
-              <span>{{ isSubmitting ? 'Iniciando Lote...' : 'Crear Lote' }}</span>
+              <Save v-if="isEditMode" class="h-4 w-4 stroke-[2.5]" />
+              <Plus v-else class="h-4 w-4 stroke-[2.5]" />
+              <span>
+                {{ isSubmitting ? 'Guardando...' : (isEditMode ? 'Guardar Cambios' : 'Iniciar Lote') }}
+              </span>
             </button>
           </div>
         </form>

@@ -14,10 +14,12 @@ import {
   Boxes,
   Unlink,
   Plus,
+  Pencil,
 } from 'lucide-vue-next';
 import {
   useProductionStore,
   type BatchSummaryData,
+  type BatchPackagingItem,
   type PartnerWithdrawalPayload,
 } from '@/stores/production.store';
 import { useConfirm } from '@/composables/useConfirm';
@@ -32,6 +34,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:open', val: boolean): void;
   (e: 'updated'): void;
+  (e: 'editPackaging', pkg: BatchPackagingItem): void;
 }>();
 
 const productionStore = useProductionStore();
@@ -467,6 +470,7 @@ async function handleRegisterWithdrawal() {
               <table class="w-full text-left text-xs">
                 <thead class="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                   <tr>
+                    <th class="px-4 py-3">Código</th>
                     <th class="px-4 py-3">Fecha</th>
                     <th class="px-4 py-3">Sabor Envasado</th>
                     <th class="px-4 py-3 text-center">1 Litro</th>
@@ -474,10 +478,14 @@ async function handleRegisterWithdrawal() {
                     <th class="px-4 py-3 text-right">Litros Totales</th>
                     <th class="px-4 py-3">Responsable</th>
                     <th class="px-4 py-3">Notas</th>
+                    <th class="px-4 py-3 text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-surface-light-card dark:bg-surface-dark-card font-medium text-slate-700 dark:text-slate-300">
                   <tr v-for="pkg in summary.packagings" :key="pkg.id">
+                    <td class="px-4 py-3 whitespace-nowrap font-mono text-[11px] font-black text-purple-700 dark:text-purple-300">
+                      {{ pkg.packagingCode || `${summary.batch.batchCode}-F` }}
+                    </td>
                     <td class="px-4 py-3 whitespace-nowrap font-bold">
                       {{ formatDate(pkg.packagedAt) }}
                     </td>
@@ -500,6 +508,17 @@ async function handleRegisterWithdrawal() {
                     </td>
                     <td class="px-4 py-3 text-slate-400 italic">
                       {{ pkg.notes || '—' }}
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                      <button
+                        type="button"
+                        @click="emit('editPackaging', pkg)"
+                        class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        title="Editar fraccionamiento"
+                      >
+                        <Pencil class="h-3 w-3 text-brand-800 dark:text-brand-darkText" />
+                        <span>Editar</span>
+                      </button>
                     </td>
                   </tr>
                 </tbody>

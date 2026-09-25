@@ -122,3 +122,31 @@ export const recordPartnerWithdrawal = async (req: Request, res: Response, next:
   }
 };
 
+export const getNextBatchCode = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.getNextBatchCode(req.query as any);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const patchBatchStatus = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.patchBatchStatus(Number(req.params.id), req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateBatchPackaging = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.updateBatchPackaging(Number(req.params.packagingId), req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+

@@ -362,4 +362,154 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
     });
     expect(batchReactivated?.status).toBe('DISPONIBLE');
   });
+
+  it('Correlativos Diarios: GET /api/batches/next-code genera códigos secuenciales inteligentes', async () => {
+    // 1. Correlativo lote madre
+    const motherRes = await request(app)
+      .get('/api/batches/next-code')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(motherRes.status).toBe(200);
+    expect(motherRes.body).toHaveProperty('nextBatchCode');
+    expect(motherRes.body.nextBatchCode).toMatch(/^LOTE-\d{8}-\d{2}$/);
+
+    // 2. Correlativo fraccionamiento para un lote específico
+    const pkgRes = await request(app)
+      .get(`/api/batches/next-code?batchId=${createdBatchId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(pkgRes.status).toBe(200);
+    expect(pkgRes.body).toHaveProperty('nextPackagingCode');
+    expect(pkgRes.body.nextPackagingCode).toMatch(/-F\d{2}$/);
+  });
+
+  it('Cambio Rápido de Estado: PATCH /api/batches/:id/status alterna 1-touch entre estados', async () => {
+    // Pasar a EN_FERMENTACION
+    const res1 = await request(app)
+      .patch(`/api/batches/${createdBatchId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'EN_FERMENTACION' });
+
+    expect(res1.status).toBe(200);
+    expect(res1.body.status).toBe('EN_FERMENTACION');
+
+    // Pasar de regreso a DISPONIBLE
+    const res2 = await request(app)
+      .patch(`/api/batches/${createdBatchId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'DISPONIBLE' });
+
+    expect(res2.status).toBe(200);
+    expect(res2.body.status).toBe('DISPONIBLE');
+  });
+
+  it('Bloqueo Estricto de Vinculación: Rechaza pedidos si el lote está en EN_FERMENTACION', async () => {
+    // 1. Poner lote en fermentación
+    await request(app)
+      .patch(`/api/batches/${createdBatchId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'EN_FERMENTACION' });
+
+    // 2. Intentar vincular pedido existente via link-orders
+    const linkRes = await request(app)
+      .post(`/api/batches/${createdBatchId}/link-orders`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ orderIds: [testOrderId] });
+
+    expect(linkRes.status).toBe(400);
+    expect(linkRes.body.error).toContain('FERMENTACIÓN BASE');
+
+    // 3. Intentar crear un pedido asignándole directamente el lote en fermentación
+    const orderRes = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId: testCustomerId,
+        batchId: createdBatchId,
+        bottleSize: '1L',
+        quantityBottles: 1,
+        flavor: 'Mora Silvestre',
+        unitPrice: 12000,
+        totalAmount: 12000,
+      });
+
+    expect(orderRes.status).toBe(400);
+    expect(orderRes.body.error).toContain('FERMENTACIÓN BASE');
+
+    // 4. Restaurar lote a DISPONIBLE para no afectar tests posteriores
+    await request(app)
+      .patch(`/api/batches/${createdBatchId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'DISPONIBLE' });
+  });
+
+  it('Edición con Balance Delta Fase A: PUT /api/batches/:id ajusta leche e insumos correctamente', async () => {
+    // 1. Crear lote para prueba de edición
+    const createRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 20,
+        totalLitersProduced: 20,
+        flavor: 'Base Para Edición Delta',
+        cultureType: 'Cultivo Tradicional',
+        fermentationHours: 8,
+        status: 'EN_FERMENTACION',
+      });
+
+    expect(createRes.status).toBe(201);
+    const editBatchId = createRes.body.id;
+
+    // 2. Editar incrementando leche de 20 a 25 L (delta +5L) y cambiando horas a 10
+    const editRes = await request(app)
+      .put(`/api/batches/${editBatchId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 25,
+        totalLitersProduced: 25,
+        cultureType: 'Cultivo Reforzado',
+        fermentationHours: 10,
+        notes: 'Ajuste de leche en tina',
+      });
+
+    expect(editRes.status).toBe(200);
+    expect(editRes.body.milkUsedLiters).toBe(25);
+    expect(editRes.body.fermentationHours).toBe(10);
+    expect(editRes.body.cultureType).toBe('Cultivo Reforzado');
+  });
+
+  it('Edición con Balance Delta Fase B: PUT /api/batches/packagings/:packagingId ajusta botellas y stock', async () => {
+    // 1. Obtener los fraccionamientos del lote de prueba
+    const summaryRes = await request(app)
+      .get(`/api/batches/${createdBatchId}/summary`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const pkg = summaryRes.body.packagings[0];
+    expect(pkg).toBeDefined();
+
+    // 2. Intentar exceder el volumen total disponible debe retornar 400
+    const overLimitRes = await request(app)
+      .put(`/api/batches/packagings/${pkg.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        bottles1L: pkg.bottles1L + 10,
+        bottles2L: pkg.bottles2L,
+      });
+    expect(overLimitRes.status).toBe(400);
+    expect(overLimitRes.body.error).toContain('Volumen insuficiente');
+
+    // 3. Ajuste válido de botellas 1L (delta negativo: restituye insumo y reduce volumen envasado)
+    const updatePkgRes = await request(app)
+      .put(`/api/batches/packagings/${pkg.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        bottles1L: pkg.bottles1L - 1,
+        bottles2L: pkg.bottles2L,
+        notes: 'Ajuste de reducción de 1 botella envasada',
+      });
+
+    expect(updatePkgRes.status).toBe(200);
+    expect(updatePkgRes.body).toHaveProperty('packaging');
+    expect(updatePkgRes.body.packaging.bottles1L).toBe(pkg.bottles1L - 1);
+  });
 });

@@ -160,6 +160,7 @@ model ProductionBatch {
   price2L             Float             @default(24000)
   status              String            @default("COMPLETADO") // COMPLETADO, AGOTADO, EN_FERMENTACION, DESCARTADO, DISPONIBLE
   cultureType         String?
+  fermentationHours   Float?            @default(8)
   initialSugarGrams   Float?            @default(0)
   powderedMilkGrams   Float?            @default(0)
   packagedLiters      Float             @default(0)
@@ -189,6 +190,7 @@ model ProductionBatch {
 
 model BatchPackaging {
   id                 Int              @id @default(autoincrement())
+  packagingCode      String?
   batchId            Int
   batch              ProductionBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
   flavor             String
