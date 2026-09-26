@@ -64,18 +64,34 @@ export const updateBatchSchema = z.object({
   })).optional(),
 });
 
+export const packagingExtraItemSchema = z.object({
+  rawMaterialId: z.coerce.number().int().positive('ID de insumo inválido'),
+  quantityUsed: z.coerce.number().min(0, 'La cantidad consumida no puede ser negativa'),
+  dosagePerLiter: z.coerce.number().min(0).optional(),
+  dosageUnit: z.string().optional(),
+  unitCost: z.coerce.number().optional(),
+});
+
 export const patchBatchStatusSchema = z.object({
   status: z.enum(['EN_FERMENTACION', 'DISPONIBLE']),
+});
+
+export const patchBatchVolumeSchema = z.object({
+  totalLitersProduced: z.coerce.number().positive('El volumen producido debe ser mayor a 0'),
+  notes: z.string().optional(),
 });
 
 export const batchPackagingSchema = z.object({
   flavor: z.string().min(1, 'El sabor es obligatorio'),
   bottles1L: z.coerce.number().int().min(0).default(0),
   bottles2L: z.coerce.number().int().min(0).default(0),
+  price1L: z.coerce.number().min(0).optional(),
+  price2L: z.coerce.number().min(0).optional(),
   fruitRawMaterialId: z.coerce.number().int().positive().optional().nullable(),
   fruitQuantityUsed: z.coerce.number().min(0).optional().default(0),
   fruitDosageGramsPerLiter: z.coerce.number().min(0).optional(),
   useLabels: z.boolean().optional().default(true),
+  extraItems: z.array(packagingExtraItemSchema).optional(),
   notes: z.string().optional().nullable(),
   packagedBy: z.string().optional().default('Edier'),
   packagedAt: z.string().optional(),
@@ -86,10 +102,13 @@ export const updateBatchPackagingSchema = z.object({
   flavor: z.string().min(1).optional(),
   bottles1L: z.coerce.number().int().min(0).optional(),
   bottles2L: z.coerce.number().int().min(0).optional(),
+  price1L: z.coerce.number().min(0).optional(),
+  price2L: z.coerce.number().min(0).optional(),
   fruitRawMaterialId: z.coerce.number().int().positive().optional().nullable(),
   fruitQuantityUsed: z.coerce.number().min(0).optional(),
   fruitDosageGramsPerLiter: z.coerce.number().min(0).optional(),
   useLabels: z.boolean().optional(),
+  extraItems: z.array(packagingExtraItemSchema).optional(),
   notes: z.string().optional().nullable(),
   packagedBy: z.string().optional(),
   packagedAt: z.string().optional(),
@@ -165,3 +184,5 @@ export type CreateBatchDischargeInput = z.infer<typeof createBatchDischargeSchem
 export type BatchesQueryInput = z.infer<typeof batchesQuerySchema>;
 export type PendingOrdersQueryInput = z.infer<typeof pendingOrdersQuerySchema>;
 export type NextCodeQueryInput = z.infer<typeof nextCodeQuerySchema>;
+export type PackagingExtraItemInput = z.infer<typeof packagingExtraItemSchema>;
+export type PatchBatchVolumeInput = z.infer<typeof patchBatchVolumeSchema>;

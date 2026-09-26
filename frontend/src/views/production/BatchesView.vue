@@ -18,18 +18,24 @@ import {
   ChevronRight,
   Pencil,
   CheckCircle2,
+  Scale,
 } from 'lucide-vue-next';
 import { useProductionStore, type BatchItem, type BatchChip } from '@/stores/production.store';
 import BatchModal from '@/components/production/BatchModal.vue';
 import FlavorsManagementModal from '@/components/production/FlavorsManagementModal.vue';
 import PackagingModal from '@/components/production/PackagingModal.vue';
 import BatchSummaryModal from '@/components/production/BatchSummaryModal.vue';
+import AdjustVolumeModal from '@/components/production/AdjustVolumeModal.vue';
 
 const productionStore = useProductionStore();
 
 const isBatchModalOpen = ref(false);
 const isFlavorsModalOpen = ref(false);
 const selectedBatchToEdit = ref<BatchItem | null>(null);
+
+// Modal Ajuste de Rendimiento / Volumen
+const isAdjustVolumeModalOpen = ref(false);
+const selectedBatchForAdjustVolume = ref<BatchItem | null>(null);
 
 // Modales Fase B y Auditoría
 const isPackagingModalOpen = ref(false);
@@ -75,6 +81,12 @@ function openCreateBatchModal() {
 function openEditBatchModal(batch: BatchItem) {
   selectedBatchToEdit.value = batch;
   isBatchModalOpen.value = true;
+}
+
+// Abrir modal de ajuste de rendimiento y volumen
+function openAdjustVolumeModal(batch: BatchItem) {
+  selectedBatchForAdjustVolume.value = batch;
+  isAdjustVolumeModalOpen.value = true;
 }
 
 // Abrir modal de envasado
@@ -449,6 +461,18 @@ function openSummaryModal(batch: BatchItem) {
             <span>Editar Lote</span>
           </button>
 
+          <!-- Acción Ajustar Volumen / Rendimiento -->
+          <button
+            v-if="batch.status !== 'ARCHIVADO'"
+            type="button"
+            @click="openAdjustVolumeModal(batch)"
+            class="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50/70 px-3 py-1.5 text-xs font-bold text-purple-700 transition-colors hover:bg-purple-100 dark:border-purple-800/40 dark:bg-purple-950/30 dark:text-purple-300 dark:hover:bg-purple-900/40"
+            title="Ajustar volumen real obtenido por merma (griego) o expansión (almíbar)"
+          >
+            <Scale class="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+            <span>Rendimiento / Volumen</span>
+          </button>
+
           <!-- Acción Fase B: Envasar / Fraccionar Lote -->
           <button
             v-if="batch.status !== 'ARCHIVADO' && (batch.remainingAvailableLiters > 0 || batch.status === 'EN_FERMENTACION')"
@@ -543,6 +567,12 @@ function openSummaryModal(batch: BatchItem) {
       :batch-id="selectedBatchIdForSummary"
       @updated="productionStore.fetchBatches(productionStore.currentPage)"
       @edit-packaging="handleEditPackaging"
+    />
+
+    <AdjustVolumeModal
+      v-model:open="isAdjustVolumeModalOpen"
+      :batch="selectedBatchForAdjustVolume"
+      @updated="productionStore.fetchBatches(productionStore.currentPage)"
     />
   </div>
 </template>

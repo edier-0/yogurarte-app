@@ -8,6 +8,23 @@ import { getTodayDateBogota } from './finance.store';
 
 export type BatchChip = 'ALL' | 'ACTIVE' | 'DEPLETED' | 'ARCHIVED';
 
+export interface BatchPackagingExtraItem {
+  id?: number;
+  rawMaterialId: number;
+  rawMaterial?: {
+    id: number;
+    name: string;
+    unit: string;
+    code: string;
+    avgCost?: number;
+  };
+  quantityUsed: number;
+  dosagePerLiter?: number;
+  dosageUnit?: string;
+  unitCost?: number;
+  totalCost?: number;
+}
+
 export interface BatchPackagingItem {
   id: number;
   batchId: number;
@@ -16,6 +33,8 @@ export interface BatchPackagingItem {
   bottles1L: number;
   bottles2L: number;
   totalLiters: number;
+  price1L?: number | null;
+  price2L?: number | null;
   fruitRawMaterialId?: number | null;
   fruitQuantityUsed?: number;
   fruitUnitCost?: number;
@@ -24,16 +43,26 @@ export interface BatchPackagingItem {
   packagedBy?: string;
   packagedAt: string;
   createdAt: string;
+  itemsUsed?: BatchPackagingExtraItem[];
 }
 
 export interface BatchPackagingPayload {
   flavor: string;
   bottles1L: number;
   bottles2L: number;
+  price1L?: number;
+  price2L?: number;
   fruitRawMaterialId?: number | null;
   fruitQuantityUsed?: number;
   fruitDosageGramsPerLiter?: number;
   useLabels?: boolean;
+  extraItems?: Array<{
+    rawMaterialId: number;
+    quantityUsed: number;
+    dosagePerLiter?: number;
+    dosageUnit?: string;
+    unitCost?: number;
+  }>;
   notes?: string | null;
   packagedBy?: string;
   packagedAt?: string;
@@ -44,10 +73,19 @@ export interface UpdateBatchPackagingPayload {
   flavor?: string;
   bottles1L?: number;
   bottles2L?: number;
+  price1L?: number;
+  price2L?: number;
   fruitRawMaterialId?: number | null;
   fruitQuantityUsed?: number;
   fruitDosageGramsPerLiter?: number;
   useLabels?: boolean;
+  extraItems?: Array<{
+    rawMaterialId: number;
+    quantityUsed: number;
+    dosagePerLiter?: number;
+    dosageUnit?: string;
+    unitCost?: number;
+  }>;
   notes?: string | null;
   packagedBy?: string;
   packagedAt?: string;
@@ -391,6 +429,24 @@ export const useProductionStore = defineStore('production', () => {
     }
   }
 
+  // Ajustar volumen real obtenido del lote madre (merma por desuerado o expansión por almíbar)
+  async function patchBatchVolume(batchId: number, totalLitersProduced: number, notes?: string) {
+    isLoading.value = true;
+    try {
+      const res = await http.patch<{ message: string; batch: BatchItem }>(
+        `/batches/${batchId}/volume`,
+        { totalLitersProduced, notes }
+      );
+      toast.success('Volumen Real Actualizado', {
+        description: res.message || 'Volumen de lote madre recalculado exitosamente.',
+      });
+      await fetchBatches(currentPage.value);
+      return res.batch;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   // Actualizar lote de producción con balance delta (Fase A)
   async function updateBatch(batchId: number, payload: UpdateBatchPayload) {
     isLoading.value = true;
@@ -646,6 +702,7 @@ export const useProductionStore = defineStore('production', () => {
     createBatch,
     updateBatch,
     patchBatchStatus,
+    patchBatchVolume,
     fetchNextBatchCode,
     packageBatch,
     updateBatchPackaging,

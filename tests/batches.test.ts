@@ -758,4 +758,229 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
     const labelsAfter = await prisma.rawMaterial.findFirst({ where: { code: 'ETIQUETA' } });
     expect(labelsAfter?.currentStock).toBe(stockBefore);
   });
+
+  it('Ajuste de Volumen Real por Expansión de Almíbar: Aumenta a 26L, actualiza rendimiento y expande tope disponible', async () => {
+    // 1. Crear lote base de 24L de leche
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 24,
+        totalLitersProduced: 24,
+        flavor: 'Base Para Almibar',
+        status: 'EN_FERMENTACION',
+      });
+    expect(batchRes.status).toBe(201);
+    const batchId = batchRes.body.id;
+
+    // 2. Ajustar volumen a 26L (expansión por almíbar)
+    const patchRes = await request(app)
+      .patch(`/api/batches/${batchId}/volume`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        totalLitersProduced: 26,
+        notes: 'Adición de 2L de almíbar base',
+      });
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.batch.totalLitersProduced).toBe(26);
+    expect(patchRes.body.batch.yieldPercentage).toBeCloseTo(108.33, 1);
+    const expectedCpl = Math.round(patchRes.body.batch.totalCost / 26);
+    expect(patchRes.body.batch.costPerLiter).toBe(expectedCpl);
+
+    // 3. Envasar hasta 26 botellas de 1L (26L)
+    const pkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Yogur Dulce Almibarado',
+        bottles1L: 26,
+        bottles2L: 0,
+        useLabels: false,
+      });
+    expect(pkgRes.status).toBe(201);
+    expect(pkgRes.body.packaging.totalLiters).toBe(26);
+  });
+
+  it('Merma por Desuerado (Yogur Griego): Disminuye a 11L, absorbe costo de la leche y bloquea sobre-envasado', async () => {
+    // 1. Crear lote base de 24L de leche (costo $67.200 COP)
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 24,
+        totalLitersProduced: 24,
+        flavor: 'Base Griego Artesanal',
+        status: 'EN_FERMENTACION',
+      });
+    expect(batchRes.status).toBe(201);
+    const batchId = batchRes.body.id;
+    const initialCost = batchRes.body.totalCost;
+
+    // 2. Ajustar volumen a 11L tras desuerado
+    const patchRes = await request(app)
+      .patch(`/api/batches/${batchId}/volume`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        totalLitersProduced: 11,
+        notes: 'Desuerado lento para yogur griego estilo tradicional',
+      });
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.batch.totalLitersProduced).toBe(11);
+    expect(patchRes.body.batch.yieldPercentage).toBeCloseTo(45.83, 1);
+    expect(patchRes.body.batch.costPerLiter).toBe(Math.round(initialCost / 11));
+
+    // 3. Guardia: Intentar envasar 12L debe fallar con error 400 por superar los 11L disponibles
+    const failPkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Griego Premium',
+        bottles1L: 12,
+        bottles2L: 0,
+        useLabels: false,
+      });
+    expect(failPkgRes.status).toBe(400);
+    expect(failPkgRes.body.error || failPkgRes.body.message).toContain('Volumen insuficiente');
+
+    // 4. Envasar exactamente 10L (10 botellas de 1L)
+    const okPkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Griego Premium',
+        bottles1L: 10,
+        bottles2L: 0,
+        useLabels: false,
+      });
+    expect(okPkgRes.status).toBe(201);
+
+    // 5. Guardia de reducción: Intentar reducir el volumen producido por debajo de 10L debe fallar
+    const invalidReduction = await request(app)
+      .patch(`/api/batches/${batchId}/volume`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        totalLitersProduced: 9,
+      });
+    expect(invalidReduction.status).toBe(400);
+    expect(invalidReduction.body.error || invalidReduction.body.message).toContain('no puede ser menor a los litros ya envasados');
+  });
+
+  it('Fase B Multi-Insumo: Fraccionamiento con múltiples adiciones (Pulpa + Almíbar) y pesaje exacto al gramo', async () => {
+    // 1. Asegurar insumos de prueba
+    const pulpa = await prisma.rawMaterial.upsert({
+      where: { code: 'PULPA_MULTI_TEST' },
+      update: { currentStock: 50, avgCost: 9000, isActive: true },
+      create: {
+        code: 'PULPA_MULTI_TEST',
+        name: 'Pulpa de Frutos Silvestres Multi',
+        unit: 'Kg',
+        currentStock: 50,
+        avgCost: 9000,
+        category: 'INSUMO',
+        isActive: true,
+      },
+    });
+
+    const almibar = await prisma.rawMaterial.upsert({
+      where: { code: 'ALMIBAR_MULTI_TEST' },
+      update: { currentStock: 50, avgCost: 6000, isActive: true },
+      create: {
+        code: 'ALMIBAR_MULTI_TEST',
+        name: 'Almíbar Artesanal Multi',
+        unit: 'Kilogramos',
+        currentStock: 50,
+        avgCost: 6000,
+        category: 'INSUMO',
+        isActive: true,
+      },
+    });
+
+    // 2. Crear lote
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 20,
+        totalLitersProduced: 20,
+        flavor: 'Base Multi Insumos',
+        status: 'EN_FERMENTACION',
+      });
+    const batchId = batchRes.body.id;
+
+    // 3. Envasar fracción de 10L con 2 insumos extras:
+    // Insumo 1: 50 g/L -> Math.round(50 * 10) = 500 g = 0.5 kg
+    // Insumo 2: 25 g/L -> Math.round(25 * 10) = 250 g = 0.25 kg
+    const pkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Frutos del Bosque Glaseado',
+        bottles1L: 10,
+        bottles2L: 0,
+        useLabels: false,
+        extraItems: [
+          {
+            rawMaterialId: pulpa.id,
+            quantityUsed: 0,
+            dosagePerLiter: 50,
+          },
+          {
+            rawMaterialId: almibar.id,
+            quantityUsed: 0,
+            dosagePerLiter: 25,
+          },
+        ],
+      });
+    expect(pkgRes.status).toBe(201);
+    expect(pkgRes.body.packaging.itemsUsed).toHaveLength(2);
+
+    // 4. Validar que los stocks se descontaron exactamente
+    const updatedPulpa = await prisma.rawMaterial.findUnique({ where: { id: pulpa.id } });
+    const updatedAlmibar = await prisma.rawMaterial.findUnique({ where: { id: almibar.id } });
+    expect(updatedPulpa?.currentStock).toBeCloseTo(49.5, 3);
+    expect(updatedAlmibar?.currentStock).toBeCloseTo(49.75, 3);
+
+    // 5. Validar impacto en packagingCost (6000 insumos + 7700 envases = 13700)
+    expect(pkgRes.body.packaging.packagingCost).toBe(13700);
+  });
+
+  it('Precios Diferenciados por Fracción: Permite fijar y consultar price1L y price2L por fracción', async () => {
+    // 1. Crear lote
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 15,
+        totalLitersProduced: 15,
+        flavor: 'Base Precios',
+        status: 'EN_FERMENTACION',
+      });
+    const batchId = batchRes.body.id;
+
+    // 2. Envasar fracción con precios personalizados para yogur griego (16.000 / 30.000 COP)
+    const pkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Griego Fracción Especial',
+        bottles1L: 5,
+        bottles2L: 2,
+        price1L: 16000,
+        price2L: 30000,
+        useLabels: false,
+      });
+    expect(pkgRes.status).toBe(201);
+    expect(pkgRes.body.packaging.price1L).toBe(16000);
+    expect(pkgRes.body.packaging.price2L).toBe(30000);
+
+    // 3. Consultar lote y verificar que la fracción incluye sus precios y sus itemsUsed
+    const getRes = await request(app)
+      .get(`/api/batches/${batchId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(getRes.status).toBe(200);
+    const foundPkg = getRes.body.packagings.find((p: any) => p.id === pkgRes.body.packaging.id);
+    expect(foundPkg).toBeDefined();
+    expect(foundPkg.price1L).toBe(16000);
+    expect(foundPkg.price2L).toBe(30000);
+  });
 });

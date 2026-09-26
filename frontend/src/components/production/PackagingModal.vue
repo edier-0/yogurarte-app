@@ -18,6 +18,10 @@ import {
   Layers,
   Scale,
   DollarSign,
+  Plus,
+  Trash2,
+  Tag,
+  TrendingUp,
 } from 'lucide-vue-next';
 import {
   useProductionStore,
@@ -47,13 +51,20 @@ const customFlavorName = ref<string>('');
 const flavorVariant = ref<string>('');
 const bottles1L = ref<number>(0);
 const bottles2L = ref<number>(0);
+const price1L = ref<number>(12000);
+const price2L = ref<number>(24000);
 const useLabels = ref<boolean>(true);
-const fruitRawMaterialId = ref<number | null>(null);
-const fruitDosageGramsPerLiter = ref<number | ''>('');
-const fruitQuantityUsed = ref<number | ''>('');
 const notes = ref<string>('');
 const packagedBy = ref<string>('Edier');
 const packagedAt = ref<string>(getTodayDateBogota());
+
+// Insumos extras multi-fila
+export interface ExtraItemRow {
+  rawMaterialId: number | '';
+  dosagePerLiter: number | '';
+  quantityUsed: number | '';
+}
+const extraItems = ref<ExtraItemRow[]>([]);
 
 // Pre-ventas
 const pendingOrders = ref<any[]>([]);
@@ -71,7 +82,6 @@ interface MaterialItem {
   category: string;
 }
 const allMaterials = ref<MaterialItem[]>([]);
-const fruitMaterials = ref<MaterialItem[]>([]);
 const isLoadingMaterials = ref<boolean>(false);
 
 // Control de envío
@@ -152,47 +162,105 @@ function isKgUnit(unit?: string): boolean {
   );
 }
 
-// Insumo de fruta seleccionado
-const selectedFruitMaterial = computed(() => {
-  return fruitMaterials.value.find((m) => m.id === fruitRawMaterialId.value);
+// Insumos elegibles para adición en Fase B (excluye botellas, tapas, etiquetas y leche cruda ya inoculada)
+const candidateMaterials = computed(() => {
+  return allMaterials.value.filter((m) => {
+    const cat = (m.category || '').toUpperCase();
+    const code = (m.code || '').toUpperCase();
+    const name = (m.name || '').toLowerCase();
+    const isPackaging =
+      cat === 'EMPAQUE' ||
+      cat === 'ENVASES' ||
+      code === 'BOTELLA_1L' ||
+      code === 'BOTELLA_2L' ||
+      code === 'TAPA' ||
+      code === 'ETIQUETA' ||
+      name.includes('botella') ||
+      name.includes('tapa') ||
+      name.includes('etiqueta');
+    const isMilk =
+      code === 'LECHE' ||
+      code === 'LECHE_TEST' ||
+      name.includes('leche cruda') ||
+      name.includes('leche entera');
+    return !isPackaging && !isMilk;
+  });
 });
 
-const isFruitKg = computed(() => {
-  return isKgUnit(selectedFruitMaterial.value?.unit);
-});
+// Métodos para lista multi-fila de adiciones
+function addExtraItem() {
+  extraItems.value.push({
+    rawMaterialId: '',
+    dosagePerLiter: '',
+    quantityUsed: '',
+  });
+}
 
-// Pesaje exacto con redondeo al gramo entero más cercano:
-// Gramos Totales = Math.round(Dosis (g/L) * Litros a Envasar)
-const totalFruitGrams = computed(() => {
-  if (!isFruitKg.value) return 0;
-  const dose =
-    typeof fruitDosageGramsPerLiter.value === 'number' && !isNaN(fruitDosageGramsPerLiter.value)
-      ? fruitDosageGramsPerLiter.value
-      : 0;
-  return Math.round(dose * requiredLiters.value);
-});
+function removeExtraItem(index: number) {
+  extraItems.value.splice(index, 1);
+}
 
-const calculatedFruitKg = computed(() => {
-  return Math.round(totalFruitGrams.value) / 1000;
-});
+// Helper para cálculo y validación de cada fila de insumo extra
+function getExtraItemCalc(row: ExtraItemRow) {
+  if (!row.rawMaterialId) return null;
+  const mat = allMaterials.value.find((m) => m.id === row.rawMaterialId);
+  if (!mat) return null;
+  const isKg = isKgUnit(mat.unit);
+  const liters = requiredLiters.value;
 
-// Cantidad efectiva a descontar del inventario
-const effectiveFruitQuantityUsed = computed(() => {
-  if (!selectedFruitMaterial.value) return 0;
-  if (isFruitKg.value) {
-    return calculatedFruitKg.value;
+  if (isKg) {
+    const dose = typeof row.dosagePerLiter === 'number' && !isNaN(row.dosagePerLiter) ? row.dosagePerLiter : 0;
+    // Gramos Totales = Math.round(Dosis (g/L) * Litros a Envasar)
+    const totalGrams = Math.round(dose * liters);
+    const quantityUsedKg = Math.round(totalGrams) / 1000;
+    const totalCost = Math.round(quantityUsedKg * (mat.avgCost || 0));
+    const isStockInsufficient = quantityUsedKg > (mat.currentStock || 0);
+
+    return {
+      material: mat,
+      isKg: true,
+      totalGrams,
+      quantityUsed: quantityUsedKg,
+      unitCost: mat.avgCost || 0,
+      totalCost,
+      isStockInsufficient,
+      displayText: totalGrams > 0 ? `${totalGrams.toLocaleString('es-CO')} g (${quantityUsedKg.toFixed(3)} kg)` : '0 g',
+    };
+  } else {
+    const qty = typeof row.quantityUsed === 'number' && !isNaN(row.quantityUsed) ? row.quantityUsed : 0;
+    const totalCost = Math.round(qty * (mat.avgCost || 0));
+    const isStockInsufficient = qty > (mat.currentStock || 0);
+
+    return {
+      material: mat,
+      isKg: false,
+      totalGrams: 0,
+      quantityUsed: qty,
+      unitCost: mat.avgCost || 0,
+      totalCost,
+      isStockInsufficient,
+      displayText: `${qty} ${mat.unit}`,
+    };
   }
-  return typeof fruitQuantityUsed.value === 'number' ? fruitQuantityUsed.value : 0;
+}
+
+// Costo acumulado de insumos extras
+const extraItemsTotalCost = computed(() => {
+  return extraItems.value.reduce((sum, row) => {
+    const calc = getExtraItemCalc(row);
+    return sum + (calc ? calc.totalCost : 0);
+  }, 0);
 });
 
-// Validación de stock de fruta
-const fruitStockInsufficient = computed(() => {
-  if (!selectedFruitMaterial.value) return false;
-  const needed = effectiveFruitQuantityUsed.value;
-  return needed > (selectedFruitMaterial.value.currentStock || 0);
+// Validación de stock insuficiente en alguna fila
+const hasInsufficientStock = computed(() => {
+  return extraItems.value.some((row) => {
+    const calc = getExtraItemCalc(row);
+    return calc ? calc.isStockInsufficient : false;
+  });
 });
 
-// Materiales de empaque encontrados
+// Materiales de empaque estándar
 const bottle1LMaterial = computed(() =>
   allMaterials.value.find(
     (m) => m.code === 'BOTELLA_1L' || m.name.toLowerCase().includes('1 litro')
@@ -214,7 +282,7 @@ const labelMaterial = computed(() =>
   )
 );
 
-// Costos desglosados para proyección financiera
+// Costos desglosados para proyección financiera integral
 const bottlesCost = computed(() => {
   const b1Cost = bottle1LMaterial.value?.avgCost || 650;
   const b2Cost = bottle2LMaterial.value?.avgCost || 1100;
@@ -232,18 +300,40 @@ const labelsCost = computed(() => {
   return totalBottles.value * lblCost;
 });
 
-const fruitTotalCost = computed(() => {
-  if (!selectedFruitMaterial.value) return 0;
-  return Math.round(effectiveFruitQuantityUsed.value * (selectedFruitMaterial.value.avgCost || 0));
-});
-
 const projectedPackagingCost = computed(() => {
-  return bottlesCost.value + capsCost.value + labelsCost.value + fruitTotalCost.value;
+  return bottlesCost.value + capsCost.value + labelsCost.value + extraItemsTotalCost.value;
 });
 
-const packagingCostPerLiter = computed(() => {
+const baseMilkCost = computed(() => {
+  const costPerLiter = Number(props.batch?.costPerLiter) || 2800;
+  return Math.round(requiredLiters.value * costPerLiter);
+});
+
+const totalBatchFractionCost = computed(() => {
+  return baseMilkCost.value + projectedPackagingCost.value;
+});
+
+const totalCostPerLiter = computed(() => {
   if (requiredLiters.value <= 0) return 0;
-  return Math.round(projectedPackagingCost.value / requiredLiters.value);
+  return Math.round(totalBatchFractionCost.value / requiredLiters.value);
+});
+
+// Proyección de ingresos y margen bruto
+const projectedRevenue = computed(() => {
+  const b1 = Number(bottles1L.value) || 0;
+  const b2 = Number(bottles2L.value) || 0;
+  const p1 = Number(price1L.value) || 0;
+  const p2 = Number(price2L.value) || 0;
+  return b1 * p1 + b2 * p2;
+});
+
+const projectedGrossMargin = computed(() => {
+  return projectedRevenue.value - totalBatchFractionCost.value;
+});
+
+const projectedGrossMarginPercent = computed(() => {
+  if (projectedRevenue.value <= 0) return 0;
+  return Math.round((projectedGrossMargin.value / projectedRevenue.value) * 1000) / 10;
 });
 
 // Validación global del formulario
@@ -251,8 +341,9 @@ const isValid = computed(() => {
   const hasBottles = requiredLiters.value > 0;
   const notExceeds = !exceedsVolume.value;
   const hasFlavor = resolvedFlavor.value.trim().length > 0;
-  const fruitOk = !fruitStockInsufficient.value;
-  return hasBottles && notExceeds && hasFlavor && fruitOk && !isSubmitting.value;
+  const stockOk = !hasInsufficientStock.value;
+  const pricesOk = (Number(price1L.value) || 0) >= 0 && (Number(price2L.value) || 0) >= 0;
+  return hasBottles && notExceeds && hasFlavor && stockOk && pricesOk && !isSubmitting.value;
 });
 
 // Total de litros requeridos por las órdenes pre-seleccionadas
@@ -279,18 +370,9 @@ async function loadInventoryMaterials() {
     const list = await http.get<MaterialItem[]>('/inventory/materials');
     if (Array.isArray(list)) {
       allMaterials.value = list;
-      fruitMaterials.value = list.filter(
-        (m) =>
-          m.category === 'INSUMO' ||
-          m.category === 'MATERIA_PRIMA' ||
-          m.name.toLowerCase().includes('mermelada') ||
-          m.name.toLowerCase().includes('fruta') ||
-          m.name.toLowerCase().includes('pulpa')
-      );
     }
   } catch {
     allMaterials.value = [];
-    fruitMaterials.value = [];
   } finally {
     isLoadingMaterials.value = false;
   }
@@ -347,8 +429,9 @@ watch(
         flavorVariant.value = '';
         bottles1L.value = pkg.bottles1L;
         bottles2L.value = pkg.bottles2L;
+        price1L.value = pkg.price1L ?? 12000;
+        price2L.value = pkg.price2L ?? 24000;
         useLabels.value = (pkg as any).useLabels !== false;
-        fruitRawMaterialId.value = pkg.fruitRawMaterialId || null;
         notes.value = pkg.notes || '';
         packagedBy.value = pkg.packagedBy || 'Edier';
         packagedAt.value = pkg.packagedAt ? pkg.packagedAt.split('T')[0] : getTodayDateBogota();
@@ -356,19 +439,36 @@ watch(
 
         await loadInventoryMaterials();
 
-        if (pkg.fruitQuantityUsed && pkg.totalLiters > 0) {
-          const mat = fruitMaterials.value.find((m) => m.id === pkg.fruitRawMaterialId);
-          if (mat && isKgUnit(mat.unit)) {
-            fruitDosageGramsPerLiter.value =
-              Math.round(((pkg.fruitQuantityUsed * 1000) / pkg.totalLiters) * 1000) / 1000;
-            fruitQuantityUsed.value = '';
-          } else {
-            fruitQuantityUsed.value = pkg.fruitQuantityUsed;
-            fruitDosageGramsPerLiter.value = '';
-          }
+        // Mapear insumos extras previos
+        if (pkg.itemsUsed && pkg.itemsUsed.length > 0) {
+          extraItems.value = pkg.itemsUsed.map((it) => {
+            const mat = allMaterials.value.find((m) => m.id === it.rawMaterialId);
+            const isKg = isKgUnit(mat?.unit);
+            return {
+              rawMaterialId: it.rawMaterialId,
+              dosagePerLiter:
+                it.dosagePerLiter ??
+                (isKg && pkg.totalLiters > 0
+                  ? Math.round(((it.quantityUsed * 1000) / pkg.totalLiters) * 1000) / 1000
+                  : ''),
+              quantityUsed: isKg ? '' : it.quantityUsed,
+            };
+          });
+        } else if (pkg.fruitRawMaterialId) {
+          const mat = allMaterials.value.find((m) => m.id === pkg.fruitRawMaterialId);
+          const isKg = isKgUnit(mat?.unit);
+          extraItems.value = [
+            {
+              rawMaterialId: pkg.fruitRawMaterialId,
+              dosagePerLiter:
+                isKg && pkg.totalLiters > 0
+                  ? Math.round((((pkg.fruitQuantityUsed || 0) * 1000) / pkg.totalLiters) * 1000) / 1000
+                  : '',
+              quantityUsed: isKg ? '' : pkg.fruitQuantityUsed || '',
+            },
+          ];
         } else {
-          fruitDosageGramsPerLiter.value = '';
-          fruitQuantityUsed.value = '';
+          extraItems.value = [];
         }
       } else {
         baseFlavor.value = (currentBatch as BatchItem).flavor || 'Natural';
@@ -376,10 +476,10 @@ watch(
         flavorVariant.value = '';
         bottles1L.value = 0;
         bottles2L.value = 0;
+        price1L.value = 12000;
+        price2L.value = 24000;
         useLabels.value = true;
-        fruitRawMaterialId.value = null;
-        fruitDosageGramsPerLiter.value = '';
-        fruitQuantityUsed.value = '';
+        extraItems.value = [];
         notes.value = '';
         packagedBy.value = 'Edier';
         packagedAt.value = getTodayDateBogota();
@@ -412,17 +512,31 @@ async function handleSubmit() {
   errorMessage.value = null;
 
   try {
+    // Mapear insumos extras resolviendo cantidades y costos
+    const resolvedExtraItems = extraItems.value
+      .filter((r) => r.rawMaterialId)
+      .map((r) => {
+        const calc = getExtraItemCalc(r)!;
+        return {
+          rawMaterialId: Number(r.rawMaterialId),
+          quantityUsed: calc.quantityUsed,
+          dosagePerLiter: calc.isKg && typeof r.dosagePerLiter === 'number' ? r.dosagePerLiter : undefined,
+          dosageUnit: calc.isKg ? 'g/L' : calc.material.unit,
+          unitCost: calc.unitCost,
+        };
+      })
+      .filter((it) => it.quantityUsed > 0);
+
     const payload: BatchPackagingPayload = {
       flavor: resolvedFlavor.value,
       bottles1L: Number(bottles1L.value) || 0,
       bottles2L: Number(bottles2L.value) || 0,
-      fruitRawMaterialId: fruitRawMaterialId.value ? Number(fruitRawMaterialId.value) : undefined,
-      fruitQuantityUsed:
-        effectiveFruitQuantityUsed.value > 0 ? effectiveFruitQuantityUsed.value : undefined,
-      fruitDosageGramsPerLiter:
-        typeof fruitDosageGramsPerLiter.value === 'number' && fruitDosageGramsPerLiter.value > 0
-          ? fruitDosageGramsPerLiter.value
-          : undefined,
+      price1L: Number(price1L.value) || 0,
+      price2L: Number(price2L.value) || 0,
+      extraItems: resolvedExtraItems.length > 0 ? resolvedExtraItems : undefined,
+      // Retrocompatibilidad si el primer insumo es fruta
+      fruitRawMaterialId: resolvedExtraItems[0]?.rawMaterialId,
+      fruitQuantityUsed: resolvedExtraItems[0]?.quantityUsed,
       useLabels: useLabels.value,
       notes: notes.value ? notes.value.trim() : undefined,
       packagedBy: packagedBy.value ? packagedBy.value.trim() : 'Edier',
@@ -451,7 +565,7 @@ async function handleSubmit() {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity" />
 
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7 max-h-[92vh] overflow-y-auto"
+        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7 max-h-[92vh] overflow-y-auto"
       >
         <!-- Cabecera del Diálogo -->
         <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
@@ -464,7 +578,7 @@ async function handleSubmit() {
                 {{ isEditMode ? 'Editar Fraccionamiento de Lote' : 'Envasar y Fraccionar Lote' }}
               </DialogTitle>
               <DialogDescription class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Fase B · Dosificación por litro, envases y vinculación de pre-ventas
+                Fase B · Multi-insumos, dosificación en g/L, precios por fracción y balance lácteo
               </DialogDescription>
             </div>
           </div>
@@ -493,7 +607,7 @@ async function handleSubmit() {
 
               <div class="flex items-center gap-3 text-xs">
                 <div>
-                  <span class="text-slate-400">Total Lote:</span>
+                  <span class="text-slate-400">Volumen Real Lote:</span>
                   <span class="ml-1 font-extrabold text-slate-700 dark:text-slate-300">
                     {{ batch.totalLitersProduced }} L
                   </span>
@@ -676,164 +790,288 @@ async function handleSubmit() {
             </div>
           </div>
 
-          <!-- Dosificación Dinámica de Fruta / Mermelada -->
+          <!-- Precios de Venta por Fracción -->
           <div class="space-y-3 rounded-2xl border border-surface-light-border bg-surface-light-card p-4 dark:border-surface-dark-border dark:bg-surface-dark-card">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 dark:text-white">
-                <Scale class="h-4 w-4 text-purple-500" />
-                <span>Fruta o Mermelada Utilizada</span>
-                <span class="font-normal text-slate-400">(Opcional)</span>
+                <Tag class="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Precios de Venta de Esta Fracción ($ COP)</span>
               </div>
-              <span class="text-[11px] text-slate-400">Dosificación industrial y pesaje exacto</span>
+              <span class="text-[11px] font-bold text-slate-400">Precios por botella terminada</span>
             </div>
 
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                  Insumo de Fruta / Pulpa / Mermelada
-                </label>
-                <select
-                  v-model.number="fruitRawMaterialId"
-                  class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-                >
-                  <option :value="null">-- Ninguna / Sabor natural --</option>
-                  <option v-for="mat in fruitMaterials" :key="mat.id" :value="mat.id">
-                    {{ mat.name }} (Stock: {{ mat.currentStock }} {{ mat.unit }} | Costo: {{ formatCurrency(mat.avgCost) }})
-                  </option>
-                </select>
-              </div>
-
-              <!-- Dosis en g/L si la unidad es Kilogramos -->
-              <div v-if="selectedFruitMaterial && isFruitKg">
-                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                  Dosis en Gramos por Litro (g/L) *
+                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Precio de Venta Botella 1L
                 </label>
                 <div class="relative">
+                  <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">$</span>
                   <input
-                    v-model.number="fruitDosageGramsPerLiter"
+                    v-model.number="price1L"
                     type="number"
                     min="0"
-                    step="0.001"
-                    placeholder="Ej. 120 (g/L)"
-                    class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                    step="500"
+                    placeholder="12000"
+                    class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-8 pr-3.5 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
                   />
-                  <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                    g / L
-                  </span>
                 </div>
               </div>
 
-              <!-- Cantidad libre si la unidad es distinta de Kg -->
-              <div v-else-if="selectedFruitMaterial">
-                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                  Cantidad a Consumir ({{ selectedFruitMaterial.unit }}) *
+              <div>
+                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Precio de Venta Botella 2L
                 </label>
-                <input
-                  v-model.number="fruitQuantityUsed"
-                  type="number"
-                  min="0.01"
-                  step="any"
-                  :placeholder="`Cantidad en ${selectedFruitMaterial.unit}`"
-                  class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-                />
-              </div>
-            </div>
-
-            <!-- Panel de Pesaje Exacto al Gramo Entero -->
-            <div
-              v-if="selectedFruitMaterial && isFruitKg"
-              class="rounded-xl border border-purple-100 bg-purple-50/50 p-3 text-xs dark:border-purple-900/40 dark:bg-purple-950/20"
-            >
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <span class="block text-[10px] font-bold uppercase text-purple-600 dark:text-purple-400">
-                    Pesaje en Báscula (Gramo Entero)
-                  </span>
-                  <span class="text-sm font-black text-purple-950 dark:text-purple-200">
-                    {{ totalFruitGrams.toLocaleString('es-CO') }} g
-                  </span>
-                </div>
-
-                <div class="text-right">
-                  <span class="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
-                    Descuento de Almacén
-                  </span>
-                  <span class="font-extrabold text-slate-800 dark:text-slate-200">
-                    {{ calculatedFruitKg }} kg
-                  </span>
-                  <span class="text-[11px] text-slate-400">
-                    / {{ selectedFruitMaterial.currentStock }} kg disponibles
-                  </span>
+                <div class="relative">
+                  <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">$</span>
+                  <input
+                    v-model.number="price2L"
+                    type="number"
+                    min="0"
+                    step="500"
+                    placeholder="24000"
+                    class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-8 pr-3.5 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                  />
                 </div>
               </div>
             </div>
 
-            <!-- Alerta por stock insuficiente de fruta -->
-            <div
-              v-if="fruitStockInsufficient"
-              class="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50/80 p-2.5 text-xs font-semibold text-rose-800 dark:border-rose-800/40 dark:bg-rose-950/30 dark:text-rose-300"
-            >
-              <AlertCircle class="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
-              <span>
-                Stock insuficiente de {{ selectedFruitMaterial?.name }}. Requieres {{ effectiveFruitQuantityUsed }} {{ selectedFruitMaterial?.unit }} y dispones de {{ selectedFruitMaterial?.currentStock }} {{ selectedFruitMaterial?.unit }}.
+            <!-- Resumen de Facturación Proyectada -->
+            <div class="flex items-center justify-between border-t border-slate-100 pt-2 text-xs dark:border-slate-800">
+              <span class="text-slate-500">Ingreso bruto proyectado:</span>
+              <span class="font-black text-emerald-600 dark:text-emerald-400">
+                {{ formatCurrency(projectedRevenue) }}
               </span>
             </div>
           </div>
 
-          <!-- Desglose Financiero de Envasado -->
-          <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-4 dark:border-surface-dark-border dark:bg-surface-dark-card">
+          <!-- Insumos Extras Multi-Fila (Fruta, Almíbar, Pulpas, Esencias) -->
+          <div class="space-y-3 rounded-2xl border border-surface-light-border bg-surface-light-card p-4 dark:border-surface-dark-border dark:bg-surface-dark-card">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 dark:text-white">
+                <Scale class="h-4 w-4 text-purple-500" />
+                <span>Insumos Extras & Adiciones (Fruta, Almíbar, Pulpas)</span>
+              </div>
+              <button
+                type="button"
+                @click="addExtraItem"
+                class="inline-flex items-center gap-1 rounded-xl bg-purple-50 px-2.5 py-1 text-xs font-bold text-purple-700 hover:bg-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:bg-purple-900/50 transition-colors"
+              >
+                <Plus class="h-3.5 w-3.5" />
+                <span>Agregar Insumo</span>
+              </button>
+            </div>
+
+            <div v-if="extraItems.length === 0" class="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+              No se han agregado insumos adicionales. Si la fracción lleva pulpa, almíbar o esencia, presiona [+ Agregar Insumo].
+            </div>
+
+            <div v-else class="space-y-3">
+              <div
+                v-for="(item, idx) in extraItems"
+                :key="idx"
+                class="rounded-xl border border-surface-light-border bg-slate-50/50 p-3 text-xs dark:border-surface-dark-border dark:bg-surface-dark-canvas/50 space-y-2.5"
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <!-- Selector de Insumo -->
+                  <div class="flex-1">
+                    <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      Insumo / Adición #{{ idx + 1 }} *
+                    </label>
+                    <select
+                      v-model.number="item.rawMaterialId"
+                      class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3 py-2 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                    >
+                      <option :value="''">-- Seleccionar insumo de almacén --</option>
+                      <option v-for="mat in candidateMaterials" :key="mat.id" :value="mat.id">
+                        {{ mat.name }} (Stock: {{ mat.currentStock }} {{ mat.unit }} | Costo: {{ formatCurrency(mat.avgCost) }})
+                      </option>
+                    </select>
+                  </div>
+
+                  <!-- Botón Eliminar Fila -->
+                  <button
+                    type="button"
+                    @click="removeExtraItem(idx)"
+                    class="mt-6 rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 transition-colors"
+                    title="Eliminar insumo"
+                  >
+                    <Trash2 class="h-4 w-4" />
+                  </button>
+                </div>
+
+                <!-- Input de Dosificación o Cantidad -->
+                <div v-if="item.rawMaterialId" class="grid grid-cols-1 gap-2 sm:grid-cols-2 items-center">
+                  <!-- Si es en KG -> Dosificación g/L -->
+                  <div v-if="getExtraItemCalc(item)?.isKg">
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                      Dosis en Gramos por Litro (g/L) *
+                    </label>
+                    <div class="relative">
+                      <input
+                        v-model.number="item.dosagePerLiter"
+                        type="number"
+                        min="0.001"
+                        step="0.001"
+                        placeholder="Ej. 120"
+                        class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3 py-1.5 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white pr-10"
+                      />
+                      <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">
+                        g / L
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Si es otra unidad -> Cantidad directa -->
+                  <div v-else>
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                      Cantidad Utilizada ({{ getExtraItemCalc(item)?.material.unit }}) *
+                    </label>
+                    <input
+                      v-model.number="item.quantityUsed"
+                      type="number"
+                      min="0.01"
+                      step="any"
+                      :placeholder="`Cant. en ${getExtraItemCalc(item)?.material.unit}`"
+                      class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3 py-1.5 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                    />
+                  </div>
+
+                  <!-- Subtotal de costo de la fila -->
+                  <div class="flex items-center justify-between sm:justify-end gap-2 text-right">
+                    <div>
+                      <span class="block text-[10px] text-slate-400 uppercase">Costo Insumo</span>
+                      <span class="font-extrabold text-slate-800 dark:text-white">
+                        {{ formatCurrency(getExtraItemCalc(item)?.totalCost || 0) }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Panel de Pesaje en Báscula (Gramo Entero) -->
+                <div
+                  v-if="item.rawMaterialId && getExtraItemCalc(item)?.isKg"
+                  class="rounded-lg border border-purple-100 bg-purple-50/60 p-2 text-xs dark:border-purple-900/40 dark:bg-purple-950/20"
+                >
+                  <div class="flex flex-wrap items-center justify-between gap-1.5">
+                    <div>
+                      <span class="block text-[9px] font-black uppercase text-purple-700 dark:text-purple-300">
+                        Pesaje en Báscula (Gramo Entero)
+                      </span>
+                      <span class="text-xs font-black text-purple-950 dark:text-purple-100">
+                        {{ (getExtraItemCalc(item)?.totalGrams || 0).toLocaleString('es-CO') }} g
+                      </span>
+                    </div>
+
+                    <div class="text-right">
+                      <span class="block text-[9px] font-bold uppercase text-slate-500 dark:text-slate-400">
+                        Descuento Almacén
+                      </span>
+                      <span class="font-extrabold text-slate-800 dark:text-slate-200">
+                        {{ getExtraItemCalc(item)?.quantityUsed }} kg
+                      </span>
+                      <span class="text-[10px] text-slate-400">
+                        / {{ getExtraItemCalc(item)?.material.currentStock }} kg disp.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Alerta por stock insuficiente de esta fila -->
+                <div
+                  v-if="item.rawMaterialId && getExtraItemCalc(item)?.isStockInsufficient"
+                  class="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] font-semibold text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300"
+                >
+                  <AlertCircle class="h-3.5 w-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
+                  <span>
+                    Stock insuficiente de {{ getExtraItemCalc(item)?.material.name }}. Dispones de {{ getExtraItemCalc(item)?.material.currentStock }} {{ getExtraItemCalc(item)?.material.unit }}.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Desglose Financiero Integral de la Fracción -->
+          <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-4 dark:border-surface-dark-border dark:bg-surface-dark-card space-y-3">
             <div class="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
               <div class="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 dark:text-white">
                 <DollarSign class="h-4 w-4 text-brand-700 dark:text-brand-darkText" />
-                <span>Costo Financiero de la Fracción</span>
+                <span>Desglose Financiero Integral de la Fracción</span>
               </div>
               <span class="text-[11px] font-bold text-slate-400">
-                Agrega al costo del lote
+                Inversión y margen proyectado
               </span>
             </div>
 
-            <div class="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <!-- Cuadrícula de Componentes de Costo -->
+            <div class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
               <div class="rounded-xl border border-surface-light-border/60 bg-surface-light-canvas/60 p-2 dark:border-surface-dark-border/60 dark:bg-surface-dark-canvas/60">
-                <span class="block text-[10px] font-bold text-slate-400 uppercase">Envases</span>
+                <span class="block text-[9px] font-bold text-slate-400 uppercase">Base Láctea</span>
+                <span class="font-extrabold text-slate-700 dark:text-slate-300">
+                  {{ formatCurrency(baseMilkCost) }}
+                </span>
+              </div>
+
+              <div class="rounded-xl border border-surface-light-border/60 bg-surface-light-canvas/60 p-2 dark:border-surface-dark-border/60 dark:bg-surface-dark-canvas/60">
+                <span class="block text-[9px] font-bold text-slate-400 uppercase">Envases</span>
                 <span class="font-extrabold text-slate-700 dark:text-slate-300">
                   {{ formatCurrency(bottlesCost) }}
                 </span>
               </div>
 
               <div class="rounded-xl border border-surface-light-border/60 bg-surface-light-canvas/60 p-2 dark:border-surface-dark-border/60 dark:bg-surface-dark-canvas/60">
-                <span class="block text-[10px] font-bold text-slate-400 uppercase">Tapas</span>
+                <span class="block text-[9px] font-bold text-slate-400 uppercase">Tapas</span>
                 <span class="font-extrabold text-slate-700 dark:text-slate-300">
                   {{ formatCurrency(capsCost) }}
                 </span>
               </div>
 
               <div class="rounded-xl border border-surface-light-border/60 bg-surface-light-canvas/60 p-2 dark:border-surface-dark-border/60 dark:bg-surface-dark-canvas/60">
-                <span class="block text-[10px] font-bold text-slate-400 uppercase">Etiquetas</span>
+                <span class="block text-[9px] font-bold text-slate-400 uppercase">Etiquetas</span>
                 <span class="font-extrabold text-slate-700 dark:text-slate-300">
                   {{ formatCurrency(labelsCost) }}
                 </span>
               </div>
 
               <div class="rounded-xl border border-surface-light-border/60 bg-surface-light-canvas/60 p-2 dark:border-surface-dark-border/60 dark:bg-surface-dark-canvas/60">
-                <span class="block text-[10px] font-bold text-slate-400 uppercase">Fruta</span>
+                <span class="block text-[9px] font-bold text-slate-400 uppercase">Insumos Extras</span>
                 <span class="font-extrabold text-slate-700 dark:text-slate-300">
-                  {{ formatCurrency(fruitTotalCost) }}
+                  {{ formatCurrency(extraItemsTotalCost) }}
                 </span>
               </div>
             </div>
 
-            <div class="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-xs dark:border-slate-800">
+            <!-- Resumen Total y Proyección de Margen -->
+            <div class="grid grid-cols-1 gap-2 pt-2 border-t border-slate-100 sm:grid-cols-3 text-xs dark:border-slate-800">
               <div>
-                <span class="font-bold text-slate-500 dark:text-slate-400">Costo Total Fraccionamiento:</span>
-                <span class="ml-1.5 font-black text-brand-800 dark:text-brand-darkText">
-                  {{ formatCurrency(projectedPackagingCost) }}
-                </span>
+                <span class="text-slate-500 dark:text-slate-400">Costo Total Fracción:</span>
+                <p class="font-black text-brand-800 dark:text-brand-darkText text-sm">
+                  {{ formatCurrency(totalBatchFractionCost) }}
+                  <span v-if="requiredLiters > 0" class="text-[11px] font-medium text-slate-400">
+                    ({{ formatCurrency(totalCostPerLiter) }}/L)
+                  </span>
+                </p>
               </div>
-              <div v-if="requiredLiters > 0" class="text-right">
-                <span class="text-slate-400">Costo agregado:</span>
-                <span class="ml-1 font-extrabold text-slate-900 dark:text-white">
-                  {{ formatCurrency(packagingCostPerLiter) }} / L
+
+              <div>
+                <span class="text-slate-500 dark:text-slate-400">Facturación Estimada:</span>
+                <p class="font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                  {{ formatCurrency(projectedRevenue) }}
+                </p>
+              </div>
+
+              <div>
+                <span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                  <TrendingUp class="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Margen Bruto Proyectado:</span>
                 </span>
+                <p
+                  class="font-black text-sm"
+                  :class="projectedGrossMargin >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-400'"
+                >
+                  {{ formatCurrency(projectedGrossMargin) }}
+                  <span class="text-[11px] font-bold">({{ projectedGrossMarginPercent }}%)</span>
+                </p>
               </div>
             </div>
           </div>
@@ -964,7 +1202,7 @@ async function handleSubmit() {
             <textarea
               v-model="notes"
               rows="2"
-              placeholder="Detalles de la preparación, textura o recomendaciones..."
+              placeholder="Detalles de la preparación, adición de pulpa, textura o recomendaciones..."
               class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2 text-xs font-medium text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white resize-none"
             ></textarea>
           </div>

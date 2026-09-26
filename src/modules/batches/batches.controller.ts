@@ -149,4 +149,14 @@ export const updateBatchPackaging = async (req: Request, res: Response, next: Ne
   }
 };
 
+export const patchBatchVolume = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.patchBatchVolume(Number(req.params.id), req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 

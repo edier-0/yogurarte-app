@@ -61,6 +61,7 @@ model RawMaterial {
   supplyPreparationsOutput   SupplyPreparation[]     @relation("OutputMaterial")
   supplyPreparationsUsed     SupplyPreparationItem[] @relation("IngredientMaterial")
   adjustments                InventoryAdjustment[]
+  packagingUsages            BatchPackagingItem[]
 
   @@index([category])
   @@index([isActive])
@@ -194,9 +195,11 @@ model BatchPackaging {
   batchId            Int
   batch              ProductionBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
   flavor             String
-  bottles1L          Int              @default(0)
-  bottles2L          Int              @default(0)
+  bottles1L          Int                  @default(0)
+  bottles2L          Int                  @default(0)
   totalLiters        Float
+  price1L            Float?               @default(12000)
+  price2L            Float?               @default(24000)
   fruitRawMaterialId Int?
   fruitQuantityUsed  Float?           @default(0)
   fruitUnitCost      Float?           @default(0)
@@ -206,10 +209,28 @@ model BatchPackaging {
   packagedAt         DateTime         @default(now())
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @default(now()) @updatedAt
+  itemsUsed          BatchPackagingItem[]
 
   @@index([batchId])
   @@index([flavor])
   @@index([packagedAt])
+}
+
+model BatchPackagingItem {
+  id             Int            @id @default(autoincrement())
+  packagingId    Int
+  packaging      BatchPackaging @relation(fields: [packagingId], references: [id], onDelete: Cascade)
+  rawMaterialId  Int
+  rawMaterial    RawMaterial    @relation(fields: [rawMaterialId], references: [id])
+  quantityUsed   Float
+  unitCost       Float          @default(0)
+  totalCost      Float          @default(0)
+  dosagePerLiter Float?
+  dosageUnit     String?
+  createdAt      DateTime       @default(now())
+
+  @@index([packagingId])
+  @@index([rawMaterialId])
 }
 
 model BatchDischarge {

@@ -575,13 +575,13 @@ async function handleSubmit() {
 
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Yogur Esperado / Producido
+                Volumen Real Obtenido / Final (L)
               </label>
               <div class="relative">
                 <input
                   v-model.number="expectedLiters"
                   type="number"
-                  min="1"
+                  min="0.1"
                   step="any"
                   placeholder="48"
                   class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
@@ -594,9 +594,14 @@ async function handleSubmit() {
           </div>
 
           <!-- Indicador de Rendimiento Estimado -->
-          <div class="flex items-center justify-between rounded-xl bg-natural-50/50 p-2.5 text-xs text-natural-700 dark:bg-emerald-950/20 dark:text-emerald-300">
-            <span class="font-bold">Rendimiento proyectado:</span>
-            <span class="font-black">{{ expectedYield }}%</span>
+          <div class="flex flex-col gap-1 rounded-xl bg-natural-50/50 p-2.5 text-xs text-natural-700 dark:bg-emerald-950/20 dark:text-emerald-300">
+            <div class="flex items-center justify-between">
+              <span class="font-bold">Rendimiento proyectado del lote:</span>
+              <span class="font-black">{{ expectedYield }}%</span>
+            </div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">
+              Merma por desuerado (ej. 11L en yogur griego) o expansión por almíbar (ej. 26L). Define el tope envasable en Fase B.
+            </p>
           </div>
 
           <!-- Tiempo de Fermentación en Horas -->

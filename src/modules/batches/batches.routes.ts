@@ -15,6 +15,7 @@ import {
   recordPartnerWithdrawal,
   getNextBatchCode,
   patchBatchStatus,
+  patchBatchVolume,
   updateBatchPackaging,
 } from './batches.controller.js';
 import { validateBody, validateParams, validateQuery } from '../../shared/middlewares/validate.middleware.js';
@@ -30,6 +31,7 @@ import {
   partnerWithdrawalSchema,
   nextCodeQuerySchema,
   patchBatchStatusSchema,
+  patchBatchVolumeSchema,
   updateBatchPackagingSchema,
 } from './batches.schema.js';
 import { idParamSchema } from '../../schemas/common.schema.js';
@@ -43,6 +45,7 @@ router.get('/:id/summary', validateParams(idParamSchema), getBatchSummary);
 router.get('/:id', validateParams(idParamSchema), getBatchById);
 router.post('/', validateBody(createBatchSchema), createBatch);
 router.patch('/:id/status', validateParams(idParamSchema), validateBody(patchBatchStatusSchema), patchBatchStatus);
+router.patch('/:id/volume', validateParams(idParamSchema), validateBody(patchBatchVolumeSchema), patchBatchVolume);
 router.post('/:id/packaging', validateParams(idParamSchema), validateBody(batchPackagingSchema), createBatchPackaging);
 router.put('/packagings/:packagingId', validateBody(updateBatchPackagingSchema), updateBatchPackaging);
 router.post('/:id/partner-withdrawal', validateParams(idParamSchema), validateBody(partnerWithdrawalSchema), recordPartnerWithdrawal);

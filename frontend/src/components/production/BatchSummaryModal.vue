@@ -490,15 +490,28 @@ async function handleRegisterWithdrawal() {
                       {{ formatDate(pkg.packagedAt) }}
                     </td>
                     <td class="px-4 py-3">
-                      <span class="rounded-lg bg-purple-50 px-2 py-0.5 text-xs font-black text-purple-800 dark:bg-purple-950/40 dark:text-purple-300">
-                        {{ pkg.flavor }}
-                      </span>
+                      <div class="flex flex-col gap-1">
+                        <span class="rounded-lg bg-purple-50 px-2 py-0.5 text-xs font-black text-purple-800 dark:bg-purple-950/40 dark:text-purple-300 w-fit">
+                          {{ pkg.flavor }}
+                        </span>
+                        <div v-if="pkg.itemsUsed && pkg.itemsUsed.length > 0" class="flex flex-wrap gap-1">
+                          <span
+                            v-for="it in pkg.itemsUsed"
+                            :key="it.id || it.rawMaterialId"
+                            class="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 dark:text-slate-300"
+                          >
+                            + {{ it.rawMaterial?.name || 'Insumo' }}: {{ it.quantityUsed }} {{ it.dosageUnit === 'g/L' ? 'kg' : '' }}
+                          </span>
+                        </div>
+                      </div>
                     </td>
-                    <td class="px-4 py-3 text-center font-bold">
-                      {{ pkg.bottles1L }} unds
+                    <td class="px-4 py-3 text-center">
+                      <span class="font-bold">{{ pkg.bottles1L }} unds</span>
+                      <span class="block text-[10px] text-slate-400">{{ formatCOP(pkg.price1L || 12000) }}</span>
                     </td>
-                    <td class="px-4 py-3 text-center font-bold">
-                      {{ pkg.bottles2L }} unds
+                    <td class="px-4 py-3 text-center">
+                      <span class="font-bold">{{ pkg.bottles2L }} unds</span>
+                      <span class="block text-[10px] text-slate-400">{{ formatCOP(pkg.price2L || 24000) }}</span>
                     </td>
                     <td class="px-4 py-3 text-right font-black text-emerald-600 dark:text-emerald-400">
                       {{ pkg.totalLiters }} L

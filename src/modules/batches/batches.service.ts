@@ -14,6 +14,7 @@ import {
   NextCodeQueryInput,
   PartnerWithdrawalInput,
   PatchBatchStatusInput,
+  PatchBatchVolumeInput,
   UnlinkOrderInput,
   UpdateBatchInput,
   UpdateBatchPackagingInput,
@@ -182,6 +183,11 @@ export const getBatches = async (query: BatchesQueryInput) => {
       take: limitNum,
       include: {
         packagings: {
+          include: {
+            itemsUsed: {
+              include: { rawMaterial: true },
+            },
+          },
           orderBy: { packagedAt: 'desc' },
         },
         itemsUsed: {
@@ -384,6 +390,14 @@ export const getBatchById = async (id: number) => {
         },
         orderBy: { dischargeDate: 'desc' },
       },
+      packagings: {
+        include: {
+          itemsUsed: {
+            include: { rawMaterial: true },
+          },
+        },
+        orderBy: { packagedAt: 'desc' },
+      },
     },
   });
 
@@ -493,6 +507,63 @@ export const patchBatchStatus = async (id: number, data: PatchBatchStatusInput) 
     return batch;
   });
 };
+
+/**
+ * Ajustar volumen real obtenido del lote madre (ProductionBatch)
+ * Soporta merma por desuerado (ej. griego a 11L) o expansión por almíbar (ej. 26L)
+ */
+export const patchBatchVolume = async (id: number, data: PatchBatchVolumeInput) => {
+  return await prisma.$transaction(async (tx) => {
+    const batch = await tx.productionBatch.findUnique({ where: { id } });
+    if (!batch) {
+      throw new NotFoundError('Lote no encontrado');
+    }
+
+    if (!batch.isActive) {
+      throw new BadRequestError('No se puede modificar un lote inactivo o archivado');
+    }
+
+    const newTotalLiters = Number(data.totalLitersProduced);
+    if (isNaN(newTotalLiters) || newTotalLiters <= 0) {
+      throw new BadRequestError('El volumen producido debe ser un número mayor a 0');
+    }
+
+    const currentPackaged = batch.packagedLiters || 0;
+    if (newTotalLiters < currentPackaged - 0.001) {
+      throw new BadRequestError(
+        `El volumen producido (${newTotalLiters.toFixed(1)}L) no puede ser menor a los litros ya envasados (${currentPackaged.toFixed(1)}L).`
+      );
+    }
+
+    const milkUsed = batch.milkUsedLiters || 1;
+    const newYield = Math.round((newTotalLiters / milkUsed) * 10000) / 100;
+    const totalCost = batch.totalCost || 0;
+    const newCostPerLiter = newTotalLiters > 0 ? Math.round(totalCost / newTotalLiters) : 0;
+
+    let combinedNotes = batch.notes;
+    if (data.notes && data.notes.trim()) {
+      combinedNotes = combinedNotes ? `${combinedNotes} | ${data.notes.trim()}` : data.notes.trim();
+    }
+
+    const updated = await tx.productionBatch.update({
+      where: { id },
+      data: {
+        totalLitersProduced: newTotalLiters,
+        yieldPercentage: newYield,
+        costPerLiter: newCostPerLiter,
+        notes: combinedNotes,
+      },
+    });
+
+    await syncBatchStatusBidirectional(tx, id);
+
+    return {
+      message: `Volumen real ajustado a ${newTotalLiters}L exitosamente (Rendimiento: ${newYield}%, Costo/L: $${newCostPerLiter.toLocaleString('es-CO')} COP)`,
+      batch: updated,
+    };
+  });
+};
+
 
 /**
  * Crear lote de producción con validación de inventario y descuento atómico ($transaction)
@@ -1243,6 +1314,12 @@ export const updateBatch = async (id: number, data: UpdateBatchInput) => {
         ? bottleLiters
         : currentBatch.totalLitersProduced;
 
+    if (newTotalLiters < (currentBatch.packagedLiters || 0) - 0.001) {
+      throw new BadRequestError(
+        `El volumen producido (${newTotalLiters}L) no puede ser menor a los litros ya envasados (${currentBatch.packagedLiters}L).`
+      );
+    }
+
     const newYield = newMilk > 0 ? Math.round((newTotalLiters / newMilk) * 10000) / 100 : 0;
     const newCostPerLiter = newTotalLiters > 0 ? Math.round(totalBatchCost / newTotalLiters) : 0;
 
@@ -1650,10 +1727,13 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
     flavor,
     bottles1L,
     bottles2L,
+    price1L,
+    price2L,
     fruitRawMaterialId,
     fruitQuantityUsed,
     fruitDosageGramsPerLiter,
     useLabels,
+    extraItems,
     notes,
     packagedBy,
     packagedAt,
@@ -1721,7 +1801,59 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
     }
   }
 
-  // 3. Validar Stock de Fruta / Mermelada (si aplica)
+  // 3. Consolidar y Validar Stock de Insumos Extras (Pulpas, Almíbares, Esencias, etc.)
+  interface ItemToConsume {
+    rawMaterialId: number;
+    rawMaterial: any;
+    quantityUsed: number;
+    dosagePerLiter?: number;
+    dosageUnit?: string;
+    unitCost: number;
+    totalCost: number;
+  }
+  const itemsToConsume: ItemToConsume[] = [];
+
+  if (Array.isArray(extraItems) && extraItems.length > 0) {
+    for (const item of extraItems) {
+      const mat = await prisma.rawMaterial.findUnique({
+        where: { id: Number(item.rawMaterialId) },
+      });
+      if (!mat) {
+        throw new NotFoundError(`Insumo adicional con ID ${item.rawMaterialId} no encontrado`);
+      }
+
+      let qty = Number(item.quantityUsed) || 0;
+      if (qty <= 0 && item.dosagePerLiter && Number(item.dosagePerLiter) > 0) {
+        if (isKgUnit(mat.unit)) {
+          const totalGrams = Math.round(Number(item.dosagePerLiter) * totalPackagingLiters);
+          qty = Math.round(totalGrams) / 1000;
+        } else {
+          qty = Number(item.dosagePerLiter) * totalPackagingLiters;
+        }
+      }
+
+      if (qty > 0) {
+        if (mat.currentStock < qty) {
+          throw new BadRequestError(
+            `Stock insuficiente de insumo "${mat.name}". Tienes ${mat.currentStock} ${mat.unit} y requieres ${qty}.`
+          );
+        }
+        const unitCost = mat.avgCost || 0;
+        const totalCost = qty * unitCost;
+        itemsToConsume.push({
+          rawMaterialId: mat.id,
+          rawMaterial: mat,
+          quantityUsed: qty,
+          dosagePerLiter: item.dosagePerLiter,
+          dosageUnit: item.dosageUnit || (isKgUnit(mat.unit) ? 'g/L' : mat.unit),
+          unitCost,
+          totalCost,
+        });
+      }
+    }
+  }
+
+  // Soporte retrocompatible si viene fruitRawMaterialId legacy
   let fruitMat: any = null;
   let fruitQty = Number(fruitQuantityUsed) || 0;
   if (!fruitQty && fruitDosageGramsPerLiter && Number(fruitDosageGramsPerLiter) > 0) {
@@ -1730,18 +1862,30 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
   }
 
   if (fruitRawMaterialId && fruitQty > 0) {
-    fruitMat = await prisma.rawMaterial.findUnique({
-      where: { id: Number(fruitRawMaterialId) },
-    });
-
-    if (!fruitMat) {
-      throw new NotFoundError('Insumo de fruta no encontrado');
-    }
-
-    if (fruitMat.currentStock < fruitQty) {
-      throw new BadRequestError(
-        `Stock insuficiente de fruta "${fruitMat.name}". Tienes ${fruitMat.currentStock} ${fruitMat.unit} y requieres ${fruitQty}.`
-      );
+    const alreadyIncluded = itemsToConsume.some((it) => it.rawMaterialId === Number(fruitRawMaterialId));
+    if (!alreadyIncluded) {
+      fruitMat = await prisma.rawMaterial.findUnique({
+        where: { id: Number(fruitRawMaterialId) },
+      });
+      if (!fruitMat) {
+        throw new NotFoundError('Insumo de fruta no encontrado');
+      }
+      if (fruitMat.currentStock < fruitQty) {
+        throw new BadRequestError(
+          `Stock insuficiente de fruta "${fruitMat.name}". Tienes ${fruitMat.currentStock} ${fruitMat.unit} y requieres ${fruitQty}.`
+        );
+      }
+      const unitCost = fruitMat.avgCost || 0;
+      const totalCost = fruitQty * unitCost;
+      itemsToConsume.push({
+        rawMaterialId: fruitMat.id,
+        rawMaterial: fruitMat,
+        quantityUsed: fruitQty,
+        dosagePerLiter: fruitDosageGramsPerLiter ? Number(fruitDosageGramsPerLiter) : undefined,
+        dosageUnit: 'g/L',
+        unitCost,
+        totalCost,
+      });
     }
   }
 
@@ -1812,14 +1956,12 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
       }
     }
 
-    // Descontar fruta
-    let fruitUnitCost = 0;
-    if (fruitMat && fruitQty > 0) {
-      fruitUnitCost = fruitMat.avgCost || 0;
-      packagingCost += fruitQty * fruitUnitCost;
+    // Descontar insumos extras
+    for (const item of itemsToConsume) {
+      packagingCost += item.totalCost;
       await tx.rawMaterial.update({
-        where: { id: fruitMat.id },
-        data: { currentStock: Math.max(0, fruitMat.currentStock - fruitQty) },
+        where: { id: item.rawMaterialId },
+        data: { currentStock: Math.max(0, item.rawMaterial.currentStock - item.quantityUsed) },
       });
     }
 
@@ -1841,6 +1983,9 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
     const nextPkgSeq = (maxPkgSeq || existingPkgs.length) + 1;
     const packagingCode = `${batch.batchCode}-F${String(nextPkgSeq).padStart(2, '0')}`;
 
+    // Identificar fruta primaria para retrocompatibilidad
+    const primaryFruit = itemsToConsume.length > 0 ? itemsToConsume[0] : null;
+
     // Crear registro de envasado
     const packaging = await tx.batchPackaging.create({
       data: {
@@ -1850,17 +1995,34 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
         bottles1L: b1L,
         bottles2L: b2L,
         totalLiters: totalPackagingLiters,
-        fruitRawMaterialId: fruitMat ? fruitMat.id : null,
-        fruitQuantityUsed: fruitQty,
-        fruitUnitCost,
+        price1L: price1L !== undefined && Number(price1L) >= 0 ? Number(price1L) : (batch.price1L || 12000),
+        price2L: price2L !== undefined && Number(price2L) >= 0 ? Number(price2L) : (batch.price2L || 24000),
+        fruitRawMaterialId: primaryFruit ? primaryFruit.rawMaterialId : null,
+        fruitQuantityUsed: primaryFruit ? primaryFruit.quantityUsed : 0,
+        fruitUnitCost: primaryFruit ? primaryFruit.unitCost : 0,
         packagingCost,
         notes: notes ? notes.trim() : null,
         packagedBy: packagedBy || 'Edier',
         packagedAt: packagedAt ? parseColombiaDate(packagedAt) : new Date(),
+        itemsUsed: {
+          create: itemsToConsume.map((it) => ({
+            rawMaterialId: it.rawMaterialId,
+            quantityUsed: it.quantityUsed,
+            unitCost: it.unitCost,
+            totalCost: it.totalCost,
+            dosagePerLiter: it.dosagePerLiter,
+            dosageUnit: it.dosageUnit,
+          })),
+        },
+      },
+      include: {
+        itemsUsed: {
+          include: { rawMaterial: true },
+        },
       },
     });
 
-    // Actualizar lote
+    // Actualizar lote madre
     const updatedPackagedLiters = currentPackaged + totalPackagingLiters;
     const updatedB1L = (batch.bottles1LProduced || 0) + b1L;
     const updatedB2L = (batch.bottles2LProduced || 0) + b2L;
@@ -1935,10 +2097,13 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       flavor,
       bottles1L,
       bottles2L,
+      price1L,
+      price2L,
       fruitRawMaterialId,
       fruitQuantityUsed,
       fruitDosageGramsPerLiter,
       useLabels,
+      extraItems,
       notes,
       packagedBy,
       packagedAt,
@@ -2054,37 +2219,105 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       }
     }
 
-    // Delta Fruta / Mermelada
+    // Delta Insumos Extras (array extraItems si viene definido)
     let targetFruitId = fruitRawMaterialId !== undefined ? (fruitRawMaterialId ? Number(fruitRawMaterialId) : null) : pkg.fruitRawMaterialId;
     let targetFruitQty = fruitQuantityUsed !== undefined ? Number(fruitQuantityUsed) : (pkg.fruitQuantityUsed || 0);
-    if (fruitQuantityUsed === undefined && fruitDosageGramsPerLiter !== undefined && Number(fruitDosageGramsPerLiter) > 0) {
-      targetFruitQty = Math.round(Number(fruitDosageGramsPerLiter) * newPkgLiters) / 1000;
-    }
     let fruitUnitCost = pkg.fruitUnitCost || 0;
 
-    if (pkg.fruitRawMaterialId !== targetFruitId || (pkg.fruitQuantityUsed || 0) !== targetFruitQty) {
-      if (pkg.fruitRawMaterialId && (pkg.fruitQuantityUsed || 0) > 0) {
+    if (Array.isArray(extraItems)) {
+      // 1. Revertir y borrar insumos previos
+      const existingItems = await tx.batchPackagingItem.findMany({ where: { packagingId } });
+      for (const oldIt of existingItems) {
         await tx.rawMaterial.update({
-          where: { id: pkg.fruitRawMaterialId },
-          data: { currentStock: { increment: pkg.fruitQuantityUsed! } },
+          where: { id: oldIt.rawMaterialId },
+          data: { currentStock: { increment: oldIt.quantityUsed } },
         });
+        deltaPackagingCost -= oldIt.totalCost;
       }
-      if (targetFruitId && targetFruitQty > 0) {
-        const newFruitMat = await tx.rawMaterial.findUnique({ where: { id: targetFruitId } });
-        if (newFruitMat) {
-          if (newFruitMat.currentStock < targetFruitQty) {
-            throw new BadRequestError(`Stock insuficiente de fruta "${newFruitMat.name}".`);
+      await tx.batchPackagingItem.deleteMany({ where: { packagingId } });
+
+      // 2. Procesar nuevos insumos extras
+      for (const it of extraItems) {
+        const mat = await tx.rawMaterial.findUnique({ where: { id: Number(it.rawMaterialId) } });
+        if (!mat) {
+          throw new NotFoundError(`Insumo adicional con ID ${it.rawMaterialId} no encontrado`);
+        }
+        let qty = Number(it.quantityUsed) || 0;
+        if (qty <= 0 && it.dosagePerLiter && Number(it.dosagePerLiter) > 0) {
+          if (isKgUnit(mat.unit)) {
+            const totalGrams = Math.round(Number(it.dosagePerLiter) * newPkgLiters);
+            qty = Math.round(totalGrams) / 1000;
+          } else {
+            qty = Number(it.dosagePerLiter) * newPkgLiters;
+          }
+        }
+        if (qty > 0) {
+          if (mat.currentStock < qty) {
+            throw new BadRequestError(`Stock insuficiente de insumo "${mat.name}". Tienes ${mat.currentStock} ${mat.unit} y requieres ${qty}.`);
           }
           await tx.rawMaterial.update({
-            where: { id: targetFruitId },
-            data: { currentStock: Math.max(0, newFruitMat.currentStock - targetFruitQty) },
+            where: { id: mat.id },
+            data: { currentStock: Math.max(0, mat.currentStock - qty) },
           });
-          fruitUnitCost = newFruitMat.avgCost || 0;
+          const unitCost = mat.avgCost || 0;
+          const totalCost = qty * unitCost;
+          deltaPackagingCost += totalCost;
+          await tx.batchPackagingItem.create({
+            data: {
+              packagingId,
+              rawMaterialId: mat.id,
+              quantityUsed: qty,
+              unitCost,
+              totalCost,
+              dosagePerLiter: it.dosagePerLiter,
+              dosageUnit: it.dosageUnit || (isKgUnit(mat.unit) ? 'g/L' : mat.unit),
+            },
+          });
         }
+      }
+
+      if (extraItems.length > 0) {
+        const pMat = await tx.rawMaterial.findUnique({ where: { id: Number(extraItems[0].rawMaterialId) } });
+        targetFruitId = pMat ? pMat.id : null;
+        targetFruitQty = Number(extraItems[0].quantityUsed) || 0;
+        fruitUnitCost = pMat ? (pMat.avgCost || 0) : 0;
       } else {
         targetFruitId = null;
         targetFruitQty = 0;
         fruitUnitCost = 0;
+      }
+    } else {
+      // Manejo legacy si no viene extraItems
+      if (fruitQuantityUsed === undefined && fruitDosageGramsPerLiter !== undefined && Number(fruitDosageGramsPerLiter) > 0) {
+        targetFruitQty = Math.round(Number(fruitDosageGramsPerLiter) * newPkgLiters) / 1000;
+      }
+
+      if (pkg.fruitRawMaterialId !== targetFruitId || (pkg.fruitQuantityUsed || 0) !== targetFruitQty) {
+        if (pkg.fruitRawMaterialId && (pkg.fruitQuantityUsed || 0) > 0) {
+          await tx.rawMaterial.update({
+            where: { id: pkg.fruitRawMaterialId },
+            data: { currentStock: { increment: pkg.fruitQuantityUsed! } },
+          });
+          deltaPackagingCost -= (pkg.fruitQuantityUsed || 0) * (pkg.fruitUnitCost || 0);
+        }
+        if (targetFruitId && targetFruitQty > 0) {
+          const newFruitMat = await tx.rawMaterial.findUnique({ where: { id: targetFruitId } });
+          if (newFruitMat) {
+            if (newFruitMat.currentStock < targetFruitQty) {
+              throw new BadRequestError(`Stock insuficiente de fruta "${newFruitMat.name}".`);
+            }
+            await tx.rawMaterial.update({
+              where: { id: targetFruitId },
+              data: { currentStock: Math.max(0, newFruitMat.currentStock - targetFruitQty) },
+            });
+            fruitUnitCost = newFruitMat.avgCost || 0;
+            deltaPackagingCost += targetFruitQty * fruitUnitCost;
+          }
+        } else {
+          targetFruitId = null;
+          targetFruitQty = 0;
+          fruitUnitCost = 0;
+        }
       }
     }
 
@@ -2095,6 +2328,8 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
         bottles1L: newB1L,
         bottles2L: newB2L,
         totalLiters: newPkgLiters,
+        price1L: price1L !== undefined ? Number(price1L) : pkg.price1L,
+        price2L: price2L !== undefined ? Number(price2L) : pkg.price2L,
         fruitRawMaterialId: targetFruitId,
         fruitQuantityUsed: targetFruitQty,
         fruitUnitCost,
@@ -2103,12 +2338,22 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
         packagedBy: packagedBy !== undefined ? packagedBy.trim() : pkg.packagedBy,
         packagedAt: packagedAt ? parseColombiaDate(packagedAt) : pkg.packagedAt,
       },
+      include: {
+        itemsUsed: {
+          include: { rawMaterial: true },
+        },
+      },
     });
+
+    const updatedBatchTotalCost = Math.max(0, (batch.totalCost || 0) + deltaPackagingCost);
+    const updatedBatchCostPerLiter = batch.totalLitersProduced > 0 ? Math.round(updatedBatchTotalCost / batch.totalLitersProduced) : 0;
 
     await tx.productionBatch.update({
       where: { id: batch.id },
       data: {
         packagedLiters: Math.max(0, newPackagedLiters),
+        totalCost: updatedBatchTotalCost,
+        costPerLiter: updatedBatchCostPerLiter,
       },
     });
 
@@ -2116,7 +2361,15 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
 
     const updatedBatch = await tx.productionBatch.findUnique({
       where: { id: batch.id },
-      include: { packagings: true },
+      include: {
+        packagings: {
+          include: {
+            itemsUsed: {
+              include: { rawMaterial: true },
+            },
+          },
+        },
+      },
     });
 
     return {
@@ -2195,6 +2448,11 @@ export const getBatchSummary = async (batchId: number) => {
     where: { id: batchId },
     include: {
       packagings: {
+        include: {
+          itemsUsed: {
+            include: { rawMaterial: true },
+          },
+        },
         orderBy: { packagedAt: 'desc' },
       },
       orders: {
