@@ -154,21 +154,30 @@ async function handlePackagingSaved() {
   ]);
 }
 
-// Eliminar fracción envasada con confirmación y restitución de insumos/litros
+// Eliminar fracción envasada con advertencia de pedidos y restitución de insumos/litros
 async function handleDeletePackaging(pkg: BatchPackagingCardItem) {
-  const hasOrders = (pkg.linkedOrdersCount || 0) > 0;
+  const linkedOrders = pkg.linkedOrdersCount || 0;
+  if (linkedOrders > 0) {
+    await confirm({
+      title: 'Fracción con Pedidos Vinculados',
+      message: `La fracción "${pkg.packagingCode || pkg.flavor}" tiene ${linkedOrders} pedido(s) comercial(es) vinculado(s). No es posible eliminarla directamente. Por favor, abre la "Auditoría de Fracción" para desvincular o reasignar los pedidos antes de eliminarla.`,
+      confirmText: 'Entendido',
+      cancelText: 'Cerrar',
+      variant: 'warning',
+    });
+    return;
+  }
+
   const ok = await confirm({
     title: 'Eliminar Fracción Envasada',
-    message: hasOrders
-      ? `⚠️ ¡ATENCIÓN! La fracción "${pkg.packagingCode || pkg.flavor}" tiene pedidos vinculados. Si continúas, los pedidos regresarán a pre-venta sin lote asignado, los ${pkg.totalLiters}L volverán al lote madre y todos los insumos de empaque serán devueltos al almacén. ¿Deseas forzar la eliminación?`
-      : `¿Estás seguro de eliminar la fracción "${pkg.packagingCode || pkg.flavor}"? Los ${pkg.totalLiters}L serán reintegrados al saldo disponible del lote madre y los envases/etiquetas se devolverán al inventario.`,
-    confirmText: hasOrders ? 'Forzar Eliminación' : 'Eliminar Fracción',
+    message: `¿Estás seguro de eliminar la fracción "${pkg.packagingCode || pkg.flavor}"? Los ${pkg.totalLiters}L serán reintegrados al saldo disponible del lote madre y todos los insumos de empaque se devolverán al inventario.`,
+    confirmText: 'Eliminar Fracción',
     cancelText: 'Cancelar',
     variant: 'danger',
   });
 
   if (!ok) return;
-  await productionStore.deletePackaging(pkg.id, hasOrders);
+  await productionStore.deletePackaging(pkg.id, false);
 }
 
 // Cambio rápido de estado 1-touch: si está en fermentación, abre modal para terminarla

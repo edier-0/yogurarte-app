@@ -324,6 +324,22 @@ export const useOperationsStore = defineStore('operations', () => {
     return updated;
   }
 
+  async function deleteOrder(id: number): Promise<boolean> {
+    try {
+      const res = await http.delete<{ message: string; id: number }>(`/orders/${id}`);
+      orders.value = orders.value.filter((o) => o.id !== id);
+      toast.success('Pedido Eliminado', {
+        description: res?.message || 'El pedido ha sido eliminado del sistema y se liberaron sus botellas.',
+      });
+      return true;
+    } catch (err: any) {
+      toast.error('Error al Eliminar Pedido', {
+        description: err?.message || 'No se pudo eliminar el pedido.',
+      });
+      return false;
+    }
+  }
+
   async function updateDeliveryStatus(
     id: number,
     payload: {
@@ -479,6 +495,7 @@ export const useOperationsStore = defineStore('operations', () => {
     fetchCustomers,
     createOrder,
     updateOrder,
+    deleteOrder,
     updateDeliveryStatus,
     addPayment,
     assignDriver,

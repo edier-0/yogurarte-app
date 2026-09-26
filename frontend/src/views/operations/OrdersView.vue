@@ -20,10 +20,13 @@ import {
   MapPin,
   ClipboardList,
   Clock,
-  Milk
+  Milk,
+  Trash2,
 } from 'lucide-vue-next';
+import { useConfirm } from '@/composables/useConfirm';
 
 const store = useOperationsStore();
+const { confirm } = useConfirm();
 
 // Modales
 const isFormModalOpen = ref(false);
@@ -31,6 +34,19 @@ const orderToEdit = ref<Order | null>(null);
 
 const isPaymentModalOpen = ref(false);
 const orderForPayment = ref<Order | null>(null);
+
+const handleDeleteOrder = async (order: Order) => {
+  const ok = await confirm({
+    title: 'Eliminar Pedido',
+    message: `¿Estás seguro de eliminar el pedido ${order.orderCode || '#' + order.id} de "${order.customer?.fullName || order.customerName || 'Cliente'}"? Las botellas y litros reservados serán liberados inmediatamente al inventario disponible.`,
+    confirmText: 'Eliminar Pedido',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+  });
+  if (!ok) return;
+
+  await store.deleteOrder(order.id);
+};
 
 onMounted(() => {
   if (store.orders.length === 0) {
@@ -335,23 +351,23 @@ const getStatusBadge = (status: DeliveryStatus) => {
           </div>
 
           <!-- Acciones directas por tarjeta (Touch targets >= 40px) -->
-          <div class="grid grid-cols-3 gap-1.5 pt-1">
+          <div class="grid grid-cols-4 gap-1.5 pt-1">
             <!-- Botón Inteligente WhatsApp -->
             <button
               type="button"
               @click="store.dispatchWhatsApp(order.id)"
-              class="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-emerald-50 px-2 text-xs font-bold text-emerald-700 transition-all active:scale-95 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
+              class="flex h-10 items-center justify-center gap-1 rounded-xl bg-emerald-50 px-1 text-xs font-bold text-emerald-700 transition-all active:scale-95 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
               title="Notificar por WhatsApp"
             >
               <MessageCircle class="h-4 w-4 stroke-[1.75]" />
-              <span>WhatsApp</span>
+              <span class="hidden sm:inline">WhatsApp</span>
             </button>
 
             <!-- Botón Cobro / Abono Rápido -->
             <button
               type="button"
               @click="openPayment(order)"
-              class="flex h-10 items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-bold transition-all active:scale-95"
+              class="flex h-10 items-center justify-center gap-1 rounded-xl px-1 text-xs font-bold transition-all active:scale-95"
               :class="store.getPendingBalance(order) > 0 ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'"
               title="Registrar Abono"
             >
@@ -363,11 +379,22 @@ const getStatusBadge = (status: DeliveryStatus) => {
             <button
               type="button"
               @click="openEditOrder(order)"
-              class="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-surface-light-card px-2 text-xs font-bold text-slate-700 transition-all active:scale-95 hover:bg-slate-100 dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-200 dark:hover:bg-slate-800"
+              class="flex h-10 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-surface-light-card px-1 text-xs font-bold text-slate-700 transition-all active:scale-95 hover:bg-slate-100 dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-200 dark:hover:bg-slate-800"
               title="Editar comanda"
             >
               <Edit2 class="h-3.5 w-3.5 stroke-[1.75]" />
               <span>Editar</span>
+            </button>
+
+            <!-- Botón Eliminar Pedido -->
+            <button
+              type="button"
+              @click="handleDeleteOrder(order)"
+              class="flex h-10 items-center justify-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-1 text-xs font-bold text-rose-700 transition-all active:scale-95 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-900/40"
+              title="Eliminar pedido y liberar botellas reservadas"
+            >
+              <Trash2 class="h-3.5 w-3.5 stroke-[1.75]" />
+              <span>Eliminar</span>
             </button>
           </div>
 

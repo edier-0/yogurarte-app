@@ -13,20 +13,17 @@ import {
   X,
   Boxes,
   Unlink,
-  Plus,
   Pencil,
   ChevronLeft,
   ChevronRight,
+  Info,
 } from 'lucide-vue-next';
 import {
   useProductionStore,
   type BatchSummaryData,
   type BatchPackagingItem,
-  type PartnerWithdrawalPayload,
 } from '@/stores/production.store';
 import { useConfirm } from '@/composables/useConfirm';
-import { getTodayDateBogota } from '@/stores/finance.store';
-import { http } from '@/api/client';
 
 const props = defineProps<{
   open: boolean;
@@ -46,24 +43,18 @@ const summary = ref<BatchSummaryData | null>(null);
 const isLoading = ref<boolean>(false);
 const activeTab = ref<'BALANCE' | 'PACKAGING' | 'ORDERS' | 'PARTNERS'>('BALANCE');
 
-// Personal (socios)
-interface StaffItem {
-  id: number;
-  fullName: string;
-  role: string;
-  type: string;
-}
-const staffList = ref<StaffItem[]>([]);
-const partners = computed(() => staffList.value.filter((s) => s.type === 'SOCIO' || s.role.toLowerCase().includes('socio')));
-
-// Formulario de retiro de socio
-const showPartnerWithdrawalForm = ref<boolean>(false);
-const selectedPartnerId = ref<number | null>(null);
-const withdrawalBottleSize = ref<'1L' | '2L'>('1L');
-const withdrawalQuantity = ref<number>(1);
-const withdrawalNotes = ref<string>('');
-const isSubmittingWithdrawal = ref<boolean>(false);
-const withdrawalError = ref<string | null>(null);
+// Paginación local de Descargos / Retiros a 5 registros
+const dischargesPage = ref<number>(1);
+const dischargesLimit = 5;
+const paginatedDischarges = computed(() => {
+  if (!summary.value?.discharges) return [];
+  const start = (dischargesPage.value - 1) * dischargesLimit;
+  return summary.value.discharges.slice(start, start + dischargesLimit);
+});
+const totalDischargePages = computed(() => {
+  if (!summary.value?.discharges) return 1;
+  return Math.ceil(summary.value.discharges.length / dischargesLimit) || 1;
+});
 
 // Paginación local de Fracciones a 5 registros
 const packagingsPage = ref<number>(1);
@@ -111,19 +102,6 @@ const formatDate = (dateStr?: string | null) => {
   }
 };
 
-// Cargar personal
-async function loadStaff() {
-  if (staffList.value.length > 0) return;
-  try {
-    const data = await http.get<StaffItem[]>('/staff');
-    if (Array.isArray(data)) {
-      staffList.value = data;
-    }
-  } catch {
-    staffList.value = [];
-  }
-}
-
 // Cargar auditoría completa
 async function loadSummary() {
   if (!props.batchId) return;
@@ -142,13 +120,9 @@ watch(
     if (isOpen && id) {
       packagingsPage.value = 1;
       ordersPage.value = 1;
-      showPartnerWithdrawalForm.value = false;
-      withdrawalError.value = null;
+      dischargesPage.value = 1;
       activeTab.value = 'BALANCE';
-      await Promise.all([loadSummary(), loadStaff()]);
-      if (partners.value.length > 0 && !selectedPartnerId.value) {
-        selectedPartnerId.value = partners.value[0].id;
-      }
+      await loadSummary();
     } else {
       summary.value = null;
     }
@@ -178,39 +152,6 @@ async function handleUnlinkOrder(order: any) {
   if (success) {
     await loadSummary();
     emit('updated');
-  }
-}
-
-// Registrar retiro de socio
-async function handleRegisterWithdrawal() {
-  if (!summary.value || !selectedPartnerId.value || withdrawalQuantity.value <= 0) {
-    withdrawalError.value = 'Selecciona el socio y una cantidad válida de botellas';
-    return;
-  }
-
-  isSubmittingWithdrawal.value = true;
-  withdrawalError.value = null;
-
-  try {
-    const payload: PartnerWithdrawalPayload = {
-      bottleSize: withdrawalBottleSize.value,
-      quantityBottles: Number(withdrawalQuantity.value),
-      staffMemberId: Number(selectedPartnerId.value),
-      notes: withdrawalNotes.value ? withdrawalNotes.value.trim() : 'Consumo propio de socio',
-      registeredBy: 'Edier',
-      dischargeDate: getTodayDateBogota(),
-    };
-
-    await productionStore.registerPartnerWithdrawal(summary.value.batch.id, payload);
-    showPartnerWithdrawalForm.value = false;
-    withdrawalQuantity.value = 1;
-    withdrawalNotes.value = '';
-    await loadSummary();
-    emit('updated');
-  } catch (err: any) {
-    withdrawalError.value = err?.message || 'Error al registrar retiro de socio';
-  } finally {
-    isSubmittingWithdrawal.value = false;
   }
 }
 </script>
@@ -653,111 +594,31 @@ async function handleRegisterWithdrawal() {
             </div>
           </div>
 
-          <!-- PESTAÑA 4: CONSUMO DE SOCIOS -->
+          <!-- PESTAÑA 4: CONSUMO DE SOCIOS (CONSOLIDADO AUDITORÍA FASE A) -->
           <div v-if="activeTab === 'PARTNERS'" class="space-y-4">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h4 class="text-xs font-extrabold text-slate-800 dark:text-white">
-                  Historial de Retiros y Consumos de Socios
+                  Historial Consolidado de Retiros y Consumo de Socios
                 </h4>
                 <p class="text-[11px] text-slate-400">
-                  Descuento directo del inventario del lote para consumo propio
+                  Consolidado de botellas y litros retirados por socios en las fracciones de este lote madre
                 </p>
               </div>
 
-              <button
-                type="button"
-                @click="showPartnerWithdrawalForm = !showPartnerWithdrawalForm"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm transition-transform active:scale-95 hover:bg-purple-700"
-              >
-                <Plus class="h-4 w-4" />
-                <span>Registrar Retiro de Socio</span>
-              </button>
+              <!-- Indicador consolidado -->
+              <div class="inline-flex items-center gap-2 rounded-2xl bg-purple-50 px-3.5 py-1.5 border border-purple-200 text-xs font-black text-purple-700 dark:bg-purple-950/40 dark:border-purple-800/40 dark:text-purple-300">
+                <span>Total Consumido:</span>
+                <span class="text-sm font-black">{{ summary.volumeBalance?.partnerConsumed || 0 }} L</span>
+              </div>
             </div>
 
-            <!-- Formulario Desplegable de Retiro de Socio -->
-            <div
-              v-if="showPartnerWithdrawalForm"
-              class="rounded-2xl border border-purple-200 bg-purple-50/50 p-4 dark:border-purple-800/40 dark:bg-purple-950/20"
-            >
-              <h5 class="text-xs font-black text-purple-900 dark:text-purple-300 mb-3">
-                Nuevo Retiro para Consumo de Socio
-              </h5>
-
-              <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                    Socio *
-                  </label>
-                  <select
-                    v-model.number="selectedPartnerId"
-                    class="w-full rounded-xl border border-slate-200 bg-surface-light-card px-3 py-2 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
-                  >
-                    <option v-for="p in partners" :key="p.id" :value="p.id">
-                      {{ p.fullName }} ({{ p.role }})
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                    Presentación *
-                  </label>
-                  <select
-                    v-model="withdrawalBottleSize"
-                    class="w-full rounded-xl border border-slate-200 bg-surface-light-card px-3 py-2 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
-                  >
-                    <option value="1L">Botella 1 Litro</option>
-                    <option value="2L">Botella 2 Litros</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                    Cantidad de Botellas *
-                  </label>
-                  <input
-                    v-model.number="withdrawalQuantity"
-                    type="number"
-                    min="1"
-                    step="1"
-                    class="w-full rounded-xl border border-slate-200 bg-surface-light-card px-3 py-2 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div class="mt-3">
-                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                  Notas / Observación
-                </label>
-                <input
-                  v-model="withdrawalNotes"
-                  type="text"
-                  placeholder="Ej. Consumo personal reunión de socios"
-                  class="w-full rounded-xl border border-slate-200 bg-surface-light-card px-3 py-2 text-xs font-medium text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
-                />
-              </div>
-
-              <div v-if="withdrawalError" class="mt-2 text-xs font-bold text-rose-600">
-                {{ withdrawalError }}
-              </div>
-
-              <div class="mt-3 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  @click="showPartnerWithdrawalForm = false"
-                  class="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  @click="handleRegisterWithdrawal"
-                  :disabled="isSubmittingWithdrawal"
-                  class="rounded-xl bg-purple-700 px-4 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-purple-800 disabled:opacity-50"
-                >
-                  {{ isSubmittingWithdrawal ? 'Guardando...' : 'Confirmar Retiro' }}
-                </button>
+            <!-- Banner informativo: No se retira directamente de Fase A -->
+            <div class="flex items-start gap-2.5 rounded-2xl border border-blue-200 bg-blue-50/80 p-3.5 text-xs text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300">
+              <Info class="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400 mt-0.5" />
+              <div class="leading-relaxed">
+                <strong class="font-extrabold">Auditoría de Retiros en Lote Madre:</strong>
+                En Fase A el yogur se encuentra en proceso o a granel en la tina, por lo que <em>no se realizan retiros directos</em>. Los consumos de socios se registran sobre las <strong>fracciones envasadas (Fase B)</strong> y se consolidan automáticamente en esta auditoría.
               </div>
             </div>
 
@@ -766,50 +627,83 @@ async function handleRegisterWithdrawal() {
               v-if="!summary.discharges || summary.discharges.length === 0"
               class="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
             >
-              No hay retiros ni consumos de socio registrados en este lote.
+              No hay retiros ni consumos de socio registrados en las fracciones de este lote madre.
             </div>
 
-            <div v-else class="overflow-x-auto rounded-2xl border border-surface-light-border dark:border-surface-dark-border">
-              <table class="w-full text-left text-xs">
-                <thead class="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                  <tr>
-                    <th class="px-4 py-3">Fecha</th>
-                    <th class="px-4 py-3">Socio / Colaborador</th>
-                    <th class="px-4 py-3">Motivo</th>
-                    <th class="px-4 py-3 text-center">Envase</th>
-                    <th class="px-4 py-3 text-center">Cantidad</th>
-                    <th class="px-4 py-3 text-right">Total Litros</th>
-                    <th class="px-4 py-3">Notas</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-surface-light-card dark:bg-surface-dark-card font-medium text-slate-700 dark:text-slate-300">
-                  <tr v-for="dis in summary.discharges" :key="dis.id">
-                    <td class="px-4 py-3 whitespace-nowrap font-bold">
-                      {{ formatDate(dis.dischargeDate) }}
-                    </td>
-                    <td class="px-4 py-3 font-bold text-slate-900 dark:text-white">
-                      {{ dis.staffMember?.fullName || 'Socio' }}
-                    </td>
-                    <td class="px-4 py-3">
-                      <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                        {{ dis.reasonType }}
-                      </span>
-                    </td>
-                    <td class="px-4 py-3 text-center">
-                      {{ dis.bottleSize || '1L' }}
-                    </td>
-                    <td class="px-4 py-3 text-center font-bold">
-                      {{ dis.quantityBottles }} botellas
-                    </td>
-                    <td class="px-4 py-3 text-right font-black text-amber-600 dark:text-amber-400">
-                      {{ dis.totalLiters }} L
-                    </td>
-                    <td class="px-4 py-3 text-slate-400 italic">
-                      {{ dis.notes || '—' }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <div v-else class="space-y-3">
+              <div class="overflow-x-auto rounded-2xl border border-surface-light-border dark:border-surface-dark-border">
+                <table class="w-full text-left text-xs">
+                  <thead class="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                    <tr>
+                      <th class="px-4 py-3">Fecha</th>
+                      <th class="px-4 py-3">Fracción / Sabor</th>
+                      <th class="px-4 py-3">Socio / Colaborador</th>
+                      <th class="px-4 py-3 text-center">Presentación</th>
+                      <th class="px-4 py-3 text-center">Cantidad</th>
+                      <th class="px-4 py-3 text-right">Litros</th>
+                      <th class="px-4 py-3">Notas</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-surface-light-card dark:bg-surface-dark-card font-medium text-slate-700 dark:text-slate-300">
+                    <tr v-for="dis in paginatedDischarges" :key="dis.id">
+                      <td class="px-4 py-3 whitespace-nowrap font-bold">
+                        {{ formatDate(dis.dischargeDate) }}
+                      </td>
+                      <td class="px-4 py-3 font-bold text-slate-900 dark:text-white">
+                        <span v-if="dis.packaging">
+                          {{ dis.packaging.packagingCode || 'Fracción' }} - {{ dis.packaging.flavor }}
+                        </span>
+                        <span v-else class="text-slate-400 italic">Lote Madre</span>
+                      </td>
+                      <td class="px-4 py-3 font-bold text-purple-700 dark:text-purple-300">
+                        {{ dis.staffMember?.fullName || 'Socio' }}
+                      </td>
+                      <td class="px-4 py-3 text-center">
+                        <span class="rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                          {{ dis.bottleSize || '1L' }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-3 text-center font-black">
+                        {{ dis.quantityBottles }} und
+                      </td>
+                      <td class="px-4 py-3 text-right font-black text-amber-600 dark:text-amber-400">
+                        {{ dis.totalLiters }} L
+                      </td>
+                      <td class="px-4 py-3 text-slate-400 italic">
+                        {{ dis.notes || '—' }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Paginación local de Descargos (5 por página) -->
+              <div
+                v-if="totalDischargePages > 1"
+                class="flex items-center justify-between border-t border-surface-light-border px-2 pt-3 dark:border-surface-dark-border text-xs"
+              >
+                <span class="font-bold text-slate-500">
+                  Página {{ dischargesPage }} de {{ totalDischargePages }}
+                </span>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    @click="dischargesPage--"
+                    :disabled="dischargesPage <= 1"
+                    class="rounded-xl border border-slate-200 px-2.5 py-1 font-bold text-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300"
+                  >
+                    <ChevronLeft class="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    @click="dischargesPage++"
+                    :disabled="dischargesPage >= totalDischargePages"
+                    class="rounded-xl border border-slate-200 px-2.5 py-1 font-bold text-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300"
+                  >
+                    <ChevronRight class="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 

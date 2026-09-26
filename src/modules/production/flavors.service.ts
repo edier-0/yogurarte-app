@@ -111,9 +111,14 @@ export async function toggleFlavor(id: number) {
 export async function deleteFlavor(id: number) {
   const flavor = await getFlavorById(id);
 
-  // Verificar si el sabor ha sido utilizado en lotes o pedidos
-  const [batchesCount, orderItemsCount] = await Promise.all([
+  // Verificar si el sabor ha sido utilizado en lotes base, fracciones envasadas o pedidos
+  const [batchesCount, packagingsCount, orderItemsCount] = await Promise.all([
     prisma.productionBatch.count({
+      where: {
+        flavor: { contains: flavor.name, mode: 'insensitive' },
+      },
+    }),
+    prisma.batchPackaging.count({
       where: {
         flavor: { contains: flavor.name, mode: 'insensitive' },
       },
@@ -125,14 +130,14 @@ export async function deleteFlavor(id: number) {
     }),
   ]);
 
-  if (batchesCount > 0 || orderItemsCount > 0) {
+  if (batchesCount > 0 || packagingsCount > 0 || orderItemsCount > 0) {
     // Baja lógica si tiene historial para preservar la trazabilidad
     const updated = await prisma.productFlavor.update({
       where: { id },
       data: { isActive: false },
     });
     return {
-      message: `El sabor "${flavor.name}" tiene registros vinculados en lotes o pedidos; fue desactivado para preservar el historial.`,
+      message: `El sabor "${flavor.name}" tiene registros vinculados en producción o ventas; fue desactivado en lugar de eliminarse para preservar el historial.`,
       flavor: updated,
       deactivated: true,
     };
@@ -144,7 +149,7 @@ export async function deleteFlavor(id: number) {
   });
 
   return {
-    message: `Sabor "${flavor.name}" eliminado exitosamente.`,
+    message: `Sabor "${flavor.name}" eliminado exitosamente del catálogo.`,
     deleted: true,
   };
 }

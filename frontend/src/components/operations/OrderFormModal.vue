@@ -45,8 +45,9 @@ const isEditing = computed(() => Boolean(props.orderToEdit));
 
 // Sabores base del catálogo institucional YogurArte obtenidos dinámicamente
 const activeCatalogFlavors = computed(() => {
-  const list = productionStore.activeFlavors.map((f) => f.name);
-  if (list.length > 0) return list;
+  if (productionStore.flavors.length > 0) {
+    return productionStore.activeFlavors.map((f) => f.name);
+  }
   return [
     'Natural',
     'Fresa',
@@ -236,7 +237,7 @@ watch(
       if (store.customers.length === 0) store.fetchCustomers();
       if (store.drivers.length === 0) store.fetchDrivers();
       if (productionStore.batches.length === 0) productionStore.fetchBatches();
-      if (productionStore.flavors.length === 0) productionStore.fetchFlavors(true);
+      if (productionStore.flavors.length === 0) productionStore.fetchFlavors();
 
       if (props.orderToEdit) {
         const o = props.orderToEdit;

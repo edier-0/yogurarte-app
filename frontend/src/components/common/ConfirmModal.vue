@@ -7,8 +7,6 @@ import {
   AlertDialogContent,
   AlertDialogTitle,
   AlertDialogDescription,
-  AlertDialogCancel,
-  AlertDialogAction,
 } from 'reka-ui';
 import {
   AlertTriangle,
@@ -82,20 +80,22 @@ const confirmButtonStyle = computed(() => {
         </div>
 
         <div class="mt-6 flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-          <AlertDialogCancel
+          <button
+            type="button"
             @click="handleCancel"
             class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700/70"
           >
             {{ options.cancelText }}
-          </AlertDialogCancel>
+          </button>
 
-          <AlertDialogAction
+          <button
+            type="button"
             @click="handleConfirm"
             class="rounded-xl px-4 py-2.5 text-xs font-bold transition-all active:scale-95"
             :class="confirmButtonStyle"
           >
             {{ options.confirmText }}
-          </AlertDialogAction>
+          </button>
         </div>
       </AlertDialogContent>
     </AlertDialogPortal>

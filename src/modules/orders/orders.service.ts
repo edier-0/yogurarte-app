@@ -1407,9 +1407,16 @@ export const deleteOrder = async (id: number) => {
 
   const affectedBatchIds = new Set<number>();
   if (order.batchId) affectedBatchIds.add(order.batchId);
-  order.items.forEach((it) => {
+  for (const it of order.items) {
     if (it.batchId) affectedBatchIds.add(it.batchId);
-  });
+    if (it.packagingId) {
+      const pkg = await prisma.batchPackaging.findUnique({
+        where: { id: it.packagingId },
+        select: { batchId: true },
+      });
+      if (pkg?.batchId) affectedBatchIds.add(pkg.batchId);
+    }
+  }
 
   await prisma.order.delete({
     where: { id },

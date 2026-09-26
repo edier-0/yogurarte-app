@@ -90,9 +90,9 @@ async function handleDelete(flavor: ProductFlavor) {
   if (actionInProgressId.value !== null) return;
   const ok = await confirm({
     title: 'Eliminar Sabor',
-    message: `¿Confirmas la eliminación o desactivación del sabor "${flavor.name}"? Si tiene histórico de producción o ventas, se pausará para conservar los registros.`,
+    message: `¿Deseas eliminar el sabor "${flavor.name}"? Si no tiene registros vinculados se eliminará definitivamente del catálogo; si tiene historial en producción o ventas, se desactivará automáticamente para preservar la trazabilidad.`,
     confirmText: 'Eliminar Sabor',
-    cancelText: 'Conservar',
+    cancelText: 'Cancelar',
     variant: 'danger',
   });
   if (!ok) return;

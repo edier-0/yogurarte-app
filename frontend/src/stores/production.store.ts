@@ -794,11 +794,11 @@ export const useProductionStore = defineStore('production', () => {
       const res = await http.delete<{ message: string; deactivated?: boolean }>(`/production/flavors/${id}`);
       if (res?.deactivated) {
         toast.info('Sabor Desactivado', {
-          description: 'El sabor tiene historial de producción o pedidos, por lo que fue pausado en lugar de eliminarse.',
+          description: res.message || 'El sabor tiene historial de producción o pedidos, por lo que fue desactivado en lugar de eliminarse.',
         });
       } else {
         toast.success('Sabor Eliminado', {
-          description: 'El sabor ha sido eliminado del catálogo.',
+          description: res?.message || 'El sabor ha sido eliminado del catálogo.',
         });
       }
       await fetchFlavors();
