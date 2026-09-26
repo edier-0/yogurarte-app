@@ -1336,6 +1336,68 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
       const b250Restored = await prisma.rawMaterial.findUnique({ where: { id: bottle250Id } });
       expect(b250Restored?.currentStock).toBe(100);
     });
+
+    it('Eliminación Definitiva Fase A: DELETE /api/batches/:id borra el lote madre y desvincula pedidos', async () => {
+      // 1. Crear lote para probar eliminación
+      const batchRes = await request(app)
+        .post('/api/batches')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          batchCode: `LOTE-DEL-TEST-${Date.now()}`,
+          milkUsedLiters: 15,
+          flavor: 'Natural',
+          status: 'DISPONIBLE',
+        });
+      expect(batchRes.status).toBe(201);
+      const toDeleteId = batchRes.body.id;
+
+      // 2. Vincular un pedido de prueba
+      const order = await prisma.order.create({
+        data: {
+          orderNumber: `ORD-DEL-${Date.now()}`,
+          customerId: testCustomerId,
+          batchId: toDeleteId,
+          totalLiters: 2,
+          quantityBottles: 2,
+          bottleSize: '1L',
+          flavor: 'Natural',
+          totalAmount: 24000,
+          items: {
+            create: [
+              {
+                batchId: toDeleteId,
+                flavor: 'Natural',
+                bottleSize: '1L',
+                quantity: 2,
+                totalLiters: 2,
+                unitPrice: 12000,
+                totalPrice: 24000,
+              },
+            ],
+          },
+        },
+        include: { items: true },
+      });
+
+      // 3. Ejecutar DELETE /api/batches/:id
+      const delRes = await request(app)
+        .delete(`/api/batches/${toDeleteId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(delRes.status).toBe(200);
+      expect(delRes.body.message).toContain('eliminado definitivamente');
+
+      // 4. Verificar que el lote no existe en DB
+      const batchInDb = await prisma.productionBatch.findUnique({ where: { id: toDeleteId } });
+      expect(batchInDb).toBeNull();
+
+      // 5. Verificar que el pedido fue desvinculado a pre-venta sin romperse
+      const orderInDb = await prisma.order.findUnique({ where: { id: order.id }, include: { items: true } });
+      expect(orderInDb?.batchId).toBeNull();
+      expect(orderInDb?.items[0].batchId).toBeNull();
+
+      // Limpiar pedido de prueba
+      await prisma.order.delete({ where: { id: order.id } });
+    });
   });
 });
 

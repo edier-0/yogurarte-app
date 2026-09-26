@@ -3474,3 +3474,59 @@ export const getBatchSummary = async (batchId: number) => {
   };
 };
 
+/**
+ * Eliminar lote madre definitivamente de la base de datos con desvinculación segura
+ */
+export const deleteBatch = async (batchId: number) => {
+  return await prisma.$transaction(async (tx) => {
+    const batch = await tx.productionBatch.findUnique({
+      where: { id: batchId },
+      include: {
+        packagings: {
+          include: {
+            itemsUsed: true,
+            orderItems: true,
+          },
+        },
+        itemsUsed: true,
+        orders: true,
+        orderItems: true,
+      },
+    });
+
+    if (!batch) {
+      throw new NotFoundError('Lote de producción no encontrado');
+    }
+
+    // 1. Desvincular pedidos y orderItems vinculados directamente al lote madre
+    await tx.orderItem.updateMany({
+      where: { batchId: batch.id },
+      data: { batchId: null, packagingId: null },
+    });
+
+    await tx.order.updateMany({
+      where: { batchId: batch.id },
+      data: { batchId: null },
+    });
+
+    // 2. Desvincular orderItems de todas las fracciones del lote
+    const packagingIds = batch.packagings.map((p) => p.id);
+    if (packagingIds.length > 0) {
+      await tx.orderItem.updateMany({
+        where: { packagingId: { in: packagingIds } },
+        data: { packagingId: null },
+      });
+    }
+
+    // 3. Eliminar el lote madre (BatchPackaging, BatchItemUsage y BatchDischarge eliminados en cascada)
+    await tx.productionBatch.delete({
+      where: { id: batch.id },
+    });
+
+    return {
+      message: `Lote madre ${batch.batchCode} eliminado definitivamente del sistema.`,
+      batchId: batch.id,
+    };
+  });
+};
+

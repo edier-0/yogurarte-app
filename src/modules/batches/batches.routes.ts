@@ -22,6 +22,7 @@ import {
   deleteBatchPackaging,
   recordPackagingDischarge,
   unlinkOrderFromPackaging,
+  deleteBatch,
 } from './batches.controller.js';
 import { validateBody, validateParams, validateQuery } from '../../shared/middlewares/validate.middleware.js';
 import {
@@ -75,5 +76,6 @@ router.post('/:id/discharges', validateParams(idParamSchema), validateBody(creat
 router.delete('/discharges/:dischargeId', deleteBatchDischarge);
 router.put('/:id', validateParams(idParamSchema), validateBody(updateBatchSchema), updateBatch);
 router.put('/:id/deactivate', validateParams(idParamSchema), validateBody(deactivateBatchSchema), deactivateBatch);
+router.delete('/:id', validateParams(idParamSchema), deleteBatch);
 
 export default router;

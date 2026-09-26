@@ -212,5 +212,14 @@ export const unlinkOrderFromPackaging = async (req: Request, res: Response, next
   }
 };
 
+export const deleteBatch = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.deleteBatch(Number(req.params.id));
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 

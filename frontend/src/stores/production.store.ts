@@ -743,6 +743,23 @@ export const useProductionStore = defineStore('production', () => {
     }
   }
 
+  // Eliminar lote madre definitivamente de la base de datos
+  async function deleteBatch(id: number): Promise<boolean> {
+    try {
+      const res = await http.delete<{ message: string; batchId: number }>(`/batches/${id}`);
+      toast.success('Lote Eliminado Definitivamente', {
+        description: res?.message || 'El lote madre y sus fracciones asociadas han sido eliminados.',
+      });
+      await Promise.all([fetchBatches(currentPage.value), fetchPackagings(packagingCurrentPage.value)]);
+      return true;
+    } catch (err: any) {
+      toast.error('Error al Eliminar Lote', {
+        description: err?.message || 'No se pudo eliminar el lote madre.',
+      });
+      return false;
+    }
+  }
+
   // Catálogo de Sabores Dinámico
   async function fetchFlavors(activeOnly = false) {
     isLoadingFlavors.value = true;
@@ -932,6 +949,7 @@ export const useProductionStore = defineStore('production', () => {
     finishFermentation,
     adjustBatchLiters,
     archiveBatch,
+    deleteBatch,
     // Estado y Acciones Fase B (Fracciones)
     packagings,
     isLoadingPackagings,

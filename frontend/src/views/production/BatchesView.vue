@@ -180,6 +180,23 @@ async function handleDeletePackaging(pkg: BatchPackagingCardItem) {
   await productionStore.deletePackaging(pkg.id, false);
 }
 
+// Eliminar lote madre definitivamente de Fase A con advertencia correspondiente
+async function handleDeleteBatch(batch: BatchItem) {
+  const pkgsCount = batch.packagings?.length || 0;
+  const ok = await confirm({
+    title: '¿Eliminar Lote Definitivamente?',
+    message: pkgsCount > 0
+      ? `⚠️ ¡ADVERTENCIA CRÍTICA! El lote madre "${batch.batchCode}" cuenta con ${pkgsCount} fracción(es) envasada(s). Si continúas, se eliminarán todas sus fracciones envasadas, los pedidos vinculados quedarán como pre-venta sin lote y el lote será borrado permanentemente de la base de datos de manera irreversible. ¿Deseas proceder?`
+      : `¿Estás seguro de eliminar DEFINITIVAMENTE el lote madre "${batch.batchCode}"? Esta acción borrará el registro de producción y sus insumos consumidos de forma irreversible de la base de datos.`,
+    confirmText: 'Eliminar Definitivamente',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+  });
+
+  if (!ok) return;
+  await productionStore.deleteBatch(batch.id);
+}
+
 // Cambio rápido de estado 1-touch: si está en fermentación, abre modal para terminarla
 async function handleQuickStatusToggle(batch: BatchItem) {
   if (batch.status === 'EN_FERMENTACION') {
@@ -671,9 +688,21 @@ watch(activeMainTab, (newTab) => {
               type="button"
               @click="productionStore.archiveBatch(batch.id)"
               class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-400 hover:text-slate-900"
+              title="Trasladar lote madre al archivo histórico"
             >
               <Archive class="h-3.5 w-3.5" />
               <span>Archivar</span>
+            </button>
+
+            <!-- Eliminar Lote Madre Definitivamente -->
+            <button
+              type="button"
+              @click="handleDeleteBatch(batch)"
+              class="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-900/40"
+              title="Eliminar lote madre definitivamente"
+            >
+              <Trash2 class="h-3.5 w-3.5 stroke-[2]" />
+              <span>Eliminar</span>
             </button>
           </div>
         </div>
