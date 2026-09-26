@@ -557,7 +557,7 @@ export async function redeemLoyaltyReward(customerId: number) {
 export async function getRecurringSchedules(query: GetRecurringQuery) {
   const { filter = 'ALL', search } = query;
 
-  const where: any = { isActive: true };
+  const where: any = {};
 
   if (search && search.trim()) {
     where.OR = [
@@ -572,9 +572,15 @@ export async function getRecurringSchedules(query: GetRecurringQuery) {
   const in3Days = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 3, 23, 59, 59, 999);
 
   if (filter === 'TODAY') {
+    where.isActive = true;
     where.nextDate = { lte: endOfToday };
   } else if (filter === 'UPCOMING') {
+    where.isActive = true;
     where.nextDate = { gt: endOfToday, lte: in3Days };
+  } else if (filter === 'ACTIVE') {
+    where.isActive = true;
+  } else if (filter === 'PAUSED') {
+    where.isActive = false;
   }
 
   return prisma.recurringSchedule.findMany({
@@ -782,39 +788,39 @@ export async function getQuickReplies() {
   if (replies.length === 0) {
     const defaultReplies = [
       {
-        shortcut: '/sabores',
-        title: 'Sabores Artesanales de Hoy',
-        category: 'VENTAS',
-        content:
-          '🥛 *Sabores Artesanales YogurArte disponibles hoy:*\n• Fresa 🍓\n• Mora 🫐\n• Melocotón 🍑\n• Guanábana 🍈\n• Arequipe 🍯\n• Natural 🍶\n\n¿Cuál te preparamos hoy?',
-      },
-      {
-        shortcut: '/precios',
-        title: 'Lista de Precios Oficiales',
-        category: 'VENTAS',
-        content:
-          '💰 *Precios Oficiales YogurArte:*\n• Botella 1 Litro: $12.000 COP\n• Botella 2 Litros: $22.000 COP\n\n🛵 Domicilio disponible en todo Fonseca.',
-      },
-      {
-        shortcut: '/pago',
-        title: 'Datos de Pago (Nequi / Bancolombia)',
-        category: 'PAGOS',
-        content:
-          '💳 *Cuentas para Pago / Transferencia:*\n• Nequi: 3024581882\n• Bancolombia: Ahorros a nombre de Edier / YogurArte\n\nPor favor nos envías el comprobante por aquí una vez realices la transferencia. ¡Gracias!',
-      },
-      {
-        shortcut: '/saludo',
-        title: 'Saludo y Bienvenida',
+        shortcut: '/bienvenida',
+        title: 'Bienvenida Institucional',
         category: 'GENERAL',
         content:
-          '👋 ¡Hola! Bienvenido a *YogurArte*, tu yogur artesanal favorito en Fonseca. ¿En qué te podemos consentir hoy?',
+          'Hola {{cliente}}, gracias por comunicarte con YogurArte. Estamos atentos para tomar tu pedido o resolver cualquier inquietud sobre nuestros yogures artesanales.',
+      },
+      {
+        shortcut: '/sabores',
+        title: 'Catalogo de Sabores',
+        category: 'VENTAS',
+        content:
+          'Estimado/a {{cliente}}, hoy tenemos disponibles los siguientes sabores frescos: {{sabores}}. Presentaciones en 1 Litro ($12.000 COP) y 2 Litros ($22.000 COP). ¿Cual deseas ordenar?',
+      },
+      {
+        shortcut: '/despacho',
+        title: 'Confirmacion de Despacho',
+        category: 'VENTAS',
+        content:
+          'Estimado/a {{cliente}}, tu pedido por un valor de {{total}} ha sido preparado y despachado con nuestro domiciliario hacia tu direccion. Te avisaremos apenas este en camino.',
+      },
+      {
+        shortcut: '/saldo',
+        title: 'Recordatorio de Saldo Pendiente',
+        category: 'PAGOS',
+        content:
+          'Estimado/a {{cliente}}, te informamos que tienes un saldo pendiente de {{total}} de tu pedido anterior en YogurArte. Puedes transferir a nuestra cuenta Nequi 3024581882 y enviarnos el comprobante por aqui. Muchas gracias.',
       },
       {
         shortcut: '/fidelizacion',
         title: 'Programa 10+1 Yogur Gratis',
         category: 'VENTAS',
         content:
-          '🎁 ¡En *YogurArte* premiamos tu preferencia! Por cada 10 botellas que compres, ¡te regalamos 1 botella de 1 Litro totalmente gratis! 🥛✨',
+          'Estimado/a {{cliente}}, con el Programa de Fidelizacion YogurArte acumulas litros en cada compra: por cada 10 botellas, recibes 1 botella de 1 Litro totalmente gratis.',
       },
     ];
 

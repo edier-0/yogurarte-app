@@ -4,6 +4,9 @@ import { useRoute } from 'vue-router';
 import { refDebounced } from '@vueuse/core';
 import {
   MessageCircle,
+  Gift,
+  BookOpen,
+  CalendarClock,
   Send,
   Search,
   RefreshCw,
@@ -20,9 +23,13 @@ import {
 import { http } from '@/api/client';
 import { getSocket } from '@/api/socket';
 import { toast } from 'vue-sonner';
+import { useProductionStore } from '@/stores/production.store';
 import CrmQrModal from '@/components/operations/crm/CrmQrModal.vue';
 import QuickRepliesModal from '@/components/operations/crm/QuickRepliesModal.vue';
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
+import LoyaltyTab from '@/components/operations/crm/LoyaltyTab.vue';
+import TemplatesTab from '@/components/operations/crm/TemplatesTab.vue';
+import RecurringTab from '@/components/operations/crm/RecurringTab.vue';
 
 export interface ChatMessageItem {
   id: number;
@@ -65,7 +72,11 @@ export interface ChatConversationItem {
   } | null;
 }
 
+type MainTab = 'CHATS' | 'LOYALTY' | 'TEMPLATES' | 'RECURRING';
+const activeMainTab = ref<MainTab>('CHATS');
+
 const route = useRoute();
+const productionStore = useProductionStore();
 
 // Estado de Conexión Baileys
 const whatsappStatus = ref<'CONNECTED' | 'CONNECTING' | 'DISCONNECTED'>('DISCONNECTED');
@@ -96,6 +107,11 @@ const isMobileChatOpen = ref(false);
 
 const messagesContainer = ref<HTMLElement | null>(null);
 
+// Total de mensajes no leídos global
+const totalUnreadCount = computed(() => {
+  return conversations.value.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+});
+
 // Formateadores de fecha y hora
 const formatMessageTime = (dateStr?: string | null) => {
   if (!dateStr) return '';
@@ -120,11 +136,20 @@ const formatChatTimestamp = (dateStr?: string | null) => {
   }).format(d);
 };
 
-function scrollToBottom() {
+// Desplazamiento automático al fondo del chat
+function scrollToBottom(smooth = false) {
   nextTick(() => {
     if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+      messagesContainer.value.scrollTo({
+        top: messagesContainer.value.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto',
+      });
     }
+    setTimeout(() => {
+      if (messagesContainer.value) {
+        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+      }
+    }, 60);
   });
 }
 
@@ -151,13 +176,17 @@ async function fetchConversations() {
       conversations.value = data;
 
       // Si viene por query param (?contact=...), autoseleccionar
-      const contactQuery = (route.query.contact as string || '').trim().toLowerCase();
+      const contactQuery = ((route.query.contact as string) || '').trim().toLowerCase();
       if (contactQuery && !selectedConversation.value) {
         const found = conversations.value.find((c) => {
           const name = (c.contactName || '').toLowerCase();
           const phone = (c.phoneNumber || '').toLowerCase();
           const custName = (c.customer?.fullName || '').toLowerCase();
-          return name.includes(contactQuery) || phone.includes(contactQuery) || custName.includes(contactQuery);
+          return (
+            name.includes(contactQuery) ||
+            phone.includes(contactQuery) ||
+            custName.includes(contactQuery)
+          );
         });
         if (found) {
           selectConversation(found);
@@ -178,12 +207,18 @@ async function loadMessagesForConversation(convId: number) {
     const msgs = await http.get<ChatMessageItem[]>(`/crm/conversations/${convId}/messages`);
     if (Array.isArray(msgs)) {
       activeMessages.value = msgs;
-      scrollToBottom();
+      scrollToBottom(false);
     }
   } catch {
     activeMessages.value = [];
   } finally {
     isLoadingMessages.value = false;
+    scrollToBottom(false);
+    try {
+      await http.post(`/crm/conversations/${convId}/read`);
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -232,7 +267,7 @@ async function handleSendMessage() {
       conv.lastMessageText = textToSend;
       conv.lastMessageTimestamp = new Date().toISOString();
       conv.lastMessageFromMe = true;
-      scrollToBottom();
+      scrollToBottom(true);
     }
   } catch (err: any) {
     toast.error('Error al enviar mensaje', { description: err?.message });
@@ -241,9 +276,35 @@ async function handleSendMessage() {
   }
 }
 
-// Inserción de plantilla rápida
+// Interpolación dinámica de variables para respuestas rápidas
+function interpolateVariables(rawText: string): string {
+  const customerName =
+    selectedConversation.value?.customer?.fullName ||
+    selectedConversation.value?.contactName ||
+    'Cliente';
+
+  let totalStr = '$0 COP';
+  const orders = selectedConversation.value?.customer?.orders;
+  if (orders && orders.length > 0) {
+    const latestOrder = orders[0];
+    totalStr = `$${new Intl.NumberFormat('es-CO').format(latestOrder.totalAmount)} COP`;
+  }
+
+  const flavorsList =
+    productionStore.flavors.length > 0
+      ? productionStore.activeFlavors.map((f) => f.name).join(', ')
+      : 'Fresa, Melocotón, Mora, Guanábana, Arequipe, Natural';
+
+  return rawText
+    .replace(/\{\{\s*cliente\s*\}\}/gi, customerName)
+    .replace(/\{\{\s*customer\s*\}\}/gi, customerName)
+    .replace(/\{\{\s*total\s*\}\}/gi, totalStr)
+    .replace(/\{\{\s*sabores\s*\}\}/gi, flavorsList);
+}
+
+// Inserción de plantilla rápida en el chat con reemplazo de variables
 function handleApplyQuickReply(text: string) {
-  messageInput.value = text;
+  messageInput.value = interpolateVariables(text);
 }
 
 // Crear pedido desde el chat
@@ -274,7 +335,7 @@ function onNewMessage(payload: { conversationId: number; message: ChatMessageIte
   // 1. Si coincide con el chat abierto, agregar mensaje
   if (selectedConversation.value && selectedConversation.value.id === payload.conversationId) {
     activeMessages.value.push(payload.message);
-    scrollToBottom();
+    scrollToBottom(true);
   }
 
   // 2. Actualizar listado en sidebar
@@ -302,9 +363,30 @@ function onConversationRead(data: { conversationId: number }) {
   }
 }
 
+// Navegar al chat desde otra pestaña
+function handleOpenChatFromCustomer(customer: { id: number; fullName: string; phone: string }) {
+  activeMainTab.value = 'CHATS';
+  const cleanDigits = customer.phone.replace(/\D/g, '');
+  const found = conversations.value.find((c) => {
+    return (
+      c.customerId === customer.id ||
+      c.phoneNumber.includes(cleanDigits) ||
+      (c.contactName && c.contactName.toLowerCase().includes(customer.fullName.toLowerCase()))
+    );
+  });
+  if (found) {
+    selectConversation(found);
+  } else {
+    searchChat.value = customer.fullName;
+  }
+}
+
 onMounted(() => {
   fetchStatus();
   fetchConversations();
+  if (productionStore.flavors.length === 0) {
+    productionStore.fetchFlavors();
+  }
 
   const socket = getSocket();
   socket.on('whatsapp:status', onStatusUpdate);
@@ -326,10 +408,10 @@ onUnmounted(() => {
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-          CRM & WhatsApp Baileys
+          CRM & Operaciones Comerciales
         </h1>
         <p class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-          Mensajería omnicanal en tiempo real, respuestas rápidas y pedidos desde el chat
+          Mensajería omnicanal WhatsApp, programa de fidelización 10+1 y compras recurrentes
         </p>
       </div>
 
@@ -390,15 +472,85 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Contenedor Principal del CRM (Grilla 2 Columnas / Responsive Móvil) -->
-    <div class="h-[calc(100vh-14rem)] min-h-[520px] rounded-3xl border border-surface-light-border bg-surface-light-card shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card overflow-hidden grid grid-cols-1 md:grid-cols-12">
+    <!-- Barra de Pestañas Superiores Estilizada en Reka UI (Slate/Marfil) -->
+    <div class="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+      <button
+        type="button"
+        @click="activeMainTab = 'CHATS'"
+        class="inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-xs font-black transition-all"
+        :class="
+          activeMainTab === 'CHATS'
+            ? 'bg-slate-900 text-white shadow-md dark:bg-white dark:text-slate-900'
+            : 'bg-surface-light-card text-slate-600 hover:bg-slate-100 dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800'
+        "
+      >
+        <MessageCircle class="h-4 w-4 stroke-[2]" />
+        <span>WhatsApp & Chats</span>
+        <span
+          v-if="totalUnreadCount > 0"
+          class="rounded-full bg-accent-500 px-2 py-0.5 text-[10px] font-black text-white"
+        >
+          {{ totalUnreadCount }}
+        </span>
+      </button>
+
+      <button
+        type="button"
+        @click="activeMainTab = 'LOYALTY'"
+        class="inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-xs font-black transition-all"
+        :class="
+          activeMainTab === 'LOYALTY'
+            ? 'bg-slate-900 text-white shadow-md dark:bg-white dark:text-slate-900'
+            : 'bg-surface-light-card text-slate-600 hover:bg-slate-100 dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800'
+        "
+      >
+        <Gift class="h-4 w-4 stroke-[2]" />
+        <span>Fidelización (10+1)</span>
+      </button>
+
+      <button
+        type="button"
+        @click="activeMainTab = 'TEMPLATES'"
+        class="inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-xs font-black transition-all"
+        :class="
+          activeMainTab === 'TEMPLATES'
+            ? 'bg-slate-900 text-white shadow-md dark:bg-white dark:text-slate-900'
+            : 'bg-surface-light-card text-slate-600 hover:bg-slate-100 dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800'
+        "
+      >
+        <BookOpen class="h-4 w-4 stroke-[2]" />
+        <span>Plantillas Rápidas</span>
+      </button>
+
+      <button
+        type="button"
+        @click="activeMainTab = 'RECURRING'"
+        class="inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-xs font-black transition-all"
+        :class="
+          activeMainTab === 'RECURRING'
+            ? 'bg-slate-900 text-white shadow-md dark:bg-white dark:text-slate-900'
+            : 'bg-surface-light-card text-slate-600 hover:bg-slate-100 dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800'
+        "
+      >
+        <CalendarClock class="h-4 w-4 stroke-[2]" />
+        <span>Compras Recurrentes</span>
+      </button>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- CONTENIDO PESTAÑA 1: WHATSAPP & CHATS     -->
+    <!-- ========================================== -->
+    <div
+      v-if="activeMainTab === 'CHATS'"
+      class="h-[calc(100vh-14rem)] min-h-[580px] max-h-[860px] rounded-3xl border border-surface-light-border bg-surface-light-card shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card overflow-hidden grid grid-cols-1 md:grid-cols-12"
+    >
       <!-- SIDEBAR DE CHATS (Columna 4 de 12 en desktop) -->
       <div
-        class="border-r border-surface-light-border dark:border-surface-dark-border flex flex-col h-full md:col-span-4 lg:col-span-4"
+        class="border-r border-surface-light-border dark:border-surface-dark-border flex flex-col h-full min-h-0 overflow-hidden md:col-span-4 lg:col-span-4"
         :class="{ 'hidden md:flex': isMobileChatOpen }"
       >
-        <!-- Buscador de Chats -->
-        <div class="p-3 border-b border-surface-light-border dark:border-surface-dark-border bg-surface-light-canvas/40 dark:bg-surface-dark-canvas/40">
+        <!-- Buscador de Chats (shrink-0) -->
+        <div class="shrink-0 p-3 border-b border-surface-light-border dark:border-surface-dark-border bg-surface-light-canvas/40 dark:bg-surface-dark-canvas/40">
           <div class="relative w-full">
             <Search class="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 stroke-[2]" />
             <input
@@ -410,8 +562,8 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Lista de Conversaciones con v-auto-animate -->
-        <div v-auto-animate class="flex-1 overflow-y-auto divide-y divide-surface-light-border/60 dark:divide-surface-dark-border/60">
+        <!-- Lista de Conversaciones (flex-1 min-h-0 overflow-y-auto) -->
+        <div v-auto-animate class="flex-1 min-h-0 overflow-y-auto divide-y divide-surface-light-border/60 dark:divide-surface-dark-border/60">
           <div
             v-for="conv in filteredConversations"
             :key="conv.id"
@@ -500,13 +652,13 @@ onUnmounted(() => {
 
       <!-- VENTANA DE CHAT ACTIVA (Columna 8 de 12 en desktop) -->
       <div
-        class="flex flex-col h-full md:col-span-8 lg:col-span-8 bg-surface-light-canvas/20 dark:bg-surface-dark-canvas/20"
+        class="flex flex-col h-full min-h-0 overflow-hidden md:col-span-8 lg:col-span-8 bg-surface-light-canvas/20 dark:bg-surface-dark-canvas/20"
         :class="{ 'hidden md:flex': !isMobileChatOpen }"
       >
         <!-- CASO 1: HAY CHAT SELECCIONADO -->
         <template v-if="selectedConversation">
-          <!-- Cabecera del Chat -->
-          <div class="p-3.5 sm:p-4 border-b border-surface-light-border dark:border-surface-dark-border bg-surface-light-card dark:bg-surface-dark-card flex items-center justify-between gap-2">
+          <!-- Cabecera del Chat (shrink-0 fija) -->
+          <div class="shrink-0 p-3.5 sm:p-4 border-b border-surface-light-border dark:border-surface-dark-border bg-surface-light-card dark:bg-surface-dark-card flex items-center justify-between gap-2">
             <div class="flex items-center gap-3">
               <!-- Botón Volver en Móvil -->
               <button
@@ -555,12 +707,12 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <!-- Área de Mensajes (Scrollable) -->
+          <!-- Área de Mensajes (flex-1 min-h-0 overflow-y-auto) -->
           <div
             ref="messagesContainer"
-            class="flex-1 overflow-y-auto p-4 space-y-3"
+            class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3"
           >
-            <!-- Skeleton o Loader -->
+            <!-- Loader -->
             <div v-if="isLoadingMessages" class="py-12 text-center text-xs font-semibold text-slate-400">
               <RefreshCw class="mx-auto h-5 w-5 animate-spin mb-1 text-slate-400" />
               Cargando mensajes...
@@ -608,15 +760,15 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Barra de Input y Acciones de Envío -->
-          <div class="p-3 border-t border-surface-light-border dark:border-surface-dark-border bg-surface-light-card dark:bg-surface-dark-card">
+          <!-- Barra de Input y Acciones de Envío (shrink-0 fija) -->
+          <div class="shrink-0 p-3 border-t border-surface-light-border dark:border-surface-dark-border bg-surface-light-card dark:bg-surface-dark-card">
             <form @submit.prevent="handleSendMessage" class="flex items-center gap-2">
               <!-- Botón de Plantillas / Respuestas Rápidas -->
               <button
                 type="button"
                 @click="isQuickRepliesModalOpen = true"
                 class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-brand-800 hover:bg-brand-50 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-brand-darkText dark:hover:bg-brand-950/40 transition-colors"
-                title="Respuestas rápidas"
+                title="Respuestas rápidas institucionales"
               >
                 <Zap class="h-4 w-4 stroke-[2]" />
               </button>
@@ -644,7 +796,7 @@ onUnmounted(() => {
 
         <!-- CASO 2: NINGÚN CHAT SELECCIONADO (Estado Vacío) -->
         <template v-else>
-          <div class="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400">
+          <div class="flex-1 min-h-0 flex flex-col items-center justify-center p-8 text-center text-slate-400">
             <div class="flex h-16 w-16 items-center justify-center rounded-3xl bg-brand-50 text-brand-800 dark:bg-brand-950/50 dark:text-brand-darkText mb-3 shadow-inner">
               <MessageCircle class="h-8 w-8 stroke-[1.5]" />
             </div>
@@ -659,7 +811,28 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Modal de Vinculación y Código QR -->
+    <!-- ========================================== -->
+    <!-- CONTENIDO PESTAÑA 2: FIDELIZACIÓN (10+1)  -->
+    <!-- ========================================== -->
+    <div v-else-if="activeMainTab === 'LOYALTY'">
+      <LoyaltyTab @open-chat="handleOpenChatFromCustomer" />
+    </div>
+
+    <!-- ========================================== -->
+    <!-- CONTENIDO PESTAÑA 3: PLANTILLAS RÁPIDAS   -->
+    <!-- ========================================== -->
+    <div v-else-if="activeMainTab === 'TEMPLATES'">
+      <TemplatesTab />
+    </div>
+
+    <!-- ========================================== -->
+    <!-- CONTENIDO PESTAÑA 4: COMPRAS RECURRENTES  -->
+    <!-- ========================================== -->
+    <div v-else-if="activeMainTab === 'RECURRING'">
+      <RecurringTab />
+    </div>
+
+    <!-- Modales Globales del CRM -->
     <CrmQrModal
       v-model:open="isQrModalOpen"
       :status="whatsappStatus"
@@ -668,13 +841,11 @@ onUnmounted(() => {
       @refresh="fetchStatus"
     />
 
-    <!-- Modal de Respuestas Rápidas / Plantillas -->
     <QuickRepliesModal
       v-model:open="isQuickRepliesModalOpen"
       @select="handleApplyQuickReply"
     />
 
-    <!-- Modal de Creación de Pedido desde el Chat -->
     <OrderFormModal
       v-model:open="isOrderModalOpen"
       :order-to-edit="orderToPrefill"

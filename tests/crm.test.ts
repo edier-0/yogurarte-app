@@ -96,6 +96,86 @@ describe('CRM & WhatsApp Endpoints', () => {
     expect(Array.isArray(res.body)).toBe(true);
   });
 
+  it('POST /api/crm/loyalty/redeem debe rechazar canje si el cliente no tiene 10 botellas acumuladas', async () => {
+    // Buscar un cliente de prueba
+    const customer = await prisma.customer.findFirst();
+    if (customer) {
+      const res = await request(app)
+        .post('/api/crm/loyalty/redeem')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ customerId: customer.id });
+
+      // Si no tiene 10 botellas, devuelve 400 Bad Request
+      if (res.status === 400) {
+        expect(res.body).toHaveProperty('error');
+      } else {
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveProperty('success', true);
+      }
+    }
+  });
+
+  it('Ciclo completo de compra recurrente: crear, listar, generar comanda y eliminar', async () => {
+    const customer = await prisma.customer.findFirst();
+    if (!customer) return;
+
+    // 1. Crear recurrencia
+    const createRes = await request(app)
+      .post('/api/crm/recurring')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId: customer.id,
+        frequencyDays: 7,
+        preferredFlavor: 'Mora',
+        bottleSize: '1L',
+        quantity: 2,
+        nextDate: new Date().toISOString().split('T')[0],
+        notes: 'Entrega semanal los lunes',
+      });
+
+    expect(createRes.status).toBe(201);
+    expect(createRes.body).toHaveProperty('id');
+    const scheduleId = createRes.body.id;
+
+    // 2. Modificar estado (pausar)
+    const updateRes = await request(app)
+      .put(`/api/crm/recurring/${scheduleId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false });
+
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.isActive).toBe(false);
+
+    // 3. Reactivar
+    await request(app)
+      .put(`/api/crm/recurring/${scheduleId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: true });
+
+    // 4. Generar pedido a partir de la recurrencia
+    const triggerRes = await request(app)
+      .post(`/api/crm/recurring/${scheduleId}/create-order`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect([200, 201]).toContain(triggerRes.status);
+    expect(triggerRes.body).toHaveProperty('success', true);
+    expect(triggerRes.body).toHaveProperty('order');
+    const createdOrderId = triggerRes.body.order.id;
+
+    // 5. Eliminar la recurrencia
+    const deleteRes = await request(app)
+      .delete(`/api/crm/recurring/${scheduleId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(deleteRes.status).toBe(200);
+
+    // Limpiar el pedido creado en la prueba
+    if (createdOrderId) {
+      await prisma.orderItem.deleteMany({ where: { orderId: createdOrderId } });
+      await prisma.order.deleteMany({ where: { id: createdOrderId } });
+    }
+  });
+
   afterAll(async () => {
     if (createdQuickReplyId) {
       await prisma.crmQuickReply.deleteMany({

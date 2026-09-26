@@ -140,7 +140,7 @@ export const redeemLoyaltySchema = z.object({
 });
 
 export const getRecurringQuerySchema = z.object({
-  filter: z.enum(['ALL', 'TODAY', 'UPCOMING']).optional(),
+  filter: z.enum(['ALL', 'TODAY', 'UPCOMING', 'ACTIVE', 'PAUSED']).optional(),
   search: z.string().optional(),
 });
 
