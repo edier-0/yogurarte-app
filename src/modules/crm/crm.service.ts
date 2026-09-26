@@ -555,7 +555,10 @@ export async function redeemLoyaltyReward(customerId: number) {
 // ==========================================
 
 export async function getRecurringSchedules(query: GetRecurringQuery) {
-  const { filter = 'ALL', search } = query;
+  const { filter = 'ALL', search, page, limit, paginate } = query;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number(limit) || 12));
+  const skip = (pageNum - 1) * limitNum;
 
   const where: any = {};
 
@@ -583,21 +586,51 @@ export async function getRecurringSchedules(query: GetRecurringQuery) {
     where.isActive = false;
   }
 
-  return prisma.recurringSchedule.findMany({
-    where,
-    include: {
-      customer: {
-        select: {
-          id: true,
-          fullName: true,
-          phone: true,
-          address: true,
+  const [totalItems, items] = await Promise.all([
+    prisma.recurringSchedule.count({ where }),
+    prisma.recurringSchedule.findMany({
+      where,
+      include: {
+        customer: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            address: true,
+          },
         },
       },
+      orderBy: { nextDate: 'asc' },
+      skip,
+      take: limitNum,
+    }),
+  ]);
+
+  const totalPages = Math.ceil(totalItems / limitNum) || 1;
+
+  if (paginate === true) {
+    return {
+      data: items,
+      items,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        totalItems,
+        totalPages,
+      },
+    };
+  }
+
+  return Object.assign(items, {
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      totalItems,
+      totalPages,
     },
-    orderBy: { nextDate: 'asc' },
   });
 }
+
 
 export async function createRecurringSchedule(data: CreateRecurringScheduleInput) {
   const { customerId, frequencyDays, preferredFlavor, bottleSize, quantity, nextDate, notes } = data;

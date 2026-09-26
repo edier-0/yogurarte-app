@@ -72,6 +72,21 @@ export const adjustmentsQuerySchema = z.object({
   type: z.string().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
+  search: z.string().optional(),
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().optional().default(10),
+  paginate: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
+});
+
+export const inventoryMovementsQuerySchema = z.object({
+  rawMaterialId: z.string().optional(),
+  type: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  search: z.string().optional(),
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().optional().default(10),
+  paginate: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
 });
 
 // ==========================================
@@ -107,6 +122,9 @@ export const purchasesQuerySchema = z.object({
   rawMaterialId: z.string().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().optional().default(10),
+  paginate: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
 });
 
 // ==========================================
@@ -119,6 +137,7 @@ export type MaterialsQueryInput = z.infer<typeof materialsQuerySchema>;
 
 export type AdjustStockInput = z.infer<typeof adjustStockSchema>;
 export type AdjustmentsQueryInput = z.infer<typeof adjustmentsQuerySchema>;
+export type InventoryMovementsQueryInput = z.infer<typeof inventoryMovementsQuerySchema>;
 
 export type CreatePurchaseInput = z.infer<typeof createPurchaseSchema>;
 export type UpdatePurchaseInput = z.infer<typeof updatePurchaseSchema>;

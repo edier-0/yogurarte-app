@@ -7,6 +7,7 @@ import {
 import {
   AdjustStockInput,
   AdjustmentsQueryInput,
+  InventoryMovementsQueryInput,
   CreateMaterialInput,
   CreatePurchaseInput,
   MaterialsQueryInput,
@@ -666,7 +667,10 @@ export const adjustStock = async (id: number, data: AdjustStockInput) => {
  * Obtener historial de ajustes físicos de inventario
  */
 export const getAdjustmentsHistory = async (query: AdjustmentsQueryInput) => {
-  const { startDate, endDate, rawMaterialId, type } = query;
+  const { startDate, endDate, rawMaterialId, type, search, paginate } = query;
+  const pageNum = Math.max(1, Number(query.page) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number(query.limit) || 10));
+  const skip = (pageNum - 1) * limitNum;
 
   const whereClause: any = {};
 
@@ -676,6 +680,15 @@ export const getAdjustmentsHistory = async (query: AdjustmentsQueryInput) => {
 
   if (type) {
     whereClause.type = String(type).trim();
+  }
+
+  if (search && search.trim()) {
+    const q = search.trim();
+    whereClause.OR = [
+      { reason: { contains: q, mode: 'insensitive' } },
+      { registeredBy: { contains: q, mode: 'insensitive' } },
+      { rawMaterial: { name: { contains: q, mode: 'insensitive' } } },
+    ];
   }
 
   if (startDate || endDate) {
@@ -688,22 +701,127 @@ export const getAdjustmentsHistory = async (query: AdjustmentsQueryInput) => {
     }
   }
 
-  return prisma.inventoryAdjustment.findMany({
-    where: whereClause,
-    include: {
-      rawMaterial: {
-        select: {
-          name: true,
-          unit: true,
-          category: true,
-          code: true,
+  const [total, items] = await Promise.all([
+    prisma.inventoryAdjustment.count({ where: whereClause }),
+    prisma.inventoryAdjustment.findMany({
+      where: whereClause,
+      include: {
+        rawMaterial: {
+          select: {
+            id: true,
+            name: true,
+            unit: true,
+            category: true,
+            code: true,
+            currentStock: true,
+            avgCost: true,
+          },
         },
       },
-    },
-    orderBy: { adjustmentDate: 'desc' },
-    take: 150,
-  });
+      orderBy: { adjustmentDate: 'desc' },
+      skip,
+      take: limitNum,
+    }),
+  ]);
+
+  const totalPages = Math.ceil(total / limitNum) || 1;
+
+  if (paginate === true) {
+    return {
+      data: items,
+      items,
+      pagination: {
+        total,
+        totalItems: total,
+        page: pageNum,
+        currentPage: pageNum,
+        limit: limitNum,
+        totalPages,
+      },
+    };
+  }
+
+  return items;
 };
+
+/**
+ * Obtener historial de movimientos de inventario / Kardex (Paginado estricto a 10 por defecto)
+ * Endpoint: GET /api/inventory/movements?rawMaterialId=X&page=1&limit=10
+ */
+export const getInventoryMovements = async (query: InventoryMovementsQueryInput) => {
+  const { startDate, endDate, rawMaterialId, type, search } = query;
+  const pageNum = Math.max(1, Number(query.page) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number(query.limit) || 10));
+  const skip = (pageNum - 1) * limitNum;
+
+  const whereClause: any = {};
+
+  if (rawMaterialId) {
+    whereClause.rawMaterialId = Number(rawMaterialId);
+  }
+
+  if (type) {
+    whereClause.type = String(type).trim();
+  }
+
+  if (search && search.trim()) {
+    const q = search.trim();
+    whereClause.OR = [
+      { reason: { contains: q, mode: 'insensitive' } },
+      { registeredBy: { contains: q, mode: 'insensitive' } },
+      { rawMaterial: { name: { contains: q, mode: 'insensitive' } } },
+    ];
+  }
+
+  if (startDate || endDate) {
+    whereClause.adjustmentDate = {};
+    if (startDate && typeof startDate === 'string') {
+      whereClause.adjustmentDate.gte = new Date(`${startDate.split('T')[0]}T00:00:00.000Z`);
+    }
+    if (endDate && typeof endDate === 'string') {
+      whereClause.adjustmentDate.lte = new Date(`${endDate.split('T')[0]}T23:59:59.999Z`);
+    }
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.inventoryAdjustment.count({ where: whereClause }),
+    prisma.inventoryAdjustment.findMany({
+      where: whereClause,
+      include: {
+        rawMaterial: {
+          select: {
+            id: true,
+            name: true,
+            unit: true,
+            category: true,
+            code: true,
+            currentStock: true,
+            avgCost: true,
+          },
+        },
+      },
+      orderBy: { adjustmentDate: 'desc' },
+      skip,
+      take: limitNum,
+    }),
+  ]);
+
+  const totalPages = Math.ceil(total / limitNum) || 1;
+
+  return {
+    data: items,
+    items,
+    pagination: {
+      total,
+      totalItems: total,
+      page: pageNum,
+      currentPage: pageNum,
+      limit: limitNum,
+      totalPages,
+    },
+  };
+};
+
 
 /**
  * Eliminar ajuste de inventario y restaurar stock anterior ($transaction)

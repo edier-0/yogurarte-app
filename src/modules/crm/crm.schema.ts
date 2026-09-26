@@ -142,7 +142,11 @@ export const redeemLoyaltySchema = z.object({
 export const getRecurringQuerySchema = z.object({
   filter: z.enum(['ALL', 'TODAY', 'UPCOMING', 'ACTIVE', 'PAUSED']).optional(),
   search: z.string().optional(),
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().optional().default(12),
+  paginate: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
 });
+
 
 export type SendCrmMessageInput = z.infer<typeof sendCrmMessageSchema>;
 export type LinkCustomerInput = z.infer<typeof linkCustomerSchema>;

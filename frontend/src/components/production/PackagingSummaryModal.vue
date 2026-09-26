@@ -13,6 +13,8 @@ import {
   X,
   Unlink,
   UserMinus,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-vue-next';
 import {
   useProductionStore,
@@ -120,6 +122,7 @@ watch(
       withdrawalError.value = null;
       activeTab.value = 'PRESENTATIONS';
       ordersPage.value = 1;
+      dischargesPage.value = 1;
       await Promise.all([loadSummary(), loadStaff()]);
       if (partners.value.length > 0 && !selectedPartnerId.value) {
         selectedPartnerId.value = partners.value[0].id;
@@ -197,6 +200,21 @@ const paginatedOrders = computed(() => {
 const totalOrderPages = computed(() => {
   if (!summary.value?.linkedOrders) return 1;
   return Math.ceil(summary.value.linkedOrders.length / ordersLimit) || 1;
+});
+
+// Paginación local para retiros de socios a 5 registros
+const dischargesPage = ref<number>(1);
+const dischargesLimit = 5;
+
+const paginatedDischarges = computed(() => {
+  if (!summary.value?.discharges) return [];
+  const start = (dischargesPage.value - 1) * dischargesLimit;
+  return summary.value.discharges.slice(start, start + dischargesLimit);
+});
+
+const totalDischargePages = computed(() => {
+  if (!summary.value?.discharges) return 1;
+  return Math.ceil(summary.value.discharges.length / dischargesLimit) || 1;
 });
 </script>
 
@@ -625,7 +643,7 @@ const totalOrderPages = computed(() => {
 
             <div v-else class="space-y-2">
               <div
-                v-for="d in summary.discharges"
+                v-for="d in paginatedDischarges"
                 :key="d.id"
                 class="flex items-center justify-between rounded-xl border border-surface-light-border bg-slate-50 p-3 text-xs dark:border-surface-dark-border dark:bg-slate-800/40"
               >
@@ -640,7 +658,33 @@ const totalOrderPages = computed(() => {
                   {{ formatCOP(d.totalAmount) }}
                 </span>
               </div>
+
+              <!-- Paginación de retiros a 5 registros -->
+              <div v-if="totalDischargePages > 1" class="flex items-center justify-between border-t border-slate-100 pt-2 dark:border-slate-800 text-xs text-slate-500">
+                <span>
+                  Página {{ dischargesPage }} de {{ totalDischargePages }} ({{ summary.discharges.length }} retiros)
+                </span>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    @click="dischargesPage--"
+                    :disabled="dischargesPage <= 1"
+                    class="rounded-xl border border-slate-200 px-3 py-1 font-bold disabled:opacity-40 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-300"
+                  >
+                    <ChevronLeft class="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    @click="dischargesPage++"
+                    :disabled="dischargesPage >= totalDischargePages"
+                    class="rounded-xl border border-slate-200 px-3 py-1 font-bold disabled:opacity-40 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-300"
+                  >
+                    <ChevronRight class="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
             </div>
+
           </div>
         </div>
       </DialogContent>

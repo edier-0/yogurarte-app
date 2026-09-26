@@ -26,6 +26,8 @@ import {
   User,
   ChefHat,
   Edit3,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { formatStockQuantity } from '@/utils/formatters';
@@ -33,6 +35,8 @@ import InventoryMovementModal from '@/components/production/InventoryMovementMod
 import PurchaseStockModal from '@/components/production/PurchaseStockModal.vue';
 import MaterialModal from '@/components/production/MaterialModal.vue';
 import PrepareCompoundModal from '@/components/production/PrepareCompoundModal.vue';
+import KardexModal from '@/components/production/KardexModal.vue';
+
 
 export interface RecipeIngredientItem {
   id?: number;
@@ -268,6 +272,35 @@ const filteredAdjustments = computed(() => {
   return result;
 });
 
+// Paginación estricta de Kardex general a 10 registros
+const kardexPage = ref<number>(1);
+const kardexLimit = 10;
+
+const paginatedAdjustments = computed(() => {
+  const start = (kardexPage.value - 1) * kardexLimit;
+  return filteredAdjustments.value.slice(start, start + kardexLimit);
+});
+
+const totalKardexPages = computed(() => {
+  return Math.ceil(filteredAdjustments.value.length / kardexLimit) || 1;
+});
+
+import { watch } from 'vue';
+watch(debouncedKardexSearch, () => {
+  kardexPage.value = 1;
+});
+
+// Modal de Kardex Específico por Insumo
+const isKardexModalOpen = ref<boolean>(false);
+const kardexMaterialId = ref<number | null>(null);
+const kardexMaterialName = ref<string>('');
+
+function openKardexModal(materialId: number, name?: string) {
+  kardexMaterialId.value = materialId;
+  kardexMaterialName.value = name || '';
+  isKardexModalOpen.value = true;
+}
+
 // Modal de Creación / Edición de Insumo (Simple vs Compuesto)
 const isMaterialModalOpen = ref<boolean>(false);
 const materialToEdit = ref<MaterialItem | null>(null);
@@ -280,6 +313,7 @@ const preselectedCompoundId = ref<number | null>(null);
 const isMovementModalOpen = ref<boolean>(false);
 const isPurchaseModalOpen = ref<boolean>(false);
 const preselectedMaterialId = ref<number | null>(null);
+
 
 function openCreateMaterialModal() {
   materialToEdit.value = null;
@@ -734,9 +768,9 @@ const materialOptions = computed<any[]>(() => {
 
                 <button
                   type="button"
-                  @click="openMovementModal(mat.id)"
+                  @click="openKardexModal(mat.id, mat.name)"
                   class="inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
-                  title="Ajuste o regularización física de stock"
+                  title="Ver Kardex y movimientos de almacén"
                 >
                   <ArrowUpDown class="h-3.5 w-3.5 stroke-[2]" />
                   <span>Kardex</span>
@@ -766,9 +800,9 @@ const materialOptions = computed<any[]>(() => {
 
                 <button
                   type="button"
-                  @click="openMovementModal(mat.id)"
+                  @click="openKardexModal(mat.id, mat.name)"
                   class="inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
-                  title="Ajuste o regularización física de stock"
+                  title="Ver Kardex y movimientos de almacén"
                 >
                   <ArrowUpDown class="h-3.5 w-3.5 stroke-[2]" />
                   <span>Kardex</span>
@@ -808,10 +842,10 @@ const materialOptions = computed<any[]>(() => {
           </div>
         </div>
 
-        <!-- Listado Cronológico de Movimientos -->
+        <!-- Listado Cronológico de Movimientos (Paginado a 10) -->
         <div v-auto-animate class="space-y-3">
           <div
-            v-for="adj in filteredAdjustments"
+            v-for="adj in paginatedAdjustments"
             :key="adj.id"
             class="flex flex-col gap-3 rounded-2xl border border-surface-light-border bg-surface-light-card p-4 shadow-card transition-all sm:flex-row sm:items-center sm:justify-between dark:border-surface-dark-border dark:bg-surface-dark-card"
           >
@@ -877,6 +911,42 @@ const materialOptions = computed<any[]>(() => {
               </div>
             </div>
           </div>
+
+          <!-- Barra de Paginación Estricta a 10 Registros en Kardex -->
+          <div
+            v-if="totalKardexPages > 1 || filteredAdjustments.length > 0"
+            class="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-surface-light-border px-2 pt-4 dark:border-surface-dark-border"
+          >
+            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Página {{ kardexPage }} de {{ totalKardexPages }} • {{ filteredAdjustments.length }} movimientos en total
+            </span>
+
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                @click="kardexPage--"
+                :disabled="kardexPage <= 1"
+                class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <ChevronLeft class="h-4 w-4" />
+                <span>Anterior</span>
+              </button>
+
+              <span class="text-xs font-bold text-slate-700 dark:text-slate-300 px-2">
+                {{ kardexPage }} / {{ totalKardexPages }}
+              </span>
+
+              <button
+                type="button"
+                @click="kardexPage++"
+                :disabled="kardexPage >= totalKardexPages"
+                class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <span>Siguiente</span>
+                <ChevronRight class="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Estado Vacío Kardex -->
@@ -895,12 +965,19 @@ const materialOptions = computed<any[]>(() => {
       </TabsContent>
     </TabsRoot>
 
-    <!-- Modal de Movimiento de Kardex -->
+    <!-- Modal de Movimiento de Kardex (Ajuste) -->
     <InventoryMovementModal
       v-model:open="isMovementModalOpen"
       :materials="materialOptions"
       :preselected-material-id="preselectedMaterialId"
       @saved="handleMovementSaved"
+    />
+
+    <!-- Modal de Kardex Específico Paginado a 10 (/api/inventory/movements) -->
+    <KardexModal
+      v-model:open="isKardexModalOpen"
+      :raw-material-id="kardexMaterialId"
+      :material-name="kardexMaterialName"
     />
 
     <!-- Modal de Compra / Entrada de Stock -->

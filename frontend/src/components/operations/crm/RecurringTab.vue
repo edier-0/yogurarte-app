@@ -15,6 +15,8 @@ import {
   MapPin,
   Play,
   Pause,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
@@ -50,10 +52,21 @@ const isGeneratingOrderId = ref<number | null>(null);
 const isModalOpen = ref(false);
 const scheduleToEdit = ref<RecurringScheduleData | null>(null);
 
-async function loadSchedules() {
+// Paginación estricta a 12 registros por página
+const currentPage = ref<number>(1);
+const pageSize = 12;
+const totalPages = ref<number>(1);
+const totalSchedules = ref<number>(0);
+
+async function loadSchedules(page = 1) {
+  currentPage.value = page;
   isLoading.value = true;
   try {
-    const params: Record<string, string> = {};
+    const params: Record<string, string> = {
+      page: String(page),
+      limit: String(pageSize),
+      paginate: 'true',
+    };
     if (activeFilter.value !== 'ALL') {
       params.filter = activeFilter.value;
     }
@@ -61,9 +74,18 @@ async function loadSchedules() {
       params.search = searchQuery.value.trim();
     }
 
-    const data = await http.get<RecurringScheduleItem[]>('/crm/recurring', { params });
-    if (Array.isArray(data)) {
-      schedules.value = data;
+    const res = await http.get<any>('/crm/recurring', { params });
+    if (res && res.data && Array.isArray(res.data)) {
+      schedules.value = res.data;
+      if (res.pagination) {
+        currentPage.value = res.pagination.page;
+        totalPages.value = res.pagination.totalPages;
+        totalSchedules.value = res.pagination.totalItems || res.pagination.total || 0;
+      }
+    } else if (Array.isArray(res)) {
+      schedules.value = res;
+      totalSchedules.value = res.length;
+      totalPages.value = Math.ceil(res.length / pageSize) || 1;
     }
   } catch (err: any) {
     toast.error('Error al cargar programaciones recurrentes');
@@ -71,6 +93,7 @@ async function loadSchedules() {
     isLoading.value = false;
   }
 }
+
 
 function handleOpenCreate() {
   scheduleToEdit.value = null;
@@ -172,7 +195,7 @@ onMounted(() => {
           <Search class="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 stroke-[2]" />
           <input
             v-model="searchQuery"
-            @keyup.enter="loadSchedules"
+            @keyup.enter="loadSchedules(1)"
             type="text"
             placeholder="Buscar por cliente o sabor..."
             class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-10 pr-3.5 text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
@@ -183,7 +206,7 @@ onMounted(() => {
         <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 [scrollbar-width:none]">
           <button
             type="button"
-            @click="activeFilter = 'ALL'; loadSchedules()"
+            @click="activeFilter = 'ALL'; loadSchedules(1)"
             class="shrink-0 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all"
             :class="
               activeFilter === 'ALL'
@@ -195,7 +218,7 @@ onMounted(() => {
           </button>
           <button
             type="button"
-            @click="activeFilter = 'TODAY'; loadSchedules()"
+            @click="activeFilter = 'TODAY'; loadSchedules(1)"
             class="shrink-0 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all"
             :class="
               activeFilter === 'TODAY'
@@ -207,7 +230,7 @@ onMounted(() => {
           </button>
           <button
             type="button"
-            @click="activeFilter = 'UPCOMING'; loadSchedules()"
+            @click="activeFilter = 'UPCOMING'; loadSchedules(1)"
             class="shrink-0 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all"
             :class="
               activeFilter === 'UPCOMING'
@@ -219,7 +242,7 @@ onMounted(() => {
           </button>
           <button
             type="button"
-            @click="activeFilter = 'ACTIVE'; loadSchedules()"
+            @click="activeFilter = 'ACTIVE'; loadSchedules(1)"
             class="shrink-0 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all"
             :class="
               activeFilter === 'ACTIVE'
@@ -231,7 +254,7 @@ onMounted(() => {
           </button>
           <button
             type="button"
-            @click="activeFilter = 'PAUSED'; loadSchedules()"
+            @click="activeFilter = 'PAUSED'; loadSchedules(1)"
             class="shrink-0 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all"
             :class="
               activeFilter === 'PAUSED'
@@ -247,7 +270,7 @@ onMounted(() => {
       <div class="flex items-center gap-2 self-end sm:self-auto shrink-0">
         <button
           type="button"
-          @click="loadSchedules"
+          @click="loadSchedules(1)"
           :disabled="isLoading"
           class="inline-flex items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-card p-2 text-slate-600 shadow-xs hover:bg-slate-50 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
           title="Refrescar"
@@ -433,6 +456,42 @@ onMounted(() => {
               <Trash2 class="h-4 w-4" />
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- Barra de Paginación Estricta a 12 Registros -->
+      <div
+        v-if="totalPages > 1 || totalSchedules > 0"
+        class="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-surface-light-border px-2 pt-4 dark:border-surface-dark-border"
+      >
+        <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">
+          Página {{ currentPage }} de {{ totalPages }} • {{ totalSchedules }} programaciones en total
+        </span>
+
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            @click="loadSchedules(currentPage - 1)"
+            :disabled="currentPage <= 1 || isLoading"
+            class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <ChevronLeft class="h-4 w-4" />
+            <span>Anterior</span>
+          </button>
+
+          <span class="text-xs font-bold text-slate-700 dark:text-slate-300 px-2">
+            {{ currentPage }} / {{ totalPages }}
+          </span>
+
+          <button
+            type="button"
+            @click="loadSchedules(currentPage + 1)"
+            :disabled="currentPage >= totalPages || isLoading"
+            class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <span>Siguiente</span>
+            <ChevronRight class="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>

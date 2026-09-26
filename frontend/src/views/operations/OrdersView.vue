@@ -4,6 +4,7 @@ import { useOperationsStore, type Order, type OrderFilterChip, type DeliveryStat
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
 import PaymentModal from '@/components/operations/PaymentModal.vue';
 import DeliveryConfirmModal from '@/components/operations/DeliveryConfirmModal.vue';
+import OrderDetailsModal from '@/components/operations/OrderDetailsModal.vue';
 import {
   ShoppingBag,
   Search,
@@ -25,6 +26,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  Eye,
 } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 
@@ -40,6 +42,14 @@ const orderForPayment = ref<Order | null>(null);
 
 const isDeliveryModalOpen = ref(false);
 const orderForDelivery = ref<Order | null>(null);
+
+const isDetailsModalOpen = ref(false);
+const selectedOrderId = ref<number | null>(null);
+
+const openOrderDetails = (order: Order) => {
+  selectedOrderId.value = order.id;
+  isDetailsModalOpen.value = true;
+};
 
 const handleDeleteOrder = async (order: Order) => {
   const ok = await confirm({
@@ -274,9 +284,15 @@ const getStatusBadge = (status: DeliveryStatus) => {
         <!-- Header: Code & Status Badges -->
         <div>
           <div class="flex items-center justify-between gap-2">
-            <span class="font-mono text-xs font-black text-brand-800 dark:text-brand-darkText">
-              {{ order.orderCode || `PED-#${order.orderNumber || order.id}` }}
-            </span>
+            <button
+              type="button"
+              @click="openOrderDetails(order)"
+              class="font-mono text-xs font-black text-brand-800 hover:underline dark:text-brand-darkText flex items-center gap-1"
+              title="Ver detalle y auditoría de la comanda"
+            >
+              <span>{{ order.orderCode || `PED-#${order.orderNumber || order.id}` }}</span>
+              <Eye class="h-3 w-3 stroke-[2]" />
+            </button>
 
             <div class="flex items-center gap-1.5">
               <!-- Delivery Status Badge -->
@@ -377,10 +393,10 @@ const getStatusBadge = (status: DeliveryStatus) => {
             <!-- Botón Cobro / Abono Rápido -->
             <button
               type="button"
-              @click="openPayment(order)"
+              @click="store.getPendingBalance(order) > 0 ? openPayment(order) : openOrderDetails(order)"
               class="flex h-10 items-center justify-center gap-1 rounded-xl px-1 text-xs font-bold transition-all active:scale-95"
               :class="store.getPendingBalance(order) > 0 ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'"
-              title="Registrar Abono"
+              :title="store.getPendingBalance(order) > 0 ? 'Registrar Abono' : 'Ver Detalle e Historial'"
             >
               <BadgeDollarSign class="h-4 w-4 stroke-[1.75]" />
               <span>{{ store.getPendingBalance(order) > 0 ? 'Abonar' : 'Historial' }}</span>
@@ -484,6 +500,12 @@ const getStatusBadge = (status: DeliveryStatus) => {
       v-model:open="isPaymentModalOpen"
       :order="orderForPayment"
       @saved="store.fetchOrders()"
+    />
+
+    <!-- Modal de Auditoría y Detalle de Pedido (Reka UI) -->
+    <OrderDetailsModal
+      v-model:open="isDetailsModalOpen"
+      :order-id="selectedOrderId"
     />
   </div>
 </template>
