@@ -20,9 +20,12 @@ import {
   Milk,
   ChevronLeft,
   ChevronRight,
+  RotateCcw,
 } from 'lucide-vue-next';
+import { useConfirm } from '@/composables/useConfirm';
 
 const store = useOperationsStore();
+const { confirm } = useConfirm();
 
 const isPaymentModalOpen = ref(false);
 const orderForPayment = ref<Order | null>(null);
@@ -58,6 +61,19 @@ const advanceStatus = async (order: Order) => {
 const markAsDelivered = (order: Order) => {
   orderForDelivery.value = order;
   isDeliveryModalOpen.value = true;
+};
+
+const reopenOrder = async (order: Order) => {
+  const ok = await confirm({
+    title: 'Reabrir Pedido Entregado',
+    message: `¿Deseas reabrir el pedido ${order.orderCode || '#' + order.id}? El pedido volverá al estado "En Camino" para que puedas corregir los datos de entrega o recaudo.`,
+    confirmText: 'Reabrir Pedido',
+    cancelText: 'Cancelar',
+    variant: 'warning',
+  });
+  if (!ok) return;
+
+  await store.updateDeliveryStatus(order.id, { deliveryStatus: 'IN_ROUTE' });
 };
 
 const formatCurrency = (val: number) => {
@@ -300,17 +316,29 @@ const getDeliveryBadge = (status: DeliveryStatus) => {
               <span>WhatsApp</span>
             </button>
 
-            <!-- 3. Botón de Cobro Rápido / Entregar con BadgeDollarSign / CheckCircle2 -->
+            <!-- 3. Botón Reabrir Pedido (si ya está Entregado) O Botón Entregar / Cobrar -->
             <button
+              v-if="order.deliveryStatus === 'DELIVERED'"
+              type="button"
+              @click="reopenOrder(order)"
+              class="flex h-11 items-center justify-center gap-1.5 rounded-2xl border border-amber-300 bg-amber-50 px-2 text-xs font-black text-amber-800 shadow-sm transition-all active:scale-90 hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
+              title="Reabrir comanda para corregir entrega o cobro"
+            >
+              <RotateCcw class="h-4 w-4 stroke-[2]" />
+              <span>Reabrir</span>
+            </button>
+
+            <button
+              v-else
               type="button"
               @click="markAsDelivered(order)"
               class="flex h-11 items-center justify-center gap-1.5 rounded-2xl px-2 text-xs font-black text-white shadow-card transition-all active:scale-90"
-              :class="order.deliveryStatus === 'DELIVERED' ? 'bg-slate-600' : store.getPendingBalance(order) > 0 ? 'bg-accent-500 hover:bg-accent-600 shadow-accent' : 'bg-natural-500 hover:bg-natural-600'"
+              :class="store.getPendingBalance(order) > 0 ? 'bg-accent-500 hover:bg-accent-600 shadow-accent' : 'bg-natural-500 hover:bg-natural-600'"
               title="Cobrar o registrar entrega"
             >
               <BadgeDollarSign v-if="store.getPendingBalance(order) > 0" class="h-4 w-4 stroke-[1.75]" />
               <CheckCircle2 v-else class="h-4 w-4 stroke-[1.75]" />
-              <span>{{ order.deliveryStatus === 'DELIVERED' ? 'Entregado' : store.getPendingBalance(order) > 0 ? 'Cobrar' : 'Entregar' }}</span>
+              <span>{{ store.getPendingBalance(order) > 0 ? 'Cobrar' : 'Entregar' }}</span>
             </button>
           </div>
 

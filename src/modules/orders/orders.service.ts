@@ -1097,10 +1097,15 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
       updateData.deliveryStatus = deliveryStatus;
       if (deliveryStatus === 'DELIVERED') {
         updateData.deliveryDate = new Date();
-      } else if (deliveryStatus === 'IN_ROUTE' && !existing.dispatchedAt) {
-        updateData.dispatchedAt = new Date();
-      } else if (deliveryStatus === 'PENDING' || deliveryStatus === 'PREPARING' || deliveryStatus === 'READY_FOR_DISPATCH') {
-        updateData.dispatchedAt = null;
+      } else {
+        if (existing.deliveryStatus === 'DELIVERED') {
+          updateData.deliveryDate = null;
+        }
+        if (deliveryStatus === 'IN_ROUTE' && !existing.dispatchedAt) {
+          updateData.dispatchedAt = new Date();
+        } else if (deliveryStatus === 'PENDING' || deliveryStatus === 'PREPARING' || deliveryStatus === 'READY_FOR_DISPATCH') {
+          updateData.dispatchedAt = null;
+        }
       }
     }
 

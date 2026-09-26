@@ -353,6 +353,24 @@ describe('Orders Endpoints and Atomic Operations', () => {
     expect(res.body.pagination.page).toBe(1);
   });
 
+  it('PUT /api/orders/:id/delivery-status reabrir pedido entregado a IN_ROUTE debe limpiar deliveryDate', async () => {
+    // 1. Marcar el pedido como entregado
+    await request(app)
+      .put(`/api/orders/${createdOrderId}/delivery-status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ deliveryStatus: 'DELIVERED' });
+
+    // 2. Reabrir pedido pasándolo a IN_ROUTE
+    const reopenRes = await request(app)
+      .put(`/api/orders/${createdOrderId}/delivery-status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ deliveryStatus: 'IN_ROUTE' });
+
+    expect(reopenRes.status).toBe(200);
+    expect(reopenRes.body.deliveryStatus).toBe('IN_ROUTE');
+    expect(reopenRes.body.deliveryDate).toBeNull();
+  });
+
   it('DELETE /api/orders/:id debe eliminar el pedido de prueba limpiamente', async () => {
     // Limpiar pagos e ítems asociados
     await prisma.orderPayment.deleteMany({ where: { orderId: createdOrderId } });
