@@ -31,6 +31,7 @@ import {
 } from '@/stores/production.store';
 import { getTodayDateBogota } from '@/stores/finance.store';
 import { http } from '@/api/client';
+import { formatStockQuantity } from '@/utils/formatters';
 
 const props = defineProps<{
   open: boolean;
@@ -282,6 +283,45 @@ const labelMaterial = computed(() =>
   )
 );
 
+// Alertas de insuficiencia de stock para envases y etiquetas
+const isBottle1LInsufficient = computed(() => {
+  const needed = Number(bottles1L.value) || 0;
+  if (needed <= 0) return false;
+  const available = bottle1LMaterial.value?.currentStock ?? 0;
+  return needed > available;
+});
+
+const isBottle2LInsufficient = computed(() => {
+  const needed = Number(bottles2L.value) || 0;
+  if (needed <= 0) return false;
+  const available = bottle2LMaterial.value?.currentStock ?? 0;
+  return needed > available;
+});
+
+const isCapsInsufficient = computed(() => {
+  const needed = totalBottles.value;
+  if (needed <= 0) return false;
+  const available = capMaterial.value?.currentStock ?? 0;
+  return needed > available;
+});
+
+const isLabelsInsufficient = computed(() => {
+  if (!useLabels.value) return false;
+  const needed = totalBottles.value;
+  if (needed <= 0) return false;
+  const available = labelMaterial.value?.currentStock ?? 0;
+  return needed > available;
+});
+
+const hasPackagingInsufficientStock = computed(() => {
+  return (
+    isBottle1LInsufficient.value ||
+    isBottle2LInsufficient.value ||
+    isCapsInsufficient.value ||
+    isLabelsInsufficient.value
+  );
+});
+
 // Costos desglosados para proyección financiera integral
 const bottlesCost = computed(() => {
   const b1Cost = bottle1LMaterial.value?.avgCost || 650;
@@ -341,7 +381,7 @@ const isValid = computed(() => {
   const hasBottles = requiredLiters.value > 0;
   const notExceeds = !exceedsVolume.value;
   const hasFlavor = resolvedFlavor.value.trim().length > 0;
-  const stockOk = !hasInsufficientStock.value;
+  const stockOk = !hasInsufficientStock.value && !hasPackagingInsufficientStock.value;
   const pricesOk = (Number(price1L.value) || 0) >= 0 && (Number(price2L.value) || 0) >= 0;
   return hasBottles && notExceeds && hasFlavor && stockOk && pricesOk && !isSubmitting.value;
 });
@@ -710,9 +750,17 @@ async function handleSubmit() {
 
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Botellas de 1 Litro
-                </label>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Botellas de 1 Litro
+                  </label>
+                  <span
+                    class="text-[11px]"
+                    :class="isBottle1LInsufficient ? 'font-bold text-rose-500 dark:text-rose-400' : 'text-slate-400'"
+                  >
+                    Stock disponible: {{ formatStockQuantity(bottle1LMaterial?.currentStock ?? 0, 'und') }} und
+                  </span>
+                </div>
                 <div class="relative">
                   <input
                     v-model.number="bottles1L"
@@ -720,18 +768,34 @@ async function handleSubmit() {
                     min="0"
                     step="1"
                     placeholder="0"
-                    class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                    class="w-full rounded-xl border bg-surface-light-canvas px-3.5 py-2.5 text-sm font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-canvas"
+                    :class="
+                      isBottle1LInsufficient
+                        ? 'border-rose-500 bg-rose-500/10 text-rose-500 dark:border-rose-500 dark:bg-rose-950/30 dark:text-rose-400'
+                        : 'border-surface-light-border text-slate-900 dark:border-surface-dark-border dark:text-white'
+                    "
                   />
                   <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                     Unds (1L)
                   </span>
                 </div>
+                <p v-if="isBottle1LInsufficient" class="mt-1 text-[11px] font-bold text-rose-500 dark:text-rose-400">
+                  Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(bottle1LMaterial?.currentStock ?? 0, 'und') }})
+                </p>
               </div>
 
               <div>
-                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Botellas de 2 Litros
-                </label>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Botellas de 2 Litros
+                  </label>
+                  <span
+                    class="text-[11px]"
+                    :class="isBottle2LInsufficient ? 'font-bold text-rose-500 dark:text-rose-400' : 'text-slate-400'"
+                  >
+                    Stock disponible: {{ formatStockQuantity(bottle2LMaterial?.currentStock ?? 0, 'und') }} und
+                  </span>
+                </div>
                 <div class="relative">
                   <input
                     v-model.number="bottles2L"
@@ -739,27 +803,48 @@ async function handleSubmit() {
                     min="0"
                     step="1"
                     placeholder="0"
-                    class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                    class="w-full rounded-xl border bg-surface-light-canvas px-3.5 py-2.5 text-sm font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-canvas"
+                    :class="
+                      isBottle2LInsufficient
+                        ? 'border-rose-500 bg-rose-500/10 text-rose-500 dark:border-rose-500 dark:bg-rose-950/30 dark:text-rose-400'
+                        : 'border-surface-light-border text-slate-900 dark:border-surface-dark-border dark:text-white'
+                    "
                   />
                   <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                     Unds (2L)
                   </span>
                 </div>
+                <p v-if="isBottle2LInsufficient" class="mt-1 text-[11px] font-bold text-rose-500 dark:text-rose-400">
+                  Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(bottle2LMaterial?.currentStock ?? 0, 'und') }})
+                </p>
               </div>
             </div>
 
             <!-- Insumos de Empaque: Tapas y Etiquetas -->
-            <div class="rounded-xl border border-slate-100 bg-surface-light-canvas p-3 dark:border-slate-800 dark:bg-surface-dark-canvas">
+            <div
+              class="rounded-xl border p-3"
+              :class="
+                isCapsInsufficient || isLabelsInsufficient
+                  ? 'border-rose-200 bg-rose-50/20 dark:border-rose-900/50 dark:bg-rose-950/10'
+                  : 'border-slate-100 bg-surface-light-canvas dark:border-slate-800 dark:bg-surface-dark-canvas'
+              "
+            >
               <div class="flex items-center justify-between text-xs">
                 <div class="flex items-center gap-1.5 font-bold text-slate-600 dark:text-slate-300">
                   <Layers class="h-3.5 w-3.5 text-brand-700 dark:text-brand-darkText" />
                   <span>Tapas (1 por botella):</span>
                   <span class="font-extrabold text-slate-900 dark:text-white">{{ totalBottles }} und</span>
                 </div>
-                <span class="text-[11px] text-slate-400">
-                  Disponibles: {{ capMaterial?.currentStock || 0 }} und
+                <span
+                  class="text-[11px]"
+                  :class="isCapsInsufficient ? 'font-bold text-rose-500 dark:text-rose-400' : 'text-slate-400'"
+                >
+                  Stock disponible: {{ formatStockQuantity(capMaterial?.currentStock ?? 0, 'und') }} und
                 </span>
               </div>
+              <p v-if="isCapsInsufficient" class="mt-1 text-[11px] font-bold text-rose-500 dark:text-rose-400">
+                Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(capMaterial?.currentStock ?? 0, 'und') }})
+              </p>
 
               <div class="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 dark:border-slate-800">
                 <label class="flex cursor-pointer items-center gap-2">
@@ -772,10 +857,16 @@ async function handleSubmit() {
                     Aplicar etiquetas corporativas (1 por botella)
                   </span>
                 </label>
-                <span class="text-[11px] text-slate-400">
-                  Disponibles: {{ labelMaterial?.currentStock || 0 }} und
+                <span
+                  class="text-[11px]"
+                  :class="isLabelsInsufficient ? 'font-bold text-rose-500 dark:text-rose-400' : 'text-slate-400'"
+                >
+                  Stock disponible: {{ formatStockQuantity(labelMaterial?.currentStock ?? 0, 'und') }} und
                 </span>
               </div>
+              <p v-if="isLabelsInsufficient" class="mt-1 text-[11px] font-bold text-rose-500 dark:text-rose-400">
+                Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(labelMaterial?.currentStock ?? 0, 'und') }})
+              </p>
             </div>
 
             <!-- Advertencia si excede el saldo libre -->
@@ -884,7 +975,7 @@ async function handleSubmit() {
                     >
                       <option :value="''">-- Seleccionar insumo de almacén --</option>
                       <option v-for="mat in candidateMaterials" :key="mat.id" :value="mat.id">
-                        {{ mat.name }} (Stock: {{ mat.currentStock }} {{ mat.unit }} | Costo: {{ formatCurrency(mat.avgCost) }})
+                        {{ mat.name }} (Stock: {{ formatStockQuantity(mat.currentStock, mat.unit) }} {{ mat.unit }} | Costo: {{ formatCurrency(mat.avgCost) }})
                       </option>
                     </select>
                   </div>
@@ -914,7 +1005,12 @@ async function handleSubmit() {
                         min="0.001"
                         step="0.001"
                         placeholder="Ej. 120"
-                        class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3 py-1.5 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white pr-10"
+                        class="w-full rounded-xl border bg-surface-light-canvas px-3 py-1.5 text-xs font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-canvas pr-10"
+                        :class="
+                          getExtraItemCalc(item)?.isStockInsufficient
+                            ? 'border-rose-500 bg-rose-500/10 text-rose-500 dark:border-rose-500 dark:bg-rose-950/30 dark:text-rose-400'
+                            : 'border-surface-light-border text-slate-900 dark:border-surface-dark-border dark:text-white'
+                        "
                       />
                       <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">
                         g / L
@@ -933,7 +1029,12 @@ async function handleSubmit() {
                       min="0.01"
                       step="any"
                       :placeholder="`Cant. en ${getExtraItemCalc(item)?.material.unit}`"
-                      class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3 py-1.5 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                      class="w-full rounded-xl border bg-surface-light-canvas px-3 py-1.5 text-xs font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-canvas"
+                      :class="
+                        getExtraItemCalc(item)?.isStockInsufficient
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-500 dark:border-rose-500 dark:bg-rose-950/30 dark:text-rose-400'
+                          : 'border-surface-light-border text-slate-900 dark:border-surface-dark-border dark:text-white'
+                      "
                     />
                   </div>
 
@@ -971,7 +1072,7 @@ async function handleSubmit() {
                         {{ getExtraItemCalc(item)?.quantityUsed }} kg
                       </span>
                       <span class="text-[10px] text-slate-400">
-                        / {{ getExtraItemCalc(item)?.material.currentStock }} kg disp.
+                        / {{ formatStockQuantity(getExtraItemCalc(item)?.material.currentStock ?? 0, getExtraItemCalc(item)?.material.unit ?? 'kg') }} {{ getExtraItemCalc(item)?.material.unit }} disp.
                       </span>
                     </div>
                   </div>
@@ -984,7 +1085,7 @@ async function handleSubmit() {
                 >
                   <AlertCircle class="h-3.5 w-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
                   <span>
-                    Stock insuficiente de {{ getExtraItemCalc(item)?.material.name }}. Dispones de {{ getExtraItemCalc(item)?.material.currentStock }} {{ getExtraItemCalc(item)?.material.unit }}.
+                    Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(getExtraItemCalc(item)?.material.currentStock ?? 0, getExtraItemCalc(item)?.material.unit ?? '') }} {{ getExtraItemCalc(item)?.material.unit }}).
                   </span>
                 </div>
               </div>

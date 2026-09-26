@@ -79,6 +79,14 @@ export const patchBatchStatusSchema = z.object({
 export const patchBatchVolumeSchema = z.object({
   totalLitersProduced: z.coerce.number().positive('El volumen producido debe ser mayor a 0'),
   notes: z.string().optional(),
+  status: z.string().optional(),
+  dynamicItems: z.array(z.object({
+    rawMaterialId: z.coerce.number().int().positive(),
+    quantityUsed: z.coerce.number().positive('La cantidad debe ser mayor a 0'),
+    unitCost: z.coerce.number().optional(),
+    dosagePerLiter: z.coerce.number().optional(),
+    dosageUnit: z.string().optional(),
+  })).optional(),
 });
 
 export const batchPackagingSchema = z.object({

@@ -22,6 +22,7 @@ import {
 import { useProductionStore, type BatchItem } from '@/stores/production.store';
 import { getTodayDateBogota } from '@/stores/finance.store';
 import { http } from '@/api/client';
+import { formatStockQuantity } from '@/utils/formatters';
 
 const props = defineProps<{
   open: boolean;
@@ -705,7 +706,7 @@ async function handleSubmit() {
                           {{ item.name }}
                         </span>
                         <span class="text-[10px] text-slate-400">
-                          Stock: {{ item.currentStock }} {{ item.unit }}
+                          Stock: {{ formatStockQuantity(item.currentStock, item.unit) }} {{ item.unit }}
                         </span>
                       </div>
                       <!-- Despliegue de pesaje calculado -->

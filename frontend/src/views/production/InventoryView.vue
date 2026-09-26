@@ -26,6 +26,7 @@ import {
   User,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
+import { formatStockQuantity } from '@/utils/formatters';
 import InventoryMovementModal from '@/components/production/InventoryMovementModal.vue';
 import PurchaseStockModal from '@/components/production/PurchaseStockModal.vue';
 
@@ -562,7 +563,7 @@ const materialOptions = computed<any[]>(() => {
                           : 'text-slate-900 dark:text-white'
                       "
                     >
-                      {{ mat.currentStock }}
+                      {{ formatStockQuantity(mat.currentStock, mat.unit) }}
                     </span>
                     <span class="text-xs font-extrabold text-slate-400">
                       {{ mat.unit }}
@@ -588,7 +589,7 @@ const materialOptions = computed<any[]>(() => {
                 <div class="mt-2 flex items-center justify-between text-[11px] font-bold text-slate-400">
                   <span>Mínimo requerido:</span>
                   <span class="text-slate-600 dark:text-slate-300">
-                    {{ mat.minStockAlert }} {{ mat.unit }}
+                    {{ formatStockQuantity(mat.minStockAlert, mat.unit) }} {{ mat.unit }}
                   </span>
                 </div>
               </div>
@@ -727,10 +728,10 @@ const materialOptions = computed<any[]>(() => {
                   class="block text-base font-black"
                   :class="adj.deltaQuantity >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
                 >
-                  {{ adj.deltaQuantity >= 0 ? '+' : '' }}{{ adj.deltaQuantity }} {{ adj.unit }}
+                  {{ adj.deltaQuantity >= 0 ? '+' : '' }}{{ formatStockQuantity(adj.deltaQuantity, adj.unit) }} {{ adj.unit }}
                 </span>
                 <span class="block text-[11px] font-bold text-slate-400">
-                  {{ adj.previousStock }} ➔ {{ adj.newStock }} {{ adj.unit }}
+                  {{ formatStockQuantity(adj.previousStock, adj.unit) }} ➔ {{ formatStockQuantity(adj.newStock, adj.unit) }} {{ adj.unit }}
                 </span>
               </div>
             </div>

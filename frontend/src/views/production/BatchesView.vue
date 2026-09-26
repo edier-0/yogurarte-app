@@ -18,14 +18,13 @@ import {
   ChevronRight,
   Pencil,
   CheckCircle2,
-  Scale,
 } from 'lucide-vue-next';
 import { useProductionStore, type BatchItem, type BatchChip } from '@/stores/production.store';
 import BatchModal from '@/components/production/BatchModal.vue';
 import FlavorsManagementModal from '@/components/production/FlavorsManagementModal.vue';
 import PackagingModal from '@/components/production/PackagingModal.vue';
 import BatchSummaryModal from '@/components/production/BatchSummaryModal.vue';
-import AdjustVolumeModal from '@/components/production/AdjustVolumeModal.vue';
+import CompleteFermentationModal from '@/components/production/CompleteFermentationModal.vue';
 
 const productionStore = useProductionStore();
 
@@ -33,9 +32,9 @@ const isBatchModalOpen = ref(false);
 const isFlavorsModalOpen = ref(false);
 const selectedBatchToEdit = ref<BatchItem | null>(null);
 
-// Modal Ajuste de Rendimiento / Volumen
-const isAdjustVolumeModalOpen = ref(false);
-const selectedBatchForAdjustVolume = ref<BatchItem | null>(null);
+// Modal Finalizar Fermentación
+const isCompleteModalOpen = ref(false);
+const selectedBatchForCompletion = ref<BatchItem | null>(null);
 
 // Modales Fase B y Auditoría
 const isPackagingModalOpen = ref(false);
@@ -83,11 +82,12 @@ function openEditBatchModal(batch: BatchItem) {
   isBatchModalOpen.value = true;
 }
 
-// Abrir modal de ajuste de rendimiento y volumen
-function openAdjustVolumeModal(batch: BatchItem) {
-  selectedBatchForAdjustVolume.value = batch;
-  isAdjustVolumeModalOpen.value = true;
+// Abrir modal para terminar fermentación
+function openCompleteModal(batch: BatchItem) {
+  selectedBatchForCompletion.value = batch;
+  isCompleteModalOpen.value = true;
 }
+
 
 // Abrir modal de envasado
 function openPackagingModal(batch: BatchItem, pkgToEdit?: any) {
@@ -102,9 +102,13 @@ function handleEditPackaging(pkg: any) {
   openPackagingModal(batch!, pkg);
 }
 
-// Cambio rápido de estado 1-touch
+// Cambio rápido de estado 1-touch: si está en fermentación, abre modal para terminarla
 async function handleQuickStatusToggle(batch: BatchItem) {
-  const nextStatus = batch.status === 'EN_FERMENTACION' ? 'DISPONIBLE' : 'EN_FERMENTACION';
+  if (batch.status === 'EN_FERMENTACION') {
+    openCompleteModal(batch);
+    return;
+  }
+  const nextStatus = 'EN_FERMENTACION';
   await productionStore.patchBatchStatus(batch.id, nextStatus);
 }
 
@@ -461,16 +465,16 @@ function openSummaryModal(batch: BatchItem) {
             <span>Editar Lote</span>
           </button>
 
-          <!-- Acción Ajustar Volumen / Rendimiento -->
+          <!-- Acción Terminar Fermentación (Solo si está en fermentación) -->
           <button
-            v-if="batch.status !== 'ARCHIVADO'"
+            v-if="batch.status === 'EN_FERMENTACION'"
             type="button"
-            @click="openAdjustVolumeModal(batch)"
-            class="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50/70 px-3 py-1.5 text-xs font-bold text-purple-700 transition-colors hover:bg-purple-100 dark:border-purple-800/40 dark:bg-purple-950/30 dark:text-purple-300 dark:hover:bg-purple-900/40"
-            title="Ajustar volumen real obtenido por merma (griego) o expansión (almíbar)"
+            @click="openCompleteModal(batch)"
+            class="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50/80 px-3 py-1.5 text-xs font-extrabold text-purple-700 transition-colors hover:bg-purple-100 dark:border-purple-800/40 dark:bg-purple-950/40 dark:text-purple-300"
+            title="Finalizar fermentación, confirmar volumen y pasar a Disponible"
           >
-            <Scale class="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
-            <span>Rendimiento / Volumen</span>
+            <CheckCircle2 class="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+            <span>Terminar Fermentación</span>
           </button>
 
           <!-- Acción Fase B: Envasar / Fraccionar Lote -->
@@ -569,10 +573,11 @@ function openSummaryModal(batch: BatchItem) {
       @edit-packaging="handleEditPackaging"
     />
 
-    <AdjustVolumeModal
-      v-model:open="isAdjustVolumeModalOpen"
-      :batch="selectedBatchForAdjustVolume"
-      @updated="productionStore.fetchBatches(productionStore.currentPage)"
+
+    <CompleteFermentationModal
+      v-model:open="isCompleteModalOpen"
+      :batch="selectedBatchForCompletion"
+      @completed="productionStore.fetchBatches(productionStore.currentPage)"
     />
   </div>
 </template>

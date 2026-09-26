@@ -430,14 +430,20 @@ export const useProductionStore = defineStore('production', () => {
   }
 
   // Ajustar volumen real obtenido del lote madre (merma por desuerado o expansión por almíbar)
-  async function patchBatchVolume(batchId: number, totalLitersProduced: number, notes?: string) {
+  async function patchBatchVolume(
+    batchId: number,
+    totalLitersProduced: number,
+    notes?: string,
+    status?: string,
+    dynamicItems?: DynamicBatchItem[]
+  ) {
     isLoading.value = true;
     try {
       const res = await http.patch<{ message: string; batch: BatchItem }>(
         `/batches/${batchId}/volume`,
-        { totalLitersProduced, notes }
+        { totalLitersProduced, notes, status, dynamicItems }
       );
-      toast.success('Volumen Real Actualizado', {
+      toast.success(status === 'DISPONIBLE' ? '¡Fermentación Finalizada!' : 'Volumen Real Actualizado', {
         description: res.message || 'Volumen de lote madre recalculado exitosamente.',
       });
       await fetchBatches(currentPage.value);

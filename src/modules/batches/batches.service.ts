@@ -535,9 +535,47 @@ export const patchBatchVolume = async (id: number, data: PatchBatchVolumeInput) 
       );
     }
 
+    let totalCost = batch.totalCost || 0;
+
+    // Descontar insumos adicionales agregados al finalizar fermentación (ej. almíbar, azúcar)
+    if (Array.isArray(data.dynamicItems) && data.dynamicItems.length > 0) {
+      for (const item of data.dynamicItems) {
+        const matId = Number(item.rawMaterialId);
+        const qty = Number(Number(item.quantityUsed).toFixed(4));
+        if (matId && qty > 0) {
+          const material = await tx.rawMaterial.findUnique({ where: { id: matId } });
+          if (!material) continue;
+
+          if (material.currentStock < qty) {
+            throw new BadRequestError(
+              `Stock insuficiente del insumo "${material.name}". Hay ${material.currentStock} ${material.unit} y requieres ${qty}.`
+            );
+          }
+
+          const unitCost = Number(item.unitCost) || material.avgCost || 0;
+          const itemCost = Number((qty * unitCost).toFixed(2));
+          totalCost += itemCost;
+
+          await tx.rawMaterial.update({
+            where: { id: matId },
+            data: { currentStock: Number(Math.max(0, material.currentStock - qty).toFixed(4)) },
+          });
+
+          await tx.batchItemUsage.create({
+            data: {
+              batchId: id,
+              rawMaterialId: matId,
+              quantityUsed: qty,
+              unitCost,
+              totalCost: itemCost,
+            },
+          });
+        }
+      }
+    }
+
     const milkUsed = batch.milkUsedLiters || 1;
     const newYield = Math.round((newTotalLiters / milkUsed) * 10000) / 100;
-    const totalCost = batch.totalCost || 0;
     const newCostPerLiter = newTotalLiters > 0 ? Math.round(totalCost / newTotalLiters) : 0;
 
     let combinedNotes = batch.notes;
@@ -549,9 +587,11 @@ export const patchBatchVolume = async (id: number, data: PatchBatchVolumeInput) 
       where: { id },
       data: {
         totalLitersProduced: newTotalLiters,
+        totalCost,
         yieldPercentage: newYield,
         costPerLiter: newCostPerLiter,
         notes: combinedNotes,
+        status: data.status ? data.status : batch.status,
       },
     });
 

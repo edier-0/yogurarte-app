@@ -18,6 +18,7 @@ import {
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import { getTodayDateBogota } from '@/stores/finance.store';
+import { formatStockQuantity } from '@/utils/formatters';
 
 export interface MaterialOption {
   id: number;
@@ -220,7 +221,7 @@ async function handleSubmit() {
               class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
             >
               <option v-for="mat in materials" :key="mat.id" :value="mat.id">
-                {{ mat.name }} (Stock: {{ mat.currentStock }} {{ mat.unit }})
+                {{ mat.name }} (Stock: {{ formatStockQuantity(mat.currentStock, mat.unit) }} {{ mat.unit }})
               </option>
             </select>
           </div>
@@ -254,10 +255,10 @@ async function handleSubmit() {
               </span>
               <div class="mt-1 flex items-baseline gap-2">
                 <span class="text-sm font-bold text-slate-400 line-through">
-                  {{ currentMaterial?.currentStock || 0 }}
+                  {{ formatStockQuantity(currentMaterial?.currentStock || 0, currentMaterial?.unit || 'und') }}
                 </span>
                 <span class="text-base font-black text-slate-900 dark:text-white">
-                  ➔ {{ calculatedNewStock }} {{ currentMaterial?.unit || '' }}
+                  ➔ {{ formatStockQuantity(calculatedNewStock, currentMaterial?.unit || 'und') }} {{ currentMaterial?.unit || '' }}
                 </span>
               </div>
             </div>

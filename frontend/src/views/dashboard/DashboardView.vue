@@ -26,6 +26,7 @@ import {
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
 import ExpenseModal from '@/components/finance/ExpenseModal.vue';
 import TransferModal from '@/components/finance/TransferModal.vue';
+import { formatStockQuantity } from '@/utils/formatters';
 
 const router = useRouter();
 
@@ -707,7 +708,7 @@ onMounted(() => {
                 {{ item.name }}
               </span>
               <p class="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                Stock actual: {{ item.currentStock }} {{ item.unit }} (Mín: {{ item.minStockAlert }} {{ item.unit }})
+                Stock actual: {{ formatStockQuantity(item.currentStock, item.unit) }} {{ item.unit }} (Mín: {{ formatStockQuantity(item.minStockAlert, item.unit) }} {{ item.unit }})
               </p>
             </div>
             <RouterLink

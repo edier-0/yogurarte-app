@@ -17,6 +17,7 @@ import {
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import { getTodayDateBogota } from '@/stores/finance.store';
+import { formatStockQuantity } from '@/utils/formatters';
 
 export interface MaterialOption {
   id: number;
@@ -265,7 +266,7 @@ async function handleSubmit() {
               class="w-full rounded-xl border border-surface-light-border bg-surface-light-card px-3.5 py-2.5 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-white"
             >
               <option v-for="mat in materials" :key="mat.id" :value="mat.id">
-                {{ mat.name }} (Stock: {{ mat.currentStock }} {{ mat.unit }} | Costo: {{ formatCurrency(mat.avgCost) }})
+                {{ mat.name }} (Stock: {{ formatStockQuantity(mat.currentStock, mat.unit) }} {{ mat.unit }} | Costo: {{ formatCurrency(mat.avgCost) }})
               </option>
             </select>
           </div>
@@ -343,10 +344,10 @@ async function handleSubmit() {
             <div class="flex items-center justify-between border-b border-slate-100 pb-2.5 text-xs dark:border-slate-800">
               <span class="font-bold text-slate-500 dark:text-slate-400">Existencias Resultantes:</span>
               <div class="flex items-center gap-2">
-                <span class="text-slate-400">{{ currentMaterial.currentStock }} {{ currentMaterial.unit }}</span>
+                <span class="text-slate-400">{{ formatStockQuantity(currentMaterial.currentStock, currentMaterial.unit) }} {{ currentMaterial.unit }}</span>
                 <span class="text-slate-400">&rarr;</span>
                 <span class="font-black text-emerald-600 dark:text-emerald-400">
-                  {{ projectedNewStock }} {{ currentMaterial.unit }}
+                  {{ formatStockQuantity(projectedNewStock, currentMaterial.unit) }} {{ currentMaterial.unit }}
                 </span>
               </div>
             </div>
