@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useOperationsStore, type Order, type OrderFilterChip, type DeliveryStatus } from '@/stores/operations.store';
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
 import PaymentModal from '@/components/operations/PaymentModal.vue';
+import DeliveryConfirmModal from '@/components/operations/DeliveryConfirmModal.vue';
 import {
   ShoppingBag,
   Search,
@@ -22,6 +23,8 @@ import {
   Clock,
   Milk,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 
@@ -34,6 +37,9 @@ const orderToEdit = ref<Order | null>(null);
 
 const isPaymentModalOpen = ref(false);
 const orderForPayment = ref<Order | null>(null);
+
+const isDeliveryModalOpen = ref(false);
+const orderForDelivery = ref<Order | null>(null);
 
 const handleDeleteOrder = async (order: Order) => {
   const ok = await confirm({
@@ -76,7 +82,12 @@ const openPayment = (order: Order) => {
 };
 
 const onDeliveryStatusChange = async (order: Order, newStatus: DeliveryStatus) => {
-  await store.updateDeliveryStatus(order.id, { deliveryStatus: newStatus });
+  if (newStatus === 'DELIVERED') {
+    orderForDelivery.value = order;
+    isDeliveryModalOpen.value = true;
+  } else {
+    await store.updateDeliveryStatus(order.id, { deliveryStatus: newStatus });
+  }
 };
 
 const formatCurrency = (val: number) => {
@@ -256,7 +267,7 @@ const getStatusBadge = (status: DeliveryStatus) => {
       class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
     >
       <div
-        v-for="order in store.filteredOrders"
+        v-for="order in store.paginatedOrders"
         :key="order.id"
         class="group relative flex flex-col justify-between rounded-2xl border border-surface-light-border bg-surface-light-card p-5 shadow-card transition-all hover:shadow-elevated dark:border-surface-dark-border dark:bg-surface-dark-card"
       >
@@ -417,6 +428,49 @@ const getStatusBadge = (status: DeliveryStatus) => {
         </div>
       </div>
     </div>
+
+    <!-- Barra de Paginación Institucional (Estricta a 9 pedidos por página) -->
+    <div
+      v-if="store.ordersTotalCount > 0"
+      class="flex flex-col items-center justify-between gap-3 rounded-2xl border border-surface-light-border bg-surface-light-card p-4 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card sm:flex-row"
+    >
+      <div class="text-xs font-bold text-slate-600 dark:text-slate-400">
+        Página
+        <span class="font-black text-slate-900 dark:text-white">{{ store.ordersPage }}</span>
+        de
+        <span class="font-black text-slate-900 dark:text-white">{{ store.ordersTotalPages }}</span>
+        <span class="ml-1 text-slate-400">({{ store.ordersTotalCount }} pedidos en total)</span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          @click="store.goToOrdersPage(store.ordersPage - 1)"
+          :disabled="store.ordersPage <= 1 || store.isLoading"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all active:scale-95 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <ChevronLeft class="h-4 w-4 stroke-[2]" />
+          <span>Anterior</span>
+        </button>
+
+        <button
+          type="button"
+          @click="store.goToOrdersPage(store.ordersPage + 1)"
+          :disabled="store.ordersPage >= store.ordersTotalPages || store.isLoading"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all active:scale-95 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <span>Siguiente</span>
+          <ChevronRight class="h-4 w-4 stroke-[2]" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal de Confirmación y Recaudo de Entrega (Reka UI) -->
+    <DeliveryConfirmModal
+      v-model:open="isDeliveryModalOpen"
+      :order="orderForDelivery"
+      @confirmed="store.fetchOrders()"
+    />
 
     <!-- Modal de Creación / Edición de Pedidos (Reka UI) -->
     <OrderFormModal

@@ -79,6 +79,7 @@ export const updateDeliveryStatusSchema = z.object({
   paymentMethod: z.string().optional(),
   paidAmount: z.coerce.number().optional(),
   collectPayment: z.boolean().optional(),
+  paymentStatus: z.enum(['PENDING', 'PARTIAL', 'PAID']).optional(),
   notes: z.string().optional().nullable(),
 });
 

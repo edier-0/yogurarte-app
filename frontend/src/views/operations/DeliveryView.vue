@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useOperationsStore, type Order, type DeliveryFilterChip, type DeliveryStatus } from '@/stores/operations.store';
 import PaymentModal from '@/components/operations/PaymentModal.vue';
+import DeliveryConfirmModal from '@/components/operations/DeliveryConfirmModal.vue';
 import {
   Bike,
   ChefHat,
@@ -16,13 +17,18 @@ import {
   PackageCheck,
   Package,
   ClipboardList,
-  Milk
+  Milk,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-vue-next';
 
 const store = useOperationsStore();
 
 const isPaymentModalOpen = ref(false);
 const orderForPayment = ref<Order | null>(null);
+
+const isDeliveryModalOpen = ref(false);
+const orderForDelivery = ref<Order | null>(null);
 
 onMounted(() => {
   if (store.orders.length === 0) {
@@ -44,22 +50,14 @@ const advanceStatus = async (order: Order) => {
   if (order.deliveryStatus === 'PENDING' || order.deliveryStatus === 'PREPARING' || order.deliveryStatus === 'READY_FOR_DISPATCH') {
     await store.updateDeliveryStatus(order.id, { deliveryStatus: 'IN_ROUTE' });
   } else if (order.deliveryStatus === 'IN_ROUTE') {
-    if (store.getPendingBalance(order) > 0) {
-      orderForPayment.value = order;
-      isPaymentModalOpen.value = true;
-    } else {
-      await store.updateDeliveryStatus(order.id, { deliveryStatus: 'DELIVERED' });
-    }
+    orderForDelivery.value = order;
+    isDeliveryModalOpen.value = true;
   }
 };
 
-const markAsDelivered = async (order: Order) => {
-  if (store.getPendingBalance(order) > 0) {
-    orderForPayment.value = order;
-    isPaymentModalOpen.value = true;
-  } else {
-    await store.updateDeliveryStatus(order.id, { deliveryStatus: 'DELIVERED' });
-  }
+const markAsDelivered = (order: Order) => {
+  orderForDelivery.value = order;
+  isDeliveryModalOpen.value = true;
 };
 
 const formatCurrency = (val: number) => {
@@ -203,7 +201,7 @@ const getDeliveryBadge = (status: DeliveryStatus) => {
       class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
     >
       <div
-        v-for="order in store.filteredDeliveries"
+        v-for="order in store.paginatedDeliveries"
         :key="order.id"
         class="group relative flex flex-col justify-between rounded-3xl border border-surface-light-border bg-surface-light-card p-5 shadow-card transition-all hover:shadow-elevated dark:border-surface-dark-border dark:bg-surface-dark-card"
       >
@@ -333,6 +331,49 @@ const getDeliveryBadge = (status: DeliveryStatus) => {
         </div>
       </div>
     </div>
+
+    <!-- Barra de Paginación Institucional (Estricta a 9 domicilios por página) -->
+    <div
+      v-if="store.deliveriesTotalCount > 0"
+      class="flex flex-col items-center justify-between gap-3 rounded-2xl border border-surface-light-border bg-surface-light-card p-4 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card sm:flex-row"
+    >
+      <div class="text-xs font-bold text-slate-600 dark:text-slate-400">
+        Página
+        <span class="font-black text-slate-900 dark:text-white">{{ store.deliveriesPage }}</span>
+        de
+        <span class="font-black text-slate-900 dark:text-white">{{ store.deliveriesTotalPages }}</span>
+        <span class="ml-1 text-slate-400">({{ store.deliveriesTotalCount }} domicilios en total)</span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          @click="store.goToDeliveriesPage(store.deliveriesPage - 1)"
+          :disabled="store.deliveriesPage <= 1 || store.isLoading"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all active:scale-95 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <ChevronLeft class="h-4 w-4 stroke-[2]" />
+          <span>Anterior</span>
+        </button>
+
+        <button
+          type="button"
+          @click="store.goToDeliveriesPage(store.deliveriesPage + 1)"
+          :disabled="store.deliveriesPage >= store.deliveriesTotalPages || store.isLoading"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all active:scale-95 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <span>Siguiente</span>
+          <ChevronRight class="h-4 w-4 stroke-[2]" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal de Confirmación y Recaudo de Entrega (Reka UI) -->
+    <DeliveryConfirmModal
+      v-model:open="isDeliveryModalOpen"
+      :order="orderForDelivery"
+      @confirmed="store.fetchOrders()"
+    />
 
     <!-- Modal de Cobro / Abono (Reka UI) -->
     <PaymentModal

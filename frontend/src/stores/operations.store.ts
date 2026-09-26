@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { refDebounced } from '@vueuse/core';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
@@ -252,19 +252,77 @@ export const useOperationsStore = defineStore('operations', () => {
   );
 
   // ==========================================
+  // PAGINACIÓN REACTIVA (ESTRICTA A 9 REGISTROS)
+  // ==========================================
+  const ordersPage = ref<number>(1);
+  const ordersLimit = ref<number>(9);
+
+  const deliveriesPage = ref<number>(1);
+  const deliveriesLimit = ref<number>(9);
+
+  // Slices paginados
+  const paginatedOrders = computed(() => {
+    const start = (ordersPage.value - 1) * ordersLimit.value;
+    return filteredOrders.value.slice(start, start + ordersLimit.value);
+  });
+
+  const ordersTotalCount = computed(() => filteredOrders.value.length);
+  const ordersTotalPages = computed(() => Math.max(1, Math.ceil(filteredOrders.value.length / ordersLimit.value)));
+
+  const paginatedDeliveries = computed(() => {
+    const start = (deliveriesPage.value - 1) * deliveriesLimit.value;
+    return filteredDeliveries.value.slice(start, start + deliveriesLimit.value);
+  });
+
+  const deliveriesTotalCount = computed(() => filteredDeliveries.value.length);
+  const deliveriesTotalPages = computed(() => Math.max(1, Math.ceil(filteredDeliveries.value.length / deliveriesLimit.value)));
+
+  function goToOrdersPage(page: number) {
+    if (page < 1) {
+      ordersPage.value = 1;
+    } else if (page > ordersTotalPages.value) {
+      ordersPage.value = ordersTotalPages.value;
+    } else {
+      ordersPage.value = page;
+    }
+  }
+
+  function goToDeliveriesPage(page: number) {
+    if (page < 1) {
+      deliveriesPage.value = 1;
+    } else if (page > deliveriesTotalPages.value) {
+      deliveriesPage.value = deliveriesTotalPages.value;
+    } else {
+      deliveriesPage.value = page;
+    }
+  }
+
+  // Sincronización y reset de paginación al cambiar filtros
+  watch([filterChip, debouncedSearchQuery], () => {
+    ordersPage.value = 1;
+  });
+
+  watch([deliveryChip, deliveryDriverFilter, debouncedDeliverySearchQuery], () => {
+    deliveriesPage.value = 1;
+  });
+
+  // ==========================================
   // ACCIONES HTTP ASÍNCRONAS
+  // ==========================================
   // ==========================================
 
   async function fetchOrders(params?: Record<string, any>) {
     isLoading.value = true;
     error.value = null;
     try {
-      const data = await http.get<Order[] | { items: Order[] }>('/orders', {
+      const data = await http.get<any>('/orders', {
         params: params || { paginate: 'false' },
       });
 
       if (Array.isArray(data)) {
         orders.value = data;
+      } else if (data && Array.isArray(data.data)) {
+        orders.value = data.data;
       } else if (data && Array.isArray(data.items)) {
         orders.value = data.items;
       } else {
@@ -489,6 +547,20 @@ export const useOperationsStore = defineStore('operations', () => {
     countDeliveriesInRoute,
     countDeliveriesDelivered,
     getPendingBalance,
+    // Paginación Pedidos (9 por página)
+    ordersPage,
+    ordersLimit,
+    ordersTotalCount,
+    ordersTotalPages,
+    paginatedOrders,
+    goToOrdersPage,
+    // Paginación Domicilios (9 por página)
+    deliveriesPage,
+    deliveriesLimit,
+    deliveriesTotalCount,
+    deliveriesTotalPages,
+    paginatedDeliveries,
+    goToDeliveriesPage,
     // Acciones
     fetchOrders,
     fetchDrivers,

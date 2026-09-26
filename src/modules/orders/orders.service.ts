@@ -170,7 +170,7 @@ export const getOrders = async (query: OrdersQueryInput) => {
 
   const isPaginated = query.page !== undefined || query.paginate === 'true';
   const pageNum = Math.max(1, Number(query.page) || 1);
-  const limitNum = Math.min(100, Math.max(1, Number(limit) || (isPaginated ? 20 : 500)));
+  const limitNum = Math.min(100, Math.max(1, Number(limit) || (isPaginated ? 9 : 500)));
 
   const totalItems = await prisma.order.count({ where: whereClause });
   const totalPages = Math.ceil(totalItems / limitNum) || 1;
@@ -267,12 +267,15 @@ export const getOrders = async (query: OrdersQueryInput) => {
 
   if (isPaginated) {
     return {
+      data: orders,
       items: orders,
       pagination: {
+        total: totalItems,
         totalItems,
-        totalPages,
+        page: pageNum,
         currentPage: pageNum,
         limit: limitNum,
+        totalPages,
       },
     };
   }
@@ -1105,7 +1108,9 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
       const finalPaid = Number(paidAmount);
       updateData.paidAmount = finalPaid;
       updateData.pendingAmount = Math.max(0, existing.totalAmount - finalPaid);
-      if (finalPaid >= existing.totalAmount) {
+      if (data.paymentStatus) {
+        updateData.paymentStatus = data.paymentStatus;
+      } else if (finalPaid >= existing.totalAmount) {
         updateData.paymentStatus = 'PAID';
       } else if (finalPaid > 0) {
         updateData.paymentStatus = 'PARTIAL';
@@ -1124,7 +1129,7 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
             amount: delta,
             paymentDate: new Date(),
             paymentMethod: paymentMethod ? String(paymentMethod).trim() : (existing.paymentMethod || 'EFECTIVO'),
-            notes: 'Pago recibido al entregar domicilio',
+            notes: notes ? String(notes).trim() : 'Pago recibido al entregar domicilio',
             registeredBy: existing.deliveryDriverName || 'Domiciliario',
           },
         });
@@ -1134,6 +1139,8 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
           data: { paymentMethod: String(paymentMethod).trim() },
         });
       }
+    } else if (data.paymentStatus) {
+      updateData.paymentStatus = data.paymentStatus;
     }
 
     if (paymentMethod && (!existing.payments || existing.payments.length === 0)) {
