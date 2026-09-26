@@ -682,18 +682,6 @@ watch(activeMainTab, (newTab) => {
               <span>Auditoría y Detalle</span>
             </button>
 
-            <!-- Archivar Lote -->
-            <button
-              v-if="batch.isActive !== false && batch.status !== 'ARCHIVADO'"
-              type="button"
-              @click="productionStore.archiveBatch(batch.id)"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-400 hover:text-slate-900"
-              title="Trasladar lote madre al archivo histórico"
-            >
-              <Archive class="h-3.5 w-3.5" />
-              <span>Archivar</span>
-            </button>
-
             <!-- Eliminar Lote Madre Definitivamente -->
             <button
               type="button"
