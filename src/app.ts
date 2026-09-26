@@ -153,6 +153,7 @@ app.use('/api/inventory', requireAuth, inventoryRoutes);
 app.use('/api/preparations', requireAuth, preparationsRoutes);
 app.use('/api/expenses', requireAuth, expensesRoutes);
 app.use('/api/customers', requireAuth, customersRoutes);
+app.use('/api/clients', requireAuth, customersRoutes);
 app.use('/api/dashboard', requireAuth, dashboardRoutes);
 app.use('/api/staff', requireAuth, staffRoutes);
 app.use('/api/cash-movements', requireAuth, cashMovementsRoutes);

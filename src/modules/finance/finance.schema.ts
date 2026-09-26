@@ -59,6 +59,10 @@ export const expensesQuerySchema = z.object({
   category: z.string().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
+  page: z.coerce.number().optional(),
+  limit: z.coerce.number().optional(),
+  paginate: z.enum(['true', 'false']).optional(),
+  search: z.string().optional(),
 });
 
 // ==========================================

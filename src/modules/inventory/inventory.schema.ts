@@ -4,6 +4,12 @@ import { z } from 'zod';
 // 1. INSUMOS Y MATERIAS PRIMAS (RAW MATERIALS)
 // ==========================================
 
+export const recipeIngredientItemSchema = z.object({
+  ingredientId: z.coerce.number().int().positive('ID de ingrediente inválido'),
+  quantity: z.coerce.number().positive('La cantidad requerida debe ser mayor a 0'),
+  unit: z.string().optional().default('Kilogramos'),
+});
+
 export const createMaterialSchema = z.object({
   code: z.string().optional(),
   name: z.string().min(1, 'El nombre del insumo es obligatorio'),
@@ -12,6 +18,9 @@ export const createMaterialSchema = z.object({
   minStockAlert: z.coerce.number().min(0).optional().default(10),
   avgCost: z.coerce.number().min(0).optional().default(0),
   currentStock: z.coerce.number().min(0).optional().default(0),
+  isCompound: z.boolean().optional().default(false),
+  recipeYield: z.coerce.number().positive().optional().default(1),
+  recipeIngredients: z.array(recipeIngredientItemSchema).optional(),
 });
 
 export const updateMaterialSchema = z.object({
@@ -21,7 +30,20 @@ export const updateMaterialSchema = z.object({
   minStockAlert: z.coerce.number().min(0).optional(),
   avgCost: z.coerce.number().min(0).optional(),
   currentStock: z.coerce.number().min(0).optional(),
+  isCompound: z.boolean().optional(),
+  recipeYield: z.coerce.number().positive().optional(),
+  recipeIngredients: z.array(recipeIngredientItemSchema).optional(),
 });
+
+export const prepareCompoundSchema = z.object({
+  quantityToProduce: z.coerce.number().positive('La cantidad a preparar debe ser mayor a 0'),
+  preparationDate: z.string().optional(),
+  notes: z.string().optional().nullable(),
+  registeredBy: z.string().optional(),
+});
+
+export type RecipeIngredientItemInput = z.infer<typeof recipeIngredientItemSchema>;
+export type PrepareCompoundInput = z.infer<typeof prepareCompoundSchema>;
 
 export const materialsQuerySchema = z.object({
   includeInactive: z.string().optional(),

@@ -189,12 +189,21 @@ export const deleteCashMovement = async (id: number) => {
  * Obtener listado de gastos con filtros y monto total
  */
 export const getExpenses = async (query: ExpensesQueryInput) => {
-  const { category, startDate, endDate } = query;
+  const { category, startDate, endDate, page, limit, paginate, search } = query as any;
 
   const whereClause: any = {};
 
   if (category && typeof category === 'string' && category !== 'ALL') {
     whereClause.category = category;
+  }
+
+  if (search && typeof search === 'string' && search.trim() !== '') {
+    const q = search.trim();
+    whereClause.OR = [
+      { description: { contains: q, mode: 'insensitive' } },
+      { notes: { contains: q, mode: 'insensitive' } },
+      { registeredBy: { contains: q, mode: 'insensitive' } },
+    ];
   }
 
   if (startDate || endDate) {
@@ -205,6 +214,44 @@ export const getExpenses = async (query: ExpensesQueryInput) => {
     if (endDate && typeof endDate === 'string') {
       whereClause.expenseDate.lte = getColombiaEndOfDay(endDate);
     }
+  }
+
+  const isPaginated = page !== undefined || limit !== undefined || paginate === 'true';
+
+  if (isPaginated) {
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.max(1, Number(limit) || 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [total, expenses, aggregate] = await Promise.all([
+      prisma.expense.count({ where: whereClause }),
+      prisma.expense.findMany({
+        where: whereClause,
+        orderBy: { expenseDate: 'desc' },
+        skip,
+        take: limitNum,
+      }),
+      prisma.expense.aggregate({
+        where: whereClause,
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const totalAmount = aggregate._sum.amount || 0;
+    const totalPages = Math.ceil(total / limitNum) || 1;
+
+    return {
+      totalAmount,
+      count: expenses.length,
+      expenses,
+      data: expenses,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+      },
+    };
   }
 
   const expenses = await prisma.expense.findMany({
@@ -218,6 +265,13 @@ export const getExpenses = async (query: ExpensesQueryInput) => {
     totalAmount,
     count: expenses.length,
     expenses,
+    data: expenses,
+    pagination: {
+      total: expenses.length,
+      page: 1,
+      limit: expenses.length,
+      totalPages: 1,
+    },
   };
 };
 

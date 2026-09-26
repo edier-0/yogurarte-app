@@ -17,6 +17,8 @@ import {
   Milk,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-vue-next';
 import {
   useDirectoryStore,
@@ -109,7 +111,7 @@ function handleSmartWhatsApp(customer: CustomerItem) {
       <div class="flex items-center gap-2">
         <button
           type="button"
-          @click="directoryStore.fetchCustomers"
+          @click="() => directoryStore.fetchCustomers(1)"
           :disabled="directoryStore.isLoading"
           class="inline-flex items-center gap-1.5 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
           title="Actualizar clientes"
@@ -406,6 +408,42 @@ function handleSmartWhatsApp(customer: CustomerItem) {
             <Edit3 class="h-4 w-4 stroke-[2]" />
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Paginación a 12 Registros por Página -->
+    <div
+      v-if="directoryStore.totalPages > 1"
+      class="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-surface-light-border px-2 pt-4 dark:border-surface-dark-border"
+    >
+      <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">
+        Página {{ directoryStore.currentPage }} de {{ directoryStore.totalPages }} • {{ directoryStore.totalCustomers }} clientes en total
+      </span>
+
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          @click="directoryStore.fetchCustomers(directoryStore.currentPage - 1)"
+          :disabled="directoryStore.currentPage <= 1"
+          class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <ChevronLeft class="h-4 w-4 stroke-[2]" />
+          <span>Anterior</span>
+        </button>
+
+        <span class="rounded-lg bg-surface-light-canvas px-2.5 py-1 text-xs font-black text-slate-800 dark:bg-surface-dark-canvas dark:text-slate-200">
+          {{ directoryStore.currentPage }} / {{ directoryStore.totalPages }}
+        </span>
+
+        <button
+          type="button"
+          @click="directoryStore.fetchCustomers(directoryStore.currentPage + 1)"
+          :disabled="directoryStore.currentPage >= directoryStore.totalPages"
+          class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <span>Siguiente</span>
+          <ChevronRight class="h-4 w-4 stroke-[2]" />
+        </button>
       </div>
     </div>
 

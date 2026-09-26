@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { refDebounced } from '@vueuse/core';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
@@ -134,16 +134,45 @@ export const useDirectoryStore = defineStore('directory', () => {
     return list;
   });
 
-  // Cargar clientes desde /api/customers
-  async function fetchCustomers() {
+  // Paginación estricta a 12 registros por página
+  const currentPage = ref<number>(1);
+  const totalPages = ref<number>(1);
+  const totalCustomers = ref<number>(0);
+  const pageSize = ref<number>(12);
+
+  // Cargar clientes desde /api/clients (paginado a 12)
+  async function fetchCustomers(page = 1) {
     isLoading.value = true;
     error.value = null;
     try {
-      const data = await http.get<any>('/customers');
-      if (Array.isArray(data)) {
-        customers.value = data;
-      } else if (data && Array.isArray(data.items)) {
-        customers.value = data.items;
+      const params: any = {
+        page,
+        limit: 12,
+        paginate: 'true',
+      };
+      if (debouncedSearch.value && debouncedSearch.value.trim() !== '') {
+        params.search = debouncedSearch.value.trim();
+      }
+
+      const res = await http.get<any>('/clients', { params });
+      if (res) {
+        if (Array.isArray(res.data)) {
+          customers.value = res.data;
+        } else if (Array.isArray(res.items)) {
+          customers.value = res.items;
+        } else if (Array.isArray(res)) {
+          customers.value = res;
+        }
+
+        if (res.pagination) {
+          currentPage.value = res.pagination.page || res.pagination.currentPage || page;
+          totalPages.value = res.pagination.totalPages || 1;
+          totalCustomers.value = res.pagination.total || res.pagination.totalItems || 0;
+        } else {
+          currentPage.value = 1;
+          totalPages.value = 1;
+          totalCustomers.value = customers.value.length;
+        }
       }
     } catch (err: any) {
       error.value = err?.message || 'Error al cargar directorio de clientes';
@@ -151,6 +180,12 @@ export const useDirectoryStore = defineStore('directory', () => {
       isLoading.value = false;
     }
   }
+
+  // Búsqueda en vivo reactiva reinicia a página 1
+  watch(debouncedSearch, () => {
+    currentPage.value = 1;
+    fetchCustomers(1);
+  });
 
   // Crear o actualizar cliente
   async function saveCustomer(payload: CustomerFormData) {
@@ -222,6 +257,10 @@ export const useDirectoryStore = defineStore('directory', () => {
     totalDebtAmount,
     totalInProcessDebt,
     filteredCustomers,
+    currentPage,
+    totalPages,
+    totalCustomers,
+    pageSize,
     fetchCustomers,
     saveCustomer,
     deleteCustomer,

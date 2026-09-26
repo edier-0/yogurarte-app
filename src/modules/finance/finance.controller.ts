@@ -48,6 +48,11 @@ export const deleteCashMovement = async (req: Request, res: Response, next: Next
 export const getExpenses = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await financeService.getExpenses(req.query as any);
+    if (result && typeof result === 'object' && 'pagination' in result && (result as any).pagination) {
+      res.setHeader('X-Total-Count', String((result as any).pagination.total));
+      res.setHeader('X-Total-Pages', String((result as any).pagination.totalPages));
+      res.setHeader('X-Current-Page', String((result as any).pagination.page));
+    }
     res.json(result);
   } catch (error) {
     next(error);

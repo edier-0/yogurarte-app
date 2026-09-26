@@ -44,6 +44,18 @@ export const deleteMaterial = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+export const prepareMaterial = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await inventoryService.prepareCompoundMaterial(Number(req.params.id), {
+      ...req.body,
+      registeredBy: (req as any).user?.username || req.body.registeredBy || 'Admin',
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createPurchase = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const purchase = await inventoryService.createPurchase(req.body);

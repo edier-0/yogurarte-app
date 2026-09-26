@@ -4,6 +4,7 @@ import {
   createMaterial,
   updateMaterial,
   deleteMaterial,
+  prepareMaterial,
   createPurchase,
   updatePurchase,
   deletePurchase,
@@ -20,6 +21,7 @@ import {
 import {
   createMaterialSchema,
   updateMaterialSchema,
+  prepareCompoundSchema,
   materialsQuerySchema,
   adjustStockSchema,
   adjustmentsQuerySchema,
@@ -38,6 +40,7 @@ router.get('/materials', validateQuery(materialsQuerySchema), getMaterials);
 router.post('/materials', validateBody(createMaterialSchema), createMaterial);
 router.put('/materials/:id', validateParams(idParamSchema), validateBody(updateMaterialSchema), updateMaterial);
 router.delete('/materials/:id', validateParams(idParamSchema), deleteMaterial);
+router.post('/materials/:id/prepare', validateParams(idParamSchema), validateBody(prepareCompoundSchema), prepareMaterial);
 router.put('/materials/:id/adjust', validateParams(idParamSchema), validateBody(adjustStockSchema), adjustStock);
 
 // ==========================================

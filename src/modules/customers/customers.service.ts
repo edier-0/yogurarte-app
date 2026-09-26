@@ -228,9 +228,9 @@ export const getCustomers = async (query: CustomersQueryInput) => {
     }
   }
 
-  const isPaginated = query.page !== undefined || query.paginate === 'true';
+  const isPaginated = query.page !== undefined || query.paginate === 'true' || query.limit !== undefined;
   const pageNum = Math.max(1, Number(query.page) || 1);
-  const limitNum = Math.min(100, Math.max(1, Number(query.limit) || (isPaginated ? 20 : 500)));
+  const limitNum = Math.min(100, Math.max(1, Number(query.limit) || (isPaginated ? 12 : 500)));
 
   const totalItems = await prisma.customer.count({ where: whereClause });
   const totalPages = Math.ceil(totalItems / limitNum) || 1;
@@ -352,10 +352,13 @@ export const getCustomers = async (query: CustomersQueryInput) => {
 
   if (isPaginated) {
     return {
+      data: customersWithStats,
       items: customersWithStats,
       pagination: {
+        total: totalItems,
         totalItems,
         totalPages,
+        page: pageNum,
         currentPage: pageNum,
         limit: limitNum,
       },

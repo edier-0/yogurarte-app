@@ -24,11 +24,30 @@ import {
   CheckCircle2,
   Calendar,
   User,
+  ChefHat,
+  Edit3,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { formatStockQuantity } from '@/utils/formatters';
 import InventoryMovementModal from '@/components/production/InventoryMovementModal.vue';
 import PurchaseStockModal from '@/components/production/PurchaseStockModal.vue';
+import MaterialModal from '@/components/production/MaterialModal.vue';
+import PrepareCompoundModal from '@/components/production/PrepareCompoundModal.vue';
+
+export interface RecipeIngredientItem {
+  id?: number;
+  ingredientId: number;
+  quantity: number;
+  unit: string;
+  ingredient?: {
+    id: number;
+    name: string;
+    code: string;
+    unit: string;
+    avgCost: number;
+    currentStock: number;
+  };
+}
 
 export interface MaterialItem {
   id: number;
@@ -39,6 +58,9 @@ export interface MaterialItem {
   minStockAlert: number;
   avgCost: number;
   currentStock: number;
+  isCompound?: boolean;
+  recipeYield?: number;
+  recipeIngredients?: RecipeIngredientItem[];
   isLowStock?: boolean;
   isActive?: boolean;
 }
@@ -65,7 +87,7 @@ export interface AdjustmentItem {
   };
 }
 
-export type MaterialCategoryChip = 'ALL' | 'DAIRY' | 'PACKAGING' | 'FRUIT' | 'CRITICAL';
+export type MaterialCategoryChip = 'ALL' | 'COMPOUND' | 'DAIRY' | 'PACKAGING' | 'FRUIT' | 'CRITICAL';
 
 // Estado de datos
 const materials = ref<MaterialItem[]>([]);
@@ -157,6 +179,7 @@ const totalAdjustmentsCount = computed(() => {
 // Lógica de clasificación por categoría
 function matchesCategory(m: MaterialItem, chip: MaterialCategoryChip): boolean {
   if (chip === 'ALL') return true;
+  if (chip === 'COMPOUND') return Boolean(m.isCompound);
   if (chip === 'CRITICAL') return Number(m.currentStock || 0) <= Number(m.minStockAlert || 0);
 
   const cat = (m.category || '').toUpperCase();
@@ -200,11 +223,12 @@ function matchesCategory(m: MaterialItem, chip: MaterialCategoryChip): boolean {
 // Conteos por chip
 const chipCounts = computed(() => {
   const all = materials.value.length;
+  const compound = materials.value.filter((m) => m.isCompound).length;
   const dairy = materials.value.filter((m) => matchesCategory(m, 'DAIRY')).length;
   const packaging = materials.value.filter((m) => matchesCategory(m, 'PACKAGING')).length;
   const fruit = materials.value.filter((m) => matchesCategory(m, 'FRUIT')).length;
   const critical = criticalStockMaterials.value.length;
-  return { all, dairy, packaging, fruit, critical };
+  return { all, compound, dairy, packaging, fruit, critical };
 });
 
 // Insumos filtrados reactivamente
@@ -244,10 +268,33 @@ const filteredAdjustments = computed(() => {
   return result;
 });
 
+// Modal de Creación / Edición de Insumo (Simple vs Compuesto)
+const isMaterialModalOpen = ref<boolean>(false);
+const materialToEdit = ref<MaterialItem | null>(null);
+
+// Modal de Fabricación / Preparación de Insumo Compuesto
+const isPrepareModalOpen = ref<boolean>(false);
+const preselectedCompoundId = ref<number | null>(null);
+
 // Modal de Movimiento de Kardex y Compra
 const isMovementModalOpen = ref<boolean>(false);
 const isPurchaseModalOpen = ref<boolean>(false);
 const preselectedMaterialId = ref<number | null>(null);
+
+function openCreateMaterialModal() {
+  materialToEdit.value = null;
+  isMaterialModalOpen.value = true;
+}
+
+function openEditMaterialModal(mat: MaterialItem) {
+  materialToEdit.value = mat;
+  isMaterialModalOpen.value = true;
+}
+
+function openPrepareModal(materialId?: number) {
+  preselectedCompoundId.value = materialId || null;
+  isPrepareModalOpen.value = true;
+}
 
 function openPurchaseModal(materialId?: number) {
   preselectedMaterialId.value = materialId || null;
@@ -264,6 +311,11 @@ function handleMovementSaved() {
   refreshAll();
 }
 
+// Lista de insumos compuestos para el modal de preparación
+const compoundMaterials = computed(() => {
+  return materials.value.filter((m) => m.isCompound);
+});
+
 // Opciones de insumo para el modal
 const materialOptions = computed<any[]>(() => {
   return materials.value.map((m) => ({
@@ -275,6 +327,9 @@ const materialOptions = computed<any[]>(() => {
     minStockAlert: m.minStockAlert,
     avgCost: m.avgCost,
     code: m.code,
+    isCompound: m.isCompound,
+    recipeYield: m.recipeYield,
+    recipeIngredients: m.recipeIngredients,
   }));
 });
 </script>
@@ -292,7 +347,7 @@ const materialOptions = computed<any[]>(() => {
         </p>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <button
           type="button"
           @click="refreshAll"
@@ -302,6 +357,26 @@ const materialOptions = computed<any[]>(() => {
         >
           <RefreshCw class="h-4 w-4 stroke-[2]" :class="{ 'animate-spin': isLoading }" />
           <span class="hidden sm:inline">Refrescar</span>
+        </button>
+
+        <button
+          type="button"
+          @click="openPrepareModal()"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs font-extrabold text-amber-900 shadow-sm transition-all hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/60"
+          title="Preparar o fabricar un insumo compuesto internamente"
+        >
+          <ChefHat class="h-4 w-4 stroke-[2]" />
+          <span>Preparar Insumo Compuesto</span>
+        </button>
+
+        <button
+          type="button"
+          @click="openCreateMaterialModal()"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-surface-light-border bg-surface-light-card px-3.5 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-200 dark:hover:bg-slate-800"
+          title="Registrar nuevo insumo simple o compuesto"
+        >
+          <Plus class="h-4 w-4 stroke-[2]" />
+          <span>Nuevo Insumo</span>
         </button>
 
         <button
@@ -320,7 +395,7 @@ const materialOptions = computed<any[]>(() => {
           class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-4 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95"
         >
           <Plus class="h-4 w-4 stroke-[2.5]" />
-          <span>Registrar Compra / Entrada</span>
+          <span>Registrar Compra</span>
         </button>
       </div>
     </div>
@@ -441,6 +516,21 @@ const materialOptions = computed<any[]>(() => {
                 <span>Todos ({{ chipCounts.all }})</span>
               </button>
 
+              <!-- Compuestos / Recetas Internas -->
+              <button
+                type="button"
+                @click="selectedCategoryChip = 'COMPOUND'"
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all"
+                :class="
+                  selectedCategoryChip === 'COMPOUND'
+                    ? 'bg-amber-700 text-white shadow-sm dark:bg-amber-600'
+                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/60'
+                "
+              >
+                <ChefHat class="h-3.5 w-3.5 stroke-[2]" />
+                <span>Recetas / Compuestos ({{ chipCounts.compound }})</span>
+              </button>
+
               <!-- Materia Prima / Leche -->
               <button
                 type="button"
@@ -526,6 +616,13 @@ const materialOptions = computed<any[]>(() => {
                     </span>
                     <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                       {{ mat.category }}
+                    </span>
+                    <span
+                      v-if="mat.isCompound"
+                      class="inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                    >
+                      <ChefHat class="h-3 w-3 stroke-[2.5]" />
+                      <span>Receta</span>
                     </span>
                   </div>
                   <h3 class="mt-1 text-base font-extrabold text-slate-900 dark:text-white">
@@ -613,26 +710,70 @@ const materialOptions = computed<any[]>(() => {
             </div>
 
             <!-- Botón de Acción -->
-            <div class="mt-5 grid grid-cols-2 gap-2 border-t border-surface-light-border pt-4 dark:border-surface-dark-border">
-              <button
-                type="button"
-                @click="openPurchaseModal(mat.id)"
-                class="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-50 py-2 text-xs font-extrabold text-brand-800 transition-colors hover:bg-brand-100 dark:bg-brand-900/40 dark:text-brand-darkText dark:hover:bg-brand-900/60"
-                title="Registrar compra de este insumo"
-              >
-                <Plus class="h-3.5 w-3.5 stroke-[2.5]" />
-                <span>Comprar</span>
-              </button>
+            <div class="mt-5 border-t border-surface-light-border pt-4 dark:border-surface-dark-border">
+              <div v-if="mat.isCompound" class="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  @click="openPrepareModal(mat.id)"
+                  class="inline-flex items-center justify-center gap-1 rounded-xl bg-amber-100 py-2 text-[11px] font-black text-amber-900 transition-colors hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:hover:bg-amber-900/80"
+                  title="Fabricar o preparar este insumo compuesto"
+                >
+                  <ChefHat class="h-3.5 w-3.5 stroke-[2]" />
+                  <span>Preparar</span>
+                </button>
 
-              <button
-                type="button"
-                @click="openMovementModal(mat.id)"
-                class="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
-                title="Ajuste o regularización física de stock"
-              >
-                <ArrowUpDown class="h-3.5 w-3.5 stroke-[2]" />
-                <span>Kardex</span>
-              </button>
+                <button
+                  type="button"
+                  @click="openEditMaterialModal(mat)"
+                  class="inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                  title="Editar receta de fabricación"
+                >
+                  <Edit3 class="h-3.5 w-3.5 stroke-[2]" />
+                  <span>Receta</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="openMovementModal(mat.id)"
+                  class="inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                  title="Ajuste o regularización física de stock"
+                >
+                  <ArrowUpDown class="h-3.5 w-3.5 stroke-[2]" />
+                  <span>Kardex</span>
+                </button>
+              </div>
+
+              <div v-else class="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  @click="openPurchaseModal(mat.id)"
+                  class="inline-flex items-center justify-center gap-1 rounded-xl bg-brand-50 py-2 text-[11px] font-extrabold text-brand-800 transition-colors hover:bg-brand-100 dark:bg-brand-900/40 dark:text-brand-darkText dark:hover:bg-brand-900/60"
+                  title="Registrar compra de este insumo"
+                >
+                  <Plus class="h-3.5 w-3.5 stroke-[2.5]" />
+                  <span>Comprar</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="openEditMaterialModal(mat)"
+                  class="inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                  title="Editar datos del insumo"
+                >
+                  <Edit3 class="h-3.5 w-3.5 stroke-[2]" />
+                  <span>Editar</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="openMovementModal(mat.id)"
+                  class="inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                  title="Ajuste o regularización física de stock"
+                >
+                  <ArrowUpDown class="h-3.5 w-3.5 stroke-[2]" />
+                  <span>Kardex</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -768,6 +909,22 @@ const materialOptions = computed<any[]>(() => {
       :materials="materialOptions"
       :preselected-material-id="preselectedMaterialId"
       @saved="refreshAll"
+    />
+
+    <!-- Modal de Creación / Edición de Insumo Simple o Compuesto -->
+    <MaterialModal
+      v-model:open="isMaterialModalOpen"
+      :material-to-edit="materialToEdit"
+      :available-ingredients="materialOptions"
+      @saved="refreshAll"
+    />
+
+    <!-- Modal de Fabricación / Preparación de Insumo Compuesto -->
+    <PrepareCompoundModal
+      v-model:open="isPrepareModalOpen"
+      :compound-materials="compoundMaterials"
+      :preselected-material-id="preselectedCompoundId"
+      @prepared="refreshAll"
     />
   </div>
 </template>

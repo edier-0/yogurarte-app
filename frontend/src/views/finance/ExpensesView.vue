@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { refDebounced } from '@vueuse/core';
 import {
   TabsRoot,
@@ -18,6 +18,9 @@ import {
   Plus,
   Trash2,
   RefreshCw,
+  ShoppingBag,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
@@ -72,8 +75,15 @@ const isExpenseModalOpen = ref(false);
 const isLoading = ref(false);
 
 // Estado de Gastos
+export type ExpenseChip = 'ALL' | 'RAW_MATERIALS' | 'FUEL' | 'SERVICES' | 'OPERATIVE';
+
 const expenses = ref<ExpenseItem[]>([]);
-const activeChip = ref<'ALL' | 'FUEL' | 'SERVICES' | 'OPERATIVE'>('ALL');
+const activeChip = ref<ExpenseChip>('ALL');
+const currentPage = ref(1);
+const totalPages = ref(1);
+const totalItems = ref(0);
+const totalFilteredAmount = ref(0);
+
 const searchQuery = ref('');
 const debouncedSearch = refDebounced(searchQuery, 300);
 
@@ -107,21 +117,62 @@ const formatDate = (dateStr: string) => {
   }
 };
 
-// Cargar Gastos desde la API
-async function fetchExpenses() {
+// Cargar Gastos desde la API con paginación estricta a 10 registros
+async function fetchExpenses(page = 1) {
   try {
-    const data = await http.get<{ totalAmount: number; count: number; expenses: ExpenseItem[] }>(
-      '/expenses'
-    );
-    if (data && Array.isArray(data.expenses)) {
-      expenses.value = data.expenses;
-    } else if (Array.isArray(data)) {
-      expenses.value = data;
+    const params: any = {
+      page,
+      limit: 10,
+      paginate: 'true',
+    };
+
+    if (activeChip.value === 'RAW_MATERIALS') {
+      params.category = 'INSUMOS_EXTRA';
+    } else if (activeChip.value === 'FUEL') {
+      params.category = 'COMBUSTIBLE';
+    } else if (activeChip.value === 'SERVICES') {
+      params.category = 'SERVICIOS_PUBLICOS';
+    } else if (activeChip.value === 'OPERATIVE') {
+      params.category = 'OPERATIVO';
+    }
+
+    if (debouncedSearch.value && debouncedSearch.value.trim() !== '') {
+      params.search = debouncedSearch.value.trim();
+    }
+
+    const data = await http.get<any>('/expenses', { params });
+    if (data) {
+      if (Array.isArray(data.expenses)) {
+        expenses.value = data.expenses;
+      } else if (Array.isArray(data.data)) {
+        expenses.value = data.data;
+      } else if (Array.isArray(data)) {
+        expenses.value = data;
+      }
+
+      if (data.pagination) {
+        currentPage.value = data.pagination.page || page;
+        totalPages.value = data.pagination.totalPages || 1;
+        totalItems.value = data.pagination.total || 0;
+      } else {
+        currentPage.value = 1;
+        totalPages.value = 1;
+        totalItems.value = expenses.value.length;
+      }
+
+      totalFilteredAmount.value =
+        Number(data.totalAmount) || expenses.value.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     }
   } catch {
     // Interceptor maneja errores
   }
 }
+
+// Reactividad ante filtros y búsqueda
+watch([activeChip, debouncedSearch], () => {
+  currentPage.value = 1;
+  fetchExpenses(1);
+});
 
 // Cargar Créditos desde la API
 async function fetchCredits() {
@@ -141,7 +192,7 @@ async function fetchCredits() {
 async function loadData() {
   isLoading.value = true;
   try {
-    await Promise.all([fetchExpenses(), fetchCredits()]);
+    await Promise.all([fetchExpenses(currentPage.value), fetchCredits()]);
   } finally {
     isLoading.value = false;
   }
@@ -151,7 +202,12 @@ onMounted(() => {
   loadData();
 });
 
-// Función de mapeo de categoría a chip
+// Funciones de mapeo de categorías para badges e iconos
+function isRawMaterialsCategory(cat: string): boolean {
+  const c = (cat || '').toUpperCase();
+  return c === 'INSUMOS_EXTRA' || c.includes('MATERIA') || c.includes('INSUMO') || c.includes('COMPRA');
+}
+
 function isFuelCategory(cat: string): boolean {
   const c = (cat || '').toUpperCase();
   return c.includes('COMBUSTIBLE') || c.includes('GASOLINA') || c.includes('DOMICILIO') || c.includes('FLETE');
@@ -169,51 +225,9 @@ function isServicesCategory(cat: string): boolean {
   );
 }
 
-function isOperativeCategory(cat: string): boolean {
-  return !isFuelCategory(cat) && !isServicesCategory(cat);
-}
-
-// Conteos de los 4 chips
-const chipCounts = computed(() => {
-  const all = expenses.value.length;
-  const fuel = expenses.value.filter((e) => isFuelCategory(e.category)).length;
-  const services = expenses.value.filter((e) => isServicesCategory(e.category)).length;
-  const operative = expenses.value.filter((e) => isOperativeCategory(e.category)).length;
-  return { all, fuel, services, operative };
-});
-
-// Gastos filtrados por Chip y por Buscador
+// Gastos renderizados (paginados a 10 por el servidor)
 const filteredExpenses = computed(() => {
-  let result = expenses.value;
-
-  // 1. Filtrar por chip de categoría
-  if (activeChip.value === 'FUEL') {
-    result = result.filter((e) => isFuelCategory(e.category));
-  } else if (activeChip.value === 'SERVICES') {
-    result = result.filter((e) => isServicesCategory(e.category));
-  } else if (activeChip.value === 'OPERATIVE') {
-    result = result.filter((e) => isOperativeCategory(e.category));
-  }
-
-  // 2. Filtrar por buscador en vivo con debounce de 300ms
-  const q = debouncedSearch.value.trim().toLowerCase();
-  if (q) {
-    result = result.filter((e) => {
-      const desc = (e.description || '').toLowerCase();
-      const resp = (e.registeredBy || '').toLowerCase();
-      const notes = (e.notes || '').toLowerCase();
-      const method = (e.paymentMethod || '').toLowerCase();
-      const cat = (e.category || '').toLowerCase();
-      return desc.includes(q) || resp.includes(q) || notes.includes(q) || method.includes(q) || cat.includes(q);
-    });
-  }
-
-  return result;
-});
-
-// Métrica Dinámica: Total Acumulado Filtrado
-const totalFilteredAmount = computed(() => {
-  return filteredExpenses.value.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  return expenses.value;
 });
 
 // Eliminar un gasto
@@ -372,7 +386,7 @@ async function deleteCredit(id: number) {
                   Total Acumulado Filtrado
                 </span>
                 <span class="text-xs font-bold text-slate-400">
-                  {{ filteredExpenses.length }} {{ filteredExpenses.length === 1 ? 'registro' : 'registros' }}
+                  {{ totalItems }} {{ totalItems === 1 ? 'registro' : 'registros' }}
                 </span>
               </div>
               <div class="mt-2 text-3xl font-black text-slate-900 dark:text-white sm:text-4xl">
@@ -393,7 +407,7 @@ async function deleteCredit(id: number) {
           </div>
         </div>
 
-        <!-- Tira de 4 Chips Consolidados con Lucide Icons -->
+        <!-- Tira de Chips Consolidados con Lucide Icons -->
         <div class="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
           <!-- 1. [Receipt Todos los Gastos] -->
           <button
@@ -407,10 +421,25 @@ async function deleteCredit(id: number) {
             "
           >
             <Receipt class="h-4 w-4 stroke-[1.75]" />
-            <span>Todos los Gastos ({{ chipCounts.all }})</span>
+            <span>Todos los Gastos</span>
           </button>
 
-          <!-- 2. [Fuel Domicilio y Gasolina] -->
+          <!-- 2. [ShoppingBag Solo Materias Primas Compradas] -->
+          <button
+            type="button"
+            @click="activeChip = 'RAW_MATERIALS'"
+            class="inline-flex items-center gap-2 whitespace-nowrap rounded-2xl px-4 py-2 text-xs font-extrabold transition-all"
+            :class="
+              activeChip === 'RAW_MATERIALS'
+                ? 'bg-brand-800 text-white shadow-sm dark:bg-brand-600'
+                : 'border border-surface-light-border bg-surface-light-card text-slate-600 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300'
+            "
+          >
+            <ShoppingBag class="h-4 w-4 stroke-[1.75]" />
+            <span>Solo Materias Primas Compradas</span>
+          </button>
+
+          <!-- 3. [Fuel Domicilio y Gasolina] -->
           <button
             type="button"
             @click="activeChip = 'FUEL'"
@@ -422,10 +451,10 @@ async function deleteCredit(id: number) {
             "
           >
             <Fuel class="h-4 w-4 stroke-[1.75]" />
-            <span>Domicilio y Gasolina ({{ chipCounts.fuel }})</span>
+            <span>Domicilio y Gasolina</span>
           </button>
 
-          <!-- 3. [Zap Servicios e Infraestructura] -->
+          <!-- 4. [Zap Servicios e Infraestructura] -->
           <button
             type="button"
             @click="activeChip = 'SERVICES'"
@@ -437,10 +466,10 @@ async function deleteCredit(id: number) {
             "
           >
             <Zap class="h-4 w-4 stroke-[1.75]" />
-            <span>Servicios e Infraestructura ({{ chipCounts.services }})</span>
+            <span>Servicios e Infraestructura</span>
           </button>
 
-          <!-- 4. [Boxes Operativos y Varios] -->
+          <!-- 5. [Boxes Operativos y Varios] -->
           <button
             type="button"
             @click="activeChip = 'OPERATIVE'"
@@ -452,7 +481,7 @@ async function deleteCredit(id: number) {
             "
           >
             <Boxes class="h-4 w-4 stroke-[1.75]" />
-            <span>Operativos y Varios ({{ chipCounts.operative }})</span>
+            <span>Operativos y Varios</span>
           </button>
         </div>
 
@@ -483,14 +512,17 @@ async function deleteCredit(id: number) {
               <div
                 class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
                 :class="
-                  isFuelCategory(expense.category)
+                  isRawMaterialsCategory(expense.category)
+                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400'
+                    : isFuelCategory(expense.category)
                     ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'
                     : isServicesCategory(expense.category)
                     ? 'bg-dairy-50 text-dairy-500 dark:bg-blue-950/40 dark:text-blue-400'
                     : 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400'
                 "
               >
-                <Fuel v-if="isFuelCategory(expense.category)" class="h-5 w-5 stroke-[1.75]" />
+                <ShoppingBag v-if="isRawMaterialsCategory(expense.category)" class="h-5 w-5 stroke-[1.75]" />
+                <Fuel v-else-if="isFuelCategory(expense.category)" class="h-5 w-5 stroke-[1.75]" />
                 <Zap v-else-if="isServicesCategory(expense.category)" class="h-5 w-5 stroke-[1.75]" />
                 <Boxes v-else class="h-5 w-5 stroke-[1.75]" />
               </div>
@@ -504,7 +536,9 @@ async function deleteCredit(id: number) {
                   <span
                     class="rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider"
                     :class="
-                      isFuelCategory(expense.category)
+                      isRawMaterialsCategory(expense.category)
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                        : isFuelCategory(expense.category)
                         ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
                         : isServicesCategory(expense.category)
                         ? 'bg-dairy-100 text-dairy-800 dark:bg-blue-900/40 dark:text-blue-300'
@@ -545,6 +579,42 @@ async function deleteCredit(id: number) {
                 <Trash2 class="h-4 w-4" />
               </button>
             </div>
+          </div>
+        </div>
+
+        <!-- Barra de Paginación a 10 Registros -->
+        <div
+          v-if="totalPages > 1"
+          class="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-surface-light-border px-2 pt-4 dark:border-surface-dark-border"
+        >
+          <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            Página {{ currentPage }} de {{ totalPages }} • {{ totalItems }} registros en total
+          </span>
+
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              @click="fetchExpenses(currentPage - 1)"
+              :disabled="currentPage <= 1"
+              class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <ChevronLeft class="h-4 w-4 stroke-[2]" />
+              <span>Anterior</span>
+            </button>
+
+            <span class="rounded-lg bg-surface-light-canvas px-2.5 py-1 text-xs font-black text-slate-800 dark:bg-surface-dark-canvas dark:text-slate-200">
+              {{ currentPage }} / {{ totalPages }}
+            </span>
+
+            <button
+              type="button"
+              @click="fetchExpenses(currentPage + 1)"
+              :disabled="currentPage >= totalPages"
+              class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <span>Siguiente</span>
+              <ChevronRight class="h-4 w-4 stroke-[2]" />
+            </button>
           </div>
         </div>
       </TabsContent>

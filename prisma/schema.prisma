@@ -53,6 +53,8 @@ model RawMaterial {
   currentStock               Float                   @default(0)
   minStockAlert              Float                   @default(10)
   avgCost                    Float                   @default(0)
+  isCompound                 Boolean                 @default(false)
+  recipeYield                Float?                  @default(1)
   isActive                   Boolean                 @default(true)
   createdAt                  DateTime                @default(now())
   updatedAt                  DateTime                @updatedAt
@@ -62,10 +64,27 @@ model RawMaterial {
   supplyPreparationsUsed     SupplyPreparationItem[] @relation("IngredientMaterial")
   adjustments                InventoryAdjustment[]
   packagingUsages            BatchPackagingItem[]
+  recipeIngredients          CompoundRecipeItem[]    @relation("CompoundMaterial")
+  usedInRecipes              CompoundRecipeItem[]    @relation("IngredientMaterial")
 
   @@index([category])
+  @@index([isCompound])
   @@index([isActive])
   @@index([isActive, category])
+}
+
+model CompoundRecipeItem {
+  id                 Int         @id @default(autoincrement())
+  compoundMaterialId Int
+  compoundMaterial   RawMaterial @relation("CompoundMaterial", fields: [compoundMaterialId], references: [id], onDelete: Cascade)
+  ingredientId       Int
+  ingredient         RawMaterial @relation("IngredientMaterial", fields: [ingredientId], references: [id])
+  quantity           Float       // Cantidad requerida para el lote base de la receta
+  unit               String      @default("Kilogramos")
+  createdAt          DateTime    @default(now())
+
+  @@index([compoundMaterialId])
+  @@index([ingredientId])
 }
 
 model SupplyPreparation {
