@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { refDebounced } from '@vueuse/core';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
@@ -57,6 +57,8 @@ export interface UnifiedMovement {
   notes?: string | null;
   registeredBy?: string;
   isCashMovement?: boolean;
+  type?: string;
+  movementType?: string;
 }
 
 export interface TransferPayload {
@@ -78,11 +80,16 @@ export interface CashMovementPayload {
     | 'AJUSTE_SOBRANTE'
     | 'AJUSTE_FALTANTE'
     | 'TRASLADO_EFECTIVO_A_BANCO'
-    | 'TRASLADO_BANCO_A_EFECTIVO';
+    | 'TRASLADO_BANCO_A_EFECTIVO'
+    | 'INGRESO'
+    | 'EGRESO'
+    | string;
   amount: number;
-  concept: string;
+  concept?: string;
+  description?: string;
   paymentMethod?: string;
   movementDate?: string;
+  date?: string;
   notes?: string | null;
   registeredBy?: string;
 }
@@ -172,6 +179,30 @@ export const useFinanceStore = defineStore('finance', () => {
     return result;
   });
 
+  // Paginación Estricta a 10 Registros por Página
+  const currentPage = ref(1);
+  const pageSize = ref(10);
+
+  const totalPages = computed(() => {
+    return Math.ceil(filteredMovements.value.length / pageSize.value) || 1;
+  });
+
+  const paginatedMovements = computed(() => {
+    const start = (currentPage.value - 1) * pageSize.value;
+    return filteredMovements.value.slice(start, start + pageSize.value);
+  });
+
+  function setPage(p: number) {
+    if (p >= 1 && p <= totalPages.value) {
+      currentPage.value = p;
+    }
+  }
+
+  // Resetear paginación al alternar pestañas o filtrar por búsqueda
+  watch([activeTab, debouncedSearchQuery], () => {
+    currentPage.value = 1;
+  });
+
   // Cargar datos financieros completos (KPIs + Conciliación de Movimientos)
   async function fetchFinanceData() {
     isLoading.value = true;
@@ -249,6 +280,8 @@ export const useFinanceStore = defineStore('finance', () => {
           notes: i.notes || null,
           registeredBy: i.registeredBy || 'Edier',
           isCashMovement: !!i.isCashMovement,
+          type: i.type || i.movementType || i.rawMovement?.type,
+          movementType: i.movementType || i.type,
         });
       });
 
@@ -278,6 +311,8 @@ export const useFinanceStore = defineStore('finance', () => {
           notes: o.notes || null,
           registeredBy: o.registeredBy || 'Edier',
           isCashMovement: !!o.isCashMovement,
+          type: o.type || o.movementType || o.category || o.rawMovement?.type,
+          movementType: o.movementType || o.type,
         });
       });
 
@@ -299,6 +334,8 @@ export const useFinanceStore = defineStore('finance', () => {
           notes: t.notes || null,
           registeredBy: t.registeredBy || 'Edier',
           isCashMovement: true,
+          type: t.type || t.rawMovement?.type,
+          movementType: t.type,
         });
       });
 
@@ -383,6 +420,29 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  // Actualizar un movimiento de caja existente (Edición integral reactiva)
+  async function updateCashMovement(id: number, payload: Partial<CashMovementPayload>) {
+    isLoading.value = true;
+    try {
+      const body = {
+        ...payload,
+        amount: payload.amount !== undefined ? Number(payload.amount) : undefined,
+        concept: payload.concept || payload.description,
+        movementDate: payload.movementDate || payload.date,
+      };
+
+      const res = await http.put(`/cash-movements/${id}`, body);
+      toast.success('¡Movimiento Actualizado!', {
+        description: 'Se guardaron los cambios del registro de caja exitosamente.',
+      });
+
+      await fetchFinanceData();
+      return res;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   // Eliminar un movimiento de caja
   async function deleteMovement(id: number) {
     try {
@@ -412,10 +472,16 @@ export const useFinanceStore = defineStore('finance', () => {
     totalRealBalance,
     tabCounts,
     filteredMovements,
+    currentPage,
+    pageSize,
+    totalPages,
+    paginatedMovements,
+    setPage,
     fetchFinanceData,
     setPeriod,
     createTransfer,
     createCashMovement,
+    updateCashMovement,
     deleteMovement,
   };
 });

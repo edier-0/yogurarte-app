@@ -157,6 +157,8 @@ app.use('/api/clients', requireAuth, customersRoutes);
 app.use('/api/dashboard', requireAuth, dashboardRoutes);
 app.use('/api/staff', requireAuth, staffRoutes);
 app.use('/api/cash-movements', requireAuth, cashMovementsRoutes);
+app.use('/api/cash/movements', requireAuth, cashMovementsRoutes);
+app.use('/api/cash', requireAuth, cashMovementsRoutes);
 app.use('/api/credits', requireAuth, creditsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/crm', requireAuth, crmRoutes);

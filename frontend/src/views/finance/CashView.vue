@@ -15,8 +15,10 @@ import {
   ArrowUpRight,
   Search,
   RefreshCw,
+  ChevronLeft,
   ChevronRight,
   Trash2,
+  Pencil,
 } from 'lucide-vue-next';
 import {
   useFinanceStore,
@@ -35,6 +37,7 @@ const financeStore = useFinanceStore();
 const isTransferModalOpen = ref(false);
 const isMovementModalOpen = ref(false);
 const movementModalMode = ref<MovementMode>('BASE');
+const selectedMovementToEdit = ref<any | null>(null);
 const isAuditModalOpen = ref(false);
 
 // Fechas para rango personalizado
@@ -96,17 +99,26 @@ function handleApplyAllHistory() {
 
 // Abrir modales según acción
 function openAddBase() {
+  selectedMovementToEdit.value = null;
   movementModalMode.value = 'BASE';
   isMovementModalOpen.value = true;
 }
 
 function openAdjustCash() {
+  selectedMovementToEdit.value = null;
   movementModalMode.value = 'ADJUST';
   isMovementModalOpen.value = true;
 }
 
 function openWithdrawBase() {
+  selectedMovementToEdit.value = null;
   movementModalMode.value = 'WITHDRAW';
+  isMovementModalOpen.value = true;
+}
+
+function openEditMovement(mov: any) {
+  selectedMovementToEdit.value = mov;
+  movementModalMode.value = 'EDIT';
   isMovementModalOpen.value = true;
 }
 
@@ -521,7 +533,7 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined) {
 
         <!-- Tarjetas de Movimientos -->
         <div
-          v-for="mov in financeStore.filteredMovements"
+          v-for="mov in financeStore.paginatedMovements"
           :key="mov.id"
           class="flex flex-col gap-3 rounded-2xl border border-surface-light-border bg-surface-light-canvas p-3.5 transition-all hover:border-slate-300 dark:border-surface-dark-border dark:bg-surface-dark-canvas sm:flex-row sm:items-center sm:justify-between"
         >
@@ -592,6 +604,17 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined) {
               </span>
             </div>
 
+            <!-- Botón Editar si es movimiento de caja -->
+            <button
+              v-if="mov.isCashMovement && mov.rawId"
+              type="button"
+              @click="openEditMovement(mov)"
+              class="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-800 dark:hover:bg-brand-950/40 dark:hover:text-brand-400"
+              title="Editar movimiento de caja"
+            >
+              <Pencil class="h-4 w-4" />
+            </button>
+
             <!-- Botón Eliminar si es movimiento de caja -->
             <button
               v-if="mov.isCashMovement && mov.rawId"
@@ -601,6 +624,42 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined) {
               title="Eliminar movimiento de caja"
             >
               <Trash2 class="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <!-- Barra de Paginación Estricta a 10 Registros -->
+        <div
+          v-if="financeStore.totalPages > 1 || financeStore.filteredMovements.length > 0"
+          class="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-surface-light-border px-2 pt-4 dark:border-surface-dark-border"
+        >
+          <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            Página {{ financeStore.currentPage }} de {{ financeStore.totalPages }} • {{ financeStore.filteredMovements.length }} {{ financeStore.filteredMovements.length === 1 ? 'registro' : 'registros' }} en total
+          </span>
+
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              @click="financeStore.setPage(financeStore.currentPage - 1)"
+              :disabled="financeStore.currentPage <= 1"
+              class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <ChevronLeft class="h-4 w-4" />
+              <span>Anterior</span>
+            </button>
+
+            <span class="text-xs font-bold text-slate-700 dark:text-slate-300 px-2">
+              {{ financeStore.currentPage }} / {{ financeStore.totalPages }}
+            </span>
+
+            <button
+              type="button"
+              @click="financeStore.setPage(financeStore.currentPage + 1)"
+              :disabled="financeStore.currentPage >= financeStore.totalPages"
+              class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <span>Siguiente</span>
+              <ChevronRight class="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -616,6 +675,7 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined) {
     <CashMovementModal
       v-model:open="isMovementModalOpen"
       :mode="movementModalMode"
+      :movementToEdit="selectedMovementToEdit"
       @saved="financeStore.fetchFinanceData"
     />
 

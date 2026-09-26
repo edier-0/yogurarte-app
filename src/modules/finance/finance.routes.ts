@@ -6,6 +6,7 @@ import {
   deleteCashMovement,
   getExpenses,
   createExpense,
+  updateExpense,
   deleteExpense,
   getCredits,
   createCredit,
@@ -24,6 +25,7 @@ import {
   updateCashMovementSchema,
   cashMovementsQuerySchema,
   createExpenseSchema,
+  updateExpenseSchema,
   expensesQuerySchema,
   createCreditSchema,
   payCreditInstallmentSchema,
@@ -49,6 +51,7 @@ export const expensesRouter = Router();
 
 expensesRouter.get('/', validateQuery(expensesQuerySchema), getExpenses);
 expensesRouter.post('/', validateBody(createExpenseSchema), createExpense);
+expensesRouter.put('/:id', validateParams(idParamSchema), validateBody(updateExpenseSchema), updateExpense);
 expensesRouter.delete('/:id', validateParams(idParamSchema), deleteExpense);
 
 // ==========================================
@@ -76,6 +79,8 @@ dashboardRouter.get('/', validateQuery(dashboardSummaryQuerySchema), getDashboar
 const financeRouter = Router();
 
 financeRouter.use('/cash-movements', cashMovementsRouter);
+financeRouter.use('/cash/movements', cashMovementsRouter);
+financeRouter.use('/cash', cashMovementsRouter);
 financeRouter.use('/expenses', expensesRouter);
 financeRouter.use('/credits', creditsRouter);
 financeRouter.use('/dashboard', dashboardRouter);

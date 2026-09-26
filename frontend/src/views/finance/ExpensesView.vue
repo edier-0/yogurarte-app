@@ -21,11 +21,13 @@ import {
   ShoppingBag,
   ChevronLeft,
   ChevronRight,
+  Pencil,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import { useConfirm } from '@/composables/useConfirm';
 import ExpenseModal from '@/components/finance/ExpenseModal.vue';
+import ExpenseFormModal from '@/components/finance/ExpenseFormModal.vue';
 
 interface ExpenseItem {
   id: number;
@@ -34,6 +36,7 @@ interface ExpenseItem {
   amount: number;
   expenseDate: string;
   paymentMethod: string;
+  supplier?: string | null;
   notes?: string | null;
   registeredBy?: string;
 }
@@ -72,7 +75,14 @@ interface CreditItem {
 
 const activeTab = ref<'expenses' | 'credits'>('expenses');
 const isExpenseModalOpen = ref(false);
+const isExpenseFormModalOpen = ref(false);
+const selectedExpenseToEdit = ref<ExpenseItem | null>(null);
 const isLoading = ref(false);
+
+function openEditExpense(expense: ExpenseItem) {
+  selectedExpenseToEdit.value = expense;
+  isExpenseFormModalOpen.value = true;
+}
 
 // Estado de Gastos
 export type ExpenseChip = 'ALL' | 'RAW_MATERIALS' | 'FUEL' | 'SERVICES' | 'OPERATIVE';
@@ -555,6 +565,7 @@ async function deleteCredit(id: number) {
                   <span class="font-bold text-slate-700 dark:text-slate-300">
                     {{ expense.paymentMethod }}
                   </span>
+                  <span v-if="expense.supplier">• Prov: {{ expense.supplier }}</span>
                   <span v-if="expense.registeredBy">• Por: {{ expense.registeredBy }}</span>
                 </div>
 
@@ -564,12 +575,23 @@ async function deleteCredit(id: number) {
               </div>
             </div>
 
-            <!-- Monto y Acción Eliminar -->
-            <div class="flex items-center justify-between sm:justify-end gap-4 border-t border-surface-light-border pt-2.5 sm:border-t-0 sm:pt-0 dark:border-surface-dark-border">
+            <!-- Monto y Acciones -->
+            <div class="flex items-center justify-between sm:justify-end gap-3 border-t border-surface-light-border pt-2.5 sm:border-t-0 sm:pt-0 dark:border-surface-dark-border">
               <span class="text-base font-black text-rose-600 dark:text-rose-400 sm:text-lg">
                 {{ formatCurrency(expense.amount) }}
               </span>
 
+              <!-- Botón Editar Gasto -->
+              <button
+                type="button"
+                @click="openEditExpense(expense)"
+                class="rounded-xl p-2 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-800 dark:hover:bg-brand-950/40 dark:hover:text-brand-400"
+                title="Editar gasto"
+              >
+                <Pencil class="h-4 w-4" />
+              </button>
+
+              <!-- Botón Eliminar Gasto -->
               <button
                 type="button"
                 @click="deleteExpense(expense.id)"
@@ -776,6 +798,13 @@ async function deleteCredit(id: number) {
     <ExpenseModal
       v-model:open="isExpenseModalOpen"
       @saved="loadData"
+    />
+
+    <!-- Modal de Edición de Gasto -->
+    <ExpenseFormModal
+      v-model:open="isExpenseFormModalOpen"
+      :expense="selectedExpenseToEdit"
+      @saved="() => fetchExpenses(currentPage)"
     />
   </div>
 </template>

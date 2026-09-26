@@ -395,6 +395,7 @@ model Expense {
   amount        Float
   expenseDate   DateTime @default(now())
   paymentMethod String   @default("EFECTIVO") // EFECTIVO, TRANSFERENCIA, NEQUI, BANCOLOMBIA
+  supplier      String?
   notes         String?
   registeredBy  String?
   createdAt     DateTime @default(now())

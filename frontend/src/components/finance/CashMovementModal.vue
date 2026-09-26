@@ -15,14 +15,16 @@ import {
   X,
   AlertCircle,
   Plus,
+  Pencil,
 } from 'lucide-vue-next';
 import { useFinanceStore, getTodayDateBogota } from '@/stores/finance.store';
 
-export type MovementMode = 'BASE' | 'ADJUST' | 'WITHDRAW';
+export type MovementMode = 'BASE' | 'ADJUST' | 'WITHDRAW' | 'EDIT';
 
 const props = defineProps<{
   open: boolean;
   mode: MovementMode;
+  movementToEdit?: any | null;
 }>();
 
 const emit = defineEmits<{
@@ -32,14 +34,7 @@ const emit = defineEmits<{
 
 const financeStore = useFinanceStore();
 
-const movementType = ref<
-  | 'BASE_INICIAL'
-  | 'APORTE_SOCIO'
-  | 'RETIRO_BASE'
-  | 'AJUSTE_CAJA'
-  | 'AJUSTE_SOBRANTE'
-  | 'AJUSTE_FALTANTE'
->('BASE_INICIAL');
+const movementType = ref<string>('BASE_INICIAL');
 
 const amount = ref<number | ''>('');
 const paymentMethod = ref<string>('EFECTIVO');
@@ -49,34 +44,56 @@ const notes = ref<string>('');
 const isSubmitting = ref<boolean>(false);
 const errorMessage = ref<string>('');
 
-// Sincronizar defaults según el modo
+// Sincronizar defaults según el modo o datos a editar
 watch(
-  () => props.mode,
-  (newMode) => {
-    if (newMode === 'BASE') {
+  () => [props.open, props.mode, props.movementToEdit],
+  () => {
+    if (!props.open) return;
+
+    if (props.mode === 'EDIT' && props.movementToEdit) {
+      const m = props.movementToEdit;
+      amount.value = Math.abs(Number(m.amount) || 0);
+      concept.value = m.concept || m.description || '';
+      paymentMethod.value = m.paymentMethod || 'EFECTIVO';
+      const rawDate = m.date || m.movementDate || '';
+      movementDate.value = rawDate ? String(rawDate).slice(0, 10) : getTodayDateBogota();
+      notes.value = m.notes || '';
+      movementType.value = m.type || m.movementType || (m.flowType === 'OUTFLOW' ? 'EGRESO' : 'INGRESO');
+    } else if (props.mode === 'BASE') {
       movementType.value = 'BASE_INICIAL';
       concept.value = 'Base inicial de caja menor';
       paymentMethod.value = 'EFECTIVO';
-    } else if (newMode === 'WITHDRAW') {
+      amount.value = '';
+      notes.value = '';
+      movementDate.value = getTodayDateBogota();
+    } else if (props.mode === 'WITHDRAW') {
       movementType.value = 'RETIRO_BASE';
       concept.value = 'Retiro de base de caja menor';
       paymentMethod.value = 'EFECTIVO';
-    } else if (newMode === 'ADJUST') {
+      amount.value = '';
+      notes.value = '';
+      movementDate.value = getTodayDateBogota();
+    } else if (props.mode === 'ADJUST') {
       movementType.value = 'AJUSTE_CAJA';
       concept.value = 'Ajuste de arqueo / cuadre de caja';
       paymentMethod.value = 'EFECTIVO';
+      amount.value = '';
+      notes.value = '';
+      movementDate.value = getTodayDateBogota();
     }
   },
   { immediate: true }
 );
 
 const modalTitle = computed(() => {
+  if (props.mode === 'EDIT') return 'Editar Movimiento de Caja';
   if (props.mode === 'BASE') return 'Base / Aporte a Caja';
   if (props.mode === 'WITHDRAW') return 'Retiro de Base de Caja';
   return 'Ajustar / Cuadrar Caja';
 });
 
 const modalDescription = computed(() => {
+  if (props.mode === 'EDIT') return 'Corrige monto, medio de pago, fecha, tipo o notas del movimiento';
   if (props.mode === 'BASE') return 'Inyección de dinero físico o aporte de socios para operar';
   if (props.mode === 'WITHDRAW') return 'Salida de dinero de la base o fondos asignados';
   return 'Conciliación de diferencias por 4x1000, comisiones o descuadre físico';
@@ -101,21 +118,35 @@ async function handleSubmit() {
   errorMessage.value = '';
 
   try {
-    await financeStore.createCashMovement({
-      type: movementType.value,
-      amount: amount.value,
-      concept: concept.value.trim(),
-      paymentMethod: paymentMethod.value,
-      movementDate: movementDate.value,
-      notes: notes.value.trim() || null,
-    });
+    if (props.mode === 'EDIT' && props.movementToEdit) {
+      const targetId = props.movementToEdit.rawId || props.movementToEdit.id;
+      await financeStore.updateCashMovement(targetId, {
+        type: movementType.value,
+        amount: amount.value,
+        concept: concept.value.trim(),
+        description: concept.value.trim(),
+        paymentMethod: paymentMethod.value,
+        movementDate: movementDate.value,
+        date: movementDate.value,
+        notes: notes.value.trim() || null,
+      });
+    } else {
+      await financeStore.createCashMovement({
+        type: movementType.value,
+        amount: amount.value,
+        concept: concept.value.trim(),
+        paymentMethod: paymentMethod.value,
+        movementDate: movementDate.value,
+        notes: notes.value.trim() || null,
+      });
+    }
 
     amount.value = '';
     notes.value = '';
     emit('saved');
     handleClose();
   } catch (err: any) {
-    errorMessage.value = err?.message || 'Error al registrar el movimiento de caja';
+    errorMessage.value = err?.message || 'Error al procesar el movimiento de caja';
   } finally {
     isSubmitting.value = false;
   }
@@ -135,14 +166,17 @@ async function handleSubmit() {
             <div
               class="flex h-10 w-10 items-center justify-center rounded-xl"
               :class="
-                mode === 'BASE'
+                mode === 'EDIT'
+                  ? 'bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-400'
+                  : mode === 'BASE'
                   ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400'
                   : mode === 'WITHDRAW'
                   ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400'
                   : 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400'
               "
             >
-              <PiggyBank v-if="mode === 'BASE'" class="h-5 w-5 stroke-[2]" />
+              <Pencil v-if="mode === 'EDIT'" class="h-5 w-5 stroke-[2]" />
+              <PiggyBank v-else-if="mode === 'BASE'" class="h-5 w-5 stroke-[2]" />
               <ArrowDownLeft v-else-if="mode === 'WITHDRAW'" class="h-5 w-5 stroke-[2]" />
               <Scale v-else class="h-5 w-5 stroke-[2]" />
             </div>
@@ -166,8 +200,30 @@ async function handleSubmit() {
         </div>
 
         <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+          <!-- Selector de Tipo en Modo EDICIÓN -->
+          <div v-if="mode === 'EDIT'">
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Tipo de Movimiento *
+            </label>
+            <select
+              v-model="movementType"
+              class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+            >
+              <option value="INGRESO">Ingreso Directo (+)</option>
+              <option value="EGRESO">Egreso Directo (-)</option>
+              <option value="BASE_INICIAL">Base Inicial de Caja (+)</option>
+              <option value="APORTE_SOCIO">Aporte de Socio (+)</option>
+              <option value="RETIRO_BASE">Retiro de Base (-)</option>
+              <option value="AJUSTE_CAJA">Ajuste General de Cuadre</option>
+              <option value="AJUSTE_SOBRANTE">Sobrante de Caja (+)</option>
+              <option value="AJUSTE_FALTANTE">Faltante de Caja / 4x1000 (-)</option>
+              <option value="TRASLADO_EFECTIVO_A_BANCO">Traslado Efectivo a Banco</option>
+              <option value="TRASLADO_BANCO_A_EFECTIVO">Traslado Banco a Efectivo</option>
+            </select>
+          </div>
+
           <!-- Selector de Subtipo según Modo -->
-          <div v-if="mode === 'BASE'">
+          <div v-else-if="mode === 'BASE'">
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
               Tipo de Inyección *
             </label>
@@ -223,6 +279,9 @@ async function handleSubmit() {
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               >
                 <option value="EFECTIVO">Efectivo Caja Menor</option>
+                <option value="NEQUI">Nequi</option>
+                <option value="BANCOLOMBIA">Bancolombia</option>
+                <option value="TRANSFERENCIA">Transferencia Bancaria</option>
                 <option value="NEQUI_BANCOLOMBIA">Nequi o Bancolombia</option>
               </select>
             </div>
@@ -292,8 +351,9 @@ async function handleSubmit() {
               :disabled="!isFormValid || isSubmitting"
               class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-5 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95 disabled:opacity-50"
             >
-              <Plus class="h-4 w-4 stroke-[2.5]" />
-              <span>{{ isSubmitting ? 'Guardando...' : 'Asentar Movimiento' }}</span>
+              <Pencil v-if="mode === 'EDIT'" class="h-4 w-4 stroke-[2.5]" />
+              <Plus v-else class="h-4 w-4 stroke-[2.5]" />
+              <span>{{ isSubmitting ? 'Guardando...' : mode === 'EDIT' ? 'Guardar Cambios' : 'Asentar Movimiento' }}</span>
             </button>
           </div>
         </form>

@@ -13,23 +13,32 @@ export const cashMovementTypeEnum = z.enum([
   'AJUSTE_FALTANTE',
   'TRASLADO_EFECTIVO_A_BANCO',
   'TRASLADO_BANCO_A_EFECTIVO',
+  'INGRESO',
+  'EGRESO',
 ]);
 
 export const createCashMovementSchema = z.object({
   type: cashMovementTypeEnum.default('BASE_INICIAL'),
   amount: z.coerce.number().positive('El monto debe ser mayor a 0'),
   movementDate: z.string().optional(),
-  concept: z.string().min(1, 'El concepto es obligatorio'),
+  date: z.string().optional(),
+  concept: z.string().optional(),
+  description: z.string().optional(),
   paymentMethod: z.string().optional().default('EFECTIVO'),
   notes: z.string().optional().nullable(),
   registeredBy: z.string().optional(),
+}).refine(data => (data.concept && data.concept.trim().length > 0) || (data.description && data.description.trim().length > 0), {
+  message: 'El concepto o descripción es obligatorio',
+  path: ['concept'],
 });
 
 export const updateCashMovementSchema = z.object({
-  type: cashMovementTypeEnum.optional(),
+  type: z.string().optional(),
   amount: z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
   movementDate: z.string().optional(),
-  concept: z.string().min(1).optional(),
+  date: z.string().optional(),
+  concept: z.string().optional(),
+  description: z.string().optional(),
   paymentMethod: z.string().optional(),
   notes: z.string().optional().nullable(),
   registeredBy: z.string().optional(),
@@ -39,6 +48,10 @@ export const cashMovementsQuerySchema = z.object({
   type: z.string().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
+  page: z.coerce.number().optional(),
+  limit: z.coerce.number().optional(),
+  paginate: z.enum(['true', 'false']).optional(),
+  search: z.string().optional(),
 });
 
 // ==========================================
@@ -51,6 +64,18 @@ export const createExpenseSchema = z.object({
   amount: z.coerce.number().positive('El monto debe ser mayor a 0'),
   expenseDate: z.string().optional(),
   paymentMethod: z.string().optional().default('EFECTIVO'),
+  supplier: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  registeredBy: z.string().optional(),
+});
+
+export const updateExpenseSchema = z.object({
+  category: z.string().optional(),
+  description: z.string().min(1, 'La descripción del gasto es obligatoria').optional(),
+  amount: z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
+  expenseDate: z.string().optional(),
+  paymentMethod: z.string().optional(),
+  supplier: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   registeredBy: z.string().optional(),
 });
@@ -126,6 +151,7 @@ export type UpdateCashMovementInput = z.infer<typeof updateCashMovementSchema>;
 export type CashMovementsQueryInput = z.infer<typeof cashMovementsQuerySchema>;
 
 export type CreateExpenseInput = z.infer<typeof createExpenseSchema>;
+export type UpdateExpenseInput = z.infer<typeof updateExpenseSchema>;
 export type ExpensesQueryInput = z.infer<typeof expensesQuerySchema>;
 
 export type CreateCreditInput = z.infer<typeof createCreditSchema>;
