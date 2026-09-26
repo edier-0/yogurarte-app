@@ -29,7 +29,7 @@ RUN npx tsc
 FROM node:20-alpine AS runner
 
 # Instalar utilidades de runtime seguras (dumb-init para gestión PID 1)
-RUN apk add --no-cache openssl libc6-compat dumb-init
+RUN apk add --no-cache openssl libc6-compat dumb-init dos2unix
 
 WORKDIR /app
 
@@ -49,7 +49,8 @@ COPY public ./public
 COPY docker-entrypoint.sh ./
 
 # Crear carpetas de runtime y configurar permisos seguros para usuario no root
-RUN chmod +x docker-entrypoint.sh && \
+RUN dos2unix docker-entrypoint.sh && \
+    chmod +x docker-entrypoint.sh && \
     mkdir -p /app/baileys_auth_info /app/logs && \
     chown -R node:node /app
 

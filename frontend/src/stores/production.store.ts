@@ -25,6 +25,90 @@ export interface BatchPackagingExtraItem {
   totalCost?: number;
 }
 
+export interface PackagingPresentationItem {
+  containerName: string;
+  capacityLiters: number;
+  quantity: number;
+  sold: number;
+  discharged: number;
+  free: number;
+  price: number;
+  totalLiters: number;
+  soldLiters: number;
+  freeLiters: number;
+  rawMaterialId?: number | null;
+}
+
+export interface BatchPackagingCardItem {
+  id: number;
+  packagingCode: string | null;
+  batchId: number;
+  batchCode?: string;
+  flavor: string;
+  bottles1L: number;
+  bottles2L: number;
+  containers?: any[];
+  presentations: PackagingPresentationItem[];
+  totalLiters: number;
+  soldLiters: number;
+  dischargedLiters: number;
+  freeLiters: number;
+  progressPercentage: number;
+  status: 'DISPONIBLE' | 'AGOTADO' | string;
+  price1L?: number | null;
+  price2L?: number | null;
+  packagingCost: number;
+  fractionCostPerLiter: number;
+  totalFractionCost: number;
+  notes?: string | null;
+  packagedBy?: string;
+  packagedAt: string;
+  batch?: any;
+  itemsUsed?: BatchPackagingExtraItem[];
+  linkedOrdersCount?: number;
+}
+
+export interface PackagingSummaryData {
+  packaging: {
+    id: number;
+    packagingCode: string | null;
+    batchId: number;
+    flavor: string;
+    notes?: string | null;
+    packagedBy?: string;
+    packagedAt: string;
+    packagingCost: number;
+    batch: any;
+  };
+  presentations: PackagingPresentationItem[];
+  volume: {
+    totalLiters: number;
+    soldLiters: number;
+    dischargedLiters: number;
+    freeLiters: number;
+    progressPercentage: number;
+    status: string;
+  };
+  costs: {
+    milkBaseCost: number;
+    packagingCost: number;
+    totalCost: number;
+    costPerLiter: number;
+  };
+  itemsUsed: BatchPackagingExtraItem[];
+  linkedOrders: Array<{
+    id: number;
+    orderNumber: string;
+    customer: { id: number; fullName: string; phone?: string | null };
+    orderDate: string;
+    deliveryStatus: string;
+    paymentStatus: string;
+    totalAmount: number;
+    items: any[];
+  }>;
+  discharges: any[];
+}
+
 export interface BatchPackagingItem {
   id: number;
   batchId: number;
@@ -35,6 +119,13 @@ export interface BatchPackagingItem {
   totalLiters: number;
   price1L?: number | null;
   price2L?: number | null;
+  containers?: any[];
+  presentations?: PackagingPresentationItem[];
+  soldLiters?: number;
+  freeLiters?: number;
+  dischargedLiters?: number;
+  progressPercentage?: number;
+  status?: string;
   bottle1LRawMaterialId?: number | null;
   bottle2LRawMaterialId?: number | null;
   labelRawMaterialId?: number | null;
@@ -52,6 +143,7 @@ export interface BatchPackagingItem {
 
 export interface PackagingContainerItem {
   rawMaterialId: number;
+  containerName?: string;
   capacityLiters: number;
   quantity: number;
   unitCost?: number;
@@ -287,6 +379,17 @@ export const useProductionStore = defineStore('production', () => {
   const activeChip = ref<BatchChip>('ALL');
   const searchQuery = ref<string>('');
   const debouncedSearch = refDebounced(searchQuery, 300);
+
+  // Estado Fase B: Fracciones Envasadas
+  const packagings = ref<BatchPackagingCardItem[]>([]);
+  const isLoadingPackagings = ref<boolean>(false);
+  const packagingCurrentPage = ref<number>(1);
+  const packagingLimit = ref<number>(5);
+  const totalPackagings = ref<number>(0);
+  const totalPackagingPages = ref<number>(1);
+  const packagingChip = ref<'ALL' | 'DISPONIBLE' | 'AGOTADO'>('ALL');
+  const packagingSearchQuery = ref<string>('');
+  const debouncedPackagingSearch = refDebounced(packagingSearchQuery, 300);
 
   // Métricas superiores computadas
   const fermentingLiters = computed(() => {
@@ -706,11 +809,99 @@ export const useProductionStore = defineStore('production', () => {
     }
   }
 
+  // ==========================================
+  // 📦 ACCIONES FASE B: LOTES FRACCIONADOS
+  // ==========================================
+  async function fetchPackagings(page = 1) {
+    isLoadingPackagings.value = true;
+    try {
+      packagingCurrentPage.value = page;
+      const res = await http.get<{
+        data: BatchPackagingCardItem[];
+        pagination: { total: number; page: number; limit: number; totalPages: number };
+      }>('/batches/packagings', {
+        params: {
+          page,
+          limit: packagingLimit.value,
+          status: packagingChip.value,
+          search: packagingSearchQuery.value || undefined,
+        },
+      });
+      packagings.value = res.data;
+      totalPackagings.value = res.pagination.total;
+      totalPackagingPages.value = res.pagination.totalPages;
+    } catch {
+      packagings.value = [];
+    } finally {
+      isLoadingPackagings.value = false;
+    }
+  }
+
+  async function goToPackagingPage(page: number) {
+    if (page < 1 || page > totalPackagingPages.value) return;
+    await fetchPackagings(page);
+  }
+
+  async function fetchPackagingSummary(packagingId: number): Promise<PackagingSummaryData | null> {
+    try {
+      return await http.get<PackagingSummaryData>(`/batches/packagings/${packagingId}`);
+    } catch {
+      return null;
+    }
+  }
+
+  async function deletePackaging(packagingId: number, force = false): Promise<boolean> {
+    try {
+      const res = await http.delete<{ message: string }>(`/batches/packagings/${packagingId}`, {
+        params: force ? { force: true } : undefined,
+      });
+      toast.success('Fracción Eliminada', {
+        description: res.message || 'Se reintegraron los litros al lote madre y los insumos al almacén.',
+      });
+      await Promise.all([fetchBatches(currentPage.value), fetchPackagings(packagingCurrentPage.value)]);
+      return true;
+    } catch (err: any) {
+      toast.error('Error al Eliminar Fracción', {
+        description: err?.message || 'No se pudo eliminar la fracción.',
+      });
+      return false;
+    }
+  }
+
+  async function registerPackagingWithdrawal(packagingId: number, payload: any) {
+    try {
+      const res = await http.post<any>(`/batches/packagings/${packagingId}/discharges`, payload);
+      toast.success('Retiro Registrado', {
+        description: res.message || 'Consumo de socio registrado con éxito.',
+      });
+      await Promise.all([fetchBatches(currentPage.value), fetchPackagings(packagingCurrentPage.value)]);
+      return res;
+    } catch (err: any) {
+      toast.error('Error al Registrar Retiro', {
+        description: err?.message || 'No se pudo registrar el retiro.',
+      });
+      throw err;
+    }
+  }
+
+  async function unlinkOrderFromPackaging(packagingId: number, orderId: number) {
+    try {
+      const res = await http.delete<{ message: string }>(`/batches/packagings/${packagingId}/orders/${orderId}`);
+      toast.success('Pedido Desvinculado', {
+        description: res.message || 'El pedido regresó a pre-venta y se liberó el stock.',
+      });
+      await Promise.all([fetchBatches(currentPage.value), fetchPackagings(packagingCurrentPage.value)]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   return {
     batches,
     isLoading,
     error,
-    // Paginación
+    // Paginación Lotes Madre
     currentPage,
     limit,
     totalBatches,
@@ -741,6 +932,22 @@ export const useProductionStore = defineStore('production', () => {
     finishFermentation,
     adjustBatchLiters,
     archiveBatch,
+    // Estado y Acciones Fase B (Fracciones)
+    packagings,
+    isLoadingPackagings,
+    packagingCurrentPage,
+    packagingLimit,
+    totalPackagings,
+    totalPackagingPages,
+    packagingChip,
+    packagingSearchQuery,
+    debouncedPackagingSearch,
+    fetchPackagings,
+    goToPackagingPage,
+    fetchPackagingSummary,
+    deletePackaging,
+    registerPackagingWithdrawal,
+    unlinkOrderFromPackaging,
     // Catálogo de Sabores
     flavors,
     isLoadingFlavors,

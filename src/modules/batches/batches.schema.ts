@@ -91,6 +91,7 @@ export const patchBatchVolumeSchema = z.object({
 
 export const packagingContainerItemSchema = z.object({
   rawMaterialId: z.coerce.number().int().positive('ID de insumo inválido'),
+  containerName: z.string().optional(),
   capacityLiters: z.coerce.number().positive('La capacidad en litros debe ser mayor a 0'),
   quantity: z.coerce.number().int().min(0, 'La cantidad no puede ser negativa'),
   unitCost: z.coerce.number().optional(),
@@ -196,6 +197,29 @@ export const nextCodeQuerySchema = z.object({
   batchId: z.coerce.number().int().positive().optional(),
 });
 
+export const packagingsQuerySchema = z.object({
+  status: z.string().optional(),
+  search: z.string().optional(),
+  batchId: z.coerce.number().int().positive().optional(),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).optional().default(5),
+});
+
+export const packagingDischargeSchema = z.object({
+  bottleSize: z.string().min(1, 'La presentación o tamaño es obligatoria'),
+  quantityBottles: z.coerce.number().int().min(1, 'La cantidad de botellas debe ser al menos 1').default(1),
+  totalLiters: z.coerce.number().positive().optional(),
+  unitPrice: z.coerce.number().optional(),
+  staffMemberId: z.coerce.number().int().positive('Debes seleccionar el socio que realiza el retiro'),
+  dischargeDate: z.string().optional(),
+  notes: z.string().optional().nullable(),
+  registeredBy: z.string().optional().default('Edier'),
+});
+
+export const deletePackagingQuerySchema = z.object({
+  force: z.coerce.boolean().optional(),
+});
+
 export type ExtraItemInput = z.infer<typeof extraItemSchema>;
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;
 export type UpdateBatchInput = z.infer<typeof updateBatchSchema>;
@@ -212,3 +236,6 @@ export type PendingOrdersQueryInput = z.infer<typeof pendingOrdersQuerySchema>;
 export type NextCodeQueryInput = z.infer<typeof nextCodeQuerySchema>;
 export type PackagingExtraItemInput = z.infer<typeof packagingExtraItemSchema>;
 export type PatchBatchVolumeInput = z.infer<typeof patchBatchVolumeSchema>;
+export type PackagingsQueryInput = z.infer<typeof packagingsQuerySchema>;
+export type PackagingDischargeInput = z.infer<typeof packagingDischargeSchema>;
+export type DeletePackagingQueryInput = z.infer<typeof deletePackagingQuerySchema>;

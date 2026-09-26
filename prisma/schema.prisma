@@ -213,7 +213,10 @@ model BatchPackaging {
   packagedAt         DateTime         @default(now())
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @default(now()) @updatedAt
+  containers         Json?
   itemsUsed          BatchPackagingItem[]
+  orderItems         OrderItem[]
+  discharges         BatchDischarge[]
 
   @@index([batchId])
   @@index([flavor])
@@ -241,6 +244,8 @@ model BatchDischarge {
   id             Int              @id @default(autoincrement())
   batchId        Int
   batch          ProductionBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  packagingId    Int?
+  packaging      BatchPackaging?  @relation(fields: [packagingId], references: [id], onDelete: SetNull)
   bottleSize     String           @default("1L") // 1L, 2L, OTRA
   quantityBottles Int             @default(1)
   totalLiters    Float            // ej: 1.0, 2.0
@@ -257,6 +262,7 @@ model BatchDischarge {
   updatedAt      DateTime         @default(now()) @updatedAt
 
   @@index([batchId])
+  @@index([packagingId])
   @@index([dischargeDate])
   @@index([reasonType])
   @@index([staffMemberId])
@@ -347,6 +353,8 @@ model OrderItem {
   order         Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
   batchId       Int?
   batch         ProductionBatch? @relation(fields: [batchId], references: [id])
+  packagingId   Int?
+  packaging     BatchPackaging?  @relation(fields: [packagingId], references: [id], onDelete: SetNull)
   bottleSize    String           @default("1L") // 1L, 2L
   flavor        String           @default("Natural")
   quantity      Int              @default(1)
@@ -358,6 +366,7 @@ model OrderItem {
 
   @@index([orderId])
   @@index([batchId])
+  @@index([packagingId])
 }
 
 model Expense {

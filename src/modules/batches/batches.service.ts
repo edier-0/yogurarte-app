@@ -10,8 +10,11 @@ import {
   CreateBatchDischargeInput,
   CreateBatchInput,
   DeactivateBatchInput,
+  DeletePackagingQueryInput,
   LinkOrdersToBatchInput,
   NextCodeQueryInput,
+  PackagingDischargeInput,
+  PackagingsQueryInput,
   PartnerWithdrawalInput,
   PatchBatchStatusInput,
   PatchBatchVolumeInput,
@@ -964,10 +967,7 @@ export const createBatch = async (data: CreateBatchInput) => {
     if (!isFermenting && shouldUseLabels && totalBottles > 0) {
       const labelMaterial = await tx.rawMaterial.findFirst({
         where: {
-          OR: [
-            { code: 'ETIQUETA' },
-            { name: { contains: 'etiqueta', mode: 'insensitive' } },
-          ],
+          code: 'ETIQUETA',
           isActive: true,
         },
       });
@@ -2042,13 +2042,11 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
       effectiveLabelQty = 0;
     } else {
       // Retrocompatibilidad legacy: buscar ETIQUETA por defecto solo si no se pasó labelRawMaterialId
-      if (totalBottles > 0) {
+      // y si se usan botellas estándar (no forzar etiquetas en customContainers sin selector)
+      if ((b1L > 0 || b2L > 0) && totalBottles > 0) {
         const fallbackLabel = await tx.rawMaterial.findFirst({
           where: {
-            OR: [
-              { code: 'ETIQUETA' },
-              { name: { contains: 'etiqueta', mode: 'insensitive' } },
-            ],
+            code: 'ETIQUETA',
             isActive: true,
           },
         });
@@ -2109,6 +2107,36 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
     // Identificar fruta primaria para retrocompatibilidad
     const primaryFruit = itemsToConsume.length > 0 ? itemsToConsume[0] : null;
 
+    // Estructurar presentaciones en containers JSON
+    const containersData: any[] = [];
+    if (b1L > 0) {
+      containersData.push({
+        containerName: 'Botella 1L',
+        capacityLiters: 1.0,
+        quantity: b1L,
+        price: price1L !== undefined && Number(price1L) >= 0 ? Number(price1L) : (batch.price1L || 12000),
+        rawMaterialId: bottle1LMat ? bottle1LMat.id : null,
+      });
+    }
+    if (b2L > 0) {
+      containersData.push({
+        containerName: 'Botella 2L',
+        capacityLiters: 2.0,
+        quantity: b2L,
+        price: price2L !== undefined && Number(price2L) >= 0 ? Number(price2L) : (batch.price2L || 24000),
+        rawMaterialId: bottle2LMat ? bottle2LMat.id : null,
+      });
+    }
+    for (const c of customContainersToConsume) {
+      containersData.push({
+        containerName: c.rawMaterial.name || `${c.capacityLiters}L`,
+        capacityLiters: c.capacityLiters,
+        quantity: c.quantity,
+        price: c.price || 0,
+        rawMaterialId: c.rawMaterialId,
+      });
+    }
+
     // Crear registro de envasado
     const packaging = await tx.batchPackaging.create({
       data: {
@@ -2120,6 +2148,7 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
         totalLiters: totalPackagingLiters,
         price1L: price1L !== undefined && Number(price1L) >= 0 ? Number(price1L) : (batch.price1L || 12000),
         price2L: price2L !== undefined && Number(price2L) >= 0 ? Number(price2L) : (batch.price2L || 24000),
+        containers: containersData,
         bottle1LRawMaterialId: bottle1LMat ? bottle1LMat.id : null,
         bottle2LRawMaterialId: bottle2LMat ? bottle2LMat.id : null,
         labelRawMaterialId: labelMat ? labelMat.id : null,
@@ -2199,7 +2228,7 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
               { batchId: null },
             ],
           },
-          data: { batchId },
+          data: { batchId, packagingId: packaging.id },
         });
       }
     }
@@ -2255,8 +2284,53 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
     const newB1L = bottles1L !== undefined ? Number(bottles1L) : oldB1L;
     const newB2L = bottles2L !== undefined ? Number(bottles2L) : oldB2L;
 
+    let customContainersLiters = 0;
+    const containersData: any[] = [];
+    if (newB1L > 0) {
+      containersData.push({
+        containerName: 'Botella 1L',
+        capacityLiters: 1.0,
+        quantity: newB1L,
+        price: price1L !== undefined ? Number(price1L) : (pkg.price1L || 12000),
+        rawMaterialId: bottle1LRawMaterialId !== undefined ? (bottle1LRawMaterialId ? Number(bottle1LRawMaterialId) : null) : pkg.bottle1LRawMaterialId,
+      });
+    }
+    if (newB2L > 0) {
+      containersData.push({
+        containerName: 'Botella 2L',
+        capacityLiters: 2.0,
+        quantity: newB2L,
+        price: price2L !== undefined ? Number(price2L) : (pkg.price2L || 24000),
+        rawMaterialId: bottle2LRawMaterialId !== undefined ? (bottle2LRawMaterialId ? Number(bottle2LRawMaterialId) : null) : pkg.bottle2LRawMaterialId,
+      });
+    }
+
+    if (customContainers !== undefined && Array.isArray(customContainers)) {
+      for (const c of customContainers) {
+        const qty = Math.max(0, Number(c.quantity) || 0);
+        const cap = Number(c.capacityLiters) || 1;
+        if (qty > 0) {
+          customContainersLiters += qty * cap;
+          containersData.push({
+            containerName: c.containerName || `${cap}L`,
+            capacityLiters: cap,
+            quantity: qty,
+            price: Number(c.price) || 0,
+            rawMaterialId: Number(c.rawMaterialId),
+          });
+        }
+      }
+    } else if (Array.isArray(pkg.containers)) {
+      for (const c of pkg.containers as any[]) {
+        if (c.containerName !== 'Botella 1L' && c.containerName !== 'Botella 2L' && c.capacityLiters !== 1 && c.capacityLiters !== 2) {
+          customContainersLiters += (Number(c.quantity) || 0) * (Number(c.capacityLiters) || 1);
+          containersData.push(c);
+        }
+      }
+    }
+
     const oldPkgLiters = pkg.totalLiters;
-    const newPkgLiters = newB1L * 1.0 + newB2L * 2.0;
+    const newPkgLiters = newB1L * 1.0 + newB2L * 2.0 + customContainersLiters;
     const deltaLiters = newPkgLiters - oldPkgLiters;
 
     // Validar volumen total del lote madre
@@ -2383,10 +2457,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       if (!targetLabelMatId && (pkg as any).useLabels !== false) {
         const fallbackLabel = await tx.rawMaterial.findFirst({
           where: {
-            OR: [
-              { code: 'ETIQUETA' },
-              { name: { contains: 'etiqueta', mode: 'insensitive' } },
-            ],
+            code: 'ETIQUETA',
             isActive: true,
           },
         });
@@ -2558,6 +2629,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
         totalLiters: newPkgLiters,
         price1L: price1L !== undefined ? Number(price1L) : pkg.price1L,
         price2L: price2L !== undefined ? Number(price2L) : pkg.price2L,
+        containers: containersData,
         bottle1LRawMaterialId: b1Mat ? b1Mat.id : null,
         bottle2LRawMaterialId: b2Mat ? b2Mat.id : null,
         labelRawMaterialId: targetLabelMatId,
@@ -2673,6 +2745,568 @@ export const recordPartnerWithdrawal = async (batchId: number, input: PartnerWit
 };
 
 /**
+ * Helper para calcular dinámicamente las presentaciones envasadas,
+ * ventas, bajas y stock disponible de una fracción
+ */
+export function computePackagingPresentations(pkg: any) {
+  let rawPresentations: Array<{
+    containerName: string;
+    capacityLiters: number;
+    quantity: number;
+    price: number;
+    rawMaterialId?: number | null;
+  }> = [];
+
+  if (Array.isArray(pkg.containers) && pkg.containers.length > 0) {
+    rawPresentations = (pkg.containers as any[]).map((c: any) => ({
+      containerName: c.containerName || `${c.capacityLiters}L`,
+      capacityLiters: Number(c.capacityLiters) || 1,
+      quantity: Number(c.quantity) || 0,
+      price: Number(c.price) || 0,
+      rawMaterialId: c.rawMaterialId ? Number(c.rawMaterialId) : null,
+    }));
+  } else {
+    if (pkg.bottles1L > 0 || (!pkg.bottles2L && (!pkg.containers || (pkg.containers as any[]).length === 0))) {
+      rawPresentations.push({
+        containerName: 'Botella 1L',
+        capacityLiters: 1.0,
+        quantity: pkg.bottles1L || 0,
+        price: pkg.price1L || 12000,
+        rawMaterialId: pkg.bottle1LRawMaterialId,
+      });
+    }
+    if (pkg.bottles2L > 0) {
+      rawPresentations.push({
+        containerName: 'Botella 2L',
+        capacityLiters: 2.0,
+        quantity: pkg.bottles2L || 0,
+        price: pkg.price2L || 24000,
+        rawMaterialId: pkg.bottle2LRawMaterialId,
+      });
+    }
+  }
+
+  const orderItems = (pkg.orderItems || []).filter(
+    (it: any) => it.order && it.order.deliveryStatus !== 'CANCELLED'
+  );
+  const discharges = pkg.discharges || [];
+
+  const presentations = rawPresentations.map((p) => {
+    // Determinar unidades vendidas
+    const matchingOrderItems = orderItems.filter((it: any) => {
+      const sizeMatch = it.bottleSize?.toLowerCase().trim() === p.containerName?.toLowerCase().trim();
+      const capMatch = Math.abs((it.litersPerUnit || 1) - p.capacityLiters) < 0.01;
+      return sizeMatch || capMatch;
+    });
+    const sold = matchingOrderItems.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
+
+    // Determinar unidades retiradas / dadas de baja
+    const matchingDischarges = discharges.filter((d: any) => {
+      const sizeMatch = d.bottleSize?.toLowerCase().trim() === p.containerName?.toLowerCase().trim();
+      const unitLiters = d.quantityBottles > 0 ? d.totalLiters / d.quantityBottles : d.totalLiters;
+      const capMatch = Math.abs(unitLiters - p.capacityLiters) < 0.01;
+      return sizeMatch || capMatch;
+    });
+    const discharged = matchingDischarges.reduce((sum: number, d: any) => sum + (d.quantityBottles || 0), 0);
+
+    const free = Math.max(0, p.quantity - sold - discharged);
+
+    return {
+      containerName: p.containerName,
+      capacityLiters: p.capacityLiters,
+      quantity: p.quantity,
+      sold,
+      discharged,
+      free,
+      price: p.price,
+      totalLiters: Math.round(p.quantity * p.capacityLiters * 100) / 100,
+      soldLiters: Math.round(sold * p.capacityLiters * 100) / 100,
+      dischargedLiters: Math.round(discharged * p.capacityLiters * 100) / 100,
+      freeLiters: Math.round(free * p.capacityLiters * 100) / 100,
+      rawMaterialId: p.rawMaterialId,
+    };
+  });
+
+  const totalLiters = Math.round(presentations.reduce((sum, p) => sum + p.totalLiters, 0) * 100) / 100 || pkg.totalLiters || 0;
+  const soldLiters = Math.round(presentations.reduce((sum, p) => sum + p.soldLiters, 0) * 100) / 100;
+  const dischargedLiters = Math.round(presentations.reduce((sum, p) => sum + p.dischargedLiters, 0) * 100) / 100;
+  const freeLiters = Math.max(0, Math.round((totalLiters - soldLiters - dischargedLiters) * 100) / 100);
+  const progressPercentage = totalLiters > 0 ? Math.min(100, Math.round(((soldLiters + dischargedLiters) / totalLiters) * 100)) : 0;
+  const status = freeLiters <= 0.05 ? 'AGOTADO' : 'DISPONIBLE';
+
+  return {
+    presentations,
+    totalLiters,
+    soldLiters,
+    dischargedLiters,
+    freeLiters,
+    progressPercentage,
+    status,
+  };
+}
+
+/**
+ * Listado paginado de fracciones envasadas (Fase B)
+ */
+export const getBatchPackagings = async (query: PackagingsQueryInput) => {
+  const { page = 1, limit = 5, search, status, batchId } = query;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Number(limit) || 5);
+  const skip = (pageNum - 1) * limitNum;
+
+  const whereClause: any = {};
+  if (batchId) {
+    whereClause.batchId = Number(batchId);
+  }
+  if (search && search.trim()) {
+    const s = search.trim();
+    whereClause.OR = [
+      { packagingCode: { contains: s, mode: 'insensitive' } },
+      { flavor: { contains: s, mode: 'insensitive' } },
+      { batch: { batchCode: { contains: s, mode: 'insensitive' } } },
+    ];
+  }
+
+  const [rawPackagings, totalCount] = await Promise.all([
+    prisma.batchPackaging.findMany({
+      where: whereClause,
+      include: {
+        batch: {
+          select: {
+            id: true,
+            batchCode: true,
+            flavor: true,
+            status: true,
+            preparationDate: true,
+            expirationDate: true,
+            totalCost: true,
+            costPerLiter: true,
+            packagedLiters: true,
+            totalLitersProduced: true,
+            isActive: true,
+          },
+        },
+        itemsUsed: {
+          include: { rawMaterial: true },
+        },
+        orderItems: {
+          include: {
+            order: {
+              include: {
+                customer: { select: { id: true, fullName: true, phone: true } },
+              },
+            },
+          },
+        },
+        discharges: {
+          include: {
+            staffMember: { select: { id: true, fullName: true, role: true } },
+          },
+        },
+      },
+      orderBy: { packagedAt: 'desc' },
+      skip,
+      take: limitNum,
+    }),
+    prisma.batchPackaging.count({ where: whereClause }),
+  ]);
+
+  const items = rawPackagings.map((pkg) => {
+    const computed = computePackagingPresentations(pkg);
+    const milkBaseCost = Math.round(computed.totalLiters * (pkg.batch?.costPerLiter || 2800));
+    const totalFractionCost = milkBaseCost + (pkg.packagingCost || 0);
+    const fractionCostPerLiter = computed.totalLiters > 0 ? Math.round(totalFractionCost / computed.totalLiters) : 0;
+
+    return {
+      id: pkg.id,
+      packagingCode: pkg.packagingCode,
+      batchId: pkg.batchId,
+      batchCode: pkg.batch?.batchCode,
+      flavor: pkg.flavor,
+      bottles1L: pkg.bottles1L,
+      bottles2L: pkg.bottles2L,
+      containers: pkg.containers,
+      presentations: computed.presentations,
+      totalLiters: computed.totalLiters,
+      soldLiters: computed.soldLiters,
+      dischargedLiters: computed.dischargedLiters,
+      freeLiters: computed.freeLiters,
+      progressPercentage: computed.progressPercentage,
+      status: computed.status,
+      price1L: pkg.price1L,
+      price2L: pkg.price2L,
+      packagingCost: pkg.packagingCost,
+      fractionCostPerLiter,
+      totalFractionCost,
+      notes: pkg.notes,
+      packagedBy: pkg.packagedBy,
+      packagedAt: pkg.packagedAt,
+      batch: pkg.batch,
+      itemsUsed: pkg.itemsUsed,
+      linkedOrdersCount: pkg.orderItems?.length || 0,
+    };
+  });
+
+  let filteredItems = items;
+  if (status && status !== 'ALL') {
+    filteredItems = items.filter((it) => it.status === status);
+  }
+
+  const totalPages = Math.ceil(totalCount / limitNum) || 1;
+
+  return {
+    data: filteredItems,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total: totalCount,
+      totalPages,
+    },
+  };
+};
+
+/**
+ * Obtener auditoría y resumen exclusivo de una fracción envasada
+ */
+export const getPackagingSummary = async (packagingId: number) => {
+  const pkg = await prisma.batchPackaging.findUnique({
+    where: { id: packagingId },
+    include: {
+      batch: {
+        select: {
+          id: true,
+          batchCode: true,
+          flavor: true,
+          status: true,
+          preparationDate: true,
+          expirationDate: true,
+          totalCost: true,
+          costPerLiter: true,
+          packagedLiters: true,
+          totalLitersProduced: true,
+          isActive: true,
+        },
+      },
+      itemsUsed: {
+        include: { rawMaterial: true },
+      },
+      orderItems: {
+        include: {
+          order: {
+            include: {
+              customer: { select: { id: true, fullName: true, phone: true } },
+            },
+          },
+        },
+      },
+      discharges: {
+        include: {
+          staffMember: { select: { id: true, fullName: true, role: true } },
+        },
+        orderBy: { dischargeDate: 'desc' },
+      },
+    },
+  });
+
+  if (!pkg) {
+    throw new NotFoundError('Fracción de envasado no encontrada');
+  }
+
+  const computed = computePackagingPresentations(pkg);
+  const milkBaseCost = Math.round(computed.totalLiters * (pkg.batch?.costPerLiter || 2800));
+  const totalFractionCost = milkBaseCost + (pkg.packagingCost || 0);
+  const fractionCostPerLiter = computed.totalLiters > 0 ? Math.round(totalFractionCost / computed.totalLiters) : 0;
+
+  // Agrupar pedidos vinculados únicos
+  const linkedOrdersMap = new Map<number, any>();
+  for (const it of pkg.orderItems || []) {
+    if (it.order && it.order.deliveryStatus !== 'CANCELLED') {
+      if (!linkedOrdersMap.has(it.order.id)) {
+        linkedOrdersMap.set(it.order.id, {
+          id: it.order.id,
+          orderNumber: it.order.orderNumber,
+          customer: it.order.customer,
+          orderDate: it.order.orderDate,
+          deliveryStatus: it.order.deliveryStatus,
+          paymentStatus: it.order.paymentStatus,
+          totalAmount: it.order.totalAmount,
+          items: [],
+        });
+      }
+      linkedOrdersMap.get(it.order.id).items.push({
+        id: it.id,
+        bottleSize: it.bottleSize,
+        flavor: it.flavor,
+        quantity: it.quantity,
+        totalLiters: it.totalLiters,
+        unitPrice: it.unitPrice,
+        totalPrice: it.totalPrice,
+      });
+    }
+  }
+
+  return {
+    packaging: {
+      id: pkg.id,
+      packagingCode: pkg.packagingCode,
+      batchId: pkg.batchId,
+      flavor: pkg.flavor,
+      notes: pkg.notes,
+      packagedBy: pkg.packagedBy,
+      packagedAt: pkg.packagedAt,
+      packagingCost: pkg.packagingCost,
+      batch: pkg.batch,
+    },
+    presentations: computed.presentations,
+    volume: {
+      totalLiters: computed.totalLiters,
+      soldLiters: computed.soldLiters,
+      dischargedLiters: computed.dischargedLiters,
+      freeLiters: computed.freeLiters,
+      progressPercentage: computed.progressPercentage,
+      status: computed.status,
+    },
+    costs: {
+      milkBaseCost,
+      packagingCost: pkg.packagingCost,
+      totalCost: totalFractionCost,
+      costPerLiter: fractionCostPerLiter,
+    },
+    itemsUsed: pkg.itemsUsed,
+    linkedOrders: Array.from(linkedOrdersMap.values()),
+    discharges: pkg.discharges,
+  };
+};
+
+/**
+ * Eliminar fracción de envasado, reintegrando litros al lote madre e insumos al inventario
+ */
+export const deleteBatchPackaging = async (packagingId: number, options?: DeletePackagingQueryInput) => {
+  return await prisma.$transaction(async (tx) => {
+    const pkg = await tx.batchPackaging.findUnique({
+      where: { id: packagingId },
+      include: {
+        batch: true,
+        itemsUsed: true,
+        orderItems: {
+          include: { order: true },
+        },
+      },
+    });
+
+    if (!pkg) {
+      throw new NotFoundError('Fracción de envasado no encontrada');
+    }
+
+    const activeLinkedOrders = (pkg.orderItems || []).filter(
+      (it) => it.order && it.order.deliveryStatus !== 'CANCELLED'
+    );
+
+    if (activeLinkedOrders.length > 0 && !options?.force) {
+      throw new BadRequestError(
+        `No se puede eliminar la fracción "${pkg.packagingCode || pkg.flavor}" porque tiene ${activeLinkedOrders.length} pedido(s) vinculado(s). Debes desvincular los pedidos vinculados antes de eliminarla.`
+      );
+    }
+
+    // 1. Reintegrar stock de botellas estándar
+    if (pkg.bottle1LRawMaterialId && pkg.bottles1L > 0) {
+      await tx.rawMaterial.update({
+        where: { id: pkg.bottle1LRawMaterialId },
+        data: { currentStock: { increment: pkg.bottles1L } },
+      });
+    }
+    if (pkg.bottle2LRawMaterialId && pkg.bottles2L > 0) {
+      await tx.rawMaterial.update({
+        where: { id: pkg.bottle2LRawMaterialId },
+        data: { currentStock: { increment: pkg.bottles2L } },
+      });
+    }
+
+    // 2. Reintegrar etiquetas
+    if (pkg.labelRawMaterialId && (pkg.labelQuantity || 0) > 0) {
+      await tx.rawMaterial.update({
+        where: { id: pkg.labelRawMaterialId },
+        data: { currentStock: { increment: pkg.labelQuantity! } },
+      });
+    }
+
+    // 3. Reintegrar todos los insumos extras y envases personalizados consumidos en itemsUsed
+    for (const item of pkg.itemsUsed) {
+      await tx.rawMaterial.update({
+        where: { id: item.rawMaterialId },
+        data: { currentStock: { increment: item.quantityUsed } },
+      });
+    }
+
+    // 4. Reintegrar litros y costos al lote madre
+    const batch = pkg.batch;
+    const updatedPackagedLiters = Math.max(0, (batch.packagedLiters || 0) - pkg.totalLiters);
+    const updatedB1L = Math.max(0, (batch.bottles1LProduced || 0) - pkg.bottles1L);
+    const updatedB2L = Math.max(0, (batch.bottles2LProduced || 0) - pkg.bottles2L);
+    const updatedTotalCost = Math.max(0, (batch.totalCost || 0) - pkg.packagingCost);
+    const updatedCostPerLiter = batch.totalLitersProduced > 0 ? Math.round(updatedTotalCost / batch.totalLitersProduced) : 0;
+
+    await tx.productionBatch.update({
+      where: { id: batch.id },
+      data: {
+        packagedLiters: updatedPackagedLiters,
+        bottles1LProduced: updatedB1L,
+        bottles2LProduced: updatedB2L,
+        totalCost: updatedTotalCost,
+        costPerLiter: updatedCostPerLiter,
+      },
+    });
+
+    // 5. Desvincular orderItems si force == true
+    if (pkg.orderItems && pkg.orderItems.length > 0) {
+      await tx.orderItem.updateMany({
+        where: { packagingId: pkg.id },
+        data: { packagingId: null },
+      });
+    }
+
+    // 6. Eliminar BatchPackaging
+    await tx.batchPackaging.delete({
+      where: { id: pkg.id },
+    });
+
+    // 7. Sincronizar estado del lote madre
+    await syncBatchStatusBidirectional(tx, batch.id);
+
+    return {
+      message: `Fracción ${pkg.packagingCode || pkg.flavor} eliminada exitosamente. Se reintegraron ${pkg.totalLiters}L al lote madre ${batch.batchCode} y los insumos al almacén.`,
+      batchId: batch.id,
+      packagingId: pkg.id,
+    };
+  });
+};
+
+/**
+ * Registrar retiro directo de socio sobre una fracción envasada
+ */
+export const recordPackagingDischarge = async (packagingId: number, input: PackagingDischargeInput) => {
+  const pkg = await prisma.batchPackaging.findUnique({
+    where: { id: packagingId },
+    include: {
+      batch: true,
+      orderItems: { include: { order: true } },
+      discharges: true,
+    },
+  });
+
+  if (!pkg) {
+    throw new NotFoundError('Fracción de envasado no encontrada');
+  }
+
+  const { bottleSize, quantityBottles, staffMemberId, notes, registeredBy, dischargeDate } = input;
+  const qty = Math.max(1, Number(quantityBottles) || 1);
+
+  // Validar presentación y stock disponible
+  const computed = computePackagingPresentations(pkg);
+  const targetPres = computed.presentations.find(
+    (p) => p.containerName?.toLowerCase().trim() === bottleSize.toLowerCase().trim()
+  ) || computed.presentations[0];
+
+  if (!targetPres) {
+    throw new BadRequestError(`Presentación "${bottleSize}" no encontrada en esta fracción.`);
+  }
+
+  if (targetPres.free < qty) {
+    throw new BadRequestError(
+      `Stock insuficiente para retiro de "${targetPres.containerName}". Disponibles: ${targetPres.free}, solicitados: ${qty}.`
+    );
+  }
+
+  const litersToDischarge = Math.round(qty * targetPres.capacityLiters * 100) / 100;
+  const unitPrice = targetPres.price || (targetPres.capacityLiters === 2 ? 24000 : 12000);
+  const totalAmount = qty * unitPrice;
+
+  const staffMember = await prisma.staffMember.findUnique({
+    where: { id: Number(staffMemberId) },
+  });
+  if (!staffMember) {
+    throw new NotFoundError('Socio no encontrado');
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    const discharge = await tx.batchDischarge.create({
+      data: {
+        batchId: pkg.batchId,
+        packagingId: pkg.id,
+        bottleSize: targetPres.containerName,
+        quantityBottles: qty,
+        totalLiters: litersToDischarge,
+        unitPrice,
+        totalAmount,
+        reasonType: 'CONSUMO_SOCIO',
+        staffMemberId: staffMember.id,
+        notes: notes ? notes.trim() : `Retiro de fracción ${pkg.packagingCode || pkg.flavor}`,
+        registeredBy: registeredBy || 'Edier',
+        dischargeDate: dischargeDate ? new Date(dischargeDate) : new Date(),
+      },
+      include: {
+        staffMember: { select: { id: true, fullName: true, role: true } },
+      },
+    });
+
+    await syncBatchStatusBidirectional(tx, pkg.batchId);
+
+    return {
+      message: `Retiro de ${qty} unidad(es) de ${targetPres.containerName} registrado exitosamente a ${staffMember.fullName}`,
+      discharge,
+    };
+  });
+};
+
+/**
+ * Desvincular pedido de una fracción específica
+ */
+export const unlinkOrderFromPackaging = async (packagingId: number, orderId: number) => {
+  return await prisma.$transaction(async (tx) => {
+    const pkg = await tx.batchPackaging.findUnique({
+      where: { id: packagingId },
+      include: { batch: true },
+    });
+    if (!pkg) {
+      throw new NotFoundError('Fracción no encontrada');
+    }
+
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { items: true },
+    });
+    if (!order) {
+      throw new NotFoundError('Pedido no encontrado');
+    }
+
+    // Desvincular de la fracción y del lote
+    await tx.orderItem.updateMany({
+      where: { orderId, packagingId },
+      data: { packagingId: null, batchId: null },
+    });
+
+    // Si la orden no tiene más items en este batch, desvincular batchId de Order
+    const remainingItemsInBatch = await tx.orderItem.count({
+      where: { orderId, batchId: pkg.batchId },
+    });
+    if (remainingItemsInBatch === 0) {
+      await tx.order.update({
+        where: { id: orderId },
+        data: { batchId: null },
+      });
+    }
+
+    await syncBatchStatusBidirectional(tx, pkg.batchId);
+
+    return {
+      message: `Pedido #${order.orderNumber} desvinculado exitosamente de la fracción ${pkg.packagingCode || pkg.flavor}.`,
+      packagingId,
+      orderId,
+    };
+  });
+};
+
+/**
  * Obtener auditoría y resumen detallado del lote
  */
 export const getBatchSummary = async (batchId: number) => {
@@ -2684,6 +3318,12 @@ export const getBatchSummary = async (batchId: number) => {
           itemsUsed: {
             include: { rawMaterial: true },
           },
+          orderItems: {
+            include: {
+              order: { select: { id: true, deliveryStatus: true } },
+            },
+          },
+          discharges: true,
         },
         orderBy: { packagedAt: 'desc' },
       },
@@ -2693,7 +3333,11 @@ export const getBatchSummary = async (batchId: number) => {
           customer: {
             select: { id: true, fullName: true, phone: true },
           },
-          items: true,
+          items: {
+            include: {
+              packaging: { select: { id: true, packagingCode: true, flavor: true } },
+            },
+          },
         },
         orderBy: { orderDate: 'desc' },
       },
@@ -2705,11 +3349,13 @@ export const getBatchSummary = async (batchId: number) => {
               customer: { select: { id: true, fullName: true } },
             },
           },
+          packaging: { select: { id: true, packagingCode: true, flavor: true } },
         },
       },
       discharges: {
         include: {
           staffMember: { select: { id: true, fullName: true, role: true } },
+          packaging: { select: { id: true, packagingCode: true, flavor: true } },
         },
         orderBy: { dischargeDate: 'desc' },
       },
@@ -2757,6 +3403,20 @@ export const getBatchSummary = async (batchId: number) => {
   const freeBottles1L = Math.max(0, totalBottles1LProduced - totalSoldBottles1L - dischargedBottles1L);
   const freeBottles2L = Math.max(0, totalBottles2LProduced - totalSoldBottles2L - dischargedBottles2L);
 
+  const enrichedPackagings = batch.packagings.map((p) => {
+    const computed = computePackagingPresentations(p);
+    return {
+      ...p,
+      totalLiters: computed.totalLiters,
+      soldLiters: computed.soldLiters,
+      freeLiters: computed.freeLiters,
+      dischargedLiters: computed.dischargedLiters,
+      progressPercentage: computed.progressPercentage,
+      status: computed.status,
+      presentations: computed.presentations,
+    };
+  });
+
   return {
     batch: {
       id: batch.id,
@@ -2796,7 +3456,7 @@ export const getBatchSummary = async (batchId: number) => {
       partnerConsumed: partnerDischargedLiters,
       remainingAvailable: remainingAvailableLiters,
     },
-    packagings: batch.packagings,
+    packagings: enrichedPackagings,
     linkedOrders: batch.orders.map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
@@ -2813,3 +3473,4 @@ export const getBatchSummary = async (batchId: number) => {
     itemsUsed: batch.itemsUsed,
   };
 };
+

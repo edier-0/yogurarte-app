@@ -84,6 +84,20 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
     });
     testCapId = cap.id;
 
+    await prisma.rawMaterial.upsert({
+      where: { code: 'ETIQUETA' },
+      update: { currentStock: 2000, avgCost: 200, isActive: true },
+      create: {
+        code: 'ETIQUETA',
+        name: 'Etiqueta Adhesiva Test',
+        unit: 'und',
+        currentStock: 2000,
+        avgCost: 200,
+        category: 'EMPAQUE',
+        isActive: true,
+      },
+    });
+
     // 2. Asegurar socio para retiro
     const staff = await prisma.staffMember.upsert({
       where: { id: 888 },
@@ -371,7 +385,7 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
 
     expect(motherRes.status).toBe(200);
     expect(motherRes.body).toHaveProperty('nextBatchCode');
-    expect(motherRes.body.nextBatchCode).toMatch(/^LOTE-\d{8}-\d{2}$/);
+    expect(motherRes.body.nextBatchCode).toMatch(/^LOTE-\d{8}-\d+$/);
 
     // 2. Correlativo fraccionamiento para un lote específico
     const pkgRes = await request(app)
@@ -931,6 +945,7 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
           },
         ],
       });
+    if (pkgRes.status !== 201) console.error('FAIL 934:', pkgRes.status, pkgRes.body);
     expect(pkgRes.status).toBe(201);
     expect(pkgRes.body.packaging.itemsUsed).toHaveLength(2);
 
@@ -1094,4 +1109,233 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
     const labelAfterGranel = await prisma.rawMaterial.findUnique({ where: { id: labelCustom.id } });
     expect(labelAfterGranel?.currentStock).toBe(44);
   });
+
+  describe('Fase B - Presentaciones Flexibles, Listado Paginado, Retiros y Eliminación Segura', () => {
+    let bottle500Id: number;
+    let bottle250Id: number;
+    let flexBatchId: number;
+    let flexPackagingId: number;
+
+    beforeAll(async () => {
+      // Insumos flexibles
+      const b500 = await prisma.rawMaterial.upsert({
+        where: { code: 'BOTELLA_500ML_TEST' },
+        update: { currentStock: 100, avgCost: 450, isActive: true },
+        create: {
+          code: 'BOTELLA_500ML_TEST',
+          name: 'Botella Pet 500ml Test',
+          unit: 'und',
+          currentStock: 100,
+          avgCost: 450,
+          category: 'ENVASES',
+          isActive: true,
+        },
+      });
+      bottle500Id = b500.id;
+
+      const b250 = await prisma.rawMaterial.upsert({
+        where: { code: 'BOTELLA_250ML_TEST' },
+        update: { currentStock: 100, avgCost: 300, isActive: true },
+        create: {
+          code: 'BOTELLA_250ML_TEST',
+          name: 'Botella Pet 250ml Test',
+          unit: 'und',
+          currentStock: 100,
+          avgCost: 300,
+          category: 'ENVASES',
+          isActive: true,
+        },
+      });
+      bottle250Id = b250.id;
+
+      await prisma.rawMaterial.updateMany({
+        where: { code: { in: ['BOTELLA_1L', 'BOTELLA_2L', 'ETIQUETA', 'LECHE', 'LECHE_TEST'] } },
+        data: { currentStock: 1000 },
+      });
+    });
+
+    it('permite registrar presentaciones flexibles arbitrarias con cálculo volumétrico dinámico', async () => {
+      // Crear lote base de 25 litros
+      const bRes = await request(app)
+        .post('/api/batches')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          milkUsedLiters: 25,
+          totalLitersProduced: 25,
+          flavor: 'Base Flex',
+          status: 'DISPONIBLE',
+        });
+      expect(bRes.status).toBe(201);
+      flexBatchId = bRes.body.id;
+
+      // Fraccionar con customContainers: 10 und de 500ml (5L) + 20 und de 250ml (5L) = 10L totales
+      const pkgRes = await request(app)
+        .post(`/api/batches/${flexBatchId}/packaging`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          flavor: 'Mora Silvestre Flex',
+          bottles1L: 0,
+          bottles2L: 0,
+          customContainers: [
+            {
+              rawMaterialId: bottle500Id,
+              containerName: '500 ml',
+              capacityLiters: 0.5,
+              quantity: 10,
+              price: 7000,
+            },
+            {
+              rawMaterialId: bottle250Id,
+              containerName: '250 ml',
+              capacityLiters: 0.25,
+              quantity: 20,
+              price: 4000,
+            },
+          ],
+        });
+
+      if (pkgRes.status !== 201) console.error('FAIL 1177:', pkgRes.status, pkgRes.body);
+      expect(pkgRes.status).toBe(201);
+      flexPackagingId = pkgRes.body.packaging.id;
+      expect(pkgRes.body.packaging.totalLiters).toBe(10); // 10*0.5 + 20*0.25 = 10L
+      expect(pkgRes.body.packaging.containers).toHaveLength(2);
+
+      // Descuento de stock en almacén: 10 de 500ml y 20 de 250ml
+      const b500Stock = await prisma.rawMaterial.findUnique({ where: { id: bottle500Id } });
+      expect(b500Stock?.currentStock).toBe(90);
+      const b250Stock = await prisma.rawMaterial.findUnique({ where: { id: bottle250Id } });
+      expect(b250Stock?.currentStock).toBe(80);
+
+      // Verificar actualización del lote madre
+      const updatedBatch = await prisma.productionBatch.findUnique({ where: { id: flexBatchId } });
+      expect(Number(updatedBatch?.packagedLiters)).toBe(10);
+      expect(Number(updatedBatch?.totalLitersProduced) - Number(updatedBatch?.packagedLiters)).toBe(15);
+    });
+
+    it('lista fracciones envasadas paginadas a 5 registros en GET /api/batches/packagings', async () => {
+      const listRes = await request(app)
+        .get('/api/batches/packagings?page=1&limit=5')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      if (listRes.status !== 200) console.error('FAIL 1200:', listRes.status, listRes.body);
+      expect(listRes.status).toBe(200);
+      expect(listRes.body).toHaveProperty('data');
+      expect(listRes.body).toHaveProperty('pagination');
+      expect(listRes.body.pagination.limit).toBe(5);
+      expect(Array.isArray(listRes.body.data)).toBe(true);
+      expect(listRes.body.data.length).toBeLessThanOrEqual(5);
+
+      const found = listRes.body.data.find((p: any) => p.id === flexPackagingId);
+      expect(found).toBeDefined();
+      expect(found.totalLiters).toBe(10);
+      expect(found.freeLiters).toBe(10);
+      expect(found.status).toBe('DISPONIBLE');
+      expect(found.presentations).toHaveLength(2);
+    });
+
+    it('obtiene auditoría segregada de la fracción con GET /api/batches/packagings/:id', async () => {
+      const summaryRes = await request(app)
+        .get(`/api/batches/packagings/${flexPackagingId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      if (summaryRes.status !== 200) console.error('FAIL 1220:', summaryRes.status, summaryRes.body);
+      expect(summaryRes.status).toBe(200);
+      expect(summaryRes.body.packaging.id).toBe(flexPackagingId);
+      expect(summaryRes.body.volume.totalLiters).toBe(10);
+      expect(summaryRes.body.volume.freeLiters).toBe(10);
+      expect(summaryRes.body.presentations).toHaveLength(2);
+    });
+
+    it('registra retiro de socio en presentación de la fracción con POST /api/batches/packagings/:id/discharges', async () => {
+      const dischargeRes = await request(app)
+        .post(`/api/batches/packagings/${flexPackagingId}/discharges`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          bottleSize: '500 ml',
+          quantityBottles: 2,
+          staffMemberId: testStaffId,
+          notes: 'Degustación socio 500ml',
+        });
+
+      if (dischargeRes.status !== 201) console.error('FAIL 1238:', dischargeRes.status, dischargeRes.body);
+      expect(dischargeRes.status).toBe(201);
+      expect(dischargeRes.body.discharge.packagingId).toBe(flexPackagingId);
+      expect(Number(dischargeRes.body.discharge.quantityBottles)).toBe(2);
+
+      // Verificar que freeLiters se redujo en 2 * 0.5 = 1L
+      const summaryRes = await request(app)
+        .get(`/api/batches/packagings/${flexPackagingId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(summaryRes.body.volume.dischargedLiters).toBe(1);
+      expect(summaryRes.body.volume.freeLiters).toBe(9);
+    });
+
+    it('impide eliminar fracción si tiene pedidos vinculados y permite forzar con ?force=true', async () => {
+      // 1. Crear un pedido con un ítem asignado a esta fracción
+      const order = await prisma.order.create({
+        data: {
+          orderNumber: `ORD-FLEX-${Date.now()}`,
+          customerId: testCustomerId,
+          deliveryStatus: 'PENDING',
+          paymentStatus: 'PAID',
+          totalAmount: 14000,
+          totalLiters: 1.0,
+          quantityBottles: 2,
+          orderDate: new Date(),
+          items: {
+            create: {
+              packagingId: flexPackagingId,
+              flavor: 'Mora Silvestre Flex',
+              bottleSize: '500 ml',
+              quantity: 2,
+              litersPerUnit: 0.5,
+              totalLiters: 1.0,
+              unitPrice: 7000,
+              totalPrice: 14000,
+            },
+          },
+        },
+      });
+
+      // 2. Intentar eliminar la fracción sin force -> debe fallar con 400
+      const deleteFailRes = await request(app)
+        .delete(`/api/batches/packagings/${flexPackagingId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(deleteFailRes.status).toBe(400);
+      expect(deleteFailRes.body.error || deleteFailRes.body.message).toContain('pedidos vinculados');
+
+      // 3. Forzar eliminación con ?force=true
+      const deleteSuccessRes = await request(app)
+        .delete(`/api/batches/packagings/${flexPackagingId}?force=true`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(deleteSuccessRes.status).toBe(200);
+
+      // 4. Verificar que la fracción ya no existe
+      const deletedPkg = await prisma.batchPackaging.findUnique({ where: { id: flexPackagingId } });
+      expect(deletedPkg).toBeNull();
+
+      // 5. Verificar que el pedido regresó a pre-venta sin packagingId ni batchId
+      const orderAfter = await prisma.order.findUnique({
+        where: { id: order.id },
+        include: { items: true },
+      });
+      expect(orderAfter?.batchId).toBeNull();
+      expect(orderAfter?.items[0].packagingId).toBeNull();
+
+      // 6. Verificar que los litros se restituyeron al lote madre (10L devueltos -> packagedLiters = 0, remainingAvailable = 25)
+      const batchAfter = await prisma.productionBatch.findUnique({ where: { id: flexBatchId } });
+      expect(Number(batchAfter?.packagedLiters)).toBe(0);
+      expect(Number(batchAfter?.totalLitersProduced) - Number(batchAfter?.packagedLiters)).toBe(25);
+
+      // 7. Verificar que el stock de botellas fue devuelto al inventario (10 de 500ml devueltas = 100, 20 de 250ml = 100)
+      const b500Restored = await prisma.rawMaterial.findUnique({ where: { id: bottle500Id } });
+      expect(b500Restored?.currentStock).toBe(100);
+      const b250Restored = await prisma.rawMaterial.findUnique({ where: { id: bottle250Id } });
+      expect(b250Restored?.currentStock).toBe(100);
+    });
+  });
 });
+

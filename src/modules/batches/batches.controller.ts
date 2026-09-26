@@ -158,5 +158,59 @@ export const patchBatchVolume = async (req: Request, res: Response, next: NextFu
   }
 };
 
+export const getBatchPackagings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.getBatchPackagings(req.query as any);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPackagingSummary = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.getPackagingSummary(Number(req.params.packagingId));
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteBatchPackaging = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.deleteBatchPackaging(
+      Number(req.params.packagingId),
+      req.query as any
+    );
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const recordPackagingDischarge = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.recordPackagingDischarge(
+      Number(req.params.packagingId),
+      req.body
+    );
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const unlinkOrderFromPackaging = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.unlinkOrderFromPackaging(
+      Number(req.params.packagingId),
+      Number(req.params.orderId)
+    );
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 
