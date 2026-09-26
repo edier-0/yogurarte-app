@@ -35,6 +35,10 @@ export interface BatchPackagingItem {
   totalLiters: number;
   price1L?: number | null;
   price2L?: number | null;
+  bottle1LRawMaterialId?: number | null;
+  bottle2LRawMaterialId?: number | null;
+  labelRawMaterialId?: number | null;
+  labelQuantity?: number | null;
   fruitRawMaterialId?: number | null;
   fruitQuantityUsed?: number;
   fruitUnitCost?: number;
@@ -46,12 +50,25 @@ export interface BatchPackagingItem {
   itemsUsed?: BatchPackagingExtraItem[];
 }
 
+export interface PackagingContainerItem {
+  rawMaterialId: number;
+  capacityLiters: number;
+  quantity: number;
+  unitCost?: number;
+  price?: number;
+}
+
 export interface BatchPackagingPayload {
   flavor: string;
   bottles1L: number;
   bottles2L: number;
   price1L?: number;
   price2L?: number;
+  bottle1LRawMaterialId?: number | null;
+  bottle2LRawMaterialId?: number | null;
+  labelRawMaterialId?: number | null;
+  labelQuantity?: number | null;
+  customContainers?: PackagingContainerItem[];
   fruitRawMaterialId?: number | null;
   fruitQuantityUsed?: number;
   fruitDosageGramsPerLiter?: number;
@@ -75,6 +92,11 @@ export interface UpdateBatchPackagingPayload {
   bottles2L?: number;
   price1L?: number;
   price2L?: number;
+  bottle1LRawMaterialId?: number | null;
+  bottle2LRawMaterialId?: number | null;
+  labelRawMaterialId?: number | null;
+  labelQuantity?: number | null;
+  customContainers?: PackagingContainerItem[];
   fruitRawMaterialId?: number | null;
   fruitQuantityUsed?: number;
   fruitDosageGramsPerLiter?: number;

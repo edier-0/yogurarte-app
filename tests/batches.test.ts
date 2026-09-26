@@ -940,8 +940,8 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
     expect(updatedPulpa?.currentStock).toBeCloseTo(49.5, 3);
     expect(updatedAlmibar?.currentStock).toBeCloseTo(49.75, 3);
 
-    // 5. Validar impacto en packagingCost (6000 insumos + 7700 envases = 13700)
-    expect(pkgRes.body.packaging.packagingCost).toBe(13700);
+    // 5. Validar impacto en packagingCost (6000 insumos + 6500 envases = 12500, sin tapas desacopladas)
+    expect(pkgRes.body.packaging.packagingCost).toBe(12500);
   });
 
   it('Precios Diferenciados por Fracción: Permite fijar y consultar price1L y price2L por fracción', async () => {
@@ -982,5 +982,116 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
     expect(foundPkg).toBeDefined();
     expect(foundPkg.price1L).toBe(16000);
     expect(foundPkg.price2L).toBe(30000);
+  });
+
+  it('Desacople de Tapas y Etiquetas Dinámicas: No descuenta tapas y descuenta etiqueta personalizada', async () => {
+    // 1. Asegurar insumos de prueba: Botella, Tapa, y Etiqueta personalizada
+    const bottleMat = await prisma.rawMaterial.upsert({
+      where: { code: 'BOTELLA_1L' },
+      update: { currentStock: 100, avgCost: 650, isActive: true },
+      create: {
+        code: 'BOTELLA_1L',
+        name: 'Botella 1 Litro Test',
+        unit: 'und',
+        currentStock: 100,
+        avgCost: 650,
+        category: 'EMPAQUE',
+        isActive: true,
+      },
+    });
+
+    const capMat = await prisma.rawMaterial.upsert({
+      where: { code: 'TAPA' },
+      update: { currentStock: 100, avgCost: 120, isActive: true },
+      create: {
+        code: 'TAPA',
+        name: 'Tapa Test',
+        unit: 'und',
+        currentStock: 100,
+        avgCost: 120,
+        category: 'EMPAQUE',
+        isActive: true,
+      },
+    });
+
+    const labelCustom = await prisma.rawMaterial.create({
+      data: {
+        code: `ETIQ_CUSTOM_${Date.now()}`,
+        name: 'Etiqueta Gourmet Especial',
+        unit: 'und',
+        currentStock: 50,
+        avgCost: 350,
+        category: 'EMPAQUE',
+        isActive: true,
+      },
+    });
+
+    const capStockBefore = capMat.currentStock;
+    const bottleStockBefore = bottleMat.currentStock;
+
+    // 2. Crear lote
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 10,
+        totalLitersProduced: 10,
+        flavor: 'Base Gourmet',
+        status: 'EN_FERMENTACION',
+      });
+    const batchId = batchRes.body.id;
+
+    // 3. Envasar 6 botellas 1L con 6 etiquetas gourmet personalizadas
+    const pkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Gourmet Fracción',
+        bottles1L: 6,
+        bottles2L: 0,
+        bottle1LRawMaterialId: bottleMat.id,
+        labelRawMaterialId: labelCustom.id,
+        labelQuantity: 6,
+      });
+
+    expect(pkgRes.status).toBe(201);
+    // Costo esperado: 6 botellas * 650 = 3900 + 6 etiquetas * 350 = 2100 = 6000. CERO TAPAS (0 COP).
+    expect(pkgRes.body.packaging.packagingCost).toBe(6000);
+    expect(pkgRes.body.packaging.labelRawMaterialId).toBe(labelCustom.id);
+    expect(pkgRes.body.packaging.labelQuantity).toBe(6);
+
+    // 4. Verificar que las tapas NO se descontaron
+    const capAfter = await prisma.rawMaterial.findUnique({ where: { id: capMat.id } });
+    expect(capAfter?.currentStock).toBe(capStockBefore);
+
+    // 5. Verificar que las botellas y etiquetas sí se descontaron exactamente
+    const bottleAfter = await prisma.rawMaterial.findUnique({ where: { id: bottleMat.id } });
+    expect(bottleAfter?.currentStock).toBe(bottleStockBefore - 6);
+
+    const labelAfter = await prisma.rawMaterial.findUnique({ where: { id: labelCustom.id } });
+    expect(labelAfter?.currentStock).toBe(50 - 6);
+
+    // 6. Envasar otra fracción sin etiqueta ([Sin etiqueta / A granel])
+    const noLabelPkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Gourmet Granel',
+        bottles1L: 4,
+        bottles2L: 0,
+        bottle1LRawMaterialId: bottleMat.id,
+        labelRawMaterialId: null,
+        labelQuantity: 0,
+      });
+
+    expect(noLabelPkgRes.status).toBe(201);
+    // Costo esperado: 4 botellas * 650 = 2600. Cero etiquetas, Cero tapas.
+    expect(noLabelPkgRes.body.packaging.packagingCost).toBe(2600);
+    expect(noLabelPkgRes.body.packaging.labelRawMaterialId).toBeNull();
+    expect(noLabelPkgRes.body.packaging.labelQuantity).toBe(0);
+
+    // Stock de etiquetas no debe haber cambiado
+    const labelAfterGranel = await prisma.rawMaterial.findUnique({ where: { id: labelCustom.id } });
+    expect(labelAfterGranel?.currentStock).toBe(44);
   });
 });

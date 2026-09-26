@@ -89,16 +89,29 @@ export const patchBatchVolumeSchema = z.object({
   })).optional(),
 });
 
+export const packagingContainerItemSchema = z.object({
+  rawMaterialId: z.coerce.number().int().positive('ID de insumo inválido'),
+  capacityLiters: z.coerce.number().positive('La capacidad en litros debe ser mayor a 0'),
+  quantity: z.coerce.number().int().min(0, 'La cantidad no puede ser negativa'),
+  unitCost: z.coerce.number().optional(),
+  price: z.coerce.number().min(0).optional(),
+});
+
 export const batchPackagingSchema = z.object({
   flavor: z.string().min(1, 'El sabor es obligatorio'),
   bottles1L: z.coerce.number().int().min(0).default(0),
   bottles2L: z.coerce.number().int().min(0).default(0),
   price1L: z.coerce.number().min(0).optional(),
   price2L: z.coerce.number().min(0).optional(),
+  bottle1LRawMaterialId: z.coerce.number().int().positive().optional().nullable(),
+  bottle2LRawMaterialId: z.coerce.number().int().positive().optional().nullable(),
+  labelRawMaterialId: z.coerce.number().int().positive().optional().nullable(),
+  labelQuantity: z.coerce.number().min(0).optional().nullable(),
+  customContainers: z.array(packagingContainerItemSchema).optional(),
   fruitRawMaterialId: z.coerce.number().int().positive().optional().nullable(),
   fruitQuantityUsed: z.coerce.number().min(0).optional().default(0),
   fruitDosageGramsPerLiter: z.coerce.number().min(0).optional(),
-  useLabels: z.boolean().optional().default(true),
+  useLabels: z.boolean().optional(),
   extraItems: z.array(packagingExtraItemSchema).optional(),
   notes: z.string().optional().nullable(),
   packagedBy: z.string().optional().default('Edier'),
@@ -112,6 +125,11 @@ export const updateBatchPackagingSchema = z.object({
   bottles2L: z.coerce.number().int().min(0).optional(),
   price1L: z.coerce.number().min(0).optional(),
   price2L: z.coerce.number().min(0).optional(),
+  bottle1LRawMaterialId: z.coerce.number().int().positive().optional().nullable(),
+  bottle2LRawMaterialId: z.coerce.number().int().positive().optional().nullable(),
+  labelRawMaterialId: z.coerce.number().int().positive().optional().nullable(),
+  labelQuantity: z.coerce.number().min(0).optional().nullable(),
+  customContainers: z.array(packagingContainerItemSchema).optional(),
   fruitRawMaterialId: z.coerce.number().int().positive().optional().nullable(),
   fruitQuantityUsed: z.coerce.number().min(0).optional(),
   fruitDosageGramsPerLiter: z.coerce.number().min(0).optional(),

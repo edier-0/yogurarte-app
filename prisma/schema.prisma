@@ -200,6 +200,10 @@ model BatchPackaging {
   totalLiters        Float
   price1L            Float?               @default(12000)
   price2L            Float?               @default(24000)
+  bottle1LRawMaterialId Int?
+  bottle2LRawMaterialId Int?
+  labelRawMaterialId    Int?
+  labelQuantity         Float?           @default(0)
   fruitRawMaterialId Int?
   fruitQuantityUsed  Float?           @default(0)
   fruitUnitCost      Float?           @default(0)

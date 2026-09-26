@@ -15,7 +15,6 @@ import {
   ShoppingCart,
   Sparkles,
   Milk,
-  Layers,
   Scale,
   DollarSign,
   Plus,
@@ -54,10 +53,23 @@ const bottles1L = ref<number>(0);
 const bottles2L = ref<number>(0);
 const price1L = ref<number>(12000);
 const price2L = ref<number>(24000);
-const useLabels = ref<boolean>(true);
+const selectedBottle1LId = ref<number | ''>('');
+const selectedBottle2LId = ref<number | ''>('');
+const selectedLabelId = ref<number | ''>('');
+const labelQuantity = ref<number | ''>('');
+const isLabelQtyManual = ref<boolean>(false);
 const notes = ref<string>('');
 const packagedBy = ref<string>('Edier');
 const packagedAt = ref<string>(getTodayDateBogota());
+
+// Otras presentaciones de envase (500ml, Galón, etc.)
+export interface CustomContainerRow {
+  rawMaterialId: number | '';
+  capacityLiters: number | '';
+  quantity: number | '';
+  price: number | '';
+}
+const customContainers = ref<CustomContainerRow[]>([]);
 
 // Insumos extras multi-fila
 export interface ExtraItemRow {
@@ -122,15 +134,89 @@ const resolvedFlavor = computed(() => {
 
 const isEditMode = computed(() => !!props.packagingToEdit);
 
-// Litros requeridos por las botellas
+// Métodos para presentaciones adicionales de envase
+function addCustomContainer() {
+  customContainers.value.push({
+    rawMaterialId: '',
+    capacityLiters: '',
+    quantity: '',
+    price: '',
+  });
+}
+
+function removeCustomContainer(index: number) {
+  customContainers.value.splice(index, 1);
+}
+
+function getCustomContainerCalc(row: CustomContainerRow) {
+  if (!row.rawMaterialId) return null;
+  const mat = allMaterials.value.find((m) => m.id === row.rawMaterialId);
+  if (!mat) return null;
+  const cap = typeof row.capacityLiters === 'number' && !isNaN(row.capacityLiters) ? row.capacityLiters : 0;
+  const qty = typeof row.quantity === 'number' && !isNaN(row.quantity) ? row.quantity : 0;
+  const price = typeof row.price === 'number' && !isNaN(row.price) ? row.price : 0;
+  const liters = cap * qty;
+  const totalCost = Math.round(qty * (mat.avgCost || 0));
+  const totalRevenue = Math.round(qty * price);
+  const isStockInsufficient = qty > (mat.currentStock || 0);
+
+  return {
+    material: mat,
+    capacityLiters: cap,
+    quantity: qty,
+    liters,
+    unitCost: mat.avgCost || 0,
+    totalCost,
+    price,
+    totalRevenue,
+    isStockInsufficient,
+  };
+}
+
+const customContainersLiters = computed(() => {
+  return customContainers.value.reduce((sum, row) => {
+    const calc = getCustomContainerCalc(row);
+    return sum + (calc ? calc.liters : 0);
+  }, 0);
+});
+
+const customContainersBottles = computed(() => {
+  return customContainers.value.reduce((sum, row) => {
+    const calc = getCustomContainerCalc(row);
+    return sum + (calc ? calc.quantity : 0);
+  }, 0);
+});
+
+const customContainersCost = computed(() => {
+  return customContainers.value.reduce((sum, row) => {
+    const calc = getCustomContainerCalc(row);
+    return sum + (calc ? calc.totalCost : 0);
+  }, 0);
+});
+
+const customContainersRevenue = computed(() => {
+  return customContainers.value.reduce((sum, row) => {
+    const calc = getCustomContainerCalc(row);
+    return sum + (calc ? calc.totalRevenue : 0);
+  }, 0);
+});
+
+const hasCustomContainersInsufficientStock = computed(() => {
+  return customContainers.value.some((row) => {
+    const calc = getCustomContainerCalc(row);
+    return calc ? calc.isStockInsufficient : false;
+  });
+});
+
+// Litros requeridos por las botellas y envases
 const requiredLiters = computed(() => {
   const b1 = Number(bottles1L.value) || 0;
   const b2 = Number(bottles2L.value) || 0;
-  return b1 * 1.0 + b2 * 2.0;
+  return Math.round((b1 * 1.0 + b2 * 2.0 + customContainersLiters.value) * 100) / 100;
 });
 
 const totalBottles = computed(() => {
-  return (Number(bottles1L.value) || 0) + (Number(bottles2L.value) || 0);
+  return (Number(bottles1L.value) || 0) + (Number(bottles2L.value) || 0) + customContainersBottles.value;
 });
 
 // Litros sin envasar del lote (sumando el volumen actual del fraccionamiento si estamos editando)
@@ -172,19 +258,56 @@ const candidateMaterials = computed(() => {
     const isPackaging =
       cat === 'EMPAQUE' ||
       cat === 'ENVASES' ||
+      cat === 'ETIQUETAS' ||
       code === 'BOTELLA_1L' ||
       code === 'BOTELLA_2L' ||
       code === 'TAPA' ||
       code === 'ETIQUETA' ||
       name.includes('botella') ||
       name.includes('tapa') ||
-      name.includes('etiqueta');
+      name.includes('etiqueta') ||
+      name.includes('envase');
     const isMilk =
       code === 'LECHE' ||
       code === 'LECHE_TEST' ||
       name.includes('leche cruda') ||
       name.includes('leche entera');
     return !isPackaging && !isMilk;
+  });
+});
+
+// Materiales de tipo envase/botella en inventario
+const containerMaterials = computed(() => {
+  return allMaterials.value.filter((m) => {
+    const cat = (m.category || '').toUpperCase();
+    const code = (m.code || '').toUpperCase();
+    const name = (m.name || '').toLowerCase();
+    return (
+      cat === 'EMPAQUE' ||
+      cat === 'ENVASES' ||
+      code.includes('BOTELLA') ||
+      code.includes('ENVASE') ||
+      name.includes('botella') ||
+      name.includes('envase') ||
+      name.includes('galon') ||
+      name.includes('galón')
+    );
+  });
+});
+
+// Insumos de etiquetas disponibles en inventario
+const labelMaterials = computed(() => {
+  return allMaterials.value.filter((m) => {
+    const cat = (m.category || '').toUpperCase();
+    const code = (m.code || '').toUpperCase();
+    const name = (m.name || '').toLowerCase();
+    return (
+      code === 'ETIQUETA' ||
+      code.startsWith('ETIQ') ||
+      cat === 'ETIQUETAS' ||
+      name.includes('etiqueta') ||
+      (cat === 'EMPAQUE' && name.includes('etiqueta'))
+    );
   });
 });
 
@@ -211,7 +334,6 @@ function getExtraItemCalc(row: ExtraItemRow) {
 
   if (isKg) {
     const dose = typeof row.dosagePerLiter === 'number' && !isNaN(row.dosagePerLiter) ? row.dosagePerLiter : 0;
-    // Gramos Totales = Math.round(Dosis (g/L) * Litros a Envasar)
     const totalGrams = Math.round(dose * liters);
     const quantityUsedKg = Math.round(totalGrams) / 1000;
     const totalCost = Math.round(quantityUsedKg * (mat.avgCost || 0));
@@ -253,7 +375,7 @@ const extraItemsTotalCost = computed(() => {
   }, 0);
 });
 
-// Validación de stock insuficiente en alguna fila
+// Validación de stock insuficiente en alguna fila de insumo extra
 const hasInsufficientStock = computed(() => {
   return extraItems.value.some((row) => {
     const calc = getExtraItemCalc(row);
@@ -261,55 +383,75 @@ const hasInsufficientStock = computed(() => {
   });
 });
 
-// Materiales de empaque estándar
-const bottle1LMaterial = computed(() =>
+// Materiales por defecto para 1L y 2L
+const defaultBottle1LMaterial = computed(() =>
   allMaterials.value.find(
-    (m) => m.code === 'BOTELLA_1L' || m.name.toLowerCase().includes('1 litro')
+    (m) => m.code === 'BOTELLA_1L' || m.name.toLowerCase().includes('1 litro') || m.name.toLowerCase().includes('1l')
   )
 );
-const bottle2LMaterial = computed(() =>
+const defaultBottle2LMaterial = computed(() =>
   allMaterials.value.find(
-    (m) => m.code === 'BOTELLA_2L' || m.name.toLowerCase().includes('2 litro')
-  )
-);
-const capMaterial = computed(() =>
-  allMaterials.value.find(
-    (m) => m.code === 'TAPA' || m.name.toLowerCase().includes('tapa')
-  )
-);
-const labelMaterial = computed(() =>
-  allMaterials.value.find(
-    (m) => m.code === 'ETIQUETA' || m.name.toLowerCase().includes('etiqueta')
+    (m) => m.code === 'BOTELLA_2L' || m.name.toLowerCase().includes('2 litro') || m.name.toLowerCase().includes('2l')
   )
 );
 
-// Alertas de insuficiencia de stock para envases y etiquetas
+const currentBottle1LMat = computed(() => {
+  if (selectedBottle1LId.value) {
+    return allMaterials.value.find((m) => m.id === selectedBottle1LId.value) || null;
+  }
+  return defaultBottle1LMaterial.value || null;
+});
+
+const currentBottle2LMat = computed(() => {
+  if (selectedBottle2LId.value) {
+    return allMaterials.value.find((m) => m.id === selectedBottle2LId.value) || null;
+  }
+  return defaultBottle2LMaterial.value || null;
+});
+
+const currentLabelMat = computed(() => {
+  if (!selectedLabelId.value) return null;
+  return allMaterials.value.find((m) => m.id === selectedLabelId.value) || null;
+});
+
+// Observador para sincronizar labelQuantity con totalBottles si no ha sido modificado manualmente
+watch(totalBottles, (newTotal) => {
+  if (selectedLabelId.value && !isLabelQtyManual.value) {
+    labelQuantity.value = newTotal;
+  }
+});
+
+watch(selectedLabelId, (newLabelId) => {
+  if (!newLabelId) {
+    labelQuantity.value = '';
+    isLabelQtyManual.value = false;
+  } else {
+    if (!isLabelQtyManual.value || !labelQuantity.value) {
+      labelQuantity.value = totalBottles.value;
+    }
+  }
+});
+
+// Alertas de insuficiencia de stock para envases y etiquetas (Tapas desacopladas / incluidas en botella)
 const isBottle1LInsufficient = computed(() => {
   const needed = Number(bottles1L.value) || 0;
   if (needed <= 0) return false;
-  const available = bottle1LMaterial.value?.currentStock ?? 0;
+  const available = currentBottle1LMat.value?.currentStock ?? 0;
   return needed > available;
 });
 
 const isBottle2LInsufficient = computed(() => {
   const needed = Number(bottles2L.value) || 0;
   if (needed <= 0) return false;
-  const available = bottle2LMaterial.value?.currentStock ?? 0;
-  return needed > available;
-});
-
-const isCapsInsufficient = computed(() => {
-  const needed = totalBottles.value;
-  if (needed <= 0) return false;
-  const available = capMaterial.value?.currentStock ?? 0;
+  const available = currentBottle2LMat.value?.currentStock ?? 0;
   return needed > available;
 });
 
 const isLabelsInsufficient = computed(() => {
-  if (!useLabels.value) return false;
-  const needed = totalBottles.value;
+  if (!currentLabelMat.value) return false;
+  const needed = Number(labelQuantity.value) || 0;
   if (needed <= 0) return false;
-  const available = labelMaterial.value?.currentStock ?? 0;
+  const available = currentLabelMat.value?.currentStock ?? 0;
   return needed > available;
 });
 
@@ -317,31 +459,30 @@ const hasPackagingInsufficientStock = computed(() => {
   return (
     isBottle1LInsufficient.value ||
     isBottle2LInsufficient.value ||
-    isCapsInsufficient.value ||
-    isLabelsInsufficient.value
+    isLabelsInsufficient.value ||
+    hasCustomContainersInsufficientStock.value
   );
 });
 
 // Costos desglosados para proyección financiera integral
 const bottlesCost = computed(() => {
-  const b1Cost = bottle1LMaterial.value?.avgCost || 650;
-  const b2Cost = bottle2LMaterial.value?.avgCost || 1100;
-  return (Number(bottles1L.value) || 0) * b1Cost + (Number(bottles2L.value) || 0) * b2Cost;
-});
-
-const capsCost = computed(() => {
-  const capCost = capMaterial.value?.avgCost || 120;
-  return totalBottles.value * capCost;
+  const b1Cost = currentBottle1LMat.value?.avgCost || 650;
+  const b2Cost = currentBottle2LMat.value?.avgCost || 1100;
+  return (
+    (Number(bottles1L.value) || 0) * b1Cost +
+    (Number(bottles2L.value) || 0) * b2Cost +
+    customContainersCost.value
+  );
 });
 
 const labelsCost = computed(() => {
-  if (!useLabels.value) return 0;
-  const lblCost = labelMaterial.value?.avgCost || 200;
-  return totalBottles.value * lblCost;
+  if (!currentLabelMat.value) return 0;
+  const qty = Number(labelQuantity.value) || 0;
+  return Math.round(qty * (currentLabelMat.value.avgCost || 0));
 });
 
 const projectedPackagingCost = computed(() => {
-  return bottlesCost.value + capsCost.value + labelsCost.value + extraItemsTotalCost.value;
+  return bottlesCost.value + labelsCost.value + extraItemsTotalCost.value;
 });
 
 const baseMilkCost = computed(() => {
@@ -364,7 +505,7 @@ const projectedRevenue = computed(() => {
   const b2 = Number(bottles2L.value) || 0;
   const p1 = Number(price1L.value) || 0;
   const p2 = Number(price2L.value) || 0;
-  return b1 * p1 + b2 * p2;
+  return b1 * p1 + b2 * p2 + customContainersRevenue.value;
 });
 
 const projectedGrossMargin = computed(() => {
@@ -471,13 +612,30 @@ watch(
         bottles2L.value = pkg.bottles2L;
         price1L.value = pkg.price1L ?? 12000;
         price2L.value = pkg.price2L ?? 24000;
-        useLabels.value = (pkg as any).useLabels !== false;
         notes.value = pkg.notes || '';
         packagedBy.value = pkg.packagedBy || 'Edier';
         packagedAt.value = pkg.packagedAt ? pkg.packagedAt.split('T')[0] : getTodayDateBogota();
         selectedOrderIds.value = [];
+        customContainers.value = [];
 
         await loadInventoryMaterials();
+
+        selectedBottle1LId.value = (pkg as any).bottle1LRawMaterialId || defaultBottle1LMaterial.value?.id || '';
+        selectedBottle2LId.value = (pkg as any).bottle2LRawMaterialId || defaultBottle2LMaterial.value?.id || '';
+
+        if ((pkg as any).labelRawMaterialId) {
+          selectedLabelId.value = (pkg as any).labelRawMaterialId;
+          labelQuantity.value = (pkg as any).labelQuantity ?? (pkg.bottles1L + pkg.bottles2L);
+          isLabelQtyManual.value = true;
+        } else if ((pkg as any).useLabels === false) {
+          selectedLabelId.value = '';
+          labelQuantity.value = '';
+          isLabelQtyManual.value = false;
+        } else {
+          selectedLabelId.value = labelMaterials.value[0]?.id || '';
+          labelQuantity.value = pkg.bottles1L + pkg.bottles2L;
+          isLabelQtyManual.value = false;
+        }
 
         // Mapear insumos extras previos
         if (pkg.itemsUsed && pkg.itemsUsed.length > 0) {
@@ -518,14 +676,20 @@ watch(
         bottles2L.value = 0;
         price1L.value = 12000;
         price2L.value = 24000;
-        useLabels.value = true;
         extraItems.value = [];
+        customContainers.value = [];
         notes.value = '';
         packagedBy.value = 'Edier';
         packagedAt.value = getTodayDateBogota();
         selectedOrderIds.value = [];
 
         await loadInventoryMaterials();
+
+        selectedBottle1LId.value = defaultBottle1LMaterial.value?.id || '';
+        selectedBottle2LId.value = defaultBottle2LMaterial.value?.id || '';
+        selectedLabelId.value = labelMaterials.value[0]?.id || '';
+        labelQuantity.value = 0;
+        isLabelQtyManual.value = false;
       }
 
       await loadPendingOrders(resolvedFlavor.value);
@@ -567,17 +731,35 @@ async function handleSubmit() {
       })
       .filter((it) => it.quantityUsed > 0);
 
+    const resolvedCustomContainers = customContainers.value
+      .filter((c) => c.rawMaterialId && Number(c.quantity) > 0 && Number(c.capacityLiters) > 0)
+      .map((c) => {
+        const calc = getCustomContainerCalc(c)!;
+        return {
+          rawMaterialId: Number(c.rawMaterialId),
+          capacityLiters: Number(c.capacityLiters),
+          quantity: Number(c.quantity),
+          unitCost: calc.unitCost,
+          price: Number(c.price) || 0,
+        };
+      });
+
     const payload: BatchPackagingPayload = {
       flavor: resolvedFlavor.value,
       bottles1L: Number(bottles1L.value) || 0,
       bottles2L: Number(bottles2L.value) || 0,
       price1L: Number(price1L.value) || 0,
       price2L: Number(price2L.value) || 0,
+      bottle1LRawMaterialId: selectedBottle1LId.value ? Number(selectedBottle1LId.value) : (currentBottle1LMat.value?.id || undefined),
+      bottle2LRawMaterialId: selectedBottle2LId.value ? Number(selectedBottle2LId.value) : (currentBottle2LMat.value?.id || undefined),
+      labelRawMaterialId: selectedLabelId.value ? Number(selectedLabelId.value) : null,
+      labelQuantity: selectedLabelId.value ? Number(labelQuantity.value) || 0 : 0,
+      customContainers: resolvedCustomContainers.length > 0 ? resolvedCustomContainers : undefined,
       extraItems: resolvedExtraItems.length > 0 ? resolvedExtraItems : undefined,
       // Retrocompatibilidad si el primer insumo es fruta
       fruitRawMaterialId: resolvedExtraItems[0]?.rawMaterialId,
       fruitQuantityUsed: resolvedExtraItems[0]?.quantityUsed,
-      useLabels: useLabels.value,
+      useLabels: !!selectedLabelId.value,
       notes: notes.value ? notes.value.trim() : undefined,
       packagedBy: packagedBy.value ? packagedBy.value.trim() : 'Edier',
       packagedAt: packagedAt.value || getTodayDateBogota(),
@@ -758,7 +940,7 @@ async function handleSubmit() {
                     class="text-[11px]"
                     :class="isBottle1LInsufficient ? 'font-bold text-rose-500 dark:text-rose-400' : 'text-slate-400'"
                   >
-                    Stock disponible: {{ formatStockQuantity(bottle1LMaterial?.currentStock ?? 0, 'und') }} und
+                    Stock disponible: {{ formatStockQuantity(currentBottle1LMat?.currentStock ?? 0, 'und') }} und
                   </span>
                 </div>
                 <div class="relative">
@@ -780,7 +962,7 @@ async function handleSubmit() {
                   </span>
                 </div>
                 <p v-if="isBottle1LInsufficient" class="mt-1 text-[11px] font-bold text-rose-500 dark:text-rose-400">
-                  Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(bottle1LMaterial?.currentStock ?? 0, 'und') }})
+                  Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(currentBottle1LMat?.currentStock ?? 0, 'und') }})
                 </p>
               </div>
 
@@ -793,7 +975,7 @@ async function handleSubmit() {
                     class="text-[11px]"
                     :class="isBottle2LInsufficient ? 'font-bold text-rose-500 dark:text-rose-400' : 'text-slate-400'"
                   >
-                    Stock disponible: {{ formatStockQuantity(bottle2LMaterial?.currentStock ?? 0, 'und') }} und
+                    Stock disponible: {{ formatStockQuantity(currentBottle2LMat?.currentStock ?? 0, 'und') }} und
                   </span>
                 </div>
                 <div class="relative">
@@ -815,58 +997,176 @@ async function handleSubmit() {
                   </span>
                 </div>
                 <p v-if="isBottle2LInsufficient" class="mt-1 text-[11px] font-bold text-rose-500 dark:text-rose-400">
-                  Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(bottle2LMaterial?.currentStock ?? 0, 'und') }})
+                  Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(currentBottle2LMat?.currentStock ?? 0, 'und') }})
                 </p>
               </div>
             </div>
 
-            <!-- Insumos de Empaque: Tapas y Etiquetas -->
+            <!-- Otras Presentaciones de Envase Opcionales -->
+            <div class="border-t border-slate-100 pt-2.5 dark:border-slate-800">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-600 dark:text-slate-400">
+                  Otras Presentaciones de Envase (Opcional)
+                </span>
+                <button
+                  type="button"
+                  @click="addCustomContainer"
+                  class="inline-flex items-center gap-1 text-[11px] font-bold text-brand-800 hover:underline dark:text-brand-darkText"
+                >
+                  <Plus class="h-3 w-3" />
+                  <span>Agregar Presentación</span>
+                </button>
+              </div>
+
+              <div v-if="customContainers.length > 0" class="mt-2.5 space-y-2">
+                <div
+                  v-for="(c, cIdx) in customContainers"
+                  :key="cIdx"
+                  class="rounded-xl border border-surface-light-border bg-slate-50/60 p-2.5 text-xs dark:border-surface-dark-border dark:bg-surface-dark-canvas/60 space-y-2"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex-1">
+                      <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Insumo Envase *
+                      </label>
+                      <select
+                        v-model.number="c.rawMaterialId"
+                        class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                      >
+                        <option :value="''">-- Seleccionar envase --</option>
+                        <option v-for="mat in containerMaterials" :key="mat.id" :value="mat.id">
+                          {{ mat.name }} (Stock: {{ formatStockQuantity(mat.currentStock, 'und') }} und)
+                        </option>
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      @click="removeCustomContainer(cIdx)"
+                      class="mt-4 rounded p-1 text-slate-400 hover:text-rose-600"
+                      title="Quitar presentación"
+                    >
+                      <Trash2 class="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  <div class="grid grid-cols-3 gap-2">
+                    <div>
+                      <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Capacidad (L)
+                      </label>
+                      <input
+                        v-model.number="c.capacityLiters"
+                        type="number"
+                        min="0.1"
+                        step="0.05"
+                        placeholder="Ej. 0.5"
+                        class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas px-2.5 py-1 text-xs font-extrabold text-slate-900 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Cantidad Unds
+                      </label>
+                      <input
+                        v-model.number="c.quantity"
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="0"
+                        class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas px-2.5 py-1 text-xs font-extrabold text-slate-900 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Precio Venta ($)
+                      </label>
+                      <input
+                        v-model.number="c.price"
+                        type="number"
+                        min="0"
+                        step="500"
+                        placeholder="0"
+                        class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas px-2.5 py-1 text-xs font-extrabold text-slate-900 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Insumos de Empaque: Etiquetas Adhesivas Dinámicas (Tapas desacopladas / incluidas en botella) -->
             <div
-              class="rounded-xl border p-3"
+              class="rounded-xl border p-3.5 space-y-2.5"
               :class="
-                isCapsInsufficient || isLabelsInsufficient
+                isLabelsInsufficient
                   ? 'border-rose-200 bg-rose-50/20 dark:border-rose-900/50 dark:bg-rose-950/10'
                   : 'border-slate-100 bg-surface-light-canvas dark:border-slate-800 dark:bg-surface-dark-canvas'
               "
             >
               <div class="flex items-center justify-between text-xs">
-                <div class="flex items-center gap-1.5 font-bold text-slate-600 dark:text-slate-300">
-                  <Layers class="h-3.5 w-3.5 text-brand-700 dark:text-brand-darkText" />
-                  <span>Tapas (1 por botella):</span>
-                  <span class="font-extrabold text-slate-900 dark:text-white">{{ totalBottles }} und</span>
+                <div class="flex items-center gap-1.5 font-extrabold text-slate-800 dark:text-white">
+                  <Tag class="h-3.5 w-3.5 text-brand-700 dark:text-brand-darkText" />
+                  <span>Rotulado y Etiquetas Adhesivas</span>
                 </div>
                 <span
-                  class="text-[11px]"
-                  :class="isCapsInsufficient ? 'font-bold text-rose-500 dark:text-rose-400' : 'text-slate-400'"
-                >
-                  Stock disponible: {{ formatStockQuantity(capMaterial?.currentStock ?? 0, 'und') }} und
-                </span>
-              </div>
-              <p v-if="isCapsInsufficient" class="mt-1 text-[11px] font-bold text-rose-500 dark:text-rose-400">
-                Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(capMaterial?.currentStock ?? 0, 'und') }})
-              </p>
-
-              <div class="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 dark:border-slate-800">
-                <label class="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    v-model="useLabels"
-                    class="h-4 w-4 rounded border-slate-300 text-brand-800 focus:ring-brand-800 dark:border-slate-700"
-                  />
-                  <span class="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Aplicar etiquetas corporativas (1 por botella)
-                  </span>
-                </label>
-                <span
+                  v-if="currentLabelMat"
                   class="text-[11px]"
                   :class="isLabelsInsufficient ? 'font-bold text-rose-500 dark:text-rose-400' : 'text-slate-400'"
                 >
-                  Stock disponible: {{ formatStockQuantity(labelMaterial?.currentStock ?? 0, 'und') }} und
+                  Stock disponible: {{ formatStockQuantity(currentLabelMat.currentStock ?? 0, 'und') }} und
                 </span>
               </div>
-              <p v-if="isLabelsInsufficient" class="mt-1 text-[11px] font-bold text-rose-500 dark:text-rose-400">
-                Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(labelMaterial?.currentStock ?? 0, 'und') }})
-              </p>
+
+              <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    Insumo de Etiqueta
+                  </label>
+                  <select
+                    v-model.number="selectedLabelId"
+                    class="w-full rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-2 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-white"
+                  >
+                    <option :value="''">[Sin etiqueta / A granel]</option>
+                    <option v-for="lbl in labelMaterials" :key="lbl.id" :value="lbl.id">
+                      {{ lbl.name }} (Stock: {{ formatStockQuantity(lbl.currentStock, 'und') }} und | Costo: {{ formatCurrency(lbl.avgCost) }})
+                    </option>
+                  </select>
+                </div>
+
+                <div v-if="selectedLabelId">
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                      Unidades a Descontar *
+                    </label>
+                    <span class="text-[10px] text-slate-400">Sugerido: {{ totalBottles }} und</span>
+                  </div>
+                  <div class="relative">
+                    <input
+                      v-model.number="labelQuantity"
+                      type="number"
+                      min="0"
+                      step="1"
+                      @input="isLabelQtyManual = true"
+                      placeholder="0"
+                      class="w-full rounded-xl border bg-surface-light-card px-3.5 py-2 text-xs font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-card"
+                      :class="
+                        isLabelsInsufficient
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-500 dark:border-rose-500 dark:bg-rose-950/30 dark:text-rose-400'
+                          : 'border-surface-light-border text-slate-900 dark:border-surface-dark-border dark:text-white'
+                      "
+                    />
+                    <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      und
+                    </span>
+                  </div>
+                  <p v-if="isLabelsInsufficient" class="mt-1 text-[11px] font-bold text-rose-500 dark:text-rose-400">
+                    Stock insuficiente en bodega (Disponible: {{ formatStockQuantity(currentLabelMat?.currentStock ?? 0, 'und') }})
+                  </p>
+                </div>
+                <div v-else class="flex items-center text-xs text-slate-400 italic">
+                  La fracción se registrará sin rotulado corporativo ni deducción de etiquetas de bodega.
+                </div>
+              </div>
             </div>
 
             <!-- Advertencia si excede el saldo libre -->
@@ -1104,8 +1404,8 @@ async function handleSubmit() {
               </span>
             </div>
 
-            <!-- Cuadrícula de Componentes de Costo -->
-            <div class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+            <!-- Cuadrícula de Componentes de Costo (4 Columnas sin tapas independientes) -->
+            <div class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
               <div class="rounded-xl border border-surface-light-border/60 bg-surface-light-canvas/60 p-2 dark:border-surface-dark-border/60 dark:bg-surface-dark-canvas/60">
                 <span class="block text-[9px] font-bold text-slate-400 uppercase">Base Láctea</span>
                 <span class="font-extrabold text-slate-700 dark:text-slate-300">
@@ -1117,13 +1417,6 @@ async function handleSubmit() {
                 <span class="block text-[9px] font-bold text-slate-400 uppercase">Envases</span>
                 <span class="font-extrabold text-slate-700 dark:text-slate-300">
                   {{ formatCurrency(bottlesCost) }}
-                </span>
-              </div>
-
-              <div class="rounded-xl border border-surface-light-border/60 bg-surface-light-canvas/60 p-2 dark:border-surface-dark-border/60 dark:bg-surface-dark-canvas/60">
-                <span class="block text-[9px] font-bold text-slate-400 uppercase">Tapas</span>
-                <span class="font-extrabold text-slate-700 dark:text-slate-300">
-                  {{ formatCurrency(capsCost) }}
                 </span>
               </div>
 
