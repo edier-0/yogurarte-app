@@ -65,6 +65,7 @@ coverage/
 tmp/
 temp/
 scratch/
+public_legacy/
 auth_info_baileys/
 .baileys_auth/
 __pycache__/
