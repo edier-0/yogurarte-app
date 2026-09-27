@@ -46,7 +46,7 @@ const notes = ref('');
 const isCredit = ref(false);
 const creditor = ref('');
 const totalInstallments = ref<number | ''>(6);
-const frequency = ref<'MENSUAL' | 'QUINCENAL' | 'SEMANAL'>('MENSUAL');
+const frequency = ref<'MENSUAL' | 'QUINCENAL' | 'SEMANAL' | 'FLEXIBLE'>('MENSUAL');
 const initialPayment = ref<number | ''>(0);
 
 const isSubmitting = ref(false);
@@ -62,6 +62,7 @@ const categories = [
 ];
 
 const calculatedInstallment = computed(() => {
+  if (frequency.value === 'FLEXIBLE') return 0;
   if (!amount.value || typeof amount.value !== 'number') return 0;
   const initial = typeof initialPayment.value === 'number' ? initialPayment.value : 0;
   const installments = typeof totalInstallments.value === 'number' && totalInstallments.value > 0 ? totalInstallments.value : 1;
@@ -97,7 +98,12 @@ async function handleSubmit() {
     if (isCredit.value) {
       // Registro de Obligación / Crédito a cuotas
       const initial = typeof initialPayment.value === 'number' ? initialPayment.value : 0;
-      const installments = typeof totalInstallments.value === 'number' && totalInstallments.value > 0 ? totalInstallments.value : 1;
+      const isFlexible = frequency.value === 'FLEXIBLE';
+      const installments = isFlexible
+        ? null
+        : typeof totalInstallments.value === 'number' && totalInstallments.value > 0
+        ? totalInstallments.value
+        : 1;
 
       await http.post('/credits', {
         title: description.value.trim(),
@@ -106,9 +112,9 @@ async function handleSubmit() {
         principalAmount: amount.value,
         initialPayment: initial,
         initialPaymentMethod: paymentMethod.value,
-        paymentType: 'CUOTAS_FIJAS',
+        paymentType: isFlexible ? 'ABONOS_LIBRES' : 'CUOTAS_FIJAS',
         frequency: frequency.value,
-        installmentAmount: calculatedInstallment.value,
+        installmentAmount: isFlexible ? 0 : calculatedInstallment.value,
         totalInstallments: installments,
         startDate: expenseDate.value,
         notes: notes.value.trim() || null,
@@ -295,8 +301,9 @@ async function handleSubmit() {
                   type="number"
                   min="1"
                   step="1"
-                  placeholder="6"
-                  class="w-full rounded-xl border border-surface-light-border bg-white px-3 py-1.5 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-white"
+                  :disabled="frequency === 'FLEXIBLE'"
+                  :placeholder="frequency === 'FLEXIBLE' ? 'N/A (Abonos libres)' : '6'"
+                  class="w-full rounded-xl border border-surface-light-border bg-white px-3 py-1.5 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-white dark:disabled:bg-slate-900/50 dark:disabled:text-slate-500"
                 />
               </div>
 
@@ -311,6 +318,7 @@ async function handleSubmit() {
                   <option value="MENSUAL">Mensual</option>
                   <option value="QUINCENAL">Quincenal</option>
                   <option value="SEMANAL">Semanal</option>
+                  <option value="FLEXIBLE">Flexible / Abonos Libres</option>
                 </select>
               </div>
 
@@ -332,7 +340,10 @@ async function handleSubmit() {
             <!-- Resumen de Cuota Estimada -->
             <div class="flex items-center justify-between rounded-xl bg-white p-2.5 text-xs dark:bg-surface-dark-card">
               <span class="font-bold text-slate-500">Valor estimado por cuota:</span>
-              <span class="font-black text-amber-600 dark:text-amber-400">
+              <span v-if="frequency === 'FLEXIBLE'" class="font-bold italic text-amber-600 dark:text-amber-400">
+                Abonos variables según disponibilidad
+              </span>
+              <span v-else class="font-black text-amber-600 dark:text-amber-400">
                 $ {{ new Intl.NumberFormat('es-CO').format(calculatedInstallment) }}
               </span>
             </div>
@@ -348,12 +359,8 @@ async function handleSubmit() {
                 v-model="paymentMethod"
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               >
-                <option value="EFECTIVO">Efectivo Caja Menor</option>
-                <option value="NEQUI">Nequi</option>
-                <option value="BANCOLOMBIA">Bancolombia</option>
-                <option value="DAVIPLATA">DaviPlata</option>
-                <option value="TRANSFERENCIA">Transferencia Bancaria</option>
-                <option value="NEQUI_BANCOLOMBIA">Nequi o Bancolombia</option>
+                <option value="EFECTIVO">Efectivo (Caja Menor)</option>
+                <option value="NEQUI">Nequi / Bancolombia (Transferencia)</option>
               </select>
             </div>
 

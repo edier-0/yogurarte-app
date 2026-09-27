@@ -91,4 +91,51 @@ describe('Finance and Dashboard Endpoints', () => {
     });
     expect(check).toBeNull();
   });
+
+  it('POST /api/credits debe crear un crédito con frecuencia FLEXIBLE y cuota inicial por NEQUI', async () => {
+    const res = await request(app)
+      .post('/api/credits')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        title: 'Equipo de Enfriamiento Vitest',
+        category: 'EQUIPO_MAQUINARIA',
+        creditor: 'Refrigeración del Caribe',
+        principalAmount: 1000000,
+        initialPayment: 200000,
+        initialPaymentMethod: 'NEQUI',
+        paymentType: 'ABONOS_LIBRES',
+        frequency: 'FLEXIBLE',
+        installmentAmount: 0,
+        notes: 'Crédito flexible de prueba',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('id');
+    expect(res.body.frequency).toBe('FLEXIBLE');
+    expect(res.body.paymentType).toBe('ABONOS_LIBRES');
+    expect(res.body.remainingBalance).toBe(800000);
+    expect(res.body.initialPayment).toBe(200000);
+
+    const testCreditId = res.body.id;
+
+    // Abonar al crédito mediante el endpoint /api/credits/:id/pay
+    const payRes = await request(app)
+      .post(`/api/credits/${testCreditId}/pay`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        amount: 300000,
+        paymentMethod: 'NEQUI',
+        receiptNumber: 'COMP-NEQUI-9988',
+        justification: 'Abono libre flexible',
+      });
+
+    expect(payRes.status).toBe(200);
+    expect(payRes.body.credit.remainingBalance).toBe(500000);
+    expect(payRes.body.credit.paidInstallments).toBe(2); // Cuota inicial + abono
+
+    // Limpiar el crédito creado
+    await request(app)
+      .delete(`/api/credits/${testCreditId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+  });
 });

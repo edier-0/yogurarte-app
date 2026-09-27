@@ -479,7 +479,7 @@ model CreditObligation {
   initialPayment    Float           @default(0) // Cuota inicial pagada de contado
   remainingBalance  Float           // Saldo pendiente por pagar
   paymentType       String          @default("CUOTAS_FIJAS") // CUOTAS_FIJAS, ABONOS_LIBRES
-  frequency         String          @default("MENSUAL") // DIARIA, SEMANAL, QUINCENAL, MENSUAL, LIBRE
+  frequency         String          @default("MENSUAL") // DIARIA, SEMANAL, QUINCENAL, MENSUAL, LIBRE, FLEXIBLE
   installmentAmount Float           @default(0) // Valor sugerido de cuota periódica
   totalInstallments Int?            // Número total de cuotas acordadas
   paidInstallments  Int             @default(0) // Cuotas/abonos realizados

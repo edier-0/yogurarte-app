@@ -28,6 +28,7 @@ import { toast } from 'vue-sonner';
 import { useConfirm } from '@/composables/useConfirm';
 import ExpenseModal from '@/components/finance/ExpenseModal.vue';
 import ExpenseFormModal from '@/components/finance/ExpenseFormModal.vue';
+import CreditPaymentModal from '@/components/finance/CreditPaymentModal.vue';
 
 interface ExpenseItem {
   id: number;
@@ -102,6 +103,8 @@ const credits = ref<CreditItem[]>([]);
 const totalDebtFinanced = ref(0);
 const totalRemainingBalance = ref(0);
 const totalPaidSoFar = ref(0);
+const isCreditPaymentModalOpen = ref(false);
+const selectedCreditForPayment = ref<CreditItem | null>(null);
 
 // Formateador de moneda en pesos colombianos
 const formatCurrency = (val: number) => {
@@ -263,35 +266,10 @@ async function deleteExpense(id: number) {
   }
 }
 
-// Pagar cuota de un crédito
-async function payInstallment(credit: CreditItem) {
-  const defaultAmount = credit.installmentAmount || Math.min(credit.remainingBalance, 50000);
-  const inputVal = window.prompt(
-    `Ingresa el valor del abono/cuota para "${credit.title}" (Saldo: ${formatCurrency(credit.remainingBalance)}):`,
-    String(defaultAmount)
-  );
-  if (!inputVal) return;
-
-  const parsed = Number(inputVal);
-  if (isNaN(parsed) || parsed <= 0) {
-    toast.error('Monto Inválido', { description: 'Ingresa un valor numérico positivo.' });
-    return;
-  }
-
-  try {
-    await http.post(`/credits/${credit.id}/pay`, {
-      amount: parsed,
-      paymentMethod: 'EFECTIVO',
-      paymentDate: new Date().toISOString().split('T')[0],
-      justification: 'Pago de cuota de crédito',
-    });
-    toast.success('¡Abono Asentado!', {
-      description: `Se abonaron ${formatCurrency(parsed)} a "${credit.title}".`,
-    });
-    fetchCredits();
-  } catch {
-    // Manejado por interceptor
-  }
+// Pagar cuota de un crédito vía Modal Estilizado Reka UI (sin prompt nativo)
+function payInstallment(credit: CreditItem) {
+  selectedCreditForPayment.value = credit;
+  isCreditPaymentModalOpen.value = true;
 }
 
 // Eliminar obligación de crédito
@@ -805,6 +783,13 @@ async function deleteCredit(id: number) {
       v-model:open="isExpenseFormModalOpen"
       :expense="selectedExpenseToEdit"
       @saved="() => fetchExpenses(currentPage)"
+    />
+
+    <!-- Modal de Abono a Crédito Estilizado (Reka UI) -->
+    <CreditPaymentModal
+      v-model:open="isCreditPaymentModalOpen"
+      :credit="selectedCreditForPayment"
+      @saved="fetchCredits"
     />
   </div>
 </template>
