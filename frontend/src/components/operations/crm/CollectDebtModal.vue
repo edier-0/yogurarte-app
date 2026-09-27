@@ -51,16 +51,12 @@ const emit = defineEmits<{
 
 const amount = ref<number>(0);
 const paymentMethod = ref<string>('EFECTIVO');
-const targetOrderId = ref<string | number>('AUTO');
 const notes = ref<string>('');
 const isSubmitting = ref<boolean>(false);
 
 const paymentMethods = [
   { id: 'EFECTIVO', label: 'Efectivo' },
-  { id: 'NEQUI', label: 'Nequi' },
-  { id: 'DAVIPLATA', label: 'Daviplata' },
-  { id: 'TRANSFERENCIA', label: 'Transferencia' },
-  { id: 'DATAFONO', label: 'Datáfono' },
+  { id: 'NEQUI', label: 'Nequi / Bancolombia' },
 ];
 
 const totalPendingDebt = computed(() => {
@@ -81,7 +77,6 @@ watch(
     if (isOpen && props.customer) {
       amount.value = totalPendingDebt.value;
       paymentMethod.value = 'EFECTIVO';
-      targetOrderId.value = 'AUTO';
       notes.value = '';
       isSubmitting.value = false;
     }
@@ -123,13 +118,9 @@ async function handleSubmit() {
     const payload: any = {
       amount: paymentVal,
       paymentMethod: paymentMethod.value,
+      orderId: 'AUTO',
       notes: notes.value.trim() || undefined,
     };
-    if (targetOrderId.value && targetOrderId.value !== 'AUTO') {
-      payload.orderId = Number(targetOrderId.value);
-    } else {
-      payload.orderId = 'AUTO';
-    }
 
     const res = await http.post<any>(`/customers/${props.customer.id}/payment`, payload);
     toast.success(res?.message || `Cobro de ${formatCurrency(paymentVal)} registrado con éxito`, {
@@ -274,49 +265,29 @@ async function handleSubmit() {
               </div>
             </div>
 
-            <!-- Método de Pago -->
-            <div class="space-y-1">
+            <!-- Método de Pago (Efectivo y Nequi / Bancolombia) -->
+            <div class="space-y-1.5">
               <label class="text-xs font-bold text-slate-700 dark:text-slate-300">
                 Método de Pago:
               </label>
-              <div class="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+              <div class="grid grid-cols-2 gap-2.5">
                 <button
                   v-for="m in paymentMethods"
                   :key="m.id"
                   type="button"
                   @click="paymentMethod = m.id"
-                  class="rounded-xl px-2.5 py-2 text-[11px] font-extrabold transition-all border text-center"
+                  class="rounded-2xl px-4 py-3 text-xs font-black transition-all border text-center flex items-center justify-center gap-2"
                   :class="
                     paymentMethod === m.id
-                      ? 'border-brand-800 bg-brand-800 text-white shadow-xs dark:bg-brand-700 dark:border-brand-700'
-                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700/60'
+                      ? 'border-brand-800 bg-brand-800 text-white shadow-md shadow-brand-800/20 dark:bg-brand-700 dark:border-brand-700'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700/60'
                   "
                 >
-                  {{ m.label }}
+                  <DollarSign v-if="m.id === 'EFECTIVO'" class="h-4 w-4" />
+                  <Receipt v-else class="h-4 w-4" />
+                  <span>{{ m.label }}</span>
                 </button>
               </div>
-            </div>
-
-            <!-- Aplicación del Pago (Modo Cascada o Pedido Único) -->
-            <div class="space-y-1">
-              <label class="text-xs font-bold text-slate-700 dark:text-slate-300">
-                Modo de Imputación:
-              </label>
-              <select
-                v-model="targetOrderId"
-                class="w-full rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              >
-                <option value="AUTO">
-                  ⚡ Cascada automática (saldar pedidos más antiguos primero)
-                </option>
-                <option
-                  v-for="ord in customer?.pendingOrders || []"
-                  :key="ord.id"
-                  :value="ord.id"
-                >
-                  Aplicar solo al pedido {{ ord.orderNumber }} (Saldo: {{ formatCurrency(ord.calculatedPending ?? ord.pendingAmount) }})
-                </option>
-              </select>
             </div>
 
             <!-- Notas Adicionales -->

@@ -429,20 +429,16 @@ function handleSmartWhatsApp(customer: CustomerItem) {
             <span>Crear Pedido</span>
           </button>
 
-          <!-- Botón Cobrar Pedidos con Deuda -->
+          <!-- Botón Cobrar Pedidos con Deuda (Solo si tiene deuda) -->
           <button
+            v-if="c.deliveredPendingDebt > 0"
             type="button"
             @click="handleOpenCollectDebt(c)"
-            class="inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-bold transition-all active:scale-95"
-            :class="
-              c.deliveredPendingDebt > 0
-                ? 'bg-amber-500 hover:bg-amber-600 text-white font-black shadow-xs ring-2 ring-amber-500/20'
-                : 'border border-surface-light-border bg-surface-light-canvas text-slate-600 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800'
-            "
-            :title="c.deliveredPendingDebt > 0 ? `Cobrar ${formatCurrency(c.deliveredPendingDebt)} de deuda de este cliente` : 'Registrar abono / cobro a este cliente'"
+            class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 px-3 py-2 text-xs font-black text-white shadow-xs transition-transform active:scale-95 ring-2 ring-amber-500/20"
+            :title="`Cobrar ${formatCurrency(c.deliveredPendingDebt)} de deuda de este cliente`"
           >
             <Receipt class="h-3.5 w-3.5 stroke-[2.5]" />
-            <span>{{ c.deliveredPendingDebt > 0 ? `Cobrar (${formatCurrency(c.deliveredPendingDebt)})` : 'Cobrar' }}</span>
+            <span>Cobrar ({{ formatCurrency(c.deliveredPendingDebt) }})</span>
           </button>
 
           <!-- Botón de WhatsApp Inteligente -->
