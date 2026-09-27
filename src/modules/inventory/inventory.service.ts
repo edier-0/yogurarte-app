@@ -7,6 +7,7 @@ import {
 import {
   AdjustStockInput,
   AdjustmentsQueryInput,
+  InventoryMovementsQueryInput,
   CreateMaterialInput,
   CreatePurchaseInput,
   MaterialsQueryInput,
@@ -15,12 +16,14 @@ import {
   UpdatePurchaseInput,
 } from './inventory.schema.js';
 
+import { createPreparation } from '../preparations/preparations.service.js';
+
 // ============================================================================
 // 1. GESTIÓN DE MATERIAS PRIMAS E INSUMOS (RAW MATERIALS)
 // ============================================================================
 
 /**
- * Obtener listado de insumos enriquecidos con alerta de bajo stock
+ * Obtener listado de insumos enriquecidos con alerta de bajo stock y recetas
  */
 export const getMaterials = async (query: MaterialsQueryInput) => {
   const { includeInactive, search, category, page, limit, paginate } = query;
@@ -51,6 +54,22 @@ export const getMaterials = async (query: MaterialsQueryInput) => {
 
   const materials = await prisma.rawMaterial.findMany({
     where: whereClause,
+    include: {
+      recipeIngredients: {
+        include: {
+          ingredient: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              unit: true,
+              avgCost: true,
+              currentStock: true,
+            },
+          },
+        },
+      },
+    },
     orderBy: { category: 'asc' },
     skip: isPaginated ? (pageNum - 1) * limitNum : undefined,
     take: limitNum,
@@ -64,6 +83,7 @@ export const getMaterials = async (query: MaterialsQueryInput) => {
   if (isPaginated) {
     return {
       items: materialsWithAlert,
+      data: materialsWithAlert,
       pagination: {
         totalItems,
         totalPages,
@@ -77,10 +97,21 @@ export const getMaterials = async (query: MaterialsQueryInput) => {
 };
 
 /**
- * Crear un nuevo insumo o materia prima con código normalizado
+ * Crear un nuevo insumo o materia prima (Simple o Compuesto por receta)
  */
 export const createMaterial = async (data: CreateMaterialInput) => {
-  const { code, name, category, unit, minStockAlert, avgCost, currentStock } = data;
+  const {
+    code,
+    name,
+    category,
+    unit,
+    minStockAlert,
+    avgCost,
+    currentStock,
+    isCompound,
+    recipeYield,
+    recipeIngredients,
+  } = data;
 
   if (!name || !unit) {
     throw new BadRequestError('El nombre y la unidad son obligatorios');
@@ -95,22 +126,67 @@ export const createMaterial = async (data: CreateMaterialInput) => {
         .replace(/[^A-Z0-9]/g, '_')
         .slice(0, 20);
 
+  const cleanYield = Number(recipeYield) > 0 ? Number(recipeYield) : 1;
+  let finalAvgCost = avgCost !== undefined ? Number(avgCost) : 0;
+
+  // Si es un insumo compuesto con receta, calcular el costo de fabricación automáticamente en base al PMP
+  if (isCompound && Array.isArray(recipeIngredients) && recipeIngredients.length > 0) {
+    let totalRecipeCost = 0;
+    for (const item of recipeIngredients) {
+      const ing = await prisma.rawMaterial.findUnique({
+        where: { id: Number(item.ingredientId) },
+      });
+      if (ing) {
+        let qty = Number(item.quantity);
+        const isIngKg = ing.unit.toLowerCase().includes('k') || ing.unit.toLowerCase().includes('kg');
+        const isItemGram =
+          (item.unit || '').toLowerCase().includes('g') && !(item.unit || '').toLowerCase().includes('k');
+        if (isIngKg && isItemGram) {
+          qty = qty / 1000;
+        } else if (!isIngKg && (item.unit || '').toLowerCase().includes('k')) {
+          qty = qty * 1000;
+        }
+        totalRecipeCost += qty * ing.avgCost;
+      }
+    }
+    finalAvgCost = Math.round(totalRecipeCost / cleanYield);
+  }
+
   return prisma.rawMaterial.create({
     data: {
       code: generatedCode,
       name: name.trim(),
-      category: category || 'INSUMO',
+      category: category || (isCompound ? 'INSUMO' : 'MATERIA_PRIMA'),
       unit: unit.trim(),
       minStockAlert: minStockAlert !== undefined ? Number(minStockAlert) : 10,
-      avgCost: avgCost !== undefined ? Number(avgCost) : 0,
+      avgCost: finalAvgCost,
       currentStock: currentStock !== undefined ? Number(currentStock) : 0,
+      isCompound: Boolean(isCompound),
+      recipeYield: cleanYield,
       isActive: true,
+      recipeIngredients:
+        isCompound && Array.isArray(recipeIngredients) && recipeIngredients.length > 0
+          ? {
+              create: recipeIngredients.map((item) => ({
+                ingredientId: Number(item.ingredientId),
+                quantity: Number(item.quantity),
+                unit: item.unit || 'Kilogramos',
+              })),
+            }
+          : undefined,
+    },
+    include: {
+      recipeIngredients: {
+        include: {
+          ingredient: true,
+        },
+      },
     },
   });
 };
 
 /**
- * Actualizar datos de un insumo existente
+ * Actualizar datos de un insumo existente (incluyendo receta compuesta)
  */
 export const updateMaterial = async (id: number, data: UpdateMaterialInput) => {
   const existing = await prisma.rawMaterial.findUnique({
@@ -121,18 +197,132 @@ export const updateMaterial = async (id: number, data: UpdateMaterialInput) => {
     throw new NotFoundError('Insumo no encontrado');
   }
 
-  const { name, category, unit, minStockAlert, avgCost, currentStock } = data;
+  const {
+    name,
+    category,
+    unit,
+    minStockAlert,
+    avgCost,
+    currentStock,
+    isCompound,
+    recipeYield,
+    recipeIngredients,
+  } = data;
 
-  return prisma.rawMaterial.update({
+  const cleanYield = Number(recipeYield) > 0 ? Number(recipeYield) : (existing.recipeYield || 1);
+  let finalAvgCost = avgCost !== undefined ? Number(avgCost) : existing.avgCost;
+
+  if (isCompound && Array.isArray(recipeIngredients) && recipeIngredients.length > 0) {
+    let totalRecipeCost = 0;
+    for (const item of recipeIngredients) {
+      const ing = await prisma.rawMaterial.findUnique({
+        where: { id: Number(item.ingredientId) },
+      });
+      if (ing) {
+        let qty = Number(item.quantity);
+        const isIngKg = ing.unit.toLowerCase().includes('k') || ing.unit.toLowerCase().includes('kg');
+        const isItemGram =
+          (item.unit || '').toLowerCase().includes('g') && !(item.unit || '').toLowerCase().includes('k');
+        if (isIngKg && isItemGram) {
+          qty = qty / 1000;
+        } else if (!isIngKg && (item.unit || '').toLowerCase().includes('k')) {
+          qty = qty * 1000;
+        }
+        totalRecipeCost += qty * ing.avgCost;
+      }
+    }
+    finalAvgCost = Math.round(totalRecipeCost / cleanYield);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    if (isCompound !== undefined && Array.isArray(recipeIngredients)) {
+      await tx.compoundRecipeItem.deleteMany({
+        where: { compoundMaterialId: id },
+      });
+
+      if (recipeIngredients.length > 0) {
+        await tx.compoundRecipeItem.createMany({
+          data: recipeIngredients.map((item) => ({
+            compoundMaterialId: id,
+            ingredientId: Number(item.ingredientId),
+            quantity: Number(item.quantity),
+            unit: item.unit || 'Kilogramos',
+          })),
+        });
+      }
+    }
+
+    return tx.rawMaterial.update({
+      where: { id },
+      data: {
+        name: name ? name.trim() : undefined,
+        category: category ? category : undefined,
+        unit: unit ? unit.trim() : undefined,
+        minStockAlert: minStockAlert !== undefined ? Number(minStockAlert) : undefined,
+        avgCost: finalAvgCost,
+        currentStock: currentStock !== undefined ? Number(currentStock) : undefined,
+        isCompound: isCompound !== undefined ? Boolean(isCompound) : undefined,
+        recipeYield: recipeYield !== undefined ? cleanYield : undefined,
+      },
+      include: {
+        recipeIngredients: {
+          include: {
+            ingredient: true,
+          },
+        },
+      },
+    });
+  });
+};
+
+/**
+ * Fabricación o preparación interna de un insumo compuesto
+ * Descuenta ingredientes del inventario, suma stock producido y actualiza PMP.
+ * REGLA CONTABLE: NO genera movimiento de egreso en Caja/Gastos.
+ */
+export const prepareCompoundMaterial = async (id: number, data: any) => {
+  const { quantityToProduce, preparationDate, notes, registeredBy } = data;
+  const producedQty = Number(quantityToProduce);
+  if (!producedQty || producedQty <= 0) {
+    throw new BadRequestError('La cantidad a preparar debe ser mayor a 0');
+  }
+
+  const compoundMaterial = await prisma.rawMaterial.findUnique({
     where: { id },
-    data: {
-      name: name ? name.trim() : undefined,
-      category: category ? category : undefined,
-      unit: unit ? unit.trim() : undefined,
-      minStockAlert: minStockAlert !== undefined ? Number(minStockAlert) : undefined,
-      avgCost: avgCost !== undefined ? Number(avgCost) : undefined,
-      currentStock: currentStock !== undefined ? Number(currentStock) : undefined,
+    include: {
+      recipeIngredients: {
+        include: {
+          ingredient: true,
+        },
+      },
     },
+  });
+
+  if (!compoundMaterial) {
+    throw new NotFoundError('Insumo no encontrado');
+  }
+
+  if (!compoundMaterial.isCompound || compoundMaterial.recipeIngredients.length === 0) {
+    throw new BadRequestError('Este insumo no tiene una receta de fabricación configurada');
+  }
+
+  const baseYield = compoundMaterial.recipeYield || 1;
+  const ratio = producedQty / baseYield;
+
+  const ingredients = compoundMaterial.recipeIngredients.map((ri) => ({
+    rawMaterialId: ri.ingredientId,
+    quantityUsed: ri.quantity * ratio,
+    unitUsed: ri.unit,
+  }));
+
+  return createPreparation({
+    outputMaterialId: compoundMaterial.id,
+    quantityProduced: producedQty,
+    unit: compoundMaterial.unit,
+    preparationDate,
+    notes: notes || `Fabricación interna de ${compoundMaterial.name}`,
+    registeredBy,
+    ingredients,
   });
 };
 
@@ -174,6 +364,8 @@ export const createPurchase = async (data: CreatePurchaseInput) => {
     paymentMethod,
     notes,
     registeredBy,
+    registerExpense,
+    expenseCategory,
   } = data;
 
   const parsedQty = Number(quantity);
@@ -239,7 +431,31 @@ export const createPurchase = async (data: CreatePurchaseInput) => {
       },
     });
 
-    return purchase;
+    let expense = null;
+    if (registerExpense) {
+      expense = await tx.expense.create({
+        data: {
+          category: expenseCategory || 'INSUMOS_EXTRA',
+          description: `Compra de ${material.name} (${parsedQty} ${material.unit}) - Prov: ${supplier ? supplier.trim() : 'Varios'}`,
+          amount: Math.round(parsedTotalCost),
+          expenseDate: dateObj,
+          paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
+          notes: notes ? notes.trim() : null,
+          registeredBy: registeredBy || 'Edier',
+        },
+      });
+    }
+
+    return {
+      ...purchase,
+      expense,
+      material: {
+        id: material.id,
+        name: material.name,
+        currentStock: newStock,
+        avgCost: newAvgCost,
+      },
+    };
   });
 };
 
@@ -451,7 +667,10 @@ export const adjustStock = async (id: number, data: AdjustStockInput) => {
  * Obtener historial de ajustes físicos de inventario
  */
 export const getAdjustmentsHistory = async (query: AdjustmentsQueryInput) => {
-  const { startDate, endDate, rawMaterialId, type } = query;
+  const { startDate, endDate, rawMaterialId, type, search, paginate } = query;
+  const pageNum = Math.max(1, Number(query.page) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number(query.limit) || 10));
+  const skip = (pageNum - 1) * limitNum;
 
   const whereClause: any = {};
 
@@ -461,6 +680,15 @@ export const getAdjustmentsHistory = async (query: AdjustmentsQueryInput) => {
 
   if (type) {
     whereClause.type = String(type).trim();
+  }
+
+  if (search && search.trim()) {
+    const q = search.trim();
+    whereClause.OR = [
+      { reason: { contains: q, mode: 'insensitive' } },
+      { registeredBy: { contains: q, mode: 'insensitive' } },
+      { rawMaterial: { name: { contains: q, mode: 'insensitive' } } },
+    ];
   }
 
   if (startDate || endDate) {
@@ -473,22 +701,127 @@ export const getAdjustmentsHistory = async (query: AdjustmentsQueryInput) => {
     }
   }
 
-  return prisma.inventoryAdjustment.findMany({
-    where: whereClause,
-    include: {
-      rawMaterial: {
-        select: {
-          name: true,
-          unit: true,
-          category: true,
-          code: true,
+  const [total, items] = await Promise.all([
+    prisma.inventoryAdjustment.count({ where: whereClause }),
+    prisma.inventoryAdjustment.findMany({
+      where: whereClause,
+      include: {
+        rawMaterial: {
+          select: {
+            id: true,
+            name: true,
+            unit: true,
+            category: true,
+            code: true,
+            currentStock: true,
+            avgCost: true,
+          },
         },
       },
-    },
-    orderBy: { adjustmentDate: 'desc' },
-    take: 150,
-  });
+      orderBy: { adjustmentDate: 'desc' },
+      skip,
+      take: limitNum,
+    }),
+  ]);
+
+  const totalPages = Math.ceil(total / limitNum) || 1;
+
+  if (paginate === true) {
+    return {
+      data: items,
+      items,
+      pagination: {
+        total,
+        totalItems: total,
+        page: pageNum,
+        currentPage: pageNum,
+        limit: limitNum,
+        totalPages,
+      },
+    };
+  }
+
+  return items;
 };
+
+/**
+ * Obtener historial de movimientos de inventario / Kardex (Paginado estricto a 10 por defecto)
+ * Endpoint: GET /api/inventory/movements?rawMaterialId=X&page=1&limit=10
+ */
+export const getInventoryMovements = async (query: InventoryMovementsQueryInput) => {
+  const { startDate, endDate, rawMaterialId, type, search } = query;
+  const pageNum = Math.max(1, Number(query.page) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number(query.limit) || 10));
+  const skip = (pageNum - 1) * limitNum;
+
+  const whereClause: any = {};
+
+  if (rawMaterialId) {
+    whereClause.rawMaterialId = Number(rawMaterialId);
+  }
+
+  if (type) {
+    whereClause.type = String(type).trim();
+  }
+
+  if (search && search.trim()) {
+    const q = search.trim();
+    whereClause.OR = [
+      { reason: { contains: q, mode: 'insensitive' } },
+      { registeredBy: { contains: q, mode: 'insensitive' } },
+      { rawMaterial: { name: { contains: q, mode: 'insensitive' } } },
+    ];
+  }
+
+  if (startDate || endDate) {
+    whereClause.adjustmentDate = {};
+    if (startDate && typeof startDate === 'string') {
+      whereClause.adjustmentDate.gte = new Date(`${startDate.split('T')[0]}T00:00:00.000Z`);
+    }
+    if (endDate && typeof endDate === 'string') {
+      whereClause.adjustmentDate.lte = new Date(`${endDate.split('T')[0]}T23:59:59.999Z`);
+    }
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.inventoryAdjustment.count({ where: whereClause }),
+    prisma.inventoryAdjustment.findMany({
+      where: whereClause,
+      include: {
+        rawMaterial: {
+          select: {
+            id: true,
+            name: true,
+            unit: true,
+            category: true,
+            code: true,
+            currentStock: true,
+            avgCost: true,
+          },
+        },
+      },
+      orderBy: { adjustmentDate: 'desc' },
+      skip,
+      take: limitNum,
+    }),
+  ]);
+
+  const totalPages = Math.ceil(total / limitNum) || 1;
+
+  return {
+    data: items,
+    items,
+    pagination: {
+      total,
+      totalItems: total,
+      page: pageNum,
+      currentPage: pageNum,
+      limit: limitNum,
+      totalPages,
+    },
+  };
+};
+
 
 /**
  * Eliminar ajuste de inventario y restaurar stock anterior ($transaction)

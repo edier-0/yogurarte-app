@@ -4,6 +4,12 @@ import { z } from 'zod';
 // 1. INSUMOS Y MATERIAS PRIMAS (RAW MATERIALS)
 // ==========================================
 
+export const recipeIngredientItemSchema = z.object({
+  ingredientId: z.coerce.number().int().positive('ID de ingrediente inválido'),
+  quantity: z.coerce.number().positive('La cantidad requerida debe ser mayor a 0'),
+  unit: z.string().optional().default('Kilogramos'),
+});
+
 export const createMaterialSchema = z.object({
   code: z.string().optional(),
   name: z.string().min(1, 'El nombre del insumo es obligatorio'),
@@ -12,6 +18,9 @@ export const createMaterialSchema = z.object({
   minStockAlert: z.coerce.number().min(0).optional().default(10),
   avgCost: z.coerce.number().min(0).optional().default(0),
   currentStock: z.coerce.number().min(0).optional().default(0),
+  isCompound: z.boolean().optional().default(false),
+  recipeYield: z.coerce.number().positive().optional().default(1),
+  recipeIngredients: z.array(recipeIngredientItemSchema).optional(),
 });
 
 export const updateMaterialSchema = z.object({
@@ -21,7 +30,20 @@ export const updateMaterialSchema = z.object({
   minStockAlert: z.coerce.number().min(0).optional(),
   avgCost: z.coerce.number().min(0).optional(),
   currentStock: z.coerce.number().min(0).optional(),
+  isCompound: z.boolean().optional(),
+  recipeYield: z.coerce.number().positive().optional(),
+  recipeIngredients: z.array(recipeIngredientItemSchema).optional(),
 });
+
+export const prepareCompoundSchema = z.object({
+  quantityToProduce: z.coerce.number().positive('La cantidad a preparar debe ser mayor a 0'),
+  preparationDate: z.string().optional(),
+  notes: z.string().optional().nullable(),
+  registeredBy: z.string().optional(),
+});
+
+export type RecipeIngredientItemInput = z.infer<typeof recipeIngredientItemSchema>;
+export type PrepareCompoundInput = z.infer<typeof prepareCompoundSchema>;
 
 export const materialsQuerySchema = z.object({
   includeInactive: z.string().optional(),
@@ -50,6 +72,21 @@ export const adjustmentsQuerySchema = z.object({
   type: z.string().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
+  search: z.string().optional(),
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().optional().default(10),
+  paginate: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
+});
+
+export const inventoryMovementsQuerySchema = z.object({
+  rawMaterialId: z.string().optional(),
+  type: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  search: z.string().optional(),
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().optional().default(10),
+  paginate: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
 });
 
 // ==========================================
@@ -58,7 +95,7 @@ export const adjustmentsQuerySchema = z.object({
 
 export const createPurchaseSchema = z.object({
   rawMaterialId: z.coerce.number().int().positive('ID de insumo inválido'),
-  quantity: z.coerce.number().positive('La cantidad debe ser mayor a 0'),
+  quantity: z.coerce.number().min(0, 'La cantidad no puede ser negativa'),
   unitCost: z.coerce.number().min(0).optional(),
   totalCost: z.coerce.number().min(0).optional(),
   supplier: z.string().optional().nullable(),
@@ -66,12 +103,14 @@ export const createPurchaseSchema = z.object({
   paymentMethod: z.string().optional().default('EFECTIVO'),
   notes: z.string().optional().nullable(),
   registeredBy: z.string().optional(),
+  registerExpense: z.boolean().optional().default(false),
+  expenseCategory: z.string().optional().default('INSUMOS_EXTRA'),
 });
 
 export const updatePurchaseSchema = z.object({
   supplier: z.string().optional().nullable(),
   invoiceNumber: z.string().optional().nullable(),
-  quantity: z.coerce.number().positive().optional(),
+  quantity: z.coerce.number().min(0).optional(),
   unitCost: z.coerce.number().min(0).optional(),
   totalCost: z.coerce.number().min(0).optional(),
   purchaseDate: z.string().optional(),
@@ -83,6 +122,9 @@ export const purchasesQuerySchema = z.object({
   rawMaterialId: z.string().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().optional().default(10),
+  paginate: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
 });
 
 // ==========================================
@@ -95,6 +137,7 @@ export type MaterialsQueryInput = z.infer<typeof materialsQuerySchema>;
 
 export type AdjustStockInput = z.infer<typeof adjustStockSchema>;
 export type AdjustmentsQueryInput = z.infer<typeof adjustmentsQuerySchema>;
+export type InventoryMovementsQueryInput = z.infer<typeof inventoryMovementsQuerySchema>;
 
 export type CreatePurchaseInput = z.infer<typeof createPurchaseSchema>;
 export type UpdatePurchaseInput = z.infer<typeof updatePurchaseSchema>;

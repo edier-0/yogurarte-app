@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as ordersController from './orders.controller.js';
-import { validateBody, validateParams } from '../../shared/middlewares/validate.middleware.js';
+import { validateBody, validateParams, validateQuery } from '../../shared/middlewares/validate.middleware.js';
 import {
   createOrderSchema,
   updateOrderSchema,
@@ -8,12 +8,15 @@ import {
   updateDeliveryStatusSchema,
   addOrderPaymentSchema,
   updateOrderPaymentSchema,
+  ordersMetricsQuerySchema,
 } from './orders.schema.js';
 import { idParamSchema, orderPaymentParamsSchema } from '../../schemas/common.schema.js';
 
 const router = Router();
 
 router.get('/', ordersController.getOrders);
+router.get('/metrics', validateQuery(ordersMetricsQuerySchema), ordersController.getOrdersMetrics);
+router.get('/summary', validateQuery(ordersMetricsQuerySchema), ordersController.getOrdersMetrics);
 router.get('/:id', validateParams(idParamSchema), ordersController.getOrderById);
 router.get('/:id/whatsapp', validateParams(idParamSchema), ordersController.getWhatsAppLink);
 router.post('/reschedule-overdue', ordersController.rescheduleOverdueOrders);

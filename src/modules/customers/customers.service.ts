@@ -228,12 +228,14 @@ export const getCustomers = async (query: CustomersQueryInput) => {
     }
   }
 
-  const isPaginated = query.page !== undefined || query.paginate === 'true';
+  const isPaginated = query.paginate !== 'false' && (query.page !== undefined || query.paginate === 'true' || query.limit !== undefined);
   const pageNum = Math.max(1, Number(query.page) || 1);
-  const limitNum = Math.min(100, Math.max(1, Number(query.limit) || (isPaginated ? 20 : 500)));
+  const limitNum = isPaginated
+    ? Math.min(100, Math.max(1, Number(query.limit) || 12))
+    : (query.limit ? Math.min(1000, Number(query.limit)) : undefined);
 
   const totalItems = await prisma.customer.count({ where: whereClause });
-  const totalPages = Math.ceil(totalItems / limitNum) || 1;
+  const totalPages = isPaginated && limitNum ? Math.ceil(totalItems / limitNum) : 1;
 
   const customers = await prisma.customer.findMany({
     where: whereClause,
@@ -263,8 +265,8 @@ export const getCustomers = async (query: CustomersQueryInput) => {
       },
     },
     orderBy: { fullName: 'asc' },
-    skip: isPaginated ? (pageNum - 1) * limitNum : undefined,
-    take: limitNum,
+    skip: isPaginated && limitNum ? (pageNum - 1) * limitNum : undefined,
+    take: isPaginated ? limitNum : (query.limit ? Number(query.limit) : undefined),
   });
 
   const customersWithStats = customers.map((c) => {
@@ -352,10 +354,13 @@ export const getCustomers = async (query: CustomersQueryInput) => {
 
   if (isPaginated) {
     return {
+      data: customersWithStats,
       items: customersWithStats,
       pagination: {
+        total: totalItems,
         totalItems,
         totalPages,
+        page: pageNum,
         currentPage: pageNum,
         limit: limitNum,
       },

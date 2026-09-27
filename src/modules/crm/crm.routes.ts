@@ -9,6 +9,8 @@ import {
   markAsRead,
   updateConversationTag,
   linkCustomer,
+  mergeChats,
+  unlinkChat,
   getLoyaltyOverview,
   redeemLoyaltyReward,
   getRecurringSchedules,
@@ -32,6 +34,8 @@ import { idParamSchema } from '../../schemas/common.schema.js';
 import {
   sendCrmMessageSchema,
   linkCustomerSchema,
+  mergeChatSchema,
+  unlinkChatSchema,
   updateConversationTagSchema,
   createRecurringScheduleSchema,
   updateRecurringScheduleSchema,
@@ -79,6 +83,10 @@ router.post(
   validateBody(linkCustomerSchema),
   linkCustomer
 );
+router.post('/chats/merge', validateBody(mergeChatSchema), mergeChats);
+router.post('/conversations/merge', validateBody(mergeChatSchema), mergeChats);
+router.post('/chats/unlink', validateBody(unlinkChatSchema), unlinkChat);
+router.post('/conversations/unlink', validateBody(unlinkChatSchema), unlinkChat);
 router.post('/send', crmSendLimiter, validateBody(sendCrmMessageSchema), sendMessage);
 
 // ==========================================

@@ -53,6 +53,8 @@ model RawMaterial {
   currentStock               Float                   @default(0)
   minStockAlert              Float                   @default(10)
   avgCost                    Float                   @default(0)
+  isCompound                 Boolean                 @default(false)
+  recipeYield                Float?                  @default(1)
   isActive                   Boolean                 @default(true)
   createdAt                  DateTime                @default(now())
   updatedAt                  DateTime                @updatedAt
@@ -61,10 +63,28 @@ model RawMaterial {
   supplyPreparationsOutput   SupplyPreparation[]     @relation("OutputMaterial")
   supplyPreparationsUsed     SupplyPreparationItem[] @relation("IngredientMaterial")
   adjustments                InventoryAdjustment[]
+  packagingUsages            BatchPackagingItem[]
+  recipeIngredients          CompoundRecipeItem[]    @relation("CompoundMaterial")
+  usedInRecipes              CompoundRecipeItem[]    @relation("IngredientMaterial")
 
   @@index([category])
+  @@index([isCompound])
   @@index([isActive])
   @@index([isActive, category])
+}
+
+model CompoundRecipeItem {
+  id                 Int         @id @default(autoincrement())
+  compoundMaterialId Int
+  compoundMaterial   RawMaterial @relation("CompoundMaterial", fields: [compoundMaterialId], references: [id], onDelete: Cascade)
+  ingredientId       Int
+  ingredient         RawMaterial @relation("IngredientMaterial", fields: [ingredientId], references: [id])
+  quantity           Float       // Cantidad requerida para el lote base de la receta
+  unit               String      @default("Kilogramos")
+  createdAt          DateTime    @default(now())
+
+  @@index([compoundMaterialId])
+  @@index([ingredientId])
 }
 
 model SupplyPreparation {
@@ -158,7 +178,12 @@ model ProductionBatch {
   flavor              String            @default("Natural")
   price1L             Float             @default(12000)
   price2L             Float             @default(24000)
-  status              String            @default("COMPLETADO") // COMPLETADO, AGOTADO, EN_FERMENTACION, DESCARTADO
+  status              String            @default("COMPLETADO") // COMPLETADO, AGOTADO, EN_FERMENTACION, DESCARTADO, DISPONIBLE
+  cultureType         String?
+  fermentationHours   Float?            @default(8)
+  initialSugarGrams   Float?            @default(0)
+  powderedMilkGrams   Float?            @default(0)
+  packagedLiters      Float             @default(0)
   preparationDate     DateTime          @default(now())
   expirationDate      DateTime?
   totalCost           Float             @default(0)
@@ -173,6 +198,7 @@ model ProductionBatch {
   orders              Order[]
   orderItems          OrderItem[]
   discharges          BatchDischarge[]
+  packagings          BatchPackaging[]
 
   @@index([preparationDate])
   @@index([flavor])
@@ -182,10 +208,63 @@ model ProductionBatch {
   @@index([isActive, preparationDate])
 }
 
+model BatchPackaging {
+  id                 Int              @id @default(autoincrement())
+  packagingCode      String?
+  batchId            Int
+  batch              ProductionBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  flavor             String
+  bottles1L          Int                  @default(0)
+  bottles2L          Int                  @default(0)
+  totalLiters        Float
+  price1L            Float?               @default(12000)
+  price2L            Float?               @default(24000)
+  bottle1LRawMaterialId Int?
+  bottle2LRawMaterialId Int?
+  labelRawMaterialId    Int?
+  labelQuantity         Float?           @default(0)
+  fruitRawMaterialId Int?
+  fruitQuantityUsed  Float?           @default(0)
+  fruitUnitCost      Float?           @default(0)
+  packagingCost      Float            @default(0)
+  notes              String?
+  packagedBy         String?          @default("Edier")
+  packagedAt         DateTime         @default(now())
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @default(now()) @updatedAt
+  containers         Json?
+  itemsUsed          BatchPackagingItem[]
+  orderItems         OrderItem[]
+  discharges         BatchDischarge[]
+
+  @@index([batchId])
+  @@index([flavor])
+  @@index([packagedAt])
+}
+
+model BatchPackagingItem {
+  id             Int            @id @default(autoincrement())
+  packagingId    Int
+  packaging      BatchPackaging @relation(fields: [packagingId], references: [id], onDelete: Cascade)
+  rawMaterialId  Int
+  rawMaterial    RawMaterial    @relation(fields: [rawMaterialId], references: [id])
+  quantityUsed   Float
+  unitCost       Float          @default(0)
+  totalCost      Float          @default(0)
+  dosagePerLiter Float?
+  dosageUnit     String?
+  createdAt      DateTime       @default(now())
+
+  @@index([packagingId])
+  @@index([rawMaterialId])
+}
+
 model BatchDischarge {
   id             Int              @id @default(autoincrement())
   batchId        Int
   batch          ProductionBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  packagingId    Int?
+  packaging      BatchPackaging?  @relation(fields: [packagingId], references: [id], onDelete: SetNull)
   bottleSize     String           @default("1L") // 1L, 2L, OTRA
   quantityBottles Int             @default(1)
   totalLiters    Float            // ej: 1.0, 2.0
@@ -202,6 +281,7 @@ model BatchDischarge {
   updatedAt      DateTime         @default(now()) @updatedAt
 
   @@index([batchId])
+  @@index([packagingId])
   @@index([dischargeDate])
   @@index([reasonType])
   @@index([staffMemberId])
@@ -292,6 +372,8 @@ model OrderItem {
   order         Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
   batchId       Int?
   batch         ProductionBatch? @relation(fields: [batchId], references: [id])
+  packagingId   Int?
+  packaging     BatchPackaging?  @relation(fields: [packagingId], references: [id], onDelete: SetNull)
   bottleSize    String           @default("1L") // 1L, 2L
   flavor        String           @default("Natural")
   quantity      Int              @default(1)
@@ -303,6 +385,7 @@ model OrderItem {
 
   @@index([orderId])
   @@index([batchId])
+  @@index([packagingId])
 }
 
 model Expense {
@@ -312,6 +395,7 @@ model Expense {
   amount        Float
   expenseDate   DateTime @default(now())
   paymentMethod String   @default("EFECTIVO") // EFECTIVO, TRANSFERENCIA, NEQUI, BANCOLOMBIA
+  supplier      String?
   notes         String?
   registeredBy  String?
   createdAt     DateTime @default(now())
@@ -395,7 +479,7 @@ model CreditObligation {
   initialPayment    Float           @default(0) // Cuota inicial pagada de contado
   remainingBalance  Float           // Saldo pendiente por pagar
   paymentType       String          @default("CUOTAS_FIJAS") // CUOTAS_FIJAS, ABONOS_LIBRES
-  frequency         String          @default("MENSUAL") // DIARIA, SEMANAL, QUINCENAL, MENSUAL, LIBRE
+  frequency         String          @default("MENSUAL") // DIARIA, SEMANAL, QUINCENAL, MENSUAL, LIBRE, FLEXIBLE
   installmentAmount Float           @default(0) // Valor sugerido de cuota periódica
   totalInstallments Int?            // Número total de cuotas acordadas
   paidInstallments  Int             @default(0) // Cuotas/abonos realizados
@@ -535,6 +619,17 @@ model CrmQuickReply {
   updatedAt DateTime @default(now()) @updatedAt
 
   @@index([category])
+}
+
+model ProductFlavor {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([isActive])
+  @@index([name])
 }
 
 

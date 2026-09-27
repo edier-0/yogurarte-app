@@ -17,6 +17,30 @@ import { usePrismaAuthState, clearPrismaAuthSession } from './whatsappAuth.servi
 
 export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED';
 
+/**
+ * Normaliza números y JIDs de Colombia para prevenir bifurcación de chats en WhatsApp.
+ * Si WhatsApp reporta formato '5793XXXXXXXX' (13 dígitos con el prefijo '9' de telefonía móvil),
+ * lo normaliza al estándar canónico '573XXXXXXXX' (12 dígitos).
+ */
+export function normalizeColombianJid(jidOrPhone: string): string {
+  if (!jidOrPhone) return jidOrPhone;
+  const str = jidOrPhone.trim();
+  if (str.includes('@')) {
+    const parts = str.split('@');
+    const rawUser = parts[0];
+    const domain = parts.slice(1).join('@');
+    const [userNumber, device] = rawUser.split(':');
+    const normalizedUser = userNumber.replace(/^579(3\d{9})$/, '57$1');
+    const fullUser = device ? `${normalizedUser}:${device}` : normalizedUser;
+    return `${fullUser}@${domain}`;
+  }
+  const digits = str.replace(/\D/g, '');
+  if (/^579(3\d{9})$/.test(digits)) {
+    return digits.replace(/^579(3\d{9})$/, '57$1');
+  }
+  return str;
+}
+
 class WhatsAppService {
   private sock: WASocket | null = null;
   public io: SocketIOServer | null = null;
@@ -24,8 +48,22 @@ class WhatsAppService {
   private qrCodeDataUrl: string | null = null;
   private isInitializing: boolean = false;
   private reconnectAttempts: number = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS: number = 5;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private connectionStableTimeout: NodeJS.Timeout | null = null;
 
   constructor() {}
+
+  private clearTimers() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.connectionStableTimeout) {
+      clearTimeout(this.connectionStableTimeout);
+      this.connectionStableTimeout = null;
+    }
+  }
 
   public setSocketServer(io: SocketIOServer) {
     this.io = io;
@@ -51,6 +89,7 @@ class WhatsAppService {
 
   public async init() {
     if (this.isInitializing) return;
+    this.clearTimers();
     this.isInitializing = true;
     this.status = 'CONNECTING';
     this.broadcastStatus();
@@ -106,35 +145,57 @@ class WhatsAppService {
         }
 
         if (connection === 'close') {
+          this.clearTimers();
           const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+          const isTerminalError =
+            statusCode === DisconnectReason.loggedOut ||          // 401
+            statusCode === DisconnectReason.connectionReplaced || // 440
+            statusCode === DisconnectReason.multideviceMismatch ||// 411
+            statusCode === DisconnectReason.badSession;           // 500
 
-          console.log(`⚠️ Conexión de WhatsApp cerrada. Código: ${statusCode}. Reconectar: ${shouldReconnect}`);
+          console.log(`⚠️ Conexión de WhatsApp cerrada. Código: ${statusCode}. Terminal: ${isTerminalError}`);
           this.status = 'DISCONNECTED';
           this.qrCodeDataUrl = null;
+          this.sock = null;
+          this.isInitializing = false;
           this.broadcastStatus();
 
-          if (statusCode === DisconnectReason.loggedOut) {
-            console.log('🚪 Sesión cerrada por el usuario. Limpiando credenciales de Neon DB...');
+          if (isTerminalError) {
+            console.log(`🚪 Sesión terminada/revocada (Código ${statusCode}). Purgando credenciales de Neon DB...`);
             await this.clearAuthData();
-            this.isInitializing = false;
-            setTimeout(() => this.init(), 2000);
-          } else if (shouldReconnect) {
-            this.reconnectAttempts++;
-            const delay = Math.min(10000, 2000 * this.reconnectAttempts);
-            console.log(`🔄 Reintentando conexión a WhatsApp en ${delay / 1000}s (Intento ${this.reconnectAttempts})...`);
-            this.isInitializing = false;
-            setTimeout(() => this.init(), delay);
+            this.reconnectAttempts = 0;
+            // Detener por completo la reconexión automática
           } else {
-            this.isInitializing = false;
+            // Errores transitorios de red (408, 515, 428, etc.)
+            this.reconnectAttempts++;
+            if (this.reconnectAttempts > this.MAX_RECONNECT_ATTEMPTS) {
+              console.warn(`🛑 Límite máximo de ${this.MAX_RECONNECT_ATTEMPTS} reintentos de reconexión alcanzado. Purgando credenciales y deteniendo reconexión.`);
+              await this.clearAuthData();
+              this.reconnectAttempts = 0;
+              this.broadcastStatus();
+            } else {
+              const delay = Math.min(15000, 2000 * this.reconnectAttempts);
+              console.log(`🔄 Reintentando conexión a WhatsApp en ${delay / 1000}s (Intento ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})...`);
+              this.reconnectTimeout = setTimeout(() => {
+                this.init().catch((err) => console.error('Error en reintento de conexión WhatsApp:', err));
+              }, delay);
+            }
           }
         } else if (connection === 'open') {
           console.log(`✅ ¡WhatsApp de YogurArte conectado exitosamente! Usuario: ${this.sock?.user?.id}`);
           this.status = 'CONNECTED';
           this.qrCodeDataUrl = null;
-          this.reconnectAttempts = 0;
           this.isInitializing = false;
           this.broadcastStatus();
+
+          // Estabilización: solo tras 15 segundos de conexión estable ininterrumpida se resetea el contador
+          if (this.connectionStableTimeout) {
+            clearTimeout(this.connectionStableTimeout);
+          }
+          this.connectionStableTimeout = setTimeout(() => {
+            console.log('📶 Conexión de WhatsApp estabilizada (15s activos). Contador de reintentos reseteado a 0.');
+            this.reconnectAttempts = 0;
+          }, 15000);
 
           // Limpiar/unificar chats duplicados por LID
           this.mergeDuplicateConversations().catch((e) => console.warn('Aviso merge chats:', e));
@@ -171,6 +232,9 @@ class WhatsAppService {
   }
 
   public async logout() {
+    this.clearTimers();
+    this.reconnectAttempts = 0;
+
     try {
       if (this.sock) {
         await this.sock.logout();
@@ -185,11 +249,12 @@ class WhatsAppService {
     this.isInitializing = false;
     this.broadcastStatus();
 
-    setTimeout(() => this.init(), 1500);
     return { success: true, message: 'Sesión de WhatsApp cerrada' };
   }
 
   public async refreshQR() {
+    this.clearTimers();
+
     try {
       if (this.sock) {
         try {
@@ -198,11 +263,10 @@ class WhatsAppService {
       }
     } catch (e) {}
 
-    // Limpiar claves incompletas previas si se fuerza nuevo QR
-    if (this.status !== 'CONNECTED') {
-      await this.clearAuthData();
-    }
+    // Forzar siempre la purga de credenciales obsoletas/huérfanas para generar nuevo QR
+    await this.clearAuthData();
 
+    this.reconnectAttempts = 0;
     this.status = 'CONNECTING';
     this.qrCodeDataUrl = null;
     this.sock = null;
@@ -241,10 +305,11 @@ class WhatsAppService {
    */
   private async processIncomingMessage(msg: WAMessage) {
     if (!msg.message) return;
-    const remoteJid = msg.key.remoteJid;
-    if (!remoteJid || remoteJid.includes('@broadcast') || remoteJid.includes('status@broadcast')) {
+    const rawRemoteJid = msg.key.remoteJid;
+    if (!rawRemoteJid || rawRemoteJid.includes('@broadcast') || rawRemoteJid.includes('status@broadcast')) {
       return;
     }
+    const remoteJid = normalizeColombianJid(rawRemoteJid);
 
     const fromMe = Boolean(msg.key.fromMe);
     const messageId = msg.key.id || `MSG-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -353,8 +418,8 @@ class WhatsAppService {
       ? new Date(Number(msg.messageTimestamp) * 1000)
       : new Date();
 
-    const rawNumber = remoteJid.split('@')[0];
-    const cleanNumber = rawNumber.replace(/\D/g, '');
+    const rawNumber = remoteJid.split('@')[0].split(':')[0];
+    const cleanNumber = normalizeColombianJid(rawNumber.replace(/\D/g, ''));
     const isLid = remoteJid.endsWith('@lid');
 
     // 1. Buscar si ya existe una conversación exactamente con este remoteJid
@@ -373,7 +438,7 @@ class WhatsAppService {
         if (lidRecord && lidRecord.value) {
           const parsed = JSON.parse(lidRecord.value);
           if (parsed && typeof parsed === 'string') {
-            mappedPhoneNumber = parsed.replace(/\D/g, '');
+            mappedPhoneNumber = normalizeColombianJid(parsed.replace(/\D/g, ''));
           }
         }
       } catch (e) {
@@ -494,11 +559,12 @@ class WhatsAppService {
       }
     }
 
-    const effectivePhone =
+    const effectivePhone = normalizeColombianJid(
       matchingCustomer?.phone?.replace(/\D/g, '') ||
       phoneToSearch ||
       conversation?.phoneNumber ||
-      cleanNumber;
+      cleanNumber
+    );
 
     // 7. Crear o actualizar conversación
     if (!conversation) {
@@ -560,6 +626,10 @@ class WhatsAppService {
 
       if (this.io && savedMessage) {
         this.io.emit('whatsapp:message', {
+          conversationId: conversation.id,
+          customerId: conversation.customerId || null,
+          canonicalJid: conversation.remoteJid,
+          phoneNumber: conversation.phoneNumber,
           conversation,
           message: savedMessage,
         });
@@ -587,12 +657,13 @@ class WhatsAppService {
       throw new Error('WhatsApp no está conectado actualmente. Por favor escanea el código QR.');
     }
 
-    let cleanJid = remoteJid.trim();
+    let cleanJid = normalizeColombianJid(remoteJid.trim());
     if (!cleanJid.includes('@')) {
       let rawDigits = cleanJid.replace(/\D/g, '');
       if (rawDigits.length === 10 && rawDigits.startsWith('3')) {
         rawDigits = `57${rawDigits}`;
       }
+      rawDigits = normalizeColombianJid(rawDigits);
       cleanJid = `${rawDigits}@s.whatsapp.net`;
     } else if (!cleanJid.endsWith('@s.whatsapp.net') && !cleanJid.endsWith('@lid') && !cleanJid.endsWith('@g.us')) {
       let rawDigits = cleanJid.replace(/\D/g, '');
@@ -600,12 +671,14 @@ class WhatsAppService {
         if (rawDigits.length === 10 && rawDigits.startsWith('3')) {
           rawDigits = `57${rawDigits}`;
         }
+        rawDigits = normalizeColombianJid(rawDigits);
         cleanJid = `${rawDigits}@s.whatsapp.net`;
       } else {
         throw new Error(`El destinatario "${remoteJid}" no corresponde a un JID o número de WhatsApp válido`);
       }
     }
-    const cleanNumber = cleanJid.split('@')[0].replace(/\D/g, '');
+    cleanJid = normalizeColombianJid(cleanJid);
+    const cleanNumber = normalizeColombianJid(cleanJid.split('@')[0].split(':')[0].replace(/\D/g, ''));
 
     const sentMsg = await this.sock.sendMessage(cleanJid, { text: text.trim() });
     const messageId = sentMsg?.key?.id || `OUT-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -696,6 +769,10 @@ class WhatsAppService {
 
     if (this.io) {
       this.io.emit('whatsapp:message', {
+        conversationId: conversation.id,
+        customerId: conversation.customerId || null,
+        canonicalJid: conversation.remoteJid,
+        phoneNumber: conversation.phoneNumber,
         conversation,
         message: savedMessage,
       });
@@ -783,6 +860,66 @@ class WhatsAppService {
           await prisma.chatConversation.delete({
             where: { id: lidConv.id },
           });
+        }
+      }
+
+      // Rutina para unificar chats con prefijos duplicados de Colombia (5793... vs 573...)
+      const duplicate579Convs = await prisma.chatConversation.findMany({
+        where: {
+          OR: [
+            { remoteJid: { startsWith: '5793' } },
+            { phoneNumber: { startsWith: '5793' } },
+          ],
+        },
+        include: { messages: true },
+      });
+
+      for (const conv579 of duplicate579Convs) {
+        const canonicalJid = normalizeColombianJid(conv579.remoteJid);
+        const canonicalPhone = normalizeColombianJid(conv579.phoneNumber);
+        if (canonicalJid !== conv579.remoteJid || canonicalPhone !== conv579.phoneNumber) {
+          const primaryConv = await prisma.chatConversation.findFirst({
+            where: {
+              id: { not: conv579.id },
+              OR: [
+                { remoteJid: canonicalJid },
+                { phoneNumber: canonicalPhone },
+              ],
+            },
+          });
+
+          if (primaryConv) {
+            console.log(`🔗 Fusionando chat duplicado 579 #${conv579.id} en principal #${primaryConv.id}`);
+            await prisma.chatMessage.updateMany({
+              where: { conversationId: conv579.id },
+              data: { conversationId: primaryConv.id },
+            });
+            const lastMsg = await prisma.chatMessage.findFirst({
+              where: { conversationId: primaryConv.id },
+              orderBy: { timestamp: 'desc' },
+            });
+            if (lastMsg) {
+              await prisma.chatConversation.update({
+                where: { id: primaryConv.id },
+                data: {
+                  lastMessageText: lastMsg.text,
+                  lastMessageTimestamp: lastMsg.timestamp,
+                  lastMessageFromMe: lastMsg.fromMe,
+                },
+              });
+            }
+            await prisma.chatConversation.delete({
+              where: { id: conv579.id },
+            });
+          } else {
+            await prisma.chatConversation.update({
+              where: { id: conv579.id },
+              data: {
+                remoteJid: canonicalJid,
+                phoneNumber: canonicalPhone,
+              },
+            });
+          }
         }
       }
     } catch (err) {

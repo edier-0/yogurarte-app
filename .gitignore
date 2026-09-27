@@ -31,7 +31,12 @@ backup/
 # ==========================================
 node_modules/
 dist/
+dist-ssr/
 build/
+public_legacy/
+frontend/dist/
+frontend/dist-ssr/
+public/assets/
 .pnp
 .pnp.js
 

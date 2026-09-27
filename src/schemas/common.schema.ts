@@ -6,6 +6,6 @@ export const idParamSchema = z.object({
 
 export const orderPaymentParamsSchema = z.object({
   id: z.coerce.number().int('El ID del pedido debe ser un número entero').positive('El ID del pedido debe ser positivo'),
-  paymentId: z.coerce.number().int('El ID del abono debe ser un número entero').positive('El ID del abono debe ser positivo'),
+  paymentId: z.coerce.number().int('El ID del abono debe ser un número entero').min(0, 'El ID del abono debe ser mayor o igual a 0'),
 }).passthrough();
 

@@ -1,16 +1,32 @@
 import prisma from '../../prisma.js';
-import { getColombiaDateStr, parseColombiaDate } from '../../utils/date.utils.js';
+import {
+  getColombiaDateStr,
+  parseColombiaDate,
+  getColombiaStartOfDay,
+  getColombiaEndOfDay,
+} from '../../utils/date.utils.js';
 import {
   BadRequestError,
   NotFoundError,
 } from '../../shared/errors/appError.js';
 import {
   BatchesQueryInput,
+  BatchesMetricsQueryInput,
+  BatchPackagingInput,
   CreateBatchDischargeInput,
   CreateBatchInput,
   DeactivateBatchInput,
+  DeletePackagingQueryInput,
   LinkOrdersToBatchInput,
+  NextCodeQueryInput,
+  PackagingDischargeInput,
+  PackagingsQueryInput,
+  PartnerWithdrawalInput,
+  PatchBatchStatusInput,
+  PatchBatchVolumeInput,
+  UnlinkOrderInput,
   UpdateBatchInput,
+  UpdateBatchPackagingInput,
 } from './batches.schema.js';
 
 function isKgUnit(unit: string): boolean {
@@ -26,10 +42,147 @@ function isGramUnit(unit: string): boolean {
 }
 
 /**
- * Obtener listado de lotes enriquecidos con balance lácteo, ventas y preventa
+ * Sincronización bidireccional automática del estado del lote
+ * Si stock disponible <= 0.05 -> AGOTADO
+ * Si stock disponible > 0.05 y estaba AGOTADO -> DISPONIBLE
+ */
+export const syncBatchStatusBidirectional = async (tx: any, batchId: number) => {
+  const batch = await tx.productionBatch.findUnique({
+    where: { id: batchId },
+    include: {
+      orders: {
+        where: { deliveryStatus: { not: 'CANCELLED' } },
+        select: { id: true, totalLiters: true },
+      },
+      orderItems: {
+        where: { order: { deliveryStatus: { not: 'CANCELLED' } } },
+        select: { id: true, orderId: true, totalLiters: true },
+      },
+      discharges: {
+        select: { totalLiters: true },
+      },
+    },
+  });
+
+  if (!batch || !batch.isActive || batch.status === 'ARCHIVADO') {
+    return null;
+  }
+
+  const soldFromItems = batch.orderItems.reduce((sum: number, it: any) => sum + it.totalLiters, 0);
+  const legacySold = batch.orders
+    .filter((o: any) => !batch.orderItems.some((it: any) => it.orderId === o.id))
+    .reduce((sum: number, o: any) => sum + o.totalLiters, 0);
+  const totalSold = soldFromItems + legacySold;
+  const totalDischarged = batch.discharges.reduce((sum: number, d: any) => sum + d.totalLiters, 0);
+  const remaining = Math.max(0, batch.totalLitersProduced - totalSold - totalDischarged);
+
+  let newStatus = batch.status;
+
+  if (remaining <= 0.05) {
+    if (batch.status === 'DISPONIBLE' || batch.status === 'COMPLETADO') {
+      newStatus = 'AGOTADO';
+      await tx.productionBatch.update({
+        where: { id: batchId },
+        data: { status: 'AGOTADO' },
+      });
+    }
+  } else {
+    // Si recuperó saldo y estaba AGOTADO
+    if (batch.status === 'AGOTADO') {
+      newStatus = 'DISPONIBLE';
+      await tx.productionBatch.update({
+        where: { id: batchId },
+        data: { status: 'DISPONIBLE' },
+      });
+    }
+  }
+
+  return { batchId, remaining, status: newStatus };
+};
+
+/**
+ * Obtener métricas y KPIs globales consolidados de producción (Lotes, fermentación, disponibles, rendimiento)
+ * Ejecuta agregaciones nativas de base de datos (_sum, _count, _avg)
+ */
+export const getBatchesMetrics = async (query: BatchesMetricsQueryInput = {}) => {
+  const { startDate, endDate, status } = query;
+  const whereClause: any = { isActive: true };
+
+  if (startDate || endDate) {
+    whereClause.preparationDate = {};
+    if (startDate) whereClause.preparationDate.gte = getColombiaStartOfDay(String(startDate).split('T')[0]);
+    if (endDate) whereClause.preparationDate.lte = getColombiaEndOfDay(String(endDate).split('T')[0]);
+  }
+
+  if (status && status !== 'ALL') {
+    if (status === 'DISPONIBLE' || status === 'COMPLETADO') {
+      whereClause.status = { in: ['DISPONIBLE', 'COMPLETADO'] };
+    } else if (status === 'ACTIVE') {
+      whereClause.status = { in: ['DISPONIBLE', 'COMPLETADO', 'EN_FERMENTACION'] };
+    } else {
+      whereClause.status = status;
+    }
+  }
+
+  // Agregaciones nativas sobre la base de datos completa
+  const [fermentingAgg, producedAgg, activeFinishedBatches] = await Promise.all([
+    prisma.productionBatch.aggregate({
+      where: { ...whereClause, status: 'EN_FERMENTACION' },
+      _sum: { milkUsedLiters: true },
+      _count: true,
+    }),
+    prisma.productionBatch.aggregate({
+      where: { ...whereClause, status: { not: 'EN_FERMENTACION' } },
+      _sum: { totalLitersProduced: true, milkUsedLiters: true },
+      _avg: { yieldPercentage: true },
+      _count: true,
+    }),
+    prisma.productionBatch.findMany({
+      where: { ...whereClause, status: { notIn: ['EN_FERMENTACION', 'ARCHIVADO'] } },
+      select: {
+        id: true,
+        totalLitersProduced: true,
+        orderItems: { select: { totalLiters: true } },
+        orders: { select: { id: true, totalLiters: true } },
+        discharges: { select: { totalLiters: true } },
+      },
+    }),
+  ]);
+
+  let finishedYogurtLiters = 0;
+  for (const b of activeFinishedBatches) {
+    const soldFromItems = b.orderItems.reduce((sum: number, it: any) => sum + (Number(it.totalLiters) || 0), 0);
+    const legacySold = b.orders
+      .filter((o: any) => !b.orderItems.some((it: any) => it.orderId === o.id))
+      .reduce((sum: number, o: any) => sum + (Number(o.totalLiters) || 0), 0);
+    const discharged = b.discharges.reduce((sum: number, d: any) => sum + (Number(d.totalLiters) || 0), 0);
+    finishedYogurtLiters += Math.max(0, (Number(b.totalLitersProduced) || 0) - (soldFromItems + legacySold) - discharged);
+  }
+
+  const fermentingLiters = fermentingAgg._sum.milkUsedLiters || 0;
+  const totalProducedLiters = producedAgg._sum.totalLitersProduced || 0;
+  let averageYield = producedAgg._avg.yieldPercentage ? Math.round(producedAgg._avg.yieldPercentage * 10) / 10 : 0;
+  if (!averageYield && producedAgg._sum.milkUsedLiters && producedAgg._sum.totalLitersProduced) {
+    averageYield = Math.round(((producedAgg._sum.totalLitersProduced / producedAgg._sum.milkUsedLiters) * 100) * 10) / 10;
+  }
+  if (!averageYield) averageYield = 96.5;
+
+  const totalBatchesCount = (fermentingAgg._count || 0) + (producedAgg._count || 0);
+
+  return {
+    fermentingLiters,
+    finishedYogurtLiters: Math.round(finishedYogurtLiters * 10) / 10,
+    averageYield,
+    totalBatchesCount,
+    totalProducedLiters,
+  };
+};
+
+/**
+ * Obtener listado de lotes enriquecidos con balance lácteo, ventas, preventa y paginación
  */
 export const getBatches = async (query: BatchesQueryInput) => {
-  const { status, includeInactive, lite } = query;
+  const { status, includeInactive, lite, page = 1, limit = 5 } = query;
 
   const whereClause: any = {};
   if (includeInactive !== 'true') {
@@ -37,7 +190,16 @@ export const getBatches = async (query: BatchesQueryInput) => {
   }
 
   if (status && typeof status === 'string' && status !== 'ALL') {
-    whereClause.status = status;
+    if (status === 'DISPONIBLE' || status === 'COMPLETADO') {
+      whereClause.status = { in: ['DISPONIBLE', 'COMPLETADO'] };
+    } else if (status === 'ACTIVE') {
+      whereClause.status = { in: ['DISPONIBLE', 'COMPLETADO', 'EN_FERMENTACION'] };
+    } else if (status === 'ARCHIVED' || status === 'ARCHIVADO') {
+      delete whereClause.isActive;
+      whereClause.OR = [{ status: 'ARCHIVADO' }, { isActive: false }];
+    } else {
+      whereClause.status = status;
+    }
   }
 
   if (lite === 'true') {
@@ -85,6 +247,7 @@ export const getBatches = async (query: BatchesQueryInput) => {
         status: b.status,
         isActive: b.isActive,
         totalLitersProduced: b.totalLitersProduced,
+        packagedLiters: b.packagedLiters,
         totalSoldLiters,
         totalDischargedLiters,
         remainingAvailableLiters,
@@ -95,66 +258,85 @@ export const getBatches = async (query: BatchesQueryInput) => {
     });
   }
 
-  const batches = await prisma.productionBatch.findMany({
-    where: whereClause,
-    include: {
-      itemsUsed: {
-        include: {
-          rawMaterial: {
-            select: {
-              name: true,
-              unit: true,
-              category: true,
-              code: true,
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Number(limit) || 5);
+  const skip = (pageNum - 1) * limitNum;
+
+  const [total, batches] = await Promise.all([
+    prisma.productionBatch.count({ where: whereClause }),
+    prisma.productionBatch.findMany({
+      where: whereClause,
+      skip,
+      take: limitNum,
+      include: {
+        packagings: {
+          include: {
+            itemsUsed: {
+              include: { rawMaterial: true },
+            },
+          },
+          orderBy: { packagedAt: 'desc' },
+        },
+        itemsUsed: {
+          include: {
+            rawMaterial: {
+              select: {
+                name: true,
+                unit: true,
+                category: true,
+                code: true,
+              },
             },
           },
         },
-      },
-      orders: {
-        select: {
-          id: true,
-          orderNumber: true,
-          totalAmount: true,
-          paidAmount: true,
-          totalLiters: true,
-          quantityBottles: true,
-          bottleSize: true,
-          orderDate: true,
-          deliveryStatus: true,
-          paymentStatus: true,
-          customer: {
-            select: {
-              fullName: true,
+        orders: {
+          where: { deliveryStatus: { not: 'CANCELLED' } },
+          select: {
+            id: true,
+            orderNumber: true,
+            totalAmount: true,
+            paidAmount: true,
+            totalLiters: true,
+            quantityBottles: true,
+            bottleSize: true,
+            orderDate: true,
+            deliveryStatus: true,
+            paymentStatus: true,
+            customer: {
+              select: {
+                fullName: true,
+              },
             },
           },
         },
-      },
-      orderItems: {
-        select: {
-          id: true,
-          orderId: true,
-          quantity: true,
-          totalLiters: true,
-          totalPrice: true,
-          bottleSize: true,
-        },
-      },
-      discharges: {
-        include: {
-          staffMember: {
-            select: {
-              id: true,
-              fullName: true,
-              role: true,
-              type: true,
-            },
+        orderItems: {
+          where: { order: { deliveryStatus: { not: 'CANCELLED' } } },
+          select: {
+            id: true,
+            orderId: true,
+            quantity: true,
+            totalLiters: true,
+            totalPrice: true,
+            bottleSize: true,
           },
         },
-        orderBy: { dischargeDate: 'desc' },
+        discharges: {
+          include: {
+            staffMember: {
+              select: {
+                id: true,
+                fullName: true,
+                role: true,
+                type: true,
+              },
+            },
+          },
+          orderBy: { dischargeDate: 'desc' },
+        },
       },
-    },
-    orderBy: { preparationDate: 'desc' },
-  });
+      orderBy: { preparationDate: 'desc' },
+    }),
+  ]);
 
   // Consultar pedidos activos sin lote asignado (preventa)
   const unassignedOrders = await prisma.order.findMany({
@@ -180,7 +362,7 @@ export const getBatches = async (query: BatchesQueryInput) => {
     },
   });
 
-  return batches.map((b) => {
+  const mappedBatches = batches.map((b) => {
     const soldLitersFromItems = b.orderItems.reduce((sum, i) => sum + i.totalLiters, 0);
     const legacyOrdersSold = b.orders
       .filter((o) => !b.orderItems.some((it) => it.orderId === o.id))
@@ -222,6 +404,7 @@ export const getBatches = async (query: BatchesQueryInput) => {
     }
 
     const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
+    const unpackagedLiters = Math.max(0, b.totalLitersProduced - (b.packagedLiters || 0));
 
     return {
       ...b,
@@ -235,8 +418,19 @@ export const getBatches = async (query: BatchesQueryInput) => {
       unassignedOrdersCount,
       unassignedLiters,
       remainingAvailableLiters,
+      unpackagedLiters,
     };
   });
+
+  return {
+    data: mappedBatches,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    },
+  };
 };
 
 /**
@@ -283,6 +477,14 @@ export const getBatchById = async (id: number) => {
         },
         orderBy: { dischargeDate: 'desc' },
       },
+      packagings: {
+        include: {
+          itemsUsed: {
+            include: { rawMaterial: true },
+          },
+        },
+        orderBy: { packagedAt: 'desc' },
+      },
     },
   });
 
@@ -294,6 +496,203 @@ export const getBatchById = async (id: number) => {
 };
 
 /**
+ * Calcular el siguiente correlativo libre diario para lote madre o fraccionamiento
+ */
+export const getNextBatchCode = async (query: NextCodeQueryInput) => {
+  const { date, batchId } = query;
+  const dateObj = date ? parseColombiaDate(date) : new Date();
+  const dateStr = getColombiaDateStr(dateObj).replace(/-/g, '');
+
+  if (batchId) {
+    const batch = await prisma.productionBatch.findUnique({
+      where: { id: Number(batchId) },
+      include: { packagings: true },
+    });
+    if (!batch) {
+      throw new NotFoundError('Lote no encontrado');
+    }
+
+    let maxPkgSeq = 0;
+    for (const p of batch.packagings) {
+      if (p.packagingCode) {
+        const parts = p.packagingCode.split('-F');
+        if (parts.length === 2) {
+          const s = parseInt(parts[1], 10);
+          if (!isNaN(s) && s > maxPkgSeq) maxPkgSeq = s;
+        }
+      }
+    }
+    if (maxPkgSeq === 0) {
+      maxPkgSeq = batch.packagings.length;
+    }
+    const nextPkgSeq = maxPkgSeq + 1;
+    const nextPackagingCode = `${batch.batchCode}-F${String(nextPkgSeq).padStart(2, '0')}`;
+
+    return {
+      batchCode: batch.batchCode,
+      nextPackagingCode,
+    };
+  }
+
+  // Correlativo lote madre: LOTE-YYYYMMDD-01, LOTE-YYYYMMDD-02, ...
+  const todayBatches = await prisma.productionBatch.findMany({
+    where: {
+      batchCode: {
+        startsWith: `LOTE-${dateStr}`,
+      },
+    },
+    select: { batchCode: true },
+  });
+
+  let maxSeq = 0;
+  for (const b of todayBatches) {
+    const parts = b.batchCode.split('-');
+    const seq = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq) && seq > maxSeq) {
+      maxSeq = seq;
+    }
+  }
+
+  let nextSeq = maxSeq + 1;
+  let batchCode = `LOTE-${dateStr}-${String(nextSeq).padStart(2, '0')}`;
+  while (await prisma.productionBatch.findUnique({ where: { batchCode } })) {
+    nextSeq++;
+    batchCode = `LOTE-${dateStr}-${String(nextSeq).padStart(2, '0')}`;
+  }
+
+  return {
+    nextBatchCode: batchCode,
+    date: getColombiaDateStr(dateObj),
+  };
+};
+
+/**
+ * Cambio rápido de estado de 1 toque (EN_FERMENTACION <-> DISPONIBLE)
+ */
+export const patchBatchStatus = async (id: number, data: PatchBatchStatusInput) => {
+  return await prisma.$transaction(async (tx) => {
+    const batch = await tx.productionBatch.findUnique({ where: { id } });
+    if (!batch) {
+      throw new NotFoundError('Lote no encontrado');
+    }
+
+    if (data.status === 'EN_FERMENTACION') {
+      return await tx.productionBatch.update({
+        where: { id },
+        data: { status: 'EN_FERMENTACION' },
+      });
+    }
+
+    if (data.status === 'DISPONIBLE') {
+      await tx.productionBatch.update({
+        where: { id },
+        data: { status: 'DISPONIBLE' },
+      });
+      return await syncBatchStatusBidirectional(tx, id);
+    }
+
+    return batch;
+  });
+};
+
+/**
+ * Ajustar volumen real obtenido del lote madre (ProductionBatch)
+ * Soporta merma por desuerado (ej. griego a 11L) o expansión por almíbar (ej. 26L)
+ */
+export const patchBatchVolume = async (id: number, data: PatchBatchVolumeInput) => {
+  return await prisma.$transaction(async (tx) => {
+    const batch = await tx.productionBatch.findUnique({ where: { id } });
+    if (!batch) {
+      throw new NotFoundError('Lote no encontrado');
+    }
+
+    if (!batch.isActive) {
+      throw new BadRequestError('No se puede modificar un lote inactivo o archivado');
+    }
+
+    const newTotalLiters = Number(data.totalLitersProduced);
+    if (isNaN(newTotalLiters) || newTotalLiters <= 0) {
+      throw new BadRequestError('El volumen producido debe ser un número mayor a 0');
+    }
+
+    const currentPackaged = batch.packagedLiters || 0;
+    if (newTotalLiters < currentPackaged - 0.001) {
+      throw new BadRequestError(
+        `El volumen producido (${newTotalLiters.toFixed(1)}L) no puede ser menor a los litros ya envasados (${currentPackaged.toFixed(1)}L).`
+      );
+    }
+
+    let totalCost = batch.totalCost || 0;
+
+    // Descontar insumos adicionales agregados al finalizar fermentación (ej. almíbar, azúcar)
+    if (Array.isArray(data.dynamicItems) && data.dynamicItems.length > 0) {
+      for (const item of data.dynamicItems) {
+        const matId = Number(item.rawMaterialId);
+        const qty = Number(Number(item.quantityUsed).toFixed(4));
+        if (matId && qty > 0) {
+          const material = await tx.rawMaterial.findUnique({ where: { id: matId } });
+          if (!material) continue;
+
+          if (material.currentStock < qty) {
+            throw new BadRequestError(
+              `Stock insuficiente del insumo "${material.name}". Hay ${material.currentStock} ${material.unit} y requieres ${qty}.`
+            );
+          }
+
+          const unitCost = Number(item.unitCost) || material.avgCost || 0;
+          const itemCost = Number((qty * unitCost).toFixed(2));
+          totalCost += itemCost;
+
+          await tx.rawMaterial.update({
+            where: { id: matId },
+            data: { currentStock: Number(Math.max(0, material.currentStock - qty).toFixed(4)) },
+          });
+
+          await tx.batchItemUsage.create({
+            data: {
+              batchId: id,
+              rawMaterialId: matId,
+              quantityUsed: qty,
+              unitCost,
+              totalCost: itemCost,
+            },
+          });
+        }
+      }
+    }
+
+    const milkUsed = batch.milkUsedLiters || 1;
+    const newYield = Math.round((newTotalLiters / milkUsed) * 10000) / 100;
+    const newCostPerLiter = newTotalLiters > 0 ? Math.round(totalCost / newTotalLiters) : 0;
+
+    let combinedNotes = batch.notes;
+    if (data.notes && data.notes.trim()) {
+      combinedNotes = combinedNotes ? `${combinedNotes} | ${data.notes.trim()}` : data.notes.trim();
+    }
+
+    const updated = await tx.productionBatch.update({
+      where: { id },
+      data: {
+        totalLitersProduced: newTotalLiters,
+        totalCost,
+        yieldPercentage: newYield,
+        costPerLiter: newCostPerLiter,
+        notes: combinedNotes,
+        status: data.status ? data.status : batch.status,
+      },
+    });
+
+    await syncBatchStatusBidirectional(tx, id);
+
+    return {
+      message: `Volumen real ajustado a ${newTotalLiters}L exitosamente (Rendimiento: ${newYield}%, Costo/L: $${newCostPerLiter.toLocaleString('es-CO')} COP)`,
+      batch: updated,
+    };
+  });
+};
+
+
+/**
  * Crear lote de producción con validación de inventario y descuento atómico ($transaction)
  */
 export const createBatch = async (data: CreateBatchInput) => {
@@ -303,6 +702,10 @@ export const createBatch = async (data: CreateBatchInput) => {
     bottles1LProduced,
     bottles2LProduced,
     flavor,
+    cultureType,
+    fermentationHours,
+    initialSugarGrams,
+    powderedMilkGrams,
     preparationDate,
     expirationDate,
     notes,
@@ -313,6 +716,7 @@ export const createBatch = async (data: CreateBatchInput) => {
     powderedMilkGramsPerLiter,
     useLabels,
     extraItems,
+    dynamicItems,
     price1L,
     price2L,
     status,
@@ -334,7 +738,10 @@ export const createBatch = async (data: CreateBatchInput) => {
     totalLitersProduced = bottleLiters > 0 ? bottleLiters : milkUsed;
   }
 
-  if (totalLitersProduced <= 0 && b1L <= 0 && b2L <= 0) {
+  const isFermenting = status === 'EN_FERMENTACION' || (b1L === 0 && b2L === 0 && (!status || status === 'EN_FERMENTACION'));
+  const effectiveStatus = isFermenting ? 'EN_FERMENTACION' : (status || 'COMPLETADO');
+
+  if (totalLitersProduced <= 0 && b1L <= 0 && b2L <= 0 && !isFermenting) {
     throw new BadRequestError('Debe ingresar los litros de yogur obtenidos o las botellas envasadas');
   }
 
@@ -360,8 +767,8 @@ export const createBatch = async (data: CreateBatchInput) => {
     );
   }
 
-  // 2. Validar Stock de Botellas 1L
-  if (b1L > 0) {
+  // 2. Validar Stock de Botellas 1L (Solo si no está en fermentación o se especifican botellas)
+  if (!isFermenting && b1L > 0) {
     const bottle1L = await prisma.rawMaterial.findFirst({
       where: {
         OR: [
@@ -381,8 +788,8 @@ export const createBatch = async (data: CreateBatchInput) => {
     }
   }
 
-  // 3. Validar Stock de Botellas 2L
-  if (b2L > 0) {
+  // 3. Validar Stock de Botellas 2L (Solo si no está en fermentación o se especifican botellas)
+  if (!isFermenting && b2L > 0) {
     const bottle2L = await prisma.rawMaterial.findFirst({
       where: {
         OR: [
@@ -403,59 +810,55 @@ export const createBatch = async (data: CreateBatchInput) => {
   }
 
   // 4. Validar Stock de Azúcar
-  const shouldUseSugar = useSugar !== false;
+  const sugarMaterial = await prisma.rawMaterial.findFirst({
+    where: {
+      OR: [
+        { code: 'AZUCAR' },
+        { name: { contains: 'azucar', mode: 'insensitive' } },
+        { name: { contains: 'azúcar', mode: 'insensitive' } },
+      ],
+      isActive: true,
+    },
+  });
+
+  const hasSugarInDynamic = Array.isArray(dynamicItems) && sugarMaterial && dynamicItems.some((d) => d.rawMaterialId === sugarMaterial.id);
+  const effectiveShouldUseSugar = (useSugar !== false) && !hasSugarInDynamic;
   const sugarGramsPerL = sugarGramsPerLiter !== undefined ? Number(sugarGramsPerLiter) : 80;
-  const totalSugarGrams = shouldUseSugar ? sugarGramsPerL * milkUsed : 0;
+  const totalSugarGrams = effectiveShouldUseSugar ? sugarGramsPerL * milkUsed : 0;
 
-  let sugarMaterial = null;
-  if (shouldUseSugar && totalSugarGrams > 0) {
-    sugarMaterial = await prisma.rawMaterial.findFirst({
-      where: {
-        OR: [
-          { code: 'AZUCAR' },
-          { name: { contains: 'azucar', mode: 'insensitive' } },
-          { name: { contains: 'azúcar', mode: 'insensitive' } },
-        ],
-        isActive: true,
-      },
-    });
-
-    if (sugarMaterial) {
-      const sugarQtyNeeded = isKgUnit(sugarMaterial.unit) ? totalSugarGrams / 1000 : totalSugarGrams;
-      if (sugarMaterial.currentStock < sugarQtyNeeded) {
-        const unitLabel = isKgUnit(sugarMaterial.unit) ? 'kg' : 'g';
-        throw new BadRequestError(
-          `Stock insuficiente de azúcar. Tienes ${sugarMaterial.currentStock} ${unitLabel} en inventario y requieres ${totalSugarGrams} g (${sugarQtyNeeded.toFixed(2)} ${unitLabel}). Registra la compra de azúcar primero.`
-        );
-      }
+  if (effectiveShouldUseSugar && totalSugarGrams > 0 && sugarMaterial) {
+    const sugarQtyNeeded = isKgUnit(sugarMaterial.unit) ? totalSugarGrams / 1000 : totalSugarGrams;
+    if (sugarMaterial.currentStock < sugarQtyNeeded) {
+      const unitLabel = isKgUnit(sugarMaterial.unit) ? 'kg' : 'g';
+      throw new BadRequestError(
+        `Stock insuficiente de azúcar. Tienes ${sugarMaterial.currentStock} ${unitLabel} en inventario y requieres ${totalSugarGrams} g (${sugarQtyNeeded.toFixed(2)} ${unitLabel}). Registra la compra de azúcar primero.`
+      );
     }
   }
 
   // 5. Validar Stock de Leche en Polvo
-  const shouldUsePowderedMilk = usePowderedMilk !== false;
+  const powderedMilkMaterial = await prisma.rawMaterial.findFirst({
+    where: {
+      OR: [
+        { code: 'LECHE_POLVO' },
+        { name: { contains: 'polvo', mode: 'insensitive' } },
+      ],
+      isActive: true,
+    },
+  });
+
+  const hasPowderInDynamic = Array.isArray(dynamicItems) && powderedMilkMaterial && dynamicItems.some((d) => d.rawMaterialId === powderedMilkMaterial.id);
+  const effectiveShouldUsePowderedMilk = (usePowderedMilk !== false) && !hasPowderInDynamic;
   const powderedMilkGramsPerL = powderedMilkGramsPerLiter !== undefined ? Number(powderedMilkGramsPerLiter) : 30;
-  const totalPowderedMilkGrams = shouldUsePowderedMilk ? powderedMilkGramsPerL * milkUsed : 0;
+  const totalPowderedMilkGrams = effectiveShouldUsePowderedMilk ? powderedMilkGramsPerL * milkUsed : 0;
 
-  let powderedMilkMaterial = null;
-  if (shouldUsePowderedMilk && totalPowderedMilkGrams > 0) {
-    powderedMilkMaterial = await prisma.rawMaterial.findFirst({
-      where: {
-        OR: [
-          { code: 'LECHE_POLVO' },
-          { name: { contains: 'polvo', mode: 'insensitive' } },
-        ],
-        isActive: true,
-      },
-    });
-
-    if (powderedMilkMaterial) {
-      const powderQtyNeeded = isKgUnit(powderedMilkMaterial.unit) ? totalPowderedMilkGrams / 1000 : totalPowderedMilkGrams;
-      if (powderedMilkMaterial.currentStock < powderQtyNeeded) {
-        const unitLabel = isKgUnit(powderedMilkMaterial.unit) ? 'kg' : 'g';
-        throw new BadRequestError(
-          `Stock insuficiente de leche en polvo. Tienes ${powderedMilkMaterial.currentStock} ${unitLabel} en inventario y requieres ${totalPowderedMilkGrams} g (${powderQtyNeeded.toFixed(2)} ${unitLabel}). Registra la compra de leche en polvo primero.`
-        );
-      }
+  if (effectiveShouldUsePowderedMilk && totalPowderedMilkGrams > 0 && powderedMilkMaterial) {
+    const powderQtyNeeded = isKgUnit(powderedMilkMaterial.unit) ? totalPowderedMilkGrams / 1000 : totalPowderedMilkGrams;
+    if (powderedMilkMaterial.currentStock < powderQtyNeeded) {
+      const unitLabel = isKgUnit(powderedMilkMaterial.unit) ? 'kg' : 'g';
+      throw new BadRequestError(
+        `Stock insuficiente de leche en polvo. Tienes ${powderedMilkMaterial.currentStock} ${unitLabel} en inventario y requieres ${totalPowderedMilkGrams} g (${powderQtyNeeded.toFixed(2)} ${unitLabel}). Registra la compra de leche en polvo primero.`
+      );
     }
   }
 
@@ -518,7 +921,7 @@ export const createBatch = async (data: CreateBatchInput) => {
     }
 
     // 2. Descontar Azúcar
-    if (shouldUseSugar && totalSugarGrams > 0 && sugarMaterial) {
+    if (effectiveShouldUseSugar && totalSugarGrams > 0 && sugarMaterial) {
       const sugarMat = await tx.rawMaterial.findUnique({ where: { id: sugarMaterial.id } });
       if (sugarMat) {
         let qtyToDeduct = totalSugarGrams;
@@ -548,7 +951,7 @@ export const createBatch = async (data: CreateBatchInput) => {
     }
 
     // 3. Descontar Leche en Polvo
-    if (shouldUsePowderedMilk && totalPowderedMilkGrams > 0 && powderedMilkMaterial) {
+    if (effectiveShouldUsePowderedMilk && totalPowderedMilkGrams > 0 && powderedMilkMaterial) {
       const powderMat = await tx.rawMaterial.findUnique({ where: { id: powderedMilkMaterial.id } });
       if (powderMat) {
         let qtyToDeduct = totalPowderedMilkGrams;
@@ -577,8 +980,8 @@ export const createBatch = async (data: CreateBatchInput) => {
       }
     }
 
-    // 4. Descontar Botellas 1L
-    if (b1L > 0) {
+    // 4. Descontar Botellas 1L (Solo si no está en fermentación)
+    if (!isFermenting && b1L > 0) {
       const bottle1L = await tx.rawMaterial.findFirst({
         where: {
           OR: [
@@ -609,8 +1012,8 @@ export const createBatch = async (data: CreateBatchInput) => {
       }
     }
 
-    // 5. Descontar Botellas 2L
-    if (b2L > 0) {
+    // 5. Descontar Botellas 2L (Solo si no está en fermentación)
+    if (!isFermenting && b2L > 0) {
       const bottle2L = await tx.rawMaterial.findFirst({
         where: {
           OR: [
@@ -641,17 +1044,14 @@ export const createBatch = async (data: CreateBatchInput) => {
       }
     }
 
-    // 6. Descontar Etiquetas si aplica
+    // 6. Descontar Etiquetas si aplica (Solo si no está en fermentación)
     const totalBottles = b1L + b2L;
     const shouldUseLabels = useLabels !== false;
 
-    if (shouldUseLabels && totalBottles > 0) {
+    if (!isFermenting && shouldUseLabels && totalBottles > 0) {
       const labelMaterial = await tx.rawMaterial.findFirst({
         where: {
-          OR: [
-            { code: 'ETIQUETA' },
-            { name: { contains: 'etiqueta', mode: 'insensitive' } },
-          ],
+          code: 'ETIQUETA',
           isActive: true,
         },
       });
@@ -718,6 +1118,39 @@ export const createBatch = async (data: CreateBatchInput) => {
       }
     }
 
+    // 7.1 Descontar insumos dinámicos de checklist
+    if (Array.isArray(dynamicItems) && dynamicItems.length > 0) {
+      for (const item of dynamicItems) {
+        const matId = Number(item.rawMaterialId);
+        const qty = Number(Number(item.quantityUsed).toFixed(4));
+        if (matId && qty > 0) {
+          const material = await tx.rawMaterial.findUnique({ where: { id: matId } });
+          if (material) {
+            if (material.currentStock < qty) {
+              throw new BadRequestError(
+                `Stock insuficiente del insumo "${material.name}". Hay ${material.currentStock} ${material.unit} y requieres ${qty}.`
+              );
+            }
+            const unitCost = Number(item.unitCost) || material.avgCost || 0;
+            const itemCost = Number((qty * unitCost).toFixed(2));
+            totalBatchCost += itemCost;
+
+            usageRecords.push({
+              rawMaterialId: matId,
+              quantityUsed: qty,
+              unitCost,
+              totalCost: itemCost,
+            });
+
+            await tx.rawMaterial.update({
+              where: { id: matId },
+              data: { currentStock: Number(Math.max(0, material.currentStock - qty).toFixed(4)) },
+            });
+          }
+        }
+      }
+    }
+
     const costPerLiter = totalLitersProduced > 0 ? Math.round(totalBatchCost / totalLitersProduced) : 0;
 
     const batch = await tx.productionBatch.create({
@@ -727,8 +1160,13 @@ export const createBatch = async (data: CreateBatchInput) => {
         bottles1LProduced: b1L,
         bottles2LProduced: b2L,
         totalLitersProduced,
+        packagedLiters: bottleLiters,
         yieldPercentage,
         flavor: flavor ? flavor.trim() : 'Natural',
+        cultureType: cultureType || null,
+        fermentationHours: fermentationHours !== undefined ? Number(fermentationHours) : 8,
+        initialSugarGrams: effectiveShouldUseSugar ? totalSugarGrams : 0,
+        powderedMilkGrams: effectiveShouldUsePowderedMilk ? totalPowderedMilkGrams : 0,
         price1L: price1L !== undefined && Number(price1L) > 0 ? Number(price1L) : 12000,
         price2L: price2L !== undefined && Number(price2L) > 0 ? Number(price2L) : 24000,
         preparationDate: dateObj,
@@ -737,7 +1175,7 @@ export const createBatch = async (data: CreateBatchInput) => {
         costPerLiter,
         notes: notes ? notes.trim() : null,
         registeredBy: registeredBy || 'Edier',
-        status: status || 'COMPLETADO',
+        status: effectiveStatus,
         isActive: true,
         itemsUsed: {
           create: usageRecords,
@@ -752,11 +1190,11 @@ export const createBatch = async (data: CreateBatchInput) => {
       },
     });
 
-    // 8. Auto-vincular pedidos si se solicita
+    // 8. Auto-vincular pedidos si se solicita (Solo si NO está en fermentación)
     const shouldAutoLink = autoLinkPendingOrders === true;
     const hasSpecificOrders = Array.isArray(linkOrderIds) && linkOrderIds.length > 0;
 
-    if (shouldAutoLink || hasSpecificOrders) {
+    if (!isFermenting && (shouldAutoLink || hasSpecificOrders)) {
       let targetOrderIds: number[] = [];
       if (hasSpecificOrders) {
         targetOrderIds = linkOrderIds.map(Number).filter((id: number) => !isNaN(id) && id > 0);
@@ -791,6 +1229,8 @@ export const createBatch = async (data: CreateBatchInput) => {
           },
           data: { batchId: batch.id },
         });
+
+        await syncBatchStatusBidirectional(tx, batch.id);
       }
     }
 
@@ -799,67 +1239,245 @@ export const createBatch = async (data: CreateBatchInput) => {
 };
 
 /**
- * Actualizar lote de producción
+ * Actualizar lote de producción con sincronización delta de inventario
  */
 export const updateBatch = async (id: number, data: UpdateBatchInput) => {
-  const currentBatch = await prisma.productionBatch.findUnique({
-    where: { id },
-  });
+  return await prisma.$transaction(async (tx) => {
+    const currentBatch = await tx.productionBatch.findUnique({
+      where: { id },
+      include: { itemsUsed: true, packagings: true },
+    });
 
-  if (!currentBatch) {
-    throw new NotFoundError('Lote no encontrado');
-  }
+    if (!currentBatch) {
+      throw new NotFoundError('Lote no encontrado');
+    }
 
-  const {
-    milkUsedLiters,
-    totalLitersProduced: customTotalLiters,
-    bottles1LProduced,
-    bottles2LProduced,
-    flavor,
-    preparationDate,
-    expirationDate,
-    notes,
-    status,
-    price1L,
-    price2L,
-  } = data;
+    const {
+      milkUsedLiters,
+      totalLitersProduced: customTotalLiters,
+      bottles1LProduced,
+      bottles2LProduced,
+      flavor,
+      cultureType,
+      fermentationHours,
+      preparationDate,
+      expirationDate,
+      notes,
+      registeredBy,
+      status,
+      price1L,
+      price2L,
+      dynamicItems,
+    } = data;
 
-  const newMilk = milkUsedLiters !== undefined ? Number(milkUsedLiters) : currentBatch.milkUsedLiters;
-  const newB1L = bottles1LProduced !== undefined ? Number(bottles1LProduced) : currentBatch.bottles1LProduced;
-  const newB2L = bottles2LProduced !== undefined ? Number(bottles2LProduced) : currentBatch.bottles2LProduced;
-  const bottleLiters = newB1L * 1.0 + newB2L * 2.0;
+    let totalBatchCost = currentBatch.totalCost || 0;
 
-  const newTotalLiters =
-    customTotalLiters !== undefined && Number(customTotalLiters) > 0
-      ? Number(customTotalLiters)
-      : bottleLiters > 0
-      ? bottleLiters
-      : currentBatch.totalLitersProduced;
-  const newYield = newMilk > 0 ? Math.round((newTotalLiters / newMilk) * 10000) / 100 : 0;
-  const newCostPerLiter = newTotalLiters > 0 ? Math.round(currentBatch.totalCost / newTotalLiters) : 0;
+    // 1. Delta Leche Líquida
+    let newMilk = currentBatch.milkUsedLiters;
+    if (milkUsedLiters !== undefined && Number(milkUsedLiters) > 0) {
+      newMilk = Number(milkUsedLiters);
+      const deltaMilk = newMilk - currentBatch.milkUsedLiters;
 
-  return prisma.productionBatch.update({
-    where: { id },
-    data: {
-      milkUsedLiters: newMilk,
-      bottles1LProduced: newB1L,
-      bottles2LProduced: newB2L,
-      totalLitersProduced: newTotalLiters,
-      yieldPercentage: newYield,
-      costPerLiter: newCostPerLiter,
-      flavor: flavor !== undefined ? flavor.trim() : undefined,
-      price1L: price1L !== undefined && Number(price1L) > 0 ? Number(price1L) : undefined,
-      price2L: price2L !== undefined && Number(price2L) > 0 ? Number(price2L) : undefined,
-      preparationDate: preparationDate ? parseColombiaDate(preparationDate) : undefined,
-      expirationDate: expirationDate ? parseColombiaDate(expirationDate) : undefined,
-      notes: notes !== undefined ? (notes ? notes.trim() : null) : undefined,
-      status: status !== undefined ? String(status).trim() : undefined,
-    },
-    include: {
-      itemsUsed: {
-        include: { rawMaterial: true },
+      if (Math.abs(deltaMilk) > 0.001) {
+        const milkMaterial = await tx.rawMaterial.findFirst({
+          where: {
+            OR: [
+              { code: 'LECHE' },
+              { name: { contains: 'leche entera', mode: 'insensitive' } },
+              { name: { contains: 'leche', mode: 'insensitive' } },
+            ],
+            NOT: { name: { contains: 'polvo', mode: 'insensitive' } },
+            isActive: true,
+          },
+        });
+
+        if (milkMaterial) {
+          if (deltaMilk > 0 && milkMaterial.currentStock < deltaMilk) {
+            throw new BadRequestError(
+              `Stock insuficiente de leche para el incremento. Tienes ${milkMaterial.currentStock} L y requieres ${deltaMilk} L adicionales.`
+            );
+          }
+
+          const unitCost = milkMaterial.avgCost || 0;
+          const costDiff = deltaMilk * unitCost;
+          totalBatchCost += costDiff;
+
+          // Ajustar stock de leche
+          await tx.rawMaterial.update({
+            where: { id: milkMaterial.id },
+            data: { currentStock: Math.max(0, milkMaterial.currentStock - deltaMilk) },
+          });
+
+          // Actualizar registro de uso de leche
+          const milkUsage = currentBatch.itemsUsed.find((u) => u.rawMaterialId === milkMaterial.id);
+          if (milkUsage) {
+            await tx.batchItemUsage.update({
+              where: { id: milkUsage.id },
+              data: {
+                quantityUsed: newMilk,
+                totalCost: Math.max(0, newMilk * (milkUsage.unitCost || unitCost)),
+              },
+            });
+          } else {
+            await tx.batchItemUsage.create({
+              data: {
+                batchId: id,
+                rawMaterialId: milkMaterial.id,
+                quantityUsed: newMilk,
+                unitCost,
+                totalCost: newMilk * unitCost,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    // 2. Delta de Insumos Dinámicos
+    if (Array.isArray(dynamicItems)) {
+      const milkMaterial = await tx.rawMaterial.findFirst({
+        where: {
+          OR: [
+            { code: 'LECHE' },
+            { name: { contains: 'leche entera', mode: 'insensitive' } },
+            { name: { contains: 'leche', mode: 'insensitive' } },
+          ],
+          NOT: { name: { contains: 'polvo', mode: 'insensitive' } },
+          isActive: true,
+        },
+      });
+      const milkMatId = milkMaterial?.id;
+
+      // Insumos no lácteos actuales
+      const nonMilkUsages = currentBatch.itemsUsed.filter((u) => u.rawMaterialId !== milkMatId);
+      const incomingMatIds = new Set(dynamicItems.map((d) => Number(d.rawMaterialId)));
+
+      // A. Insumos eliminados (estaban antes pero ya no vienen)
+      for (const usage of nonMilkUsages) {
+        if (!incomingMatIds.has(usage.rawMaterialId)) {
+          await tx.rawMaterial.update({
+            where: { id: usage.rawMaterialId },
+            data: { currentStock: { increment: usage.quantityUsed } },
+          });
+          totalBatchCost -= usage.totalCost;
+          await tx.batchItemUsage.delete({ where: { id: usage.id } });
+        }
+      }
+
+      // B. Insumos agregados o modificados
+      for (const item of dynamicItems) {
+        const matId = Number(item.rawMaterialId);
+        const newQty = Number(Number(item.quantityUsed).toFixed(4));
+        if (!matId || newQty < 0) continue;
+
+        const existingUsage = nonMilkUsages.find((u) => u.rawMaterialId === matId);
+        const material = await tx.rawMaterial.findUnique({ where: { id: matId } });
+        if (!material) continue;
+
+        const unitCost = Number(item.unitCost) || material.avgCost || 0;
+
+        if (existingUsage) {
+          const deltaQty = Number((newQty - existingUsage.quantityUsed).toFixed(4));
+          if (Math.abs(deltaQty) > 0.0001) {
+            if (deltaQty > 0 && material.currentStock < deltaQty) {
+              throw new BadRequestError(
+                `Stock insuficiente de "${material.name}". Hay ${material.currentStock} ${material.unit} y requieres ${deltaQty} adicionales.`
+              );
+            }
+            await tx.rawMaterial.update({
+              where: { id: matId },
+              data: { currentStock: Number(Math.max(0, material.currentStock - deltaQty).toFixed(4)) },
+            });
+            const oldCost = existingUsage.totalCost;
+            const newCost = Number((newQty * unitCost).toFixed(2));
+            totalBatchCost = totalBatchCost - oldCost + newCost;
+
+            await tx.batchItemUsage.update({
+              where: { id: existingUsage.id },
+              data: {
+                quantityUsed: newQty,
+                unitCost,
+                totalCost: newCost,
+              },
+            });
+          }
+        } else if (newQty > 0) {
+          if (material.currentStock < newQty) {
+            throw new BadRequestError(
+              `Stock insuficiente de "${material.name}". Hay ${material.currentStock} ${material.unit} y requieres ${newQty}.`
+            );
+          }
+          await tx.rawMaterial.update({
+            where: { id: matId },
+            data: { currentStock: Number(Math.max(0, material.currentStock - newQty).toFixed(4)) },
+          });
+          const itemCost = Number((newQty * unitCost).toFixed(2));
+          totalBatchCost += itemCost;
+
+          await tx.batchItemUsage.create({
+            data: {
+              batchId: id,
+              rawMaterialId: matId,
+              quantityUsed: newQty,
+              unitCost,
+              totalCost: itemCost,
+            },
+          });
+        }
+      }
+    }
+
+    const newB1L = bottles1LProduced !== undefined ? Number(bottles1LProduced) : currentBatch.bottles1LProduced;
+    const newB2L = bottles2LProduced !== undefined ? Number(bottles2LProduced) : currentBatch.bottles2LProduced;
+    const bottleLiters = newB1L * 1.0 + newB2L * 2.0;
+
+    const newTotalLiters =
+      customTotalLiters !== undefined && Number(customTotalLiters) > 0
+        ? Number(customTotalLiters)
+        : bottleLiters > 0
+        ? bottleLiters
+        : currentBatch.totalLitersProduced;
+
+    if (newTotalLiters < (currentBatch.packagedLiters || 0) - 0.001) {
+      throw new BadRequestError(
+        `El volumen producido (${newTotalLiters}L) no puede ser menor a los litros ya envasados (${currentBatch.packagedLiters}L).`
+      );
+    }
+
+    const newYield = newMilk > 0 ? Math.round((newTotalLiters / newMilk) * 10000) / 100 : 0;
+    const newCostPerLiter = newTotalLiters > 0 ? Math.round(totalBatchCost / newTotalLiters) : 0;
+
+    const updated = await tx.productionBatch.update({
+      where: { id },
+      data: {
+        milkUsedLiters: newMilk,
+        bottles1LProduced: newB1L,
+        bottles2LProduced: newB2L,
+        totalLitersProduced: newTotalLiters,
+        yieldPercentage: newYield,
+        totalCost: Math.max(0, totalBatchCost),
+        costPerLiter: newCostPerLiter,
+        flavor: flavor !== undefined ? flavor.trim() : undefined,
+        cultureType: cultureType !== undefined ? cultureType : undefined,
+        fermentationHours: fermentationHours !== undefined ? Number(fermentationHours) : undefined,
+        price1L: price1L !== undefined && Number(price1L) > 0 ? Number(price1L) : undefined,
+        price2L: price2L !== undefined && Number(price2L) > 0 ? Number(price2L) : undefined,
+        preparationDate: preparationDate ? parseColombiaDate(preparationDate) : undefined,
+        expirationDate: expirationDate ? parseColombiaDate(expirationDate) : undefined,
+        notes: notes !== undefined ? (notes ? notes.trim() : null) : undefined,
+        registeredBy: registeredBy !== undefined ? (registeredBy ? registeredBy.trim() : undefined) : undefined,
+        status: status !== undefined ? String(status).trim() : undefined,
       },
-    },
+      include: {
+        itemsUsed: {
+          include: { rawMaterial: true },
+        },
+        packagings: true,
+      },
+    });
+
+    await syncBatchStatusBidirectional(tx, id);
+    return updated;
   });
 };
 
@@ -1003,6 +1621,12 @@ export const linkOrdersToBatch = async (id: number, data: LinkOrdersToBatchInput
 
   if (!batch) {
     throw new NotFoundError('Lote no encontrado');
+  }
+
+  if (batch.status === 'EN_FERMENTACION') {
+    throw new BadRequestError(
+      `No es posible vincular pedidos al lote "${batch.batchCode}" porque se encuentra en etapa de FERMENTACIÓN BASE. Solo se pueden vincular pedidos a lotes fraccionados y disponibles.`
+    );
   }
 
   const { orderIds, autoAll } = data;
@@ -1163,18 +1787,12 @@ export const createBatchDischarge = async (id: number, data: CreateBatchDischarg
       },
     });
 
-    const newRemaining = Math.max(0, remainingAvailableLiters - litersToDischarge);
-    if (newRemaining <= 0.05 && batch.status === 'COMPLETADO') {
-      await tx.productionBatch.update({
-        where: { id: batch.id },
-        data: { status: 'AGOTADO' },
-      });
-    }
+    await syncBatchStatusBidirectional(tx, batch.id);
 
     return {
       message: `Retiro de ${litersToDischarge}L registrado exitosamente en el lote #${batch.batchCode}`,
       discharge: createdDischarge,
-      remainingAvailableLiters: newRemaining,
+      remainingAvailableLiters: Math.max(0, remainingAvailableLiters - litersToDischarge),
     };
   });
 };
@@ -1203,12 +1821,7 @@ export const deleteBatchDischarge = async (dischargeId: number) => {
       where: { id: discharge.id },
     });
 
-    if (discharge.batch.status === 'AGOTADO') {
-      await tx.productionBatch.update({
-        where: { id: discharge.batchId },
-        data: { status: 'COMPLETADO' },
-      });
-    }
+    await syncBatchStatusBidirectional(tx, discharge.batchId);
 
     return {
       message: `Retiro de ${discharge.totalLiters}L revertido y reintegrado al lote #${discharge.batch.batchCode}`,
@@ -1217,3 +1830,1787 @@ export const deleteBatchDischarge = async (dischargeId: number) => {
     };
   });
 };
+
+/**
+ * Registrar fraccionamiento / envasado por sabor (Fase B)
+ */
+export const createBatchPackaging = async (batchId: number, input: BatchPackagingInput) => {
+  const batch = await prisma.productionBatch.findUnique({
+    where: { id: batchId },
+  });
+
+  if (!batch) {
+    throw new NotFoundError('Lote no encontrado');
+  }
+
+  if (!batch.isActive) {
+    throw new BadRequestError('No se puede envasar un lote inactivo o archivado');
+  }
+
+  const {
+    flavor,
+    bottles1L,
+    bottles2L,
+    price1L,
+    price2L,
+    bottle1LRawMaterialId,
+    bottle2LRawMaterialId,
+    labelRawMaterialId,
+    labelQuantity,
+    customContainers,
+    fruitRawMaterialId,
+    fruitQuantityUsed,
+    fruitDosageGramsPerLiter,
+    useLabels,
+    extraItems,
+    notes,
+    packagedBy,
+    packagedAt,
+    linkOrderIds,
+  } = input;
+
+  const b1L = Math.max(0, Number(bottles1L) || 0);
+  const b2L = Math.max(0, Number(bottles2L) || 0);
+  let customContainersLiters = 0;
+  if (Array.isArray(customContainers) && customContainers.length > 0) {
+    for (const c of customContainers) {
+      customContainersLiters += (Number(c.quantity) || 0) * (Number(c.capacityLiters) || 0);
+    }
+  }
+  const totalPackagingLiters = b1L * 1.0 + b2L * 2.0 + customContainersLiters;
+
+  if (totalPackagingLiters <= 0) {
+    throw new BadRequestError('Debes ingresar al menos una presentación para envasar');
+  }
+
+  const currentPackaged = batch.packagedLiters || 0;
+  const availableUnpackaged = Math.max(0, batch.totalLitersProduced - currentPackaged);
+
+  if (totalPackagingLiters > availableUnpackaged + 0.05) {
+    throw new BadRequestError(
+      `Volumen insuficiente para envasar. Hay ${availableUnpackaged.toFixed(1)}L sin envasar y solicitas ${totalPackagingLiters.toFixed(1)}L.`
+    );
+  }
+
+  // 1. Validar Stock de Botellas 1L
+  let bottle1LMat: any = null;
+  if (b1L > 0) {
+    if (bottle1LRawMaterialId) {
+      bottle1LMat = await prisma.rawMaterial.findUnique({
+        where: { id: Number(bottle1LRawMaterialId) },
+      });
+    }
+    if (!bottle1LMat) {
+      bottle1LMat = await prisma.rawMaterial.findFirst({
+        where: {
+          OR: [
+            { code: 'BOTELLA_1L' },
+            { name: { contains: '1 litro', mode: 'insensitive' } },
+            { name: { contains: '1l', mode: 'insensitive' } },
+          ],
+          isActive: true,
+        },
+      });
+    }
+
+    const currentStock = bottle1LMat ? bottle1LMat.currentStock : 0;
+    if (!bottle1LMat || currentStock < b1L) {
+      throw new BadRequestError(
+        `Stock insuficiente de botellas 1L. Tienes ${currentStock} y requieres ${b1L}.`
+      );
+    }
+  }
+
+  // 2. Validar Stock de Botellas 2L
+  let bottle2LMat: any = null;
+  if (b2L > 0) {
+    if (bottle2LRawMaterialId) {
+      bottle2LMat = await prisma.rawMaterial.findUnique({
+        where: { id: Number(bottle2LRawMaterialId) },
+      });
+    }
+    if (!bottle2LMat) {
+      bottle2LMat = await prisma.rawMaterial.findFirst({
+        where: {
+          OR: [
+            { code: 'BOTELLA_2L' },
+            { name: { contains: '2 litro', mode: 'insensitive' } },
+            { name: { contains: '2l', mode: 'insensitive' } },
+          ],
+          isActive: true,
+        },
+      });
+    }
+
+    const currentStock = bottle2LMat ? bottle2LMat.currentStock : 0;
+    if (!bottle2LMat || currentStock < b2L) {
+      throw new BadRequestError(
+        `Stock insuficiente de botellas 2L. Tienes ${currentStock} y requieres ${b2L}.`
+      );
+    }
+  }
+
+  // 2.1 Validar Stock de Presentaciones Personalizadas (customContainers)
+  interface ContainerToConsume {
+    rawMaterialId: number;
+    rawMaterial: any;
+    quantity: number;
+    capacityLiters: number;
+    unitCost: number;
+    totalCost: number;
+    price?: number;
+  }
+  const customContainersToConsume: ContainerToConsume[] = [];
+  if (Array.isArray(customContainers) && customContainers.length > 0) {
+    for (const c of customContainers) {
+      const cQty = Math.max(0, Number(c.quantity) || 0);
+      if (cQty > 0) {
+        const cMat = await prisma.rawMaterial.findUnique({
+          where: { id: Number(c.rawMaterialId) },
+        });
+        if (!cMat) {
+          throw new NotFoundError(`Insumo de envase con ID ${c.rawMaterialId} no encontrado`);
+        }
+        if (cMat.currentStock < cQty) {
+          throw new BadRequestError(
+            `Stock insuficiente del envase "${cMat.name}". Tienes ${cMat.currentStock} y requieres ${cQty}.`
+          );
+        }
+        const unitCost = cMat.avgCost || 0;
+        customContainersToConsume.push({
+          rawMaterialId: cMat.id,
+          rawMaterial: cMat,
+          quantity: cQty,
+          capacityLiters: Number(c.capacityLiters) || 1,
+          unitCost,
+          totalCost: cQty * unitCost,
+          price: c.price !== undefined ? Number(c.price) : undefined,
+        });
+      }
+    }
+  }
+
+  // 3. Consolidar y Validar Stock de Insumos Extras (Pulpas, Almíbares, Esencias, etc.)
+  interface ItemToConsume {
+    rawMaterialId: number;
+    rawMaterial: any;
+    quantityUsed: number;
+    dosagePerLiter?: number;
+    dosageUnit?: string;
+    unitCost: number;
+    totalCost: number;
+  }
+  const itemsToConsume: ItemToConsume[] = [];
+
+  if (Array.isArray(extraItems) && extraItems.length > 0) {
+    for (const item of extraItems) {
+      const mat = await prisma.rawMaterial.findUnique({
+        where: { id: Number(item.rawMaterialId) },
+      });
+      if (!mat) {
+        throw new NotFoundError(`Insumo adicional con ID ${item.rawMaterialId} no encontrado`);
+      }
+
+      let qty = Number(item.quantityUsed) || 0;
+      if (qty <= 0 && item.dosagePerLiter && Number(item.dosagePerLiter) > 0) {
+        if (isKgUnit(mat.unit)) {
+          const totalGrams = Math.round(Number(item.dosagePerLiter) * totalPackagingLiters);
+          qty = Math.round(totalGrams) / 1000;
+        } else {
+          qty = Number(item.dosagePerLiter) * totalPackagingLiters;
+        }
+      }
+
+      if (qty > 0) {
+        if (mat.currentStock < qty) {
+          throw new BadRequestError(
+            `Stock insuficiente de insumo "${mat.name}". Tienes ${mat.currentStock} ${mat.unit} y requieres ${qty}.`
+          );
+        }
+        const unitCost = mat.avgCost || 0;
+        const totalCost = qty * unitCost;
+        itemsToConsume.push({
+          rawMaterialId: mat.id,
+          rawMaterial: mat,
+          quantityUsed: qty,
+          dosagePerLiter: item.dosagePerLiter,
+          dosageUnit: item.dosageUnit || (isKgUnit(mat.unit) ? 'g/L' : mat.unit),
+          unitCost,
+          totalCost,
+        });
+      }
+    }
+  }
+
+  // Soporte retrocompatible si viene fruitRawMaterialId legacy
+  let fruitMat: any = null;
+  let fruitQty = Number(fruitQuantityUsed) || 0;
+  if (!fruitQty && fruitDosageGramsPerLiter && Number(fruitDosageGramsPerLiter) > 0) {
+    const totalGrams = Math.round(Number(fruitDosageGramsPerLiter) * totalPackagingLiters);
+    fruitQty = Math.round(totalGrams) / 1000;
+  }
+
+  if (fruitRawMaterialId && fruitQty > 0) {
+    const alreadyIncluded = itemsToConsume.some((it) => it.rawMaterialId === Number(fruitRawMaterialId));
+    if (!alreadyIncluded) {
+      fruitMat = await prisma.rawMaterial.findUnique({
+        where: { id: Number(fruitRawMaterialId) },
+      });
+      if (!fruitMat) {
+        throw new NotFoundError('Insumo de fruta no encontrado');
+      }
+      if (fruitMat.currentStock < fruitQty) {
+        throw new BadRequestError(
+          `Stock insuficiente de fruta "${fruitMat.name}". Tienes ${fruitMat.currentStock} ${fruitMat.unit} y requieres ${fruitQty}.`
+        );
+      }
+      const unitCost = fruitMat.avgCost || 0;
+      const totalCost = fruitQty * unitCost;
+      itemsToConsume.push({
+        rawMaterialId: fruitMat.id,
+        rawMaterial: fruitMat,
+        quantityUsed: fruitQty,
+        dosagePerLiter: fruitDosageGramsPerLiter ? Number(fruitDosageGramsPerLiter) : undefined,
+        dosageUnit: 'g/L',
+        unitCost,
+        totalCost,
+      });
+    }
+  }
+
+  // 4. Transacción atómica
+  return await prisma.$transaction(async (tx) => {
+    let packagingCost = 0;
+    const totalBottles = b1L + b2L + customContainersToConsume.reduce((sum, c) => sum + c.quantity, 0);
+
+    // Descontar botellas 1L
+    if (b1L > 0 && bottle1LMat) {
+      const unitCost = bottle1LMat.avgCost || 0;
+      packagingCost += b1L * unitCost;
+      await tx.rawMaterial.update({
+        where: { id: bottle1LMat.id },
+        data: { currentStock: Math.max(0, bottle1LMat.currentStock - b1L) },
+      });
+    }
+
+    // Descontar botellas 2L
+    if (b2L > 0 && bottle2LMat) {
+      const unitCost = bottle2LMat.avgCost || 0;
+      packagingCost += b2L * unitCost;
+      await tx.rawMaterial.update({
+        where: { id: bottle2LMat.id },
+        data: { currentStock: Math.max(0, bottle2LMat.currentStock - b2L) },
+      });
+    }
+
+    // Descontar otros envases personalizados
+    for (const c of customContainersToConsume) {
+      packagingCost += c.totalCost;
+      await tx.rawMaterial.update({
+        where: { id: c.rawMaterialId },
+        data: { currentStock: Math.max(0, c.rawMaterial.currentStock - c.quantity) },
+      });
+    }
+
+    // Descontar etiquetas dinámicamente si se configuró etiqueta
+    let effectiveLabelMatId: number | null = null;
+    let effectiveLabelQty = 0;
+
+    if (labelRawMaterialId !== undefined) {
+      effectiveLabelMatId = labelRawMaterialId ? Number(labelRawMaterialId) : null;
+      effectiveLabelQty = effectiveLabelMatId && labelQuantity !== undefined && labelQuantity !== null
+        ? Number(labelQuantity)
+        : (effectiveLabelMatId ? totalBottles : 0);
+    } else if (useLabels === false) {
+      effectiveLabelMatId = null;
+      effectiveLabelQty = 0;
+    } else {
+      // Retrocompatibilidad legacy: buscar ETIQUETA por defecto solo si no se pasó labelRawMaterialId
+      // y si se usan botellas estándar (no forzar etiquetas en customContainers sin selector)
+      if ((b1L > 0 || b2L > 0) && totalBottles > 0) {
+        const fallbackLabel = await tx.rawMaterial.findFirst({
+          where: {
+            code: 'ETIQUETA',
+            isActive: true,
+          },
+        });
+        if (fallbackLabel) {
+          effectiveLabelMatId = fallbackLabel.id;
+          effectiveLabelQty = totalBottles;
+        }
+      }
+    }
+
+    let labelMat: any = null;
+    if (effectiveLabelMatId && effectiveLabelQty > 0) {
+      labelMat = await tx.rawMaterial.findUnique({
+        where: { id: effectiveLabelMatId },
+      });
+      if (labelMat) {
+        if (labelMat.currentStock < effectiveLabelQty) {
+          throw new BadRequestError(
+            `Stock insuficiente de etiquetas "${labelMat.name}". Tienes ${labelMat.currentStock} ${labelMat.unit} y requieres ${effectiveLabelQty}.`
+          );
+        }
+        const labelCost = effectiveLabelQty * (labelMat.avgCost || 0);
+        packagingCost += labelCost;
+        await tx.rawMaterial.update({
+          where: { id: labelMat.id },
+          data: { currentStock: Math.max(0, labelMat.currentStock - effectiveLabelQty) },
+        });
+      }
+    }
+
+    // Descontar insumos extras (pulpas, almíbares, esencias)
+    for (const item of itemsToConsume) {
+      packagingCost += item.totalCost;
+      await tx.rawMaterial.update({
+        where: { id: item.rawMaterialId },
+        data: { currentStock: Math.max(0, item.rawMaterial.currentStock - item.quantityUsed) },
+      });
+    }
+
+    // Generar packagingCode: LOTE-YYYYMMDD-01-F01, etc.
+    let maxPkgSeq = 0;
+    const existingPkgs = await tx.batchPackaging.findMany({
+      where: { batchId },
+      select: { packagingCode: true },
+    });
+    for (const p of existingPkgs) {
+      if (p.packagingCode) {
+        const parts = p.packagingCode.split('-F');
+        if (parts.length === 2) {
+          const s = parseInt(parts[1], 10);
+          if (!isNaN(s) && s > maxPkgSeq) maxPkgSeq = s;
+        }
+      }
+    }
+    const nextPkgSeq = (maxPkgSeq || existingPkgs.length) + 1;
+    const packagingCode = `${batch.batchCode}-F${String(nextPkgSeq).padStart(2, '0')}`;
+
+    // Identificar fruta primaria para retrocompatibilidad
+    const primaryFruit = itemsToConsume.length > 0 ? itemsToConsume[0] : null;
+
+    // Estructurar presentaciones en containers JSON
+    const containersData: any[] = [];
+    if (b1L > 0) {
+      containersData.push({
+        containerName: 'Botella 1L',
+        capacityLiters: 1.0,
+        quantity: b1L,
+        price: price1L !== undefined && Number(price1L) >= 0 ? Number(price1L) : (batch.price1L || 12000),
+        rawMaterialId: bottle1LMat ? bottle1LMat.id : null,
+      });
+    }
+    if (b2L > 0) {
+      containersData.push({
+        containerName: 'Botella 2L',
+        capacityLiters: 2.0,
+        quantity: b2L,
+        price: price2L !== undefined && Number(price2L) >= 0 ? Number(price2L) : (batch.price2L || 24000),
+        rawMaterialId: bottle2LMat ? bottle2LMat.id : null,
+      });
+    }
+    for (const c of customContainersToConsume) {
+      containersData.push({
+        containerName: c.rawMaterial.name || `${c.capacityLiters}L`,
+        capacityLiters: c.capacityLiters,
+        quantity: c.quantity,
+        price: c.price || 0,
+        rawMaterialId: c.rawMaterialId,
+      });
+    }
+
+    // Crear registro de envasado
+    const packaging = await tx.batchPackaging.create({
+      data: {
+        batchId,
+        packagingCode,
+        flavor: flavor.trim(),
+        bottles1L: b1L,
+        bottles2L: b2L,
+        totalLiters: totalPackagingLiters,
+        price1L: price1L !== undefined && Number(price1L) >= 0 ? Number(price1L) : (batch.price1L || 12000),
+        price2L: price2L !== undefined && Number(price2L) >= 0 ? Number(price2L) : (batch.price2L || 24000),
+        containers: containersData,
+        bottle1LRawMaterialId: bottle1LMat ? bottle1LMat.id : null,
+        bottle2LRawMaterialId: bottle2LMat ? bottle2LMat.id : null,
+        labelRawMaterialId: labelMat ? labelMat.id : null,
+        labelQuantity: labelMat ? effectiveLabelQty : 0,
+        fruitRawMaterialId: primaryFruit ? primaryFruit.rawMaterialId : null,
+        fruitQuantityUsed: primaryFruit ? primaryFruit.quantityUsed : 0,
+        fruitUnitCost: primaryFruit ? primaryFruit.unitCost : 0,
+        packagingCost,
+        notes: notes ? notes.trim() : null,
+        packagedBy: packagedBy || 'Edier',
+        packagedAt: packagedAt ? parseColombiaDate(packagedAt) : new Date(),
+        itemsUsed: {
+          create: [
+            ...itemsToConsume.map((it) => ({
+              rawMaterialId: it.rawMaterialId,
+              quantityUsed: it.quantityUsed,
+              unitCost: it.unitCost,
+              totalCost: it.totalCost,
+              dosagePerLiter: it.dosagePerLiter,
+              dosageUnit: it.dosageUnit,
+            })),
+            ...customContainersToConsume.map((c) => ({
+              rawMaterialId: c.rawMaterialId,
+              quantityUsed: c.quantity,
+              unitCost: c.unitCost,
+              totalCost: c.totalCost,
+              dosageUnit: 'und',
+            })),
+          ],
+        },
+      },
+      include: {
+        itemsUsed: {
+          include: { rawMaterial: true },
+        },
+      },
+    });
+
+    // Actualizar lote madre
+    const updatedPackagedLiters = currentPackaged + totalPackagingLiters;
+    const updatedB1L = (batch.bottles1LProduced || 0) + b1L;
+    const updatedB2L = (batch.bottles2LProduced || 0) + b2L;
+    const updatedTotalCost = (batch.totalCost || 0) + packagingCost;
+    const updatedCostPerLiter = batch.totalLitersProduced > 0 ? Math.round(updatedTotalCost / batch.totalLitersProduced) : 0;
+
+    let updatedStatus = batch.status;
+    if (batch.status === 'EN_FERMENTACION') {
+      updatedStatus = 'DISPONIBLE';
+    }
+
+    const updatedBatch = await tx.productionBatch.update({
+      where: { id: batchId },
+      data: {
+        bottles1LProduced: updatedB1L,
+        bottles2LProduced: updatedB2L,
+        packagedLiters: updatedPackagedLiters,
+        totalCost: updatedTotalCost,
+        costPerLiter: updatedCostPerLiter,
+        status: updatedStatus,
+      },
+    });
+
+    // 5. Vincular pre-ventas si se seleccionaron
+    if (Array.isArray(linkOrderIds) && linkOrderIds.length > 0) {
+      const validOrderIds = linkOrderIds.map(Number).filter((id) => !isNaN(id) && id > 0);
+      if (validOrderIds.length > 0) {
+        await tx.order.updateMany({
+          where: { id: { in: validOrderIds } },
+          data: { batchId },
+        });
+
+        await tx.orderItem.updateMany({
+          where: {
+            orderId: { in: validOrderIds },
+            OR: [
+              { flavor: { contains: flavor.trim(), mode: 'insensitive' } },
+              { batchId: null },
+            ],
+          },
+          data: { batchId, packagingId: packaging.id },
+        });
+      }
+    }
+
+    // 6. Sincronizar estado bidireccional
+    await syncBatchStatusBidirectional(tx, batchId);
+
+    return {
+      message: `¡Envasado de ${totalPackagingLiters}L (${flavor}) registrado exitosamente!`,
+      packaging,
+      batch: updatedBatch,
+    };
+  });
+};
+
+/**
+ * Actualizar fraccionamiento de Fase B con balance delta de envases e insumos
+ */
+export const updateBatchPackaging = async (packagingId: number, data: UpdateBatchPackagingInput) => {
+  return await prisma.$transaction(async (tx) => {
+    const pkg = await tx.batchPackaging.findUnique({
+      where: { id: packagingId },
+      include: { batch: true },
+    });
+
+    if (!pkg) {
+      throw new NotFoundError('Registro de envasado no encontrado');
+    }
+
+    const {
+      flavor,
+      bottles1L,
+      bottles2L,
+      price1L,
+      price2L,
+      bottle1LRawMaterialId,
+      bottle2LRawMaterialId,
+      labelRawMaterialId,
+      labelQuantity,
+      customContainers,
+      fruitRawMaterialId,
+      fruitQuantityUsed,
+      fruitDosageGramsPerLiter,
+      useLabels,
+      extraItems,
+      notes,
+      packagedBy,
+      packagedAt,
+    } = data;
+
+    const oldB1L = pkg.bottles1L;
+    const oldB2L = pkg.bottles2L;
+    const newB1L = bottles1L !== undefined ? Number(bottles1L) : oldB1L;
+    const newB2L = bottles2L !== undefined ? Number(bottles2L) : oldB2L;
+
+    let customContainersLiters = 0;
+    const containersData: any[] = [];
+    if (newB1L > 0) {
+      containersData.push({
+        containerName: 'Botella 1L',
+        capacityLiters: 1.0,
+        quantity: newB1L,
+        price: price1L !== undefined ? Number(price1L) : (pkg.price1L || 12000),
+        rawMaterialId: bottle1LRawMaterialId !== undefined ? (bottle1LRawMaterialId ? Number(bottle1LRawMaterialId) : null) : pkg.bottle1LRawMaterialId,
+      });
+    }
+    if (newB2L > 0) {
+      containersData.push({
+        containerName: 'Botella 2L',
+        capacityLiters: 2.0,
+        quantity: newB2L,
+        price: price2L !== undefined ? Number(price2L) : (pkg.price2L || 24000),
+        rawMaterialId: bottle2LRawMaterialId !== undefined ? (bottle2LRawMaterialId ? Number(bottle2LRawMaterialId) : null) : pkg.bottle2LRawMaterialId,
+      });
+    }
+
+    if (customContainers !== undefined && Array.isArray(customContainers)) {
+      for (const c of customContainers) {
+        const qty = Math.max(0, Number(c.quantity) || 0);
+        const cap = Number(c.capacityLiters) || 1;
+        if (qty > 0) {
+          customContainersLiters += qty * cap;
+          containersData.push({
+            containerName: c.containerName || `${cap}L`,
+            capacityLiters: cap,
+            quantity: qty,
+            price: Number(c.price) || 0,
+            rawMaterialId: Number(c.rawMaterialId),
+          });
+        }
+      }
+    } else if (Array.isArray(pkg.containers)) {
+      for (const c of pkg.containers as any[]) {
+        if (c.containerName !== 'Botella 1L' && c.containerName !== 'Botella 2L' && c.capacityLiters !== 1 && c.capacityLiters !== 2) {
+          customContainersLiters += (Number(c.quantity) || 0) * (Number(c.capacityLiters) || 1);
+          containersData.push(c);
+        }
+      }
+    }
+
+    const oldPkgLiters = pkg.totalLiters;
+    const newPkgLiters = newB1L * 1.0 + newB2L * 2.0 + customContainersLiters;
+    const deltaLiters = newPkgLiters - oldPkgLiters;
+
+    // Validar volumen total del lote madre
+    const batch = pkg.batch;
+    const newPackagedLiters = (batch.packagedLiters || 0) + deltaLiters;
+    if (newPackagedLiters > batch.totalLitersProduced + 0.05) {
+      throw new BadRequestError(
+        `Volumen insuficiente para el ajuste de envasado. El lote tiene ${batch.totalLitersProduced}L totales y el ajuste llevaría a ${newPackagedLiters.toFixed(1)}L envasados.`
+      );
+    }
+
+    let deltaPackagingCost = 0;
+
+    // Delta Botellas 1L
+    const targetB1LMatId = bottle1LRawMaterialId !== undefined
+      ? (bottle1LRawMaterialId ? Number(bottle1LRawMaterialId) : null)
+      : pkg.bottle1LRawMaterialId;
+    let b1Mat = targetB1LMatId ? await tx.rawMaterial.findUnique({ where: { id: targetB1LMatId } }) : null;
+    if (!b1Mat && newB1L > 0) {
+      b1Mat = await tx.rawMaterial.findFirst({
+        where: {
+          OR: [
+            { code: 'BOTELLA_1L' },
+            { name: { contains: '1 litro', mode: 'insensitive' } },
+            { name: { contains: '1l', mode: 'insensitive' } },
+          ],
+          isActive: true,
+        },
+      });
+    }
+
+    if (pkg.bottle1LRawMaterialId && b1Mat && pkg.bottle1LRawMaterialId !== b1Mat.id) {
+      if (oldB1L > 0) {
+        await tx.rawMaterial.update({
+          where: { id: pkg.bottle1LRawMaterialId },
+          data: { currentStock: { increment: oldB1L } },
+        });
+        const prevB1 = await tx.rawMaterial.findUnique({ where: { id: pkg.bottle1LRawMaterialId } });
+        deltaPackagingCost -= oldB1L * (prevB1?.avgCost || 0);
+      }
+      if (newB1L > 0) {
+        if (b1Mat.currentStock < newB1L) {
+          throw new BadRequestError(`Stock insuficiente de botellas 1L "${b1Mat.name}". Tienes ${b1Mat.currentStock} y requieres ${newB1L}.`);
+        }
+        await tx.rawMaterial.update({
+          where: { id: b1Mat.id },
+          data: { currentStock: Math.max(0, b1Mat.currentStock - newB1L) },
+        });
+        deltaPackagingCost += newB1L * (b1Mat.avgCost || 0);
+      }
+    } else if (b1Mat) {
+      const delta1L = newB1L - oldB1L;
+      if (delta1L !== 0) {
+        if (delta1L > 0 && b1Mat.currentStock < delta1L) {
+          throw new BadRequestError(`Stock insuficiente de botellas 1L. Tienes ${b1Mat.currentStock} y requieres ${delta1L} adicionales.`);
+        }
+        await tx.rawMaterial.update({
+          where: { id: b1Mat.id },
+          data: { currentStock: Math.max(0, b1Mat.currentStock - delta1L) },
+        });
+        deltaPackagingCost += delta1L * (b1Mat.avgCost || 0);
+      }
+    }
+
+    // Delta Botellas 2L
+    const targetB2LMatId = bottle2LRawMaterialId !== undefined
+      ? (bottle2LRawMaterialId ? Number(bottle2LRawMaterialId) : null)
+      : pkg.bottle2LRawMaterialId;
+    let b2Mat = targetB2LMatId ? await tx.rawMaterial.findUnique({ where: { id: targetB2LMatId } }) : null;
+    if (!b2Mat && newB2L > 0) {
+      b2Mat = await tx.rawMaterial.findFirst({
+        where: {
+          OR: [
+            { code: 'BOTELLA_2L' },
+            { name: { contains: '2 litro', mode: 'insensitive' } },
+            { name: { contains: '2l', mode: 'insensitive' } },
+          ],
+          isActive: true,
+        },
+      });
+    }
+
+    if (pkg.bottle2LRawMaterialId && b2Mat && pkg.bottle2LRawMaterialId !== b2Mat.id) {
+      if (oldB2L > 0) {
+        await tx.rawMaterial.update({
+          where: { id: pkg.bottle2LRawMaterialId },
+          data: { currentStock: { increment: oldB2L } },
+        });
+        const prevB2 = await tx.rawMaterial.findUnique({ where: { id: pkg.bottle2LRawMaterialId } });
+        deltaPackagingCost -= oldB2L * (prevB2?.avgCost || 0);
+      }
+      if (newB2L > 0) {
+        if (b2Mat.currentStock < newB2L) {
+          throw new BadRequestError(`Stock insuficiente de botellas 2L "${b2Mat.name}". Tienes ${b2Mat.currentStock} y requieres ${newB2L}.`);
+        }
+        await tx.rawMaterial.update({
+          where: { id: b2Mat.id },
+          data: { currentStock: Math.max(0, b2Mat.currentStock - newB2L) },
+        });
+        deltaPackagingCost += newB2L * (b2Mat.avgCost || 0);
+      }
+    } else if (b2Mat) {
+      const delta2L = newB2L - oldB2L;
+      if (delta2L !== 0) {
+        if (delta2L > 0 && b2Mat.currentStock < delta2L) {
+          throw new BadRequestError(`Stock insuficiente de botellas 2L. Tienes ${b2Mat.currentStock} y requieres ${delta2L} adicionales.`);
+        }
+        await tx.rawMaterial.update({
+          where: { id: b2Mat.id },
+          data: { currentStock: Math.max(0, b2Mat.currentStock - delta2L) },
+        });
+        deltaPackagingCost += delta2L * (b2Mat.avgCost || 0);
+      }
+    }
+
+    // Delta Etiquetas Adhesivas Dinámicas (sin tapas)
+    let targetLabelMatId: number | null = null;
+    if (labelRawMaterialId !== undefined) {
+      targetLabelMatId = labelRawMaterialId ? Number(labelRawMaterialId) : null;
+    } else if (useLabels === false) {
+      targetLabelMatId = null;
+    } else {
+      targetLabelMatId = pkg.labelRawMaterialId;
+      if (!targetLabelMatId && (pkg as any).useLabels !== false) {
+        const fallbackLabel = await tx.rawMaterial.findFirst({
+          where: {
+            code: 'ETIQUETA',
+            isActive: true,
+          },
+        });
+        if (fallbackLabel) targetLabelMatId = fallbackLabel.id;
+      }
+    }
+
+    let targetLabelQty = 0;
+    if (targetLabelMatId) {
+      if (labelQuantity !== undefined) {
+        targetLabelQty = labelQuantity !== null ? Math.max(0, Number(labelQuantity)) : 0;
+      } else {
+        targetLabelQty = pkg.labelQuantity !== null && pkg.labelQuantity !== undefined ? pkg.labelQuantity : (newB1L + newB2L);
+      }
+    }
+
+    const oldLabelMatId = pkg.labelRawMaterialId;
+    const oldLabelQty = pkg.labelQuantity || 0;
+
+    if (oldLabelMatId === targetLabelMatId) {
+      const deltaLabel = targetLabelQty - oldLabelQty;
+      if (deltaLabel !== 0 && targetLabelMatId) {
+        const lMat = await tx.rawMaterial.findUnique({ where: { id: targetLabelMatId } });
+        if (lMat) {
+          if (deltaLabel > 0 && lMat.currentStock < deltaLabel) {
+            throw new BadRequestError(`Stock insuficiente de etiquetas "${lMat.name}". Tienes ${lMat.currentStock} y requieres ${deltaLabel} adicionales.`);
+          }
+          await tx.rawMaterial.update({
+            where: { id: lMat.id },
+            data: { currentStock: Math.max(0, lMat.currentStock - deltaLabel) },
+          });
+          deltaPackagingCost += deltaLabel * (lMat.avgCost || 0);
+        }
+      }
+    } else {
+      if (oldLabelMatId && oldLabelQty > 0) {
+        const oldLMat = await tx.rawMaterial.findUnique({ where: { id: oldLabelMatId } });
+        if (oldLMat) {
+          await tx.rawMaterial.update({
+            where: { id: oldLMat.id },
+            data: { currentStock: { increment: oldLabelQty } },
+          });
+          deltaPackagingCost -= oldLabelQty * (oldLMat.avgCost || 0);
+        }
+      }
+      if (targetLabelMatId && targetLabelQty > 0) {
+        const newLMat = await tx.rawMaterial.findUnique({ where: { id: targetLabelMatId } });
+        if (newLMat) {
+          if (newLMat.currentStock < targetLabelQty) {
+            throw new BadRequestError(`Stock insuficiente de etiquetas "${newLMat.name}". Tienes ${newLMat.currentStock} y requieres ${targetLabelQty}.`);
+          }
+          await tx.rawMaterial.update({
+            where: { id: newLMat.id },
+            data: { currentStock: Math.max(0, newLMat.currentStock - targetLabelQty) },
+          });
+          deltaPackagingCost += targetLabelQty * (newLMat.avgCost || 0);
+        }
+      }
+    }
+
+    // Delta Insumos Extras (array extraItems si viene definido)
+    let targetFruitId = fruitRawMaterialId !== undefined ? (fruitRawMaterialId ? Number(fruitRawMaterialId) : null) : pkg.fruitRawMaterialId;
+    let targetFruitQty = fruitQuantityUsed !== undefined ? Number(fruitQuantityUsed) : (pkg.fruitQuantityUsed || 0);
+    let fruitUnitCost = pkg.fruitUnitCost || 0;
+
+    if (Array.isArray(extraItems)) {
+      // 1. Revertir y borrar insumos previos
+      const existingItems = await tx.batchPackagingItem.findMany({ where: { packagingId } });
+      for (const oldIt of existingItems) {
+        await tx.rawMaterial.update({
+          where: { id: oldIt.rawMaterialId },
+          data: { currentStock: { increment: oldIt.quantityUsed } },
+        });
+        deltaPackagingCost -= oldIt.totalCost;
+      }
+      await tx.batchPackagingItem.deleteMany({ where: { packagingId } });
+
+      // 2. Procesar nuevos insumos extras
+      for (const it of extraItems) {
+        const mat = await tx.rawMaterial.findUnique({ where: { id: Number(it.rawMaterialId) } });
+        if (!mat) {
+          throw new NotFoundError(`Insumo adicional con ID ${it.rawMaterialId} no encontrado`);
+        }
+        let qty = Number(it.quantityUsed) || 0;
+        if (qty <= 0 && it.dosagePerLiter && Number(it.dosagePerLiter) > 0) {
+          if (isKgUnit(mat.unit)) {
+            const totalGrams = Math.round(Number(it.dosagePerLiter) * newPkgLiters);
+            qty = Math.round(totalGrams) / 1000;
+          } else {
+            qty = Number(it.dosagePerLiter) * newPkgLiters;
+          }
+        }
+        if (qty > 0) {
+          if (mat.currentStock < qty) {
+            throw new BadRequestError(`Stock insuficiente de insumo "${mat.name}". Tienes ${mat.currentStock} ${mat.unit} y requieres ${qty}.`);
+          }
+          await tx.rawMaterial.update({
+            where: { id: mat.id },
+            data: { currentStock: Math.max(0, mat.currentStock - qty) },
+          });
+          const unitCost = mat.avgCost || 0;
+          const totalCost = qty * unitCost;
+          deltaPackagingCost += totalCost;
+          await tx.batchPackagingItem.create({
+            data: {
+              packagingId,
+              rawMaterialId: mat.id,
+              quantityUsed: qty,
+              unitCost,
+              totalCost,
+              dosagePerLiter: it.dosagePerLiter,
+              dosageUnit: it.dosageUnit || (isKgUnit(mat.unit) ? 'g/L' : mat.unit),
+            },
+          });
+        }
+      }
+
+      if (extraItems.length > 0) {
+        const pMat = await tx.rawMaterial.findUnique({ where: { id: Number(extraItems[0].rawMaterialId) } });
+        targetFruitId = pMat ? pMat.id : null;
+        targetFruitQty = Number(extraItems[0].quantityUsed) || 0;
+        fruitUnitCost = pMat ? (pMat.avgCost || 0) : 0;
+      } else {
+        targetFruitId = null;
+        targetFruitQty = 0;
+        fruitUnitCost = 0;
+      }
+    } else {
+      // Manejo legacy si no viene extraItems
+      if (fruitQuantityUsed === undefined && fruitDosageGramsPerLiter !== undefined && Number(fruitDosageGramsPerLiter) > 0) {
+        targetFruitQty = Math.round(Number(fruitDosageGramsPerLiter) * newPkgLiters) / 1000;
+      }
+
+      if (pkg.fruitRawMaterialId !== targetFruitId || (pkg.fruitQuantityUsed || 0) !== targetFruitQty) {
+        if (pkg.fruitRawMaterialId && (pkg.fruitQuantityUsed || 0) > 0) {
+          await tx.rawMaterial.update({
+            where: { id: pkg.fruitRawMaterialId },
+            data: { currentStock: { increment: pkg.fruitQuantityUsed! } },
+          });
+          deltaPackagingCost -= (pkg.fruitQuantityUsed || 0) * (pkg.fruitUnitCost || 0);
+        }
+        if (targetFruitId && targetFruitQty > 0) {
+          const newFruitMat = await tx.rawMaterial.findUnique({ where: { id: targetFruitId } });
+          if (newFruitMat) {
+            if (newFruitMat.currentStock < targetFruitQty) {
+              throw new BadRequestError(`Stock insuficiente de fruta "${newFruitMat.name}".`);
+            }
+            await tx.rawMaterial.update({
+              where: { id: targetFruitId },
+              data: { currentStock: Math.max(0, newFruitMat.currentStock - targetFruitQty) },
+            });
+            fruitUnitCost = newFruitMat.avgCost || 0;
+            deltaPackagingCost += targetFruitQty * fruitUnitCost;
+          }
+        } else {
+          targetFruitId = null;
+          targetFruitQty = 0;
+          fruitUnitCost = 0;
+        }
+      }
+    }
+
+    const updatedPackaging = await tx.batchPackaging.update({
+      where: { id: packagingId },
+      data: {
+        flavor: flavor !== undefined ? flavor.trim() : pkg.flavor,
+        bottles1L: newB1L,
+        bottles2L: newB2L,
+        totalLiters: newPkgLiters,
+        price1L: price1L !== undefined ? Number(price1L) : pkg.price1L,
+        price2L: price2L !== undefined ? Number(price2L) : pkg.price2L,
+        containers: containersData,
+        bottle1LRawMaterialId: b1Mat ? b1Mat.id : null,
+        bottle2LRawMaterialId: b2Mat ? b2Mat.id : null,
+        labelRawMaterialId: targetLabelMatId,
+        labelQuantity: targetLabelQty,
+        fruitRawMaterialId: targetFruitId,
+        fruitQuantityUsed: targetFruitQty,
+        fruitUnitCost,
+        packagingCost: Math.max(0, (pkg.packagingCost || 0) + deltaPackagingCost),
+        notes: notes !== undefined ? (notes ? notes.trim() : null) : pkg.notes,
+        packagedBy: packagedBy !== undefined ? packagedBy.trim() : pkg.packagedBy,
+        packagedAt: packagedAt ? parseColombiaDate(packagedAt) : pkg.packagedAt,
+      },
+      include: {
+        itemsUsed: {
+          include: { rawMaterial: true },
+        },
+      },
+    });
+
+    const updatedBatchTotalCost = Math.max(0, (batch.totalCost || 0) + deltaPackagingCost);
+    const updatedBatchCostPerLiter = batch.totalLitersProduced > 0 ? Math.round(updatedBatchTotalCost / batch.totalLitersProduced) : 0;
+
+    await tx.productionBatch.update({
+      where: { id: batch.id },
+      data: {
+        packagedLiters: Math.max(0, newPackagedLiters),
+        totalCost: updatedBatchTotalCost,
+        costPerLiter: updatedBatchCostPerLiter,
+      },
+    });
+
+    await syncBatchStatusBidirectional(tx, batch.id);
+
+    const updatedBatch = await tx.productionBatch.findUnique({
+      where: { id: batch.id },
+      include: {
+        packagings: {
+          include: {
+            itemsUsed: {
+              include: { rawMaterial: true },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      message: 'Fraccionamiento actualizado exitosamente',
+      packaging: updatedPackaging,
+      batch: updatedBatch,
+    };
+  });
+};
+
+/**
+ * Desvincular pedido de un lote (retornando a pre-venta)
+ */
+export const unlinkOrderFromBatch = async (batchId: number, orderId: number) => {
+  const batch = await prisma.productionBatch.findUnique({
+    where: { id: batchId },
+  });
+
+  if (!batch) {
+    throw new NotFoundError('Lote no encontrado');
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+
+  if (!order) {
+    throw new NotFoundError('Pedido no encontrado');
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    if (order.batchId === batchId) {
+      await tx.order.update({
+        where: { id: orderId },
+        data: { batchId: null },
+      });
+    }
+
+    await tx.orderItem.updateMany({
+      where: { orderId, batchId },
+      data: { batchId: null },
+    });
+
+    // Recalcular saldo y reactivar lote a DISPONIBLE si estaba AGOTADO
+    await syncBatchStatusBidirectional(tx, batchId);
+
+    return {
+      message: `Pedido #${order.orderNumber} desvinculado exitosamente del lote ${batch.batchCode}. El pedido regresó a pre-venta.`,
+      batchId,
+      orderId,
+    };
+  });
+};
+
+/**
+ * Registrar retiro directo de socio
+ */
+export const recordPartnerWithdrawal = async (batchId: number, input: PartnerWithdrawalInput) => {
+  return await createBatchDischarge(batchId, {
+    bottleSize: input.bottleSize || '1L',
+    quantityBottles: input.quantityBottles,
+    staffMemberId: input.staffMemberId,
+    reasonType: 'CONSUMO_SOCIO',
+    notes: input.notes,
+    registeredBy: input.registeredBy || 'Edier',
+    dischargeDate: input.dischargeDate,
+  });
+};
+
+/**
+ * Helper para calcular dinámicamente las presentaciones envasadas,
+ * ventas, bajas y stock disponible de una fracción
+ */
+export function computePackagingPresentations(pkg: any) {
+  let rawPresentations: Array<{
+    containerName: string;
+    capacityLiters: number;
+    quantity: number;
+    price: number;
+    rawMaterialId?: number | null;
+  }> = [];
+
+  if (Array.isArray(pkg.containers) && pkg.containers.length > 0) {
+    rawPresentations = (pkg.containers as any[]).map((c: any) => ({
+      containerName: c.containerName || `${c.capacityLiters}L`,
+      capacityLiters: Number(c.capacityLiters) || 1,
+      quantity: Number(c.quantity) || 0,
+      price: Number(c.price) || 0,
+      rawMaterialId: c.rawMaterialId ? Number(c.rawMaterialId) : null,
+    }));
+  } else {
+    if (pkg.bottles1L > 0 || (!pkg.bottles2L && (!pkg.containers || (pkg.containers as any[]).length === 0))) {
+      rawPresentations.push({
+        containerName: 'Botella 1L',
+        capacityLiters: 1.0,
+        quantity: pkg.bottles1L || 0,
+        price: pkg.price1L || 12000,
+        rawMaterialId: pkg.bottle1LRawMaterialId,
+      });
+    }
+    if (pkg.bottles2L > 0) {
+      rawPresentations.push({
+        containerName: 'Botella 2L',
+        capacityLiters: 2.0,
+        quantity: pkg.bottles2L || 0,
+        price: pkg.price2L || 24000,
+        rawMaterialId: pkg.bottle2LRawMaterialId,
+      });
+    }
+  }
+
+  const orderItems = (pkg.orderItems || []).filter(
+    (it: any) => it.order && it.order.deliveryStatus !== 'CANCELLED'
+  );
+  const discharges = pkg.discharges || [];
+
+  const presentations = rawPresentations.map((p) => {
+    // Determinar unidades vendidas
+    const matchingOrderItems = orderItems.filter((it: any) => {
+      const sizeMatch = it.bottleSize?.toLowerCase().trim() === p.containerName?.toLowerCase().trim();
+      const capMatch = Math.abs((it.litersPerUnit || 1) - p.capacityLiters) < 0.01;
+      return sizeMatch || capMatch;
+    });
+    const sold = matchingOrderItems.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
+
+    // Determinar unidades retiradas / dadas de baja
+    const matchingDischarges = discharges.filter((d: any) => {
+      const sizeMatch = d.bottleSize?.toLowerCase().trim() === p.containerName?.toLowerCase().trim();
+      const unitLiters = d.quantityBottles > 0 ? d.totalLiters / d.quantityBottles : d.totalLiters;
+      const capMatch = Math.abs(unitLiters - p.capacityLiters) < 0.01;
+      return sizeMatch || capMatch;
+    });
+    const discharged = matchingDischarges.reduce((sum: number, d: any) => sum + (d.quantityBottles || 0), 0);
+
+    const free = Math.max(0, p.quantity - sold - discharged);
+
+    return {
+      containerName: p.containerName,
+      capacityLiters: p.capacityLiters,
+      quantity: p.quantity,
+      sold,
+      discharged,
+      free,
+      price: p.price,
+      totalLiters: Math.round(p.quantity * p.capacityLiters * 100) / 100,
+      soldLiters: Math.round(sold * p.capacityLiters * 100) / 100,
+      dischargedLiters: Math.round(discharged * p.capacityLiters * 100) / 100,
+      freeLiters: Math.round(free * p.capacityLiters * 100) / 100,
+      rawMaterialId: p.rawMaterialId,
+    };
+  });
+
+  const totalLiters = Math.round(presentations.reduce((sum, p) => sum + p.totalLiters, 0) * 100) / 100 || pkg.totalLiters || 0;
+  const soldLiters = Math.round(presentations.reduce((sum, p) => sum + p.soldLiters, 0) * 100) / 100;
+  const dischargedLiters = Math.round(presentations.reduce((sum, p) => sum + p.dischargedLiters, 0) * 100) / 100;
+  const freeLiters = Math.max(0, Math.round((totalLiters - soldLiters - dischargedLiters) * 100) / 100);
+  const progressPercentage = totalLiters > 0 ? Math.min(100, Math.round(((soldLiters + dischargedLiters) / totalLiters) * 100)) : 0;
+  const status = freeLiters <= 0.05 ? 'AGOTADO' : 'DISPONIBLE';
+
+  return {
+    presentations,
+    totalLiters,
+    soldLiters,
+    dischargedLiters,
+    freeLiters,
+    progressPercentage,
+    status,
+  };
+}
+
+/**
+ * Listado paginado de fracciones envasadas (Fase B)
+ */
+export const getBatchPackagings = async (query: PackagingsQueryInput) => {
+  const { page = 1, limit = 5, search, status, batchId } = query;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Number(limit) || 5);
+  const skip = (pageNum - 1) * limitNum;
+
+  const whereClause: any = {};
+  if (batchId) {
+    whereClause.batchId = Number(batchId);
+  }
+  if (search && search.trim()) {
+    const s = search.trim();
+    whereClause.OR = [
+      { packagingCode: { contains: s, mode: 'insensitive' } },
+      { flavor: { contains: s, mode: 'insensitive' } },
+      { batch: { batchCode: { contains: s, mode: 'insensitive' } } },
+    ];
+  }
+
+  const [rawPackagings, totalCount] = await Promise.all([
+    prisma.batchPackaging.findMany({
+      where: whereClause,
+      include: {
+        batch: {
+          select: {
+            id: true,
+            batchCode: true,
+            flavor: true,
+            status: true,
+            preparationDate: true,
+            expirationDate: true,
+            totalCost: true,
+            costPerLiter: true,
+            packagedLiters: true,
+            totalLitersProduced: true,
+            isActive: true,
+          },
+        },
+        itemsUsed: {
+          include: { rawMaterial: true },
+        },
+        orderItems: {
+          include: {
+            order: {
+              include: {
+                customer: { select: { id: true, fullName: true, phone: true } },
+              },
+            },
+          },
+        },
+        discharges: {
+          include: {
+            staffMember: { select: { id: true, fullName: true, role: true } },
+          },
+        },
+      },
+      orderBy: { packagedAt: 'desc' },
+      skip,
+      take: limitNum,
+    }),
+    prisma.batchPackaging.count({ where: whereClause }),
+  ]);
+
+  const items = rawPackagings.map((pkg) => {
+    const computed = computePackagingPresentations(pkg);
+    const milkBaseCost = Math.round(computed.totalLiters * (pkg.batch?.costPerLiter || 2800));
+    const totalFractionCost = milkBaseCost + (pkg.packagingCost || 0);
+    const fractionCostPerLiter = computed.totalLiters > 0 ? Math.round(totalFractionCost / computed.totalLiters) : 0;
+
+    return {
+      id: pkg.id,
+      packagingCode: pkg.packagingCode,
+      batchId: pkg.batchId,
+      batchCode: pkg.batch?.batchCode,
+      flavor: pkg.flavor,
+      bottles1L: pkg.bottles1L,
+      bottles2L: pkg.bottles2L,
+      containers: pkg.containers,
+      presentations: computed.presentations,
+      totalLiters: computed.totalLiters,
+      soldLiters: computed.soldLiters,
+      dischargedLiters: computed.dischargedLiters,
+      freeLiters: computed.freeLiters,
+      progressPercentage: computed.progressPercentage,
+      status: computed.status,
+      price1L: pkg.price1L,
+      price2L: pkg.price2L,
+      packagingCost: pkg.packagingCost,
+      fractionCostPerLiter,
+      totalFractionCost,
+      notes: pkg.notes,
+      packagedBy: pkg.packagedBy,
+      packagedAt: pkg.packagedAt,
+      batch: pkg.batch,
+      itemsUsed: pkg.itemsUsed,
+      linkedOrdersCount: pkg.orderItems?.length || 0,
+    };
+  });
+
+  let filteredItems = items;
+  if (status && status !== 'ALL') {
+    filteredItems = items.filter((it) => it.status === status);
+  }
+
+  const totalPages = Math.ceil(totalCount / limitNum) || 1;
+
+  return {
+    data: filteredItems,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total: totalCount,
+      totalPages,
+    },
+  };
+};
+
+/**
+ * Obtener auditoría y resumen exclusivo de una fracción envasada
+ */
+export const getPackagingSummary = async (packagingId: number) => {
+  const pkg = await prisma.batchPackaging.findUnique({
+    where: { id: packagingId },
+    include: {
+      batch: {
+        select: {
+          id: true,
+          batchCode: true,
+          flavor: true,
+          status: true,
+          preparationDate: true,
+          expirationDate: true,
+          totalCost: true,
+          costPerLiter: true,
+          packagedLiters: true,
+          totalLitersProduced: true,
+          isActive: true,
+        },
+      },
+      itemsUsed: {
+        include: { rawMaterial: true },
+      },
+      orderItems: {
+        include: {
+          order: {
+            include: {
+              customer: { select: { id: true, fullName: true, phone: true } },
+            },
+          },
+        },
+      },
+      discharges: {
+        include: {
+          staffMember: { select: { id: true, fullName: true, role: true } },
+        },
+        orderBy: { dischargeDate: 'desc' },
+      },
+    },
+  });
+
+  if (!pkg) {
+    throw new NotFoundError('Fracción de envasado no encontrada');
+  }
+
+  const computed = computePackagingPresentations(pkg);
+  const milkBaseCost = Math.round(computed.totalLiters * (pkg.batch?.costPerLiter || 2800));
+  const totalFractionCost = milkBaseCost + (pkg.packagingCost || 0);
+  const fractionCostPerLiter = computed.totalLiters > 0 ? Math.round(totalFractionCost / computed.totalLiters) : 0;
+
+  // Agrupar pedidos vinculados únicos
+  const linkedOrdersMap = new Map<number, any>();
+  for (const it of pkg.orderItems || []) {
+    if (it.order && it.order.deliveryStatus !== 'CANCELLED') {
+      if (!linkedOrdersMap.has(it.order.id)) {
+        linkedOrdersMap.set(it.order.id, {
+          id: it.order.id,
+          orderNumber: it.order.orderNumber,
+          customer: it.order.customer,
+          orderDate: it.order.orderDate,
+          deliveryStatus: it.order.deliveryStatus,
+          paymentStatus: it.order.paymentStatus,
+          totalAmount: it.order.totalAmount,
+          items: [],
+        });
+      }
+      linkedOrdersMap.get(it.order.id).items.push({
+        id: it.id,
+        bottleSize: it.bottleSize,
+        flavor: it.flavor,
+        quantity: it.quantity,
+        totalLiters: it.totalLiters,
+        unitPrice: it.unitPrice,
+        totalPrice: it.totalPrice,
+      });
+    }
+  }
+
+  return {
+    packaging: {
+      id: pkg.id,
+      packagingCode: pkg.packagingCode,
+      batchId: pkg.batchId,
+      flavor: pkg.flavor,
+      notes: pkg.notes,
+      packagedBy: pkg.packagedBy,
+      packagedAt: pkg.packagedAt,
+      packagingCost: pkg.packagingCost,
+      batch: pkg.batch,
+    },
+    presentations: computed.presentations,
+    volume: {
+      totalLiters: computed.totalLiters,
+      soldLiters: computed.soldLiters,
+      dischargedLiters: computed.dischargedLiters,
+      freeLiters: computed.freeLiters,
+      progressPercentage: computed.progressPercentage,
+      status: computed.status,
+    },
+    costs: {
+      milkBaseCost,
+      packagingCost: pkg.packagingCost,
+      totalCost: totalFractionCost,
+      costPerLiter: fractionCostPerLiter,
+    },
+    itemsUsed: pkg.itemsUsed,
+    linkedOrders: Array.from(linkedOrdersMap.values()),
+    discharges: pkg.discharges,
+  };
+};
+
+/**
+ * Eliminar fracción de envasado, reintegrando litros al lote madre e insumos al inventario
+ */
+export const deleteBatchPackaging = async (packagingId: number, options?: DeletePackagingQueryInput) => {
+  return await prisma.$transaction(async (tx) => {
+    const pkg = await tx.batchPackaging.findUnique({
+      where: { id: packagingId },
+      include: {
+        batch: true,
+        itemsUsed: true,
+        orderItems: {
+          include: { order: true },
+        },
+      },
+    });
+
+    if (!pkg) {
+      throw new NotFoundError('Fracción de envasado no encontrada');
+    }
+
+    const activeLinkedOrders = (pkg.orderItems || []).filter(
+      (it) => it.order && it.order.deliveryStatus !== 'CANCELLED'
+    );
+
+    if (activeLinkedOrders.length > 0 && !options?.force) {
+      throw new BadRequestError(
+        `No se puede eliminar la fracción "${pkg.packagingCode || pkg.flavor}" porque tiene ${activeLinkedOrders.length} pedido(s) vinculado(s). Debes desvincular los pedidos vinculados antes de eliminarla.`
+      );
+    }
+
+    // 1. Reintegrar stock de botellas estándar
+    if (pkg.bottle1LRawMaterialId && pkg.bottles1L > 0) {
+      await tx.rawMaterial.update({
+        where: { id: pkg.bottle1LRawMaterialId },
+        data: { currentStock: { increment: pkg.bottles1L } },
+      });
+    }
+    if (pkg.bottle2LRawMaterialId && pkg.bottles2L > 0) {
+      await tx.rawMaterial.update({
+        where: { id: pkg.bottle2LRawMaterialId },
+        data: { currentStock: { increment: pkg.bottles2L } },
+      });
+    }
+
+    // 2. Reintegrar etiquetas
+    if (pkg.labelRawMaterialId && (pkg.labelQuantity || 0) > 0) {
+      await tx.rawMaterial.update({
+        where: { id: pkg.labelRawMaterialId },
+        data: { currentStock: { increment: pkg.labelQuantity! } },
+      });
+    }
+
+    // 3. Reintegrar todos los insumos extras y envases personalizados consumidos en itemsUsed
+    for (const item of pkg.itemsUsed) {
+      await tx.rawMaterial.update({
+        where: { id: item.rawMaterialId },
+        data: { currentStock: { increment: item.quantityUsed } },
+      });
+    }
+
+    // 4. Reintegrar litros y costos al lote madre
+    const batch = pkg.batch;
+    const updatedPackagedLiters = Math.max(0, (batch.packagedLiters || 0) - pkg.totalLiters);
+    const updatedB1L = Math.max(0, (batch.bottles1LProduced || 0) - pkg.bottles1L);
+    const updatedB2L = Math.max(0, (batch.bottles2LProduced || 0) - pkg.bottles2L);
+    const updatedTotalCost = Math.max(0, (batch.totalCost || 0) - pkg.packagingCost);
+    const updatedCostPerLiter = batch.totalLitersProduced > 0 ? Math.round(updatedTotalCost / batch.totalLitersProduced) : 0;
+
+    await tx.productionBatch.update({
+      where: { id: batch.id },
+      data: {
+        packagedLiters: updatedPackagedLiters,
+        bottles1LProduced: updatedB1L,
+        bottles2LProduced: updatedB2L,
+        totalCost: updatedTotalCost,
+        costPerLiter: updatedCostPerLiter,
+      },
+    });
+
+    // 5. Desvincular orderItems si force == true
+    if (pkg.orderItems && pkg.orderItems.length > 0) {
+      await tx.orderItem.updateMany({
+        where: { packagingId: pkg.id },
+        data: { packagingId: null },
+      });
+    }
+
+    // 6. Eliminar BatchPackaging
+    await tx.batchPackaging.delete({
+      where: { id: pkg.id },
+    });
+
+    // 7. Sincronizar estado del lote madre
+    await syncBatchStatusBidirectional(tx, batch.id);
+
+    return {
+      message: `Fracción ${pkg.packagingCode || pkg.flavor} eliminada exitosamente. Se reintegraron ${pkg.totalLiters}L al lote madre ${batch.batchCode} y los insumos al almacén.`,
+      batchId: batch.id,
+      packagingId: pkg.id,
+    };
+  });
+};
+
+/**
+ * Registrar retiro directo de socio sobre una fracción envasada
+ */
+export const recordPackagingDischarge = async (packagingId: number, input: PackagingDischargeInput) => {
+  const pkg = await prisma.batchPackaging.findUnique({
+    where: { id: packagingId },
+    include: {
+      batch: true,
+      orderItems: { include: { order: true } },
+      discharges: true,
+    },
+  });
+
+  if (!pkg) {
+    throw new NotFoundError('Fracción de envasado no encontrada');
+  }
+
+  const { bottleSize, quantityBottles, staffMemberId, notes, registeredBy, dischargeDate } = input;
+  const qty = Math.max(1, Number(quantityBottles) || 1);
+
+  // Validar presentación y stock disponible
+  const computed = computePackagingPresentations(pkg);
+  const targetPres = computed.presentations.find(
+    (p) => p.containerName?.toLowerCase().trim() === bottleSize.toLowerCase().trim()
+  ) || computed.presentations[0];
+
+  if (!targetPres) {
+    throw new BadRequestError(`Presentación "${bottleSize}" no encontrada en esta fracción.`);
+  }
+
+  if (targetPres.free < qty) {
+    throw new BadRequestError(
+      `Stock insuficiente para retiro de "${targetPres.containerName}". Disponibles: ${targetPres.free}, solicitados: ${qty}.`
+    );
+  }
+
+  const litersToDischarge = Math.round(qty * targetPres.capacityLiters * 100) / 100;
+  const unitPrice = targetPres.price || (targetPres.capacityLiters === 2 ? 24000 : 12000);
+  const totalAmount = qty * unitPrice;
+
+  const staffMember = await prisma.staffMember.findUnique({
+    where: { id: Number(staffMemberId) },
+  });
+  if (!staffMember) {
+    throw new NotFoundError('Socio no encontrado');
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    const discharge = await tx.batchDischarge.create({
+      data: {
+        batchId: pkg.batchId,
+        packagingId: pkg.id,
+        bottleSize: targetPres.containerName,
+        quantityBottles: qty,
+        totalLiters: litersToDischarge,
+        unitPrice,
+        totalAmount,
+        reasonType: 'CONSUMO_SOCIO',
+        staffMemberId: staffMember.id,
+        notes: notes ? notes.trim() : `Retiro de fracción ${pkg.packagingCode || pkg.flavor}`,
+        registeredBy: registeredBy || 'Edier',
+        dischargeDate: dischargeDate ? new Date(dischargeDate) : new Date(),
+      },
+      include: {
+        staffMember: { select: { id: true, fullName: true, role: true } },
+      },
+    });
+
+    await syncBatchStatusBidirectional(tx, pkg.batchId);
+
+    return {
+      message: `Retiro de ${qty} unidad(es) de ${targetPres.containerName} registrado exitosamente a ${staffMember.fullName}`,
+      discharge,
+    };
+  });
+};
+
+/**
+ * Desvincular pedido de una fracción específica
+ */
+export const unlinkOrderFromPackaging = async (packagingId: number, orderId: number) => {
+  return await prisma.$transaction(async (tx) => {
+    const pkg = await tx.batchPackaging.findUnique({
+      where: { id: packagingId },
+      include: { batch: true },
+    });
+    if (!pkg) {
+      throw new NotFoundError('Fracción no encontrada');
+    }
+
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { items: true },
+    });
+    if (!order) {
+      throw new NotFoundError('Pedido no encontrado');
+    }
+
+    // Desvincular de la fracción y del lote
+    await tx.orderItem.updateMany({
+      where: { orderId, packagingId },
+      data: { packagingId: null, batchId: null },
+    });
+
+    // Si la orden no tiene más items en este batch, desvincular batchId de Order
+    const remainingItemsInBatch = await tx.orderItem.count({
+      where: { orderId, batchId: pkg.batchId },
+    });
+    if (remainingItemsInBatch === 0) {
+      await tx.order.update({
+        where: { id: orderId },
+        data: { batchId: null },
+      });
+    }
+
+    await syncBatchStatusBidirectional(tx, pkg.batchId);
+
+    return {
+      message: `Pedido #${order.orderNumber} desvinculado exitosamente de la fracción ${pkg.packagingCode || pkg.flavor}.`,
+      packagingId,
+      orderId,
+    };
+  });
+};
+
+/**
+ * Obtener auditoría y resumen detallado del lote
+ */
+export const getBatchSummary = async (batchId: number) => {
+  const batch = await prisma.productionBatch.findUnique({
+    where: { id: batchId },
+    include: {
+      packagings: {
+        include: {
+          itemsUsed: {
+            include: { rawMaterial: true },
+          },
+          orderItems: {
+            include: {
+              order: { select: { id: true, deliveryStatus: true } },
+            },
+          },
+          discharges: true,
+        },
+        orderBy: { packagedAt: 'desc' },
+      },
+      orders: {
+        where: { deliveryStatus: { not: 'CANCELLED' } },
+        include: {
+          customer: {
+            select: { id: true, fullName: true, phone: true },
+          },
+          items: {
+            include: {
+              packaging: { select: { id: true, packagingCode: true, flavor: true } },
+            },
+          },
+        },
+        orderBy: { orderDate: 'desc' },
+      },
+      orderItems: {
+        where: { order: { deliveryStatus: { not: 'CANCELLED' } } },
+        include: {
+          order: {
+            include: {
+              customer: { select: { id: true, fullName: true } },
+            },
+          },
+          packaging: { select: { id: true, packagingCode: true, flavor: true } },
+        },
+      },
+      discharges: {
+        include: {
+          staffMember: { select: { id: true, fullName: true, role: true } },
+          packaging: { select: { id: true, packagingCode: true, flavor: true } },
+        },
+        orderBy: { dischargeDate: 'desc' },
+      },
+      itemsUsed: {
+        include: {
+          rawMaterial: true,
+        },
+      },
+    },
+  });
+
+  if (!batch) {
+    throw new NotFoundError('Lote no encontrado');
+  }
+
+  const soldFromItems = batch.orderItems.reduce((sum, it) => sum + it.totalLiters, 0);
+  const legacySold = batch.orders
+    .filter((o) => !batch.orderItems.some((it) => it.orderId === o.id))
+    .reduce((sum, o) => sum + o.totalLiters, 0);
+  const totalSoldLiters = soldFromItems + legacySold;
+
+  const totalSoldBottles1L = batch.orderItems
+    .filter((it) => it.bottleSize === '1L')
+    .reduce((sum, it) => sum + it.quantity, 0);
+  const totalSoldBottles2L = batch.orderItems
+    .filter((it) => it.bottleSize === '2L')
+    .reduce((sum, it) => sum + it.quantity, 0);
+
+  const totalDischargedLiters = batch.discharges.reduce((sum, d) => sum + d.totalLiters, 0);
+  const partnerDischarges = batch.discharges.filter((d) => d.reasonType === 'CONSUMO_SOCIO');
+  const partnerDischargedLiters = partnerDischarges.reduce((sum, d) => sum + d.totalLiters, 0);
+
+  const remainingAvailableLiters = Math.max(0, batch.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
+  const unpackagedLiters = Math.max(0, batch.totalLitersProduced - (batch.packagedLiters || 0));
+
+  const totalBottles1LProduced = batch.bottles1LProduced || 0;
+  const totalBottles2LProduced = batch.bottles2LProduced || 0;
+  const dischargedBottles1L = batch.discharges
+    .filter((d) => d.bottleSize === '1L')
+    .reduce((sum, d) => sum + d.quantityBottles, 0);
+  const dischargedBottles2L = batch.discharges
+    .filter((d) => d.bottleSize === '2L')
+    .reduce((sum, d) => sum + d.quantityBottles, 0);
+
+  const freeBottles1L = Math.max(0, totalBottles1LProduced - totalSoldBottles1L - dischargedBottles1L);
+  const freeBottles2L = Math.max(0, totalBottles2LProduced - totalSoldBottles2L - dischargedBottles2L);
+
+  const enrichedPackagings = batch.packagings.map((p) => {
+    const computed = computePackagingPresentations(p);
+    return {
+      ...p,
+      totalLiters: computed.totalLiters,
+      soldLiters: computed.soldLiters,
+      freeLiters: computed.freeLiters,
+      dischargedLiters: computed.dischargedLiters,
+      progressPercentage: computed.progressPercentage,
+      status: computed.status,
+      presentations: computed.presentations,
+    };
+  });
+
+  return {
+    batch: {
+      id: batch.id,
+      batchCode: batch.batchCode,
+      flavor: batch.flavor,
+      status: batch.status,
+      isActive: batch.isActive,
+      preparationDate: batch.preparationDate,
+      expirationDate: batch.expirationDate,
+      notes: batch.notes,
+      registeredBy: batch.registeredBy,
+      cultureType: batch.cultureType,
+    },
+    rawMaterialsBalance: {
+      milkUsedLiters: batch.milkUsedLiters,
+      totalLitersProduced: batch.totalLitersProduced,
+      packagedLiters: batch.packagedLiters || 0,
+      unpackagedLiters,
+      yieldPercentage: batch.yieldPercentage,
+      totalCost: batch.totalCost,
+      costPerLiter: batch.costPerLiter,
+    },
+    bottlesBreakdown: {
+      total1L: totalBottles1LProduced,
+      total2L: totalBottles2LProduced,
+      sold1L: totalSoldBottles1L,
+      sold2L: totalSoldBottles2L,
+      discharged1L: dischargedBottles1L,
+      discharged2L: dischargedBottles2L,
+      free1L: freeBottles1L,
+      free2L: freeBottles2L,
+    },
+    volumeBalance: {
+      totalProduced: batch.totalLitersProduced,
+      totalSold: totalSoldLiters,
+      totalDischarged: totalDischargedLiters,
+      partnerConsumed: partnerDischargedLiters,
+      remainingAvailable: remainingAvailableLiters,
+    },
+    packagings: enrichedPackagings,
+    linkedOrders: batch.orders.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      customer: o.customer,
+      totalAmount: o.totalAmount,
+      totalLiters: o.totalLiters,
+      quantityBottles: o.quantityBottles,
+      deliveryStatus: o.deliveryStatus,
+      paymentStatus: o.paymentStatus,
+      orderDate: o.orderDate,
+      items: o.items,
+    })),
+    discharges: batch.discharges,
+    itemsUsed: batch.itemsUsed,
+  };
+};
+
+/**
+ * Eliminar lote madre definitivamente de la base de datos con desvinculación segura
+ */
+export const deleteBatch = async (batchId: number) => {
+  return await prisma.$transaction(async (tx) => {
+    const batch = await tx.productionBatch.findUnique({
+      where: { id: batchId },
+      include: {
+        packagings: {
+          include: {
+            itemsUsed: true,
+            orderItems: true,
+          },
+        },
+        itemsUsed: true,
+        orders: true,
+        orderItems: true,
+      },
+    });
+
+    if (!batch) {
+      throw new NotFoundError('Lote de producción no encontrado');
+    }
+
+    // 1. Desvincular pedidos y orderItems vinculados directamente al lote madre
+    await tx.orderItem.updateMany({
+      where: { batchId: batch.id },
+      data: { batchId: null, packagingId: null },
+    });
+
+    await tx.order.updateMany({
+      where: { batchId: batch.id },
+      data: { batchId: null },
+    });
+
+    // 2. Desvincular orderItems de todas las fracciones del lote
+    const packagingIds = batch.packagings.map((p) => p.id);
+    if (packagingIds.length > 0) {
+      await tx.orderItem.updateMany({
+        where: { packagingId: { in: packagingIds } },
+        data: { packagingId: null },
+      });
+    }
+
+    // 3. Eliminar el lote madre (BatchPackaging, BatchItemUsage y BatchDischarge eliminados en cascada)
+    await tx.productionBatch.delete({
+      where: { id: batch.id },
+    });
+
+    return {
+      message: `Lote madre ${batch.batchCode} eliminado definitivamente del sistema.`,
+      batchId: batch.id,
+    };
+  });
+};
+

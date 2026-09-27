@@ -44,6 +44,18 @@ export const deleteMaterial = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+export const prepareMaterial = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await inventoryService.prepareCompoundMaterial(Number(req.params.id), {
+      ...req.body,
+      registeredBy: (req as any).user?.username || req.body.registeredBy || 'Admin',
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createPurchase = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const purchase = await inventoryService.createPurchase(req.body);
@@ -83,11 +95,29 @@ export const adjustStock = async (req: Request, res: Response, next: NextFunctio
 export const getAdjustmentsHistory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const adjustments = await inventoryService.getAdjustmentsHistory(req.query as any);
+    if (adjustments && typeof adjustments === 'object' && 'pagination' in adjustments) {
+      res.setHeader('X-Total-Count', String((adjustments as any).pagination.total));
+      res.setHeader('X-Total-Pages', String((adjustments as any).pagination.totalPages));
+      res.setHeader('X-Current-Page', String((adjustments as any).pagination.page));
+    }
     res.json(adjustments);
   } catch (error) {
     next(error);
   }
 };
+
+export const getInventoryMovements = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await inventoryService.getInventoryMovements(req.query as any);
+    res.setHeader('X-Total-Count', String(result.pagination.total));
+    res.setHeader('X-Total-Pages', String(result.pagination.totalPages));
+    res.setHeader('X-Current-Page', String(result.pagination.page));
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 export const deleteAdjustment = async (req: Request, res: Response, next: NextFunction) => {
   try {

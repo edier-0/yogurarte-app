@@ -8,6 +8,11 @@ import * as financeService from './finance.service.js';
 export const getCashMovements = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await financeService.getCashMovements(req.query as any);
+    if (result && typeof result === 'object' && 'pagination' in result && (result as any).pagination) {
+      res.setHeader('X-Total-Count', String((result as any).pagination.total));
+      res.setHeader('X-Total-Pages', String((result as any).pagination.totalPages));
+      res.setHeader('X-Current-Page', String((result as any).pagination.page));
+    }
     res.json(result);
   } catch (error) {
     next(error);
@@ -48,6 +53,11 @@ export const deleteCashMovement = async (req: Request, res: Response, next: Next
 export const getExpenses = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await financeService.getExpenses(req.query as any);
+    if (result && typeof result === 'object' && 'pagination' in result && (result as any).pagination) {
+      res.setHeader('X-Total-Count', String((result as any).pagination.total));
+      res.setHeader('X-Total-Pages', String((result as any).pagination.totalPages));
+      res.setHeader('X-Current-Page', String((result as any).pagination.page));
+    }
     res.json(result);
   } catch (error) {
     next(error);
@@ -58,6 +68,15 @@ export const createExpense = async (req: Request, res: Response, next: NextFunct
   try {
     const expense = await financeService.createExpense(req.body);
     res.status(201).json(expense);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateExpense = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const updated = await financeService.updateExpense(Number(req.params.id), req.body);
+    res.json(updated);
   } catch (error) {
     next(error);
   }

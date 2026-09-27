@@ -93,6 +93,24 @@ export const linkCustomer = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+export const mergeChats = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await crmService.mergeChats(req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const unlinkChat = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await crmService.unlinkChat(req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ==========================================
 // 3. PROGRAMA DE FIDELIZACIÓN "10 + 1 GRATIS"
 // ==========================================
@@ -122,11 +140,17 @@ export const redeemLoyaltyReward = async (req: Request, res: Response, next: Nex
 export const getRecurringSchedules = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const schedules = await crmService.getRecurringSchedules(req.query as any);
+    if (schedules && typeof schedules === 'object' && 'pagination' in schedules) {
+      res.setHeader('X-Total-Count', String((schedules as any).pagination.totalItems));
+      res.setHeader('X-Total-Pages', String((schedules as any).pagination.totalPages));
+      res.setHeader('X-Current-Page', String((schedules as any).pagination.page));
+    }
     res.json(schedules);
   } catch (error) {
     next(error);
   }
 };
+
 
 export const createRecurringSchedule = async (req: Request, res: Response, next: NextFunction) => {
   try {

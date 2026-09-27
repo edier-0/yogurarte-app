@@ -11,6 +11,7 @@ import { Server as SocketIOServer } from 'socket.io';
 
 import ordersRoutes from './modules/orders/orders.routes.js';
 import batchesRoutes from './modules/batches/batches.routes.js';
+import flavorsRoutes from './modules/production/flavors.routes.js';
 import customersRoutes from './modules/customers/customers.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import {
@@ -142,29 +143,37 @@ app.get('/api/health', (req: Request, res: Response) => {
 
 // Rutas de Autenticación y Usuarios (Login público + Me y Admin protegidos)
 app.use('/api/users', authRoutes);
+app.use('/api/auth', authRoutes);
 
 // 9. Rutas Protegidas de la API (Requieren Token JWT Válido)
 app.use('/api/orders', requireAuth, ordersRoutes);
 app.use('/api/batches', requireAuth, batchesRoutes);
+app.use('/api/production/flavors', requireAuth, flavorsRoutes);
 app.use('/api/inventory', requireAuth, inventoryRoutes);
 app.use('/api/preparations', requireAuth, preparationsRoutes);
 app.use('/api/expenses', requireAuth, expensesRoutes);
 app.use('/api/customers', requireAuth, customersRoutes);
+app.use('/api/clients', requireAuth, customersRoutes);
 app.use('/api/dashboard', requireAuth, dashboardRoutes);
 app.use('/api/staff', requireAuth, staffRoutes);
 app.use('/api/cash-movements', requireAuth, cashMovementsRoutes);
+app.use('/api/cash/movements', requireAuth, cashMovementsRoutes);
+app.use('/api/cash', requireAuth, cashMovementsRoutes);
 app.use('/api/credits', requireAuth, creditsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/crm', requireAuth, crmRoutes);
 
-// 10. Manejador 404 para rutas API no encontradas
-app.use(notFoundHandler);
-
-// 11. Fallback para SPA: cualquier ruta no-API sirve index.html
-app.get('*', (req: Request, res: Response) => {
+// 10. Fallback para SPA en Express: soporte para Vue Router en modo history
+app.get('*', (req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+    return next();
+  }
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.sendFile(path.join(publicPath, 'index.html'));
+  res.sendFile(path.resolve(__dirname, '../public/index.html'));
 });
+
+// 11. Manejador 404 para rutas API no encontradas
+app.use(notFoundHandler);
 
 // 12. Manejador centralizado de errores
 app.use(errorHandler);

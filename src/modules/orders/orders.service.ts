@@ -16,11 +16,146 @@ import {
   AddOrderPaymentInput,
   AssignDriverInput,
   CreateOrderInput,
+  OrdersMetricsQueryInput,
   OrdersQueryInput,
   UpdateDeliveryStatusInput,
   UpdateOrderInput,
   UpdateOrderPaymentInput,
 } from './orders.schema.js';
+import { syncBatchStatusBidirectional } from '../batches/batches.service.js';
+
+/**
+ * Obtener métricas y KPIs globales consolidados de pedidos, cartera y domicilios
+ * Ejecuta agregaciones nativas de base de datos (_sum, _count)
+ */
+export const getOrdersMetrics = async (query: OrdersMetricsQueryInput = {}) => {
+  const { startDate, endDate, date, month } = query;
+  const conditions: any[] = [];
+
+  if (date && typeof date === 'string') {
+    const cleanDate = date.split('T')[0];
+    const dayStart = getColombiaStartOfDay(cleanDate);
+    const dayEnd = getColombiaEndOfDay(cleanDate);
+    const dayRange = { gte: dayStart, lte: dayEnd };
+    conditions.push({
+      OR: [
+        { deliveryDate: dayRange },
+        {
+          AND: [
+            { deliveryDate: null },
+            { orderDate: dayRange },
+          ],
+        },
+      ],
+    });
+  } else if (month && typeof month === 'string') {
+    const [year, m] = month.split('-').map(Number);
+    if (year && m) {
+      const startOfMonth = getColombiaStartOfDay(`${year}-${String(m).padStart(2, '0')}-01`);
+      const lastDay = new Date(Date.UTC(year, m, 0)).getUTCDate();
+      const endOfMonth = getColombiaEndOfDay(`${year}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+      conditions.push({
+        OR: [
+          { orderDate: { gte: startOfMonth, lte: endOfMonth } },
+          { deliveryDate: { gte: startOfMonth, lte: endOfMonth } },
+        ],
+      });
+    }
+  } else if (startDate || endDate) {
+    const dateRange: any = {};
+    if (startDate) {
+      dateRange.gte = getColombiaStartOfDay(String(startDate).split('T')[0]);
+    }
+    if (endDate) {
+      dateRange.lte = getColombiaEndOfDay(String(endDate).split('T')[0]);
+    }
+    conditions.push({
+      OR: [
+        { orderDate: dateRange },
+        { deliveryDate: dateRange },
+      ],
+    });
+  }
+
+  const baseWhere = conditions.length > 0 ? { AND: conditions } : {};
+
+  // Agregaciones nativas sobre la base de datos completa
+  const [
+    generalAgg,
+    activeEncargosCount,
+    withDebtCount,
+    alDiaCount,
+    preparingCount,
+    inRouteCount,
+    deliveredCount,
+  ] = await Promise.all([
+    prisma.order.aggregate({
+      where: baseWhere,
+      _sum: {
+        totalAmount: true,
+        paidAmount: true,
+        pendingAmount: true,
+        deliveryFee: true,
+        discount: true,
+      },
+      _count: true,
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        deliveryStatus: { in: ['PENDING', 'PREPARING', 'READY_FOR_DISPATCH', 'IN_ROUTE'] },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        pendingAmount: { gt: 0 },
+        deliveryStatus: { not: 'CANCELLED' },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        OR: [
+          { pendingAmount: { lte: 0 } },
+          { paymentStatus: 'PAID' },
+        ],
+        deliveryStatus: { not: 'CANCELLED' },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        deliveryStatus: { in: ['PENDING', 'PREPARING', 'READY_FOR_DISPATCH'] },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        deliveryStatus: 'IN_ROUTE',
+      },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        deliveryStatus: 'DELIVERED',
+      },
+    }),
+  ]);
+
+  return {
+    totalOrdersCount: generalAgg._count || 0,
+    totalSalesAmount: generalAgg._sum.totalAmount || 0,
+    totalPaidAmount: generalAgg._sum.paidAmount || 0,
+    totalPendingDebt: generalAgg._sum.pendingAmount || 0,
+    countEncargos: activeEncargosCount,
+    countWithDebt: withDebtCount,
+    countAlDia: alDiaCount,
+    countDeliveriesPreparing: preparingCount,
+    countDeliveriesInRoute: inRouteCount,
+    countDeliveriesDelivered: deliveredCount,
+  };
+};
 
 /**
  * Obtener listado de pedidos con filtros avanzados, búsqueda y ordenamiento jerárquico
@@ -169,7 +304,7 @@ export const getOrders = async (query: OrdersQueryInput) => {
 
   const isPaginated = query.page !== undefined || query.paginate === 'true';
   const pageNum = Math.max(1, Number(query.page) || 1);
-  const limitNum = Math.min(100, Math.max(1, Number(limit) || (isPaginated ? 20 : 500)));
+  const limitNum = Math.min(100, Math.max(1, Number(limit) || (isPaginated ? 9 : 500)));
 
   const totalItems = await prisma.order.count({ where: whereClause });
   const totalPages = Math.ceil(totalItems / limitNum) || 1;
@@ -266,12 +401,15 @@ export const getOrders = async (query: OrdersQueryInput) => {
 
   if (isPaginated) {
     return {
+      data: orders,
       items: orders,
       pagination: {
+        total: totalItems,
         totalItems,
-        totalPages,
+        page: pageNum,
         currentPage: pageNum,
         limit: limitNum,
+        totalPages,
       },
     };
   }
@@ -506,7 +644,7 @@ export const createOrder = async (data: CreateOrderInput) => {
           where: {
             flavor: { equals: primaryFlavor, mode: 'insensitive' },
             isActive: true,
-            status: { in: ['COMPLETADO', 'EN_FERMENTACION', 'EN_PROCESO'] },
+            status: { in: ['COMPLETADO', 'DISPONIBLE'] },
           },
           include: {
             orders: { select: { id: true, totalLiters: true } },
@@ -555,6 +693,12 @@ export const createOrder = async (data: CreateOrderInput) => {
       });
 
       if (batchObj) {
+        if (batchObj.status === 'EN_FERMENTACION') {
+          throw new BadRequestError(
+            `No es posible vincular pedidos al lote "${batchObj.batchCode}" porque se encuentra en etapa de FERMENTACIÓN BASE. Solo se pueden vincular pedidos a lotes fraccionados y disponibles.`
+          );
+        }
+
         const soldFromItems = batchObj.orderItems.reduce((sum, it) => sum + it.totalLiters, 0);
         const legacyOrdersSold = batchObj.orders
           .filter((o) => !batchObj.orderItems.some((it) => it.orderId === o.id))
@@ -739,6 +883,15 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
 
     let parsedBatchId = batchId !== undefined ? (batchId ? Number(batchId) : null) : currentOrder.batchId;
 
+    if (parsedBatchId && parsedBatchId !== currentOrder.batchId) {
+      const bObj = await tx.productionBatch.findUnique({ where: { id: parsedBatchId } });
+      if (bObj && bObj.status === 'EN_FERMENTACION') {
+        throw new BadRequestError(
+          `No es posible vincular pedidos al lote "${bObj.batchCode}" porque se encuentra en etapa de FERMENTACIÓN BASE. Solo se pueden vincular pedidos a lotes fraccionados y disponibles.`
+        );
+      }
+    }
+
     const updatedDeliveryFee = deliveryFee !== undefined ? Number(deliveryFee) : currentOrder.deliveryFee;
     let updatedDiscount = discount !== undefined ? Number(discount) : (currentOrder.discount || 0);
 
@@ -837,6 +990,12 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
         });
 
         if (batchObj) {
+          if (batchObj.status === 'EN_FERMENTACION') {
+            throw new BadRequestError(
+              `No es posible vincular pedidos al lote "${batchObj.batchCode}" porque se encuentra en etapa de FERMENTACIÓN BASE. Solo se pueden vincular pedidos a lotes fraccionados y disponibles.`
+            );
+          }
+
           const otherItems = batchObj.orderItems.filter((it) => it.orderId !== id);
           const otherLegacyOrders = batchObj.orders.filter((o) => o.id !== id && !batchObj.orderItems.some((it) => it.orderId === o.id));
           const otherSold = otherItems.reduce((sum, it) => sum + it.totalLiters, 0) + otherLegacyOrders.reduce((sum, o) => sum + o.totalLiters, 0);
@@ -997,6 +1156,19 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
       }
     }
 
+    const affectedBatchIds = new Set<number>();
+    if (currentOrder.batchId) affectedBatchIds.add(currentOrder.batchId);
+    if (updatedOrder.batchId) affectedBatchIds.add(updatedOrder.batchId);
+    (currentOrder.items || []).forEach((it: any) => {
+      if (it.batchId) affectedBatchIds.add(it.batchId);
+    });
+    (updatedOrder.items || []).forEach((it: any) => {
+      if (it.batchId) affectedBatchIds.add(it.batchId);
+    });
+    for (const bId of affectedBatchIds) {
+      await syncBatchStatusBidirectional(tx, bId);
+    }
+
     return updatedOrder;
   });
 };
@@ -1059,10 +1231,15 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
       updateData.deliveryStatus = deliveryStatus;
       if (deliveryStatus === 'DELIVERED') {
         updateData.deliveryDate = new Date();
-      } else if (deliveryStatus === 'IN_ROUTE' && !existing.dispatchedAt) {
-        updateData.dispatchedAt = new Date();
-      } else if (deliveryStatus === 'PENDING' || deliveryStatus === 'PREPARING' || deliveryStatus === 'READY_FOR_DISPATCH') {
-        updateData.dispatchedAt = null;
+      } else {
+        if (existing.deliveryStatus === 'DELIVERED') {
+          updateData.deliveryDate = null;
+        }
+        if (deliveryStatus === 'IN_ROUTE' && !existing.dispatchedAt) {
+          updateData.dispatchedAt = new Date();
+        } else if (deliveryStatus === 'PENDING' || deliveryStatus === 'PREPARING' || deliveryStatus === 'READY_FOR_DISPATCH') {
+          updateData.dispatchedAt = null;
+        }
       }
     }
 
@@ -1070,7 +1247,9 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
       const finalPaid = Number(paidAmount);
       updateData.paidAmount = finalPaid;
       updateData.pendingAmount = Math.max(0, existing.totalAmount - finalPaid);
-      if (finalPaid >= existing.totalAmount) {
+      if (data.paymentStatus) {
+        updateData.paymentStatus = data.paymentStatus;
+      } else if (finalPaid >= existing.totalAmount) {
         updateData.paymentStatus = 'PAID';
       } else if (finalPaid > 0) {
         updateData.paymentStatus = 'PARTIAL';
@@ -1089,7 +1268,7 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
             amount: delta,
             paymentDate: new Date(),
             paymentMethod: paymentMethod ? String(paymentMethod).trim() : (existing.paymentMethod || 'EFECTIVO'),
-            notes: 'Pago recibido al entregar domicilio',
+            notes: notes ? String(notes).trim() : 'Pago recibido al entregar domicilio',
             registeredBy: existing.deliveryDriverName || 'Domiciliario',
           },
         });
@@ -1099,6 +1278,8 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
           data: { paymentMethod: String(paymentMethod).trim() },
         });
       }
+    } else if (data.paymentStatus) {
+      updateData.paymentStatus = data.paymentStatus;
     }
 
     if (paymentMethod && (!existing.payments || existing.payments.length === 0)) {
@@ -1109,7 +1290,7 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
       updateData.notes = notes;
     }
 
-    return tx.order.update({
+    const updated = await tx.order.update({
       where: { id },
       data: updateData,
       include: {
@@ -1121,6 +1302,21 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
         },
       },
     });
+
+    const isCancelling = deliveryStatus === 'CANCELLED' && existing.deliveryStatus !== 'CANCELLED';
+    const isUncancelling = existing.deliveryStatus === 'CANCELLED' && Boolean(deliveryStatus) && (deliveryStatus as string) !== 'CANCELLED';
+    if (isCancelling || isUncancelling) {
+      const affectedBatchIds = new Set<number>();
+      if (updated.batchId) affectedBatchIds.add(updated.batchId);
+      (updated.items || []).forEach((it: any) => {
+        if (it.batchId) affectedBatchIds.add(it.batchId);
+      });
+      for (const bId of affectedBatchIds) {
+        await syncBatchStatusBidirectional(tx, bId);
+      }
+    }
+
+    return updated;
   });
 };
 
@@ -1230,24 +1426,40 @@ export const updateOrderPayment = async (orderId: number, paymentId: number, dat
     });
     if (!order) throw new NotFoundError('Pedido no encontrado');
 
-    const existingPayment = await tx.orderPayment.findUnique({ where: { id: paymentId } });
-    if (!existingPayment) throw new NotFoundError('Abono no encontrado');
+    let existingPayment = paymentId && paymentId > 0
+      ? await tx.orderPayment.findUnique({ where: { id: paymentId } })
+      : null;
 
-    const updateData: any = {};
-    if (amount !== undefined) {
-      const payAmount = Number(amount);
+    if (!existingPayment) {
+      const payAmount = amount !== undefined ? Number(amount) : order.paidAmount;
       if (payAmount <= 0) throw new BadRequestError('El monto debe ser mayor a 0');
-      updateData.amount = payAmount;
-    }
-    if (paymentMethod) updateData.paymentMethod = String(paymentMethod).trim();
-    if (paymentDate) updateData.paymentDate = parseColombiaDate(paymentDate);
-    if (notes !== undefined) updateData.notes = notes ? String(notes).trim() : null;
-    if (registeredBy) updateData.registeredBy = String(registeredBy).trim();
+      existingPayment = await tx.orderPayment.create({
+        data: {
+          orderId,
+          amount: payAmount,
+          paymentMethod: paymentMethod ? String(paymentMethod).trim() : (order.paymentMethod || 'EFECTIVO'),
+          paymentDate: paymentDate ? parseColombiaDate(paymentDate) : (order.deliveryDate || order.orderDate),
+          notes: notes !== undefined ? (notes ? String(notes).trim() : null) : (order.notes || 'Abono regularizado'),
+          registeredBy: registeredBy ? String(registeredBy).trim() : (order.registeredBy || 'Edier'),
+        },
+      });
+    } else {
+      const updateData: any = {};
+      if (amount !== undefined) {
+        const payAmount = Number(amount);
+        if (payAmount <= 0) throw new BadRequestError('El monto debe ser mayor a 0');
+        updateData.amount = payAmount;
+      }
+      if (paymentMethod) updateData.paymentMethod = String(paymentMethod).trim();
+      if (paymentDate) updateData.paymentDate = parseColombiaDate(paymentDate);
+      if (notes !== undefined) updateData.notes = notes ? String(notes).trim() : null;
+      if (registeredBy) updateData.registeredBy = String(registeredBy).trim();
 
-    await tx.orderPayment.update({
-      where: { id: paymentId },
-      data: updateData,
-    });
+      await tx.orderPayment.update({
+        where: { id: existingPayment.id },
+        data: updateData,
+      });
+    }
 
     const allPayments = await tx.orderPayment.findMany({
       where: { orderId },
@@ -1270,6 +1482,7 @@ export const updateOrderPayment = async (orderId: number, paymentId: number, dat
         paidAmount: totalPaid,
         pendingAmount,
         paymentStatus,
+        paymentMethod: paymentMethod ? String(paymentMethod).trim() : order.paymentMethod,
       },
       include: {
         customer: true,
@@ -1288,28 +1501,34 @@ export const updateOrderPayment = async (orderId: number, paymentId: number, dat
  */
 export const deleteOrderPayment = async (orderId: number, paymentId: number) => {
   return await prisma.$transaction(async (tx) => {
-    const payment = await tx.orderPayment.findUnique({
-      where: { id: paymentId },
-    });
-
-    if (!payment || payment.orderId !== orderId) {
-      throw new NotFoundError('Abono no encontrado en este pedido');
+    const order = await tx.order.findUnique({ where: { id: orderId } });
+    if (!order) {
+      throw new NotFoundError('Pedido no encontrado');
     }
 
-    await tx.orderPayment.delete({
-      where: { id: paymentId },
-    });
+    if (paymentId && paymentId > 0) {
+      const payment = await tx.orderPayment.findUnique({
+        where: { id: paymentId },
+      });
+
+      if (!payment || payment.orderId !== orderId) {
+        throw new NotFoundError('Abono no encontrado en este pedido');
+      }
+
+      await tx.orderPayment.delete({
+        where: { id: paymentId },
+      });
+    } else {
+      await tx.orderPayment.deleteMany({
+        where: { orderId },
+      });
+    }
 
     const remainingPayments = await tx.orderPayment.findMany({
       where: { orderId },
     });
 
     const totalPaid = remainingPayments.reduce((sum, p) => sum + p.amount, 0);
-    const order = await tx.order.findUnique({ where: { id: orderId } });
-    if (!order) {
-      throw new NotFoundError('Pedido no encontrado');
-    }
-
     const newPending = Math.max(0, order.totalAmount - totalPaid);
     let newStatus = 'PENDING';
     if (totalPaid >= order.totalAmount) {
@@ -1346,9 +1565,36 @@ export const deleteOrderPayment = async (orderId: number, paymentId: number) => 
  * Eliminar pedido
  */
 export const deleteOrder = async (id: number) => {
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { items: true },
+  });
+
+  if (!order) {
+    throw new NotFoundError('Pedido no encontrado');
+  }
+
+  const affectedBatchIds = new Set<number>();
+  if (order.batchId) affectedBatchIds.add(order.batchId);
+  for (const it of order.items) {
+    if (it.batchId) affectedBatchIds.add(it.batchId);
+    if (it.packagingId) {
+      const pkg = await prisma.batchPackaging.findUnique({
+        where: { id: it.packagingId },
+        select: { batchId: true },
+      });
+      if (pkg?.batchId) affectedBatchIds.add(pkg.batchId);
+    }
+  }
+
   await prisma.order.delete({
     where: { id },
   });
+
+  for (const bId of affectedBatchIds) {
+    await syncBatchStatusBidirectional(prisma, bId);
+  }
+
   return { message: 'Pedido eliminado exitosamente', id };
 };
 

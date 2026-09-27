@@ -17,6 +17,15 @@ export const getOrders = async (req: Request, res: Response, next: NextFunction)
   }
 };
 
+export const getOrdersMetrics = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const metrics = await ordersService.getOrdersMetrics(req.query as any);
+    res.json(metrics);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getOrderById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const order = await ordersService.getOrderById(Number(req.params.id));

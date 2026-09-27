@@ -1,55 +1,199 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
 import { getAdminAuthToken } from './setup.js';
+import prisma from '../src/prisma.js';
 
-describe('Production Batches Endpoints', () => {
+describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas, Agotamiento y Paginación', () => {
   const adminToken = getAdminAuthToken();
+
+  let testMilkId: number;
+  let testBottle1LId: number;
+  let testBottle2LId: number;
+  let testCapId: number;
+  let testStaffId: number;
+  let testCustomerId: number;
+  let testOrderId: number;
+  let createdBatchId: number;
+
+  beforeAll(async () => {
+    // 1. Asegurar insumos base con stock
+    const milk = await prisma.rawMaterial.upsert({
+      where: { code: 'LECHE_TEST' },
+      update: { currentStock: 1000, avgCost: 2800, isActive: true },
+      create: {
+        code: 'LECHE_TEST',
+        name: 'Leche Cruda Entera Test',
+        unit: 'Litros',
+        currentStock: 1000,
+        avgCost: 2800,
+        category: 'LACTEOS',
+        isActive: true,
+      },
+    });
+    testMilkId = milk.id;
+
+    // Asegurar insumo de leche reconocido por búsqueda
+    await prisma.rawMaterial.updateMany({
+      where: { code: 'LECHE' },
+      data: { currentStock: 1000 },
+    });
+
+    const b1 = await prisma.rawMaterial.upsert({
+      where: { code: 'BOTELLA_1L' },
+      update: { currentStock: 500, avgCost: 650, isActive: true },
+      create: {
+        code: 'BOTELLA_1L',
+        name: 'Botella Pet 1 Litro',
+        unit: 'Unidades',
+        currentStock: 500,
+        avgCost: 650,
+        category: 'ENVASES',
+        isActive: true,
+      },
+    });
+    testBottle1LId = b1.id;
+
+    const b2 = await prisma.rawMaterial.upsert({
+      where: { code: 'BOTELLA_2L' },
+      update: { currentStock: 500, avgCost: 1100, isActive: true },
+      create: {
+        code: 'BOTELLA_2L',
+        name: 'Botella Pet 2 Litros',
+        unit: 'Unidades',
+        currentStock: 500,
+        avgCost: 1100,
+        category: 'ENVASES',
+        isActive: true,
+      },
+    });
+    testBottle2LId = b2.id;
+
+    const cap = await prisma.rawMaterial.upsert({
+      where: { code: 'TAPA' },
+      update: { currentStock: 1000, avgCost: 120, isActive: true },
+      create: {
+        code: 'TAPA',
+        name: 'Tapa de Seguridad 38mm',
+        unit: 'Unidades',
+        currentStock: 1000,
+        avgCost: 120,
+        category: 'ENVASES',
+        isActive: true,
+      },
+    });
+    testCapId = cap.id;
+
+    await prisma.rawMaterial.upsert({
+      where: { code: 'ETIQUETA' },
+      update: { currentStock: 2000, avgCost: 200, isActive: true },
+      create: {
+        code: 'ETIQUETA',
+        name: 'Etiqueta Adhesiva Test',
+        unit: 'und',
+        currentStock: 2000,
+        avgCost: 200,
+        category: 'EMPAQUE',
+        isActive: true,
+      },
+    });
+
+    // 2. Asegurar socio para retiro
+    const staff = await prisma.staffMember.upsert({
+      where: { id: 888 },
+      update: { fullName: 'Socio Test Producción', isActive: true },
+      create: {
+        id: 888,
+        fullName: 'Socio Test Producción',
+        role: 'SOCIO',
+        type: 'SOCIO',
+        isActive: true,
+      },
+    });
+    testStaffId = staff.id;
+
+    // 3. Asegurar cliente y pedido en preventa (batchId: null)
+    let customer = await prisma.customer.findFirst({ where: { phone: '3009990011' } });
+    if (!customer) {
+      customer = await prisma.customer.create({
+        data: {
+          fullName: 'Cliente Preventa Test',
+          phone: '3009990011',
+          address: 'Calle 10 # 5-20',
+        },
+      });
+    }
+    testCustomerId = customer.id;
+
+    const orderNumber = `TEST-ORD-${Date.now()}`;
+    const preOrder = await prisma.order.create({
+      data: {
+        orderNumber,
+        customerId: testCustomerId,
+        batchId: null,
+        bottleSize: '1L',
+        quantityBottles: 2,
+        totalLiters: 2.0,
+        flavor: 'Mora Silvestre',
+        unitPrice: 12000,
+        totalAmount: 24000,
+        paidAmount: 0,
+        pendingAmount: 24000,
+        paymentStatus: 'PENDING',
+        deliveryStatus: 'PENDING',
+        items: {
+          create: [
+            {
+              batchId: null,
+              bottleSize: '1L',
+              flavor: 'Mora Silvestre',
+              quantity: 2,
+              unitPrice: 12000,
+              totalPrice: 24000,
+              totalLiters: 2.0,
+              litersPerUnit: 1.0,
+            },
+          ],
+        },
+      },
+    });
+    testOrderId = preOrder.id;
+  });
 
   it('GET /api/batches sin autenticación debe retornar 401', async () => {
     const res = await request(app).get('/api/batches');
     expect(res.status).toBe(401);
   });
 
-  it('GET /api/batches con autenticación debe retornar lotes enriquecidos con métricas', async () => {
+  it('GET /api/batches con autenticación debe retornar estructura paginada a 5 por defecto', async () => {
     const res = await request(app)
       .get('/api/batches')
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    if (res.body.length > 0) {
-      const batch = res.body[0];
-      expect(batch).toHaveProperty('id');
-      expect(batch).toHaveProperty('batchCode');
-      expect(batch).toHaveProperty('flavor');
-      expect(batch).toHaveProperty('milkUsedLiters');
-      expect(batch).toHaveProperty('totalLitersProduced');
-      expect(batch).toHaveProperty('yieldPercentage');
-    }
+    expect(res.body).toHaveProperty('data');
+    expect(res.body).toHaveProperty('pagination');
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.pagination).toMatchObject({
+      total: expect.any(Number),
+      page: 1,
+      limit: 5,
+      totalPages: expect.any(Number),
+    });
+    expect(res.body.data.length).toBeLessThanOrEqual(5);
   });
 
-  it('GET /api/batches/pending-orders debe retornar pedidos pendientes agrupados por sabor', async () => {
+  it('GET /api/batches?page=1&limit=5&status=ALL debe respetar los parámetros de paginación', async () => {
     const res = await request(app)
-      .get('/api/batches/pending-orders')
+      .get('/api/batches?page=1&limit=5&status=ALL')
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('count');
-    expect(res.body).toHaveProperty('orders');
-    expect(Array.isArray(res.body.orders)).toBe(true);
+    expect(res.body.pagination.page).toBe(1);
+    expect(res.body.pagination.limit).toBe(5);
   });
 
-  it('GET /api/batches/:id con ID inexistente debe responder 404', async () => {
-    const res = await request(app)
-      .get('/api/batches/999999')
-      .set('Authorization', `Bearer ${adminToken}`);
-
-    expect(res.status).toBe(404);
-    expect(res.body).toHaveProperty('error');
-  });
-
-  it('POST /api/batches con leche negativa o cero debe fallar la validación Zod con 400', async () => {
+  it('POST /api/batches con leche negativa o cero debe fallar validación con 400', async () => {
     const res = await request(app)
       .post('/api/batches')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -67,7 +211,7 @@ describe('Production Batches Endpoints', () => {
       .post('/api/batches')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        milkUsedLiters: 999999, // Supera con creces el stock en inventario
+        milkUsedLiters: 999999,
         flavor: 'Arequipe',
         totalLitersProduced: 999999,
       });
@@ -75,4 +219,1185 @@ describe('Production Batches Endpoints', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('Stock insuficiente');
   });
+
+  it('Fase A (Fermentación): POST /api/batches debe crear lote base sin requerir botellas en estado EN_FERMENTACION', async () => {
+    const res = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 30,
+        totalLitersProduced: 29,
+        flavor: 'Base Fermentada Natural',
+        cultureType: 'Cultivo Probiótico Activo',
+        initialSugarGrams: 0,
+        useSugar: false,
+        usePowderedMilk: false,
+        status: 'EN_FERMENTACION',
+        notes: 'Inoculación tina 1 - pH 6.6',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('id');
+    expect(res.body.status).toBe('EN_FERMENTACION');
+    expect(res.body.packagedLiters).toBe(0);
+    expect(res.body.bottles1LProduced).toBe(0);
+    expect(res.body.bottles2LProduced).toBe(0);
+    expect(res.body.cultureType).toBe('Cultivo Probiótico Activo');
+
+    createdBatchId = res.body.id;
+  });
+
+  it('Fase B (Envasado y Fraccionamiento): POST /api/batches/:id/packaging fracciona lote y pasa a DISPONIBLE', async () => {
+    const res = await request(app)
+      .post(`/api/batches/${createdBatchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Mora Silvestre',
+        bottles1L: 10,
+        bottles2L: 5, // 10*1 + 5*2 = 20 Litros
+        notes: 'Envasado lote fraccionario 1',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('packaging');
+    expect(res.body.packaging.flavor).toBe('Mora Silvestre');
+    expect(res.body.packaging.totalLiters).toBe(20);
+    expect(res.body.batch.packagedLiters).toBe(20);
+    expect(res.body.batch.status).toBe('DISPONIBLE');
+  });
+
+  it('Fase B con Pre-venta: POST /api/batches/:id/packaging vincula pedidos pendientes de forma atómica', async () => {
+    const res = await request(app)
+      .post(`/api/batches/${createdBatchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Mora Silvestre',
+        bottles1L: 5,
+        bottles2L: 2, // 5 + 4 = 9 Litros adicionales (total 29L envasados)
+        linkOrderIds: [testOrderId],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.batch.packagedLiters).toBe(29);
+
+    // Verificar que el pedido quedó vinculado
+    const updatedOrder = await prisma.order.findUnique({
+      where: { id: testOrderId },
+      include: { items: true },
+    });
+    expect(updatedOrder?.batchId).toBe(createdBatchId);
+    expect(updatedOrder?.items[0].batchId).toBe(createdBatchId);
+  });
+
+  it('Auditoría Completa: GET /api/batches/:id/summary retorna balance lácteo, botellas y pedidos vinculados', async () => {
+    const res = await request(app)
+      .get(`/api/batches/${createdBatchId}/summary`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('rawMaterialsBalance');
+    expect(res.body).toHaveProperty('bottlesBreakdown');
+    expect(res.body).toHaveProperty('volumeBalance');
+    expect(res.body).toHaveProperty('packagings');
+    expect(res.body).toHaveProperty('linkedOrders');
+
+    expect(res.body.rawMaterialsBalance.milkUsedLiters).toBe(30);
+    expect(res.body.rawMaterialsBalance.totalLitersProduced).toBe(29);
+    expect(res.body.rawMaterialsBalance.packagedLiters).toBe(29);
+    expect(res.body.rawMaterialsBalance.unpackagedLiters).toBe(0);
+
+    expect(res.body.linkedOrders.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.linkedOrders[0].id).toBe(testOrderId);
+  });
+
+  it('Retiro de Socio: POST /api/batches/:id/partner-withdrawal descuenta botellas del lote', async () => {
+    const res = await request(app)
+      .post(`/api/batches/${createdBatchId}/partner-withdrawal`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        bottleSize: '1L',
+        quantityBottles: 2,
+        staffMemberId: testStaffId,
+        notes: 'Consumo personal de socio test',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('discharge');
+    expect(res.body.discharge.reasonType).toBe('CONSUMO_SOCIO');
+    expect(res.body.discharge.quantityBottles).toBe(2);
+  });
+
+  it('Transición y Reactivación Bidireccional: Agotamiento al consumir saldo y reactivación al desvincular pedido', async () => {
+    // 1. Obtener litros restantes y agotarlo intencionalmente con un descargo
+    const summaryBefore = await request(app)
+      .get(`/api/batches/${createdBatchId}/summary`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const remaining = summaryBefore.body.volumeBalance.remainingAvailable;
+    expect(remaining).toBeGreaterThan(0);
+
+    // Descargar el saldo exacto restante para llevarlo a 0
+    await request(app)
+      .post(`/api/batches/${createdBatchId}/discharges`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        bottleSize: '1L',
+        quantityBottles: Math.floor(remaining),
+        totalLiters: remaining,
+        reasonType: 'MERMA_DANO',
+        notes: 'Agotamiento inducido para test de reactivación',
+      });
+
+    // Validar que el lote pasó automáticamente a AGOTADO
+    const batchDepleted = await prisma.productionBatch.findUnique({
+      where: { id: createdBatchId },
+    });
+    expect(batchDepleted?.status).toBe('AGOTADO');
+
+    // 2. Desvincular el pedido de prueba mediante DELETE /api/batches/:id/orders/:orderId
+    const unlinkRes = await request(app)
+      .delete(`/api/batches/${createdBatchId}/orders/${testOrderId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(unlinkRes.status).toBe(200);
+    expect(unlinkRes.body.message).toContain('desvinculado exitosamente');
+
+    // El pedido debe haber regresado a preventa (batchId: null)
+    const unlinkedOrder = await prisma.order.findUnique({
+      where: { id: testOrderId },
+      include: { items: true },
+    });
+    expect(unlinkedOrder?.batchId).toBeNull();
+    expect(unlinkedOrder?.items[0].batchId).toBeNull();
+
+    // El lote recuperó saldo (2L) y debe reactivarse automáticamente a DISPONIBLE
+    const batchReactivated = await prisma.productionBatch.findUnique({
+      where: { id: createdBatchId },
+    });
+    expect(batchReactivated?.status).toBe('DISPONIBLE');
+  });
+
+  it('Correlativos Diarios: GET /api/batches/next-code genera códigos secuenciales inteligentes', async () => {
+    // 1. Correlativo lote madre
+    const motherRes = await request(app)
+      .get('/api/batches/next-code')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(motherRes.status).toBe(200);
+    expect(motherRes.body).toHaveProperty('nextBatchCode');
+    expect(motherRes.body.nextBatchCode).toMatch(/^LOTE-\d{8}-\d+$/);
+
+    // 2. Correlativo fraccionamiento para un lote específico
+    const pkgRes = await request(app)
+      .get(`/api/batches/next-code?batchId=${createdBatchId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(pkgRes.status).toBe(200);
+    expect(pkgRes.body).toHaveProperty('nextPackagingCode');
+    expect(pkgRes.body.nextPackagingCode).toMatch(/-F\d{2}$/);
+  });
+
+  it('Cambio Rápido de Estado: PATCH /api/batches/:id/status alterna 1-touch entre estados', async () => {
+    // Pasar a EN_FERMENTACION
+    const res1 = await request(app)
+      .patch(`/api/batches/${createdBatchId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'EN_FERMENTACION' });
+
+    expect(res1.status).toBe(200);
+    expect(res1.body.status).toBe('EN_FERMENTACION');
+
+    // Pasar de regreso a DISPONIBLE
+    const res2 = await request(app)
+      .patch(`/api/batches/${createdBatchId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'DISPONIBLE' });
+
+    expect(res2.status).toBe(200);
+    expect(res2.body.status).toBe('DISPONIBLE');
+  });
+
+  it('Bloqueo Estricto de Vinculación: Rechaza pedidos si el lote está en EN_FERMENTACION', async () => {
+    // 1. Poner lote en fermentación
+    await request(app)
+      .patch(`/api/batches/${createdBatchId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'EN_FERMENTACION' });
+
+    // 2. Intentar vincular pedido existente via link-orders
+    const linkRes = await request(app)
+      .post(`/api/batches/${createdBatchId}/link-orders`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ orderIds: [testOrderId] });
+
+    expect(linkRes.status).toBe(400);
+    expect(linkRes.body.error).toContain('FERMENTACIÓN BASE');
+
+    // 3. Intentar crear un pedido asignándole directamente el lote en fermentación
+    const orderRes = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId: testCustomerId,
+        batchId: createdBatchId,
+        bottleSize: '1L',
+        quantityBottles: 1,
+        flavor: 'Mora Silvestre',
+        unitPrice: 12000,
+        totalAmount: 12000,
+      });
+
+    expect(orderRes.status).toBe(400);
+    expect(orderRes.body.error).toContain('FERMENTACIÓN BASE');
+
+    // 4. Restaurar lote a DISPONIBLE para no afectar tests posteriores
+    await request(app)
+      .patch(`/api/batches/${createdBatchId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'DISPONIBLE' });
+  });
+
+  it('Edición con Balance Delta Fase A: PUT /api/batches/:id ajusta leche e insumos correctamente', async () => {
+    // 1. Crear lote para prueba de edición
+    const createRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 20,
+        totalLitersProduced: 20,
+        flavor: 'Base Para Edición Delta',
+        cultureType: 'Cultivo Tradicional',
+        fermentationHours: 8,
+        status: 'EN_FERMENTACION',
+      });
+
+    expect(createRes.status).toBe(201);
+    const editBatchId = createRes.body.id;
+
+    // 2. Editar incrementando leche de 20 a 25 L (delta +5L) y cambiando horas a 10
+    const editRes = await request(app)
+      .put(`/api/batches/${editBatchId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 25,
+        totalLitersProduced: 25,
+        cultureType: 'Cultivo Reforzado',
+        fermentationHours: 10,
+        notes: 'Ajuste de leche en tina',
+      });
+
+    expect(editRes.status).toBe(200);
+    expect(editRes.body.milkUsedLiters).toBe(25);
+    expect(editRes.body.fermentationHours).toBe(10);
+    expect(editRes.body.cultureType).toBe('Cultivo Reforzado');
+  });
+
+  it('Edición con Balance Delta Fase B: PUT /api/batches/packagings/:packagingId ajusta botellas y stock', async () => {
+    // 1. Obtener los fraccionamientos del lote de prueba
+    const summaryRes = await request(app)
+      .get(`/api/batches/${createdBatchId}/summary`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const pkg = summaryRes.body.packagings[0];
+    expect(pkg).toBeDefined();
+
+    // 2. Intentar exceder el volumen total disponible debe retornar 400
+    const overLimitRes = await request(app)
+      .put(`/api/batches/packagings/${pkg.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        bottles1L: pkg.bottles1L + 10,
+        bottles2L: pkg.bottles2L,
+      });
+    expect(overLimitRes.status).toBe(400);
+    expect(overLimitRes.body.error).toContain('Volumen insuficiente');
+
+    // 3. Ajuste válido de botellas 1L (delta negativo: restituye insumo y reduce volumen envasado)
+    const updatePkgRes = await request(app)
+      .put(`/api/batches/packagings/${pkg.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        bottles1L: pkg.bottles1L - 1,
+        bottles2L: pkg.bottles2L,
+        notes: 'Ajuste de reducción de 1 botella envasada',
+      });
+
+    expect(updatePkgRes.status).toBe(200);
+    expect(updatePkgRes.body).toHaveProperty('packaging');
+    expect(updatePkgRes.body.packaging.bottles1L).toBe(pkg.bottles1L - 1);
+  });
+
+  it('Dosificación en Fase A: Formulación de 108.333 g/L para 24 L de leche descuenta exactamente 2.6 kg de azúcar', async () => {
+    // 1. Asegurar azúcar en inventario
+    const sugar = await prisma.rawMaterial.upsert({
+      where: { code: 'AZUCAR' },
+      update: { currentStock: 100, avgCost: 4500, unit: 'Kilogramos', isActive: true },
+      create: {
+        code: 'AZUCAR',
+        name: 'Azúcar Blanca Refinada',
+        unit: 'Kilogramos',
+        currentStock: 100,
+        avgCost: 4500,
+        category: 'MATERIAS_PRIMAS',
+        isActive: true,
+      },
+    });
+
+    const initialStock = sugar.currentStock;
+
+    // 2. Simular cálculo de formulación del frontend:
+    // Dosis: 108.333 g/L, Leche: 24 L
+    const dosagePerLiter = 108.333;
+    const milkUsedLiters = 24;
+    const totalGrams = Math.round(dosagePerLiter * milkUsedLiters); // 2600 g
+    const quantityUsedKg = Number((totalGrams / 1000).toFixed(4)); // 2.6 kg
+
+    expect(totalGrams).toBe(2600);
+    expect(quantityUsedKg).toBe(2.6);
+
+    // 3. Crear lote en Fase A enviando la cantidad convertida a kg en dynamicItems
+    const res = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters,
+        totalLitersProduced: 23,
+        flavor: 'Yogur Dosificación Exacta',
+        cultureType: 'Cultivo Tradicional',
+        fermentationHours: 8,
+        status: 'EN_FERMENTACION',
+        dynamicItems: [
+          {
+            rawMaterialId: sugar.id,
+            quantityUsed: quantityUsedKg,
+            dosagePerLiter,
+            dosageUnit: 'g/L',
+          },
+        ],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.batchCode).toBeDefined();
+
+    // 4. Verificar descuento exacto de 2.6 kg en inventario de azúcar
+    const updatedSugar = await prisma.rawMaterial.findUnique({
+      where: { id: sugar.id },
+    });
+    expect(updatedSugar).not.toBeNull();
+    expect(updatedSugar!.currentStock).toBeCloseTo(initialStock - 2.6, 4);
+
+    // 5. Verificar registro de BatchItemUsage con 2.6 kg exactos
+    const batchInDb = await prisma.productionBatch.findUnique({
+      where: { id: res.body.id },
+      include: { itemsUsed: true },
+    });
+    const sugarUsage = batchInDb?.itemsUsed.find((u) => u.rawMaterialId === sugar.id);
+    expect(sugarUsage).toBeDefined();
+    expect(sugarUsage!.quantityUsed).toBe(2.6);
+  });
+
+  it('Compras con Egreso Automático: POST /api/inventory/purchases incrementa stock, recalcula PMP y genera Expense', async () => {
+    // 1. Asegurar material de prueba para compra
+    const testMat = await prisma.rawMaterial.upsert({
+      where: { code: 'PULPA_TEST' },
+      update: { currentStock: 10, avgCost: 10000, isActive: true },
+      create: {
+        code: 'PULPA_TEST',
+        name: 'Pulpa de Fruta Test Compras',
+        unit: 'Kilogramos',
+        currentStock: 10,
+        avgCost: 10000,
+        category: 'INSUMO',
+        isActive: true,
+      },
+    });
+
+    // 2. Registrar compra de 10 kg a $12.000 c/u (Total: $120.000) con egreso automático
+    // Stock anterior: 10 kg @ $10.000 = $100.000
+    // Compra: 10 kg @ $12.000 = $120.000
+    // Nuevo stock: 20 kg
+    // Nuevo avgCost: (100.000 + 120.000) / 20 = $11.000
+    const res = await request(app)
+      .post('/api/inventory/purchases')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        rawMaterialId: testMat.id,
+        quantity: 10,
+        unitCost: 12000,
+        totalCost: 120000,
+        supplier: 'Distribuidora Frutas del Valle',
+        paymentMethod: 'TRANSFERENCIA',
+        notes: 'Compra de prueba con egreso automático',
+        registerExpense: true,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.quantity).toBe(10);
+    expect(res.body.totalCost).toBe(120000);
+
+    // 3. Validar actualización de stock y PMP en base de datos
+    const updatedMat = await prisma.rawMaterial.findUnique({
+      where: { id: testMat.id },
+    });
+    expect(updatedMat?.currentStock).toBe(20);
+    expect(updatedMat?.avgCost).toBe(11000);
+
+    // 4. Validar creación automática del Expense en caja
+    const expense = await prisma.expense.findFirst({
+      where: {
+        description: { contains: 'Pulpa de Fruta Test Compras' },
+        amount: 120000,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(expense).not.toBeNull();
+    expect(expense?.category).toBe('INSUMOS_EXTRA');
+    expect(expense?.paymentMethod).toBe('TRANSFERENCIA');
+  });
+
+  it('Fase B Dosificación y Pesaje al Gramo Entero: Envasado con pulpa en g/L descuenta kg exactos y absorbe costos', async () => {
+    // 1. Crear insumo de pulpa de fresa para envasado
+    const strawberryPulp = await prisma.rawMaterial.upsert({
+      where: { code: 'PULPA_FRESA_TEST' },
+      update: { currentStock: 50, avgCost: 8000, unit: 'Kilogramos', isActive: true },
+      create: {
+        code: 'PULPA_FRESA_TEST',
+        name: 'Pulpa de Fresa Pasteurizada Test',
+        unit: 'Kilogramos',
+        currentStock: 50,
+        avgCost: 8000,
+        category: 'INSUMO',
+        isActive: true,
+      },
+    });
+
+    // 2. Crear lote base en fermentación de 30L
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 30,
+        totalLitersProduced: 30,
+        flavor: 'Base Para Fraccionamiento Fruta',
+        cultureType: 'Cultivo Test',
+        status: 'EN_FERMENTACION',
+      });
+
+    expect(batchRes.status).toBe(201);
+    const fruitBatchId = batchRes.body.id;
+
+    // 3. Fraccionar 15L (5 botellas 1L + 5 botellas 2L) con dosis de 125.5 g/L
+    // Litros: 5*1 + 5*2 = 15L
+    // Gramos totales = Math.round(125.5 * 15) = 1883 g
+    // Kg a descontar = 1.883 kg
+    const dosageGramsPerLiter = 125.5;
+    const packagingRes = await request(app)
+      .post(`/api/batches/${fruitBatchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Fresa Artesanal',
+        bottles1L: 5,
+        bottles2L: 5,
+        fruitRawMaterialId: strawberryPulp.id,
+        fruitDosageGramsPerLiter: dosageGramsPerLiter,
+        useLabels: true,
+        notes: 'Envasado con dosificación exacta de fresa',
+      });
+
+    expect(packagingRes.status).toBe(201);
+    expect(packagingRes.body.packaging.totalLiters).toBe(15);
+    expect(packagingRes.body.packaging.fruitQuantityUsed).toBe(1.883);
+
+    // 4. Validar descuento exacto en inventario de pulpa
+    const updatedPulp = await prisma.rawMaterial.findUnique({
+      where: { id: strawberryPulp.id },
+    });
+    expect(updatedPulp?.currentStock).toBeCloseTo(50 - 1.883, 3);
+
+    // 5. Validar impacto financiero en packagingCost
+    // Costo fruta: 1.883 * 8000 = $15.064
+    // Costo botellas 1L (5 * 650 = 3250)
+    // Costo botellas 2L (5 * 1100 = 5500)
+    // Costo tapas (10 * 120 = 1200)
+    // Costo etiquetas si existen
+    expect(packagingRes.body.packaging.packagingCost).toBeGreaterThanOrEqual(15064);
+  });
+
+  it('Fase B Control de Etiquetas: useLabels=false no descuenta etiquetas ni agrega su costo', async () => {
+    // 1. Asegurar stock de etiquetas
+    await prisma.rawMaterial.upsert({
+      where: { code: 'ETIQUETA' },
+      update: { currentStock: 500, avgCost: 200, isActive: true },
+      create: {
+        code: 'ETIQUETA',
+        name: 'Etiqueta Corporativa Test',
+        unit: 'Unidades',
+        currentStock: 500,
+        avgCost: 200,
+        category: 'ENVASES',
+        isActive: true,
+      },
+    });
+
+    const labelsBefore = await prisma.rawMaterial.findFirst({ where: { code: 'ETIQUETA' } });
+    const stockBefore = labelsBefore?.currentStock || 0;
+
+    // 2. Crear lote base
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 10,
+        totalLitersProduced: 10,
+        flavor: 'Base Sin Etiquetas',
+        status: 'EN_FERMENTACION',
+      });
+
+    const noLabelBatchId = batchRes.body.id;
+
+    // 3. Envasar 4 botellas de 1L con useLabels: false
+    const pkgRes = await request(app)
+      .post(`/api/batches/${noLabelBatchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Natural Sin Marca',
+        bottles1L: 4,
+        bottles2L: 0,
+        useLabels: false,
+      });
+
+    expect(pkgRes.status).toBe(201);
+
+    // 4. Verificar que el stock de etiquetas no cambió
+    const labelsAfter = await prisma.rawMaterial.findFirst({ where: { code: 'ETIQUETA' } });
+    expect(labelsAfter?.currentStock).toBe(stockBefore);
+  });
+
+  it('Ajuste de Volumen Real por Expansión de Almíbar: Aumenta a 26L, actualiza rendimiento y expande tope disponible', async () => {
+    // 1. Crear lote base de 24L de leche
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 24,
+        totalLitersProduced: 24,
+        flavor: 'Base Para Almibar',
+        status: 'EN_FERMENTACION',
+      });
+    expect(batchRes.status).toBe(201);
+    const batchId = batchRes.body.id;
+
+    // 2. Ajustar volumen a 26L (expansión por almíbar)
+    const patchRes = await request(app)
+      .patch(`/api/batches/${batchId}/volume`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        totalLitersProduced: 26,
+        notes: 'Adición de 2L de almíbar base',
+      });
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.batch.totalLitersProduced).toBe(26);
+    expect(patchRes.body.batch.yieldPercentage).toBeCloseTo(108.33, 1);
+    const expectedCpl = Math.round(patchRes.body.batch.totalCost / 26);
+    expect(patchRes.body.batch.costPerLiter).toBe(expectedCpl);
+
+    // 3. Envasar hasta 26 botellas de 1L (26L)
+    const pkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Yogur Dulce Almibarado',
+        bottles1L: 26,
+        bottles2L: 0,
+        useLabels: false,
+      });
+    expect(pkgRes.status).toBe(201);
+    expect(pkgRes.body.packaging.totalLiters).toBe(26);
+  });
+
+  it('Merma por Desuerado (Yogur Griego): Disminuye a 11L, absorbe costo de la leche y bloquea sobre-envasado', async () => {
+    // 1. Crear lote base de 24L de leche (costo $67.200 COP)
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 24,
+        totalLitersProduced: 24,
+        flavor: 'Base Griego Artesanal',
+        status: 'EN_FERMENTACION',
+      });
+    expect(batchRes.status).toBe(201);
+    const batchId = batchRes.body.id;
+    const initialCost = batchRes.body.totalCost;
+
+    // 2. Ajustar volumen a 11L tras desuerado
+    const patchRes = await request(app)
+      .patch(`/api/batches/${batchId}/volume`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        totalLitersProduced: 11,
+        notes: 'Desuerado lento para yogur griego estilo tradicional',
+      });
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.batch.totalLitersProduced).toBe(11);
+    expect(patchRes.body.batch.yieldPercentage).toBeCloseTo(45.83, 1);
+    expect(patchRes.body.batch.costPerLiter).toBe(Math.round(initialCost / 11));
+
+    // 3. Guardia: Intentar envasar 12L debe fallar con error 400 por superar los 11L disponibles
+    const failPkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Griego Premium',
+        bottles1L: 12,
+        bottles2L: 0,
+        useLabels: false,
+      });
+    expect(failPkgRes.status).toBe(400);
+    expect(failPkgRes.body.error || failPkgRes.body.message).toContain('Volumen insuficiente');
+
+    // 4. Envasar exactamente 10L (10 botellas de 1L)
+    const okPkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Griego Premium',
+        bottles1L: 10,
+        bottles2L: 0,
+        useLabels: false,
+      });
+    expect(okPkgRes.status).toBe(201);
+
+    // 5. Guardia de reducción: Intentar reducir el volumen producido por debajo de 10L debe fallar
+    const invalidReduction = await request(app)
+      .patch(`/api/batches/${batchId}/volume`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        totalLitersProduced: 9,
+      });
+    expect(invalidReduction.status).toBe(400);
+    expect(invalidReduction.body.error || invalidReduction.body.message).toContain('no puede ser menor a los litros ya envasados');
+  });
+
+  it('Fase B Multi-Insumo: Fraccionamiento con múltiples adiciones (Pulpa + Almíbar) y pesaje exacto al gramo', async () => {
+    // 1. Asegurar insumos de prueba
+    const pulpa = await prisma.rawMaterial.upsert({
+      where: { code: 'PULPA_MULTI_TEST' },
+      update: { currentStock: 50, avgCost: 9000, isActive: true },
+      create: {
+        code: 'PULPA_MULTI_TEST',
+        name: 'Pulpa de Frutos Silvestres Multi',
+        unit: 'Kg',
+        currentStock: 50,
+        avgCost: 9000,
+        category: 'INSUMO',
+        isActive: true,
+      },
+    });
+
+    const almibar = await prisma.rawMaterial.upsert({
+      where: { code: 'ALMIBAR_MULTI_TEST' },
+      update: { currentStock: 50, avgCost: 6000, isActive: true },
+      create: {
+        code: 'ALMIBAR_MULTI_TEST',
+        name: 'Almíbar Artesanal Multi',
+        unit: 'Kilogramos',
+        currentStock: 50,
+        avgCost: 6000,
+        category: 'INSUMO',
+        isActive: true,
+      },
+    });
+
+    // 2. Crear lote
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 20,
+        totalLitersProduced: 20,
+        flavor: 'Base Multi Insumos',
+        status: 'EN_FERMENTACION',
+      });
+    const batchId = batchRes.body.id;
+
+    // 3. Envasar fracción de 10L con 2 insumos extras:
+    // Insumo 1: 50 g/L -> Math.round(50 * 10) = 500 g = 0.5 kg
+    // Insumo 2: 25 g/L -> Math.round(25 * 10) = 250 g = 0.25 kg
+    const pkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Frutos del Bosque Glaseado',
+        bottles1L: 10,
+        bottles2L: 0,
+        useLabels: false,
+        extraItems: [
+          {
+            rawMaterialId: pulpa.id,
+            quantityUsed: 0,
+            dosagePerLiter: 50,
+          },
+          {
+            rawMaterialId: almibar.id,
+            quantityUsed: 0,
+            dosagePerLiter: 25,
+          },
+        ],
+      });
+    if (pkgRes.status !== 201) console.error('FAIL 934:', pkgRes.status, pkgRes.body);
+    expect(pkgRes.status).toBe(201);
+    expect(pkgRes.body.packaging.itemsUsed).toHaveLength(2);
+
+    // 4. Validar que los stocks se descontaron exactamente
+    const updatedPulpa = await prisma.rawMaterial.findUnique({ where: { id: pulpa.id } });
+    const updatedAlmibar = await prisma.rawMaterial.findUnique({ where: { id: almibar.id } });
+    expect(updatedPulpa?.currentStock).toBeCloseTo(49.5, 3);
+    expect(updatedAlmibar?.currentStock).toBeCloseTo(49.75, 3);
+
+    // 5. Validar impacto en packagingCost (6000 insumos + 6500 envases = 12500, sin tapas desacopladas)
+    expect(pkgRes.body.packaging.packagingCost).toBe(12500);
+  });
+
+  it('Precios Diferenciados por Fracción: Permite fijar y consultar price1L y price2L por fracción', async () => {
+    // 1. Crear lote
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 15,
+        totalLitersProduced: 15,
+        flavor: 'Base Precios',
+        status: 'EN_FERMENTACION',
+      });
+    const batchId = batchRes.body.id;
+
+    // 2. Envasar fracción con precios personalizados para yogur griego (16.000 / 30.000 COP)
+    const pkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Griego Fracción Especial',
+        bottles1L: 5,
+        bottles2L: 2,
+        price1L: 16000,
+        price2L: 30000,
+        useLabels: false,
+      });
+    expect(pkgRes.status).toBe(201);
+    expect(pkgRes.body.packaging.price1L).toBe(16000);
+    expect(pkgRes.body.packaging.price2L).toBe(30000);
+
+    // 3. Consultar lote y verificar que la fracción incluye sus precios y sus itemsUsed
+    const getRes = await request(app)
+      .get(`/api/batches/${batchId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(getRes.status).toBe(200);
+    const foundPkg = getRes.body.packagings.find((p: any) => p.id === pkgRes.body.packaging.id);
+    expect(foundPkg).toBeDefined();
+    expect(foundPkg.price1L).toBe(16000);
+    expect(foundPkg.price2L).toBe(30000);
+  });
+
+  it('Desacople de Tapas y Etiquetas Dinámicas: No descuenta tapas y descuenta etiqueta personalizada', async () => {
+    // 1. Asegurar insumos de prueba: Botella, Tapa, y Etiqueta personalizada
+    const bottleMat = await prisma.rawMaterial.upsert({
+      where: { code: 'BOTELLA_1L' },
+      update: { currentStock: 100, avgCost: 650, isActive: true },
+      create: {
+        code: 'BOTELLA_1L',
+        name: 'Botella 1 Litro Test',
+        unit: 'und',
+        currentStock: 100,
+        avgCost: 650,
+        category: 'EMPAQUE',
+        isActive: true,
+      },
+    });
+
+    const capMat = await prisma.rawMaterial.upsert({
+      where: { code: 'TAPA' },
+      update: { currentStock: 100, avgCost: 120, isActive: true },
+      create: {
+        code: 'TAPA',
+        name: 'Tapa Test',
+        unit: 'und',
+        currentStock: 100,
+        avgCost: 120,
+        category: 'EMPAQUE',
+        isActive: true,
+      },
+    });
+
+    const labelCustom = await prisma.rawMaterial.create({
+      data: {
+        code: `ETIQ_CUSTOM_${Date.now()}`,
+        name: 'Etiqueta Gourmet Especial',
+        unit: 'und',
+        currentStock: 50,
+        avgCost: 350,
+        category: 'EMPAQUE',
+        isActive: true,
+      },
+    });
+
+    const capStockBefore = capMat.currentStock;
+    const bottleStockBefore = bottleMat.currentStock;
+
+    // 2. Crear lote
+    const batchRes = await request(app)
+      .post('/api/batches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        milkUsedLiters: 10,
+        totalLitersProduced: 10,
+        flavor: 'Base Gourmet',
+        status: 'EN_FERMENTACION',
+      });
+    const batchId = batchRes.body.id;
+
+    // 3. Envasar 6 botellas 1L con 6 etiquetas gourmet personalizadas
+    const pkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Gourmet Fracción',
+        bottles1L: 6,
+        bottles2L: 0,
+        bottle1LRawMaterialId: bottleMat.id,
+        labelRawMaterialId: labelCustom.id,
+        labelQuantity: 6,
+      });
+
+    expect(pkgRes.status).toBe(201);
+    // Costo esperado: 6 botellas * 650 = 3900 + 6 etiquetas * 350 = 2100 = 6000. CERO TAPAS (0 COP).
+    expect(pkgRes.body.packaging.packagingCost).toBe(6000);
+    expect(pkgRes.body.packaging.labelRawMaterialId).toBe(labelCustom.id);
+    expect(pkgRes.body.packaging.labelQuantity).toBe(6);
+
+    // 4. Verificar que las tapas NO se descontaron
+    const capAfter = await prisma.rawMaterial.findUnique({ where: { id: capMat.id } });
+    expect(capAfter?.currentStock).toBe(capStockBefore);
+
+    // 5. Verificar que las botellas y etiquetas sí se descontaron exactamente
+    const bottleAfter = await prisma.rawMaterial.findUnique({ where: { id: bottleMat.id } });
+    expect(bottleAfter?.currentStock).toBe(bottleStockBefore - 6);
+
+    const labelAfter = await prisma.rawMaterial.findUnique({ where: { id: labelCustom.id } });
+    expect(labelAfter?.currentStock).toBe(50 - 6);
+
+    // 6. Envasar otra fracción sin etiqueta ([Sin etiqueta / A granel])
+    const noLabelPkgRes = await request(app)
+      .post(`/api/batches/${batchId}/packaging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        flavor: 'Gourmet Granel',
+        bottles1L: 4,
+        bottles2L: 0,
+        bottle1LRawMaterialId: bottleMat.id,
+        labelRawMaterialId: null,
+        labelQuantity: 0,
+      });
+
+    expect(noLabelPkgRes.status).toBe(201);
+    // Costo esperado: 4 botellas * 650 = 2600. Cero etiquetas, Cero tapas.
+    expect(noLabelPkgRes.body.packaging.packagingCost).toBe(2600);
+    expect(noLabelPkgRes.body.packaging.labelRawMaterialId).toBeNull();
+    expect(noLabelPkgRes.body.packaging.labelQuantity).toBe(0);
+
+    // Stock de etiquetas no debe haber cambiado
+    const labelAfterGranel = await prisma.rawMaterial.findUnique({ where: { id: labelCustom.id } });
+    expect(labelAfterGranel?.currentStock).toBe(44);
+  });
+
+  describe('Fase B - Presentaciones Flexibles, Listado Paginado, Retiros y Eliminación Segura', () => {
+    let bottle500Id: number;
+    let bottle250Id: number;
+    let flexBatchId: number;
+    let flexPackagingId: number;
+
+    beforeAll(async () => {
+      // Insumos flexibles
+      const b500 = await prisma.rawMaterial.upsert({
+        where: { code: 'BOTELLA_500ML_TEST' },
+        update: { currentStock: 100, avgCost: 450, isActive: true },
+        create: {
+          code: 'BOTELLA_500ML_TEST',
+          name: 'Botella Pet 500ml Test',
+          unit: 'und',
+          currentStock: 100,
+          avgCost: 450,
+          category: 'ENVASES',
+          isActive: true,
+        },
+      });
+      bottle500Id = b500.id;
+
+      const b250 = await prisma.rawMaterial.upsert({
+        where: { code: 'BOTELLA_250ML_TEST' },
+        update: { currentStock: 100, avgCost: 300, isActive: true },
+        create: {
+          code: 'BOTELLA_250ML_TEST',
+          name: 'Botella Pet 250ml Test',
+          unit: 'und',
+          currentStock: 100,
+          avgCost: 300,
+          category: 'ENVASES',
+          isActive: true,
+        },
+      });
+      bottle250Id = b250.id;
+
+      await prisma.rawMaterial.updateMany({
+        where: { code: { in: ['BOTELLA_1L', 'BOTELLA_2L', 'ETIQUETA', 'LECHE', 'LECHE_TEST'] } },
+        data: { currentStock: 1000 },
+      });
+    });
+
+    it('permite registrar presentaciones flexibles arbitrarias con cálculo volumétrico dinámico', async () => {
+      // Crear lote base de 25 litros
+      const bRes = await request(app)
+        .post('/api/batches')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          milkUsedLiters: 25,
+          totalLitersProduced: 25,
+          flavor: 'Base Flex',
+          status: 'DISPONIBLE',
+        });
+      expect(bRes.status).toBe(201);
+      flexBatchId = bRes.body.id;
+
+      // Fraccionar con customContainers: 10 und de 500ml (5L) + 20 und de 250ml (5L) = 10L totales
+      const pkgRes = await request(app)
+        .post(`/api/batches/${flexBatchId}/packaging`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          flavor: 'Mora Silvestre Flex',
+          bottles1L: 0,
+          bottles2L: 0,
+          customContainers: [
+            {
+              rawMaterialId: bottle500Id,
+              containerName: '500 ml',
+              capacityLiters: 0.5,
+              quantity: 10,
+              price: 7000,
+            },
+            {
+              rawMaterialId: bottle250Id,
+              containerName: '250 ml',
+              capacityLiters: 0.25,
+              quantity: 20,
+              price: 4000,
+            },
+          ],
+        });
+
+      if (pkgRes.status !== 201) console.error('FAIL 1177:', pkgRes.status, pkgRes.body);
+      expect(pkgRes.status).toBe(201);
+      flexPackagingId = pkgRes.body.packaging.id;
+      expect(pkgRes.body.packaging.totalLiters).toBe(10); // 10*0.5 + 20*0.25 = 10L
+      expect(pkgRes.body.packaging.containers).toHaveLength(2);
+
+      // Descuento de stock en almacén: 10 de 500ml y 20 de 250ml
+      const b500Stock = await prisma.rawMaterial.findUnique({ where: { id: bottle500Id } });
+      expect(b500Stock?.currentStock).toBe(90);
+      const b250Stock = await prisma.rawMaterial.findUnique({ where: { id: bottle250Id } });
+      expect(b250Stock?.currentStock).toBe(80);
+
+      // Verificar actualización del lote madre
+      const updatedBatch = await prisma.productionBatch.findUnique({ where: { id: flexBatchId } });
+      expect(Number(updatedBatch?.packagedLiters)).toBe(10);
+      expect(Number(updatedBatch?.totalLitersProduced) - Number(updatedBatch?.packagedLiters)).toBe(15);
+    });
+
+    it('lista fracciones envasadas paginadas a 5 registros en GET /api/batches/packagings', async () => {
+      const listRes = await request(app)
+        .get('/api/batches/packagings?page=1&limit=5')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      if (listRes.status !== 200) console.error('FAIL 1200:', listRes.status, listRes.body);
+      expect(listRes.status).toBe(200);
+      expect(listRes.body).toHaveProperty('data');
+      expect(listRes.body).toHaveProperty('pagination');
+      expect(listRes.body.pagination.limit).toBe(5);
+      expect(Array.isArray(listRes.body.data)).toBe(true);
+      expect(listRes.body.data.length).toBeLessThanOrEqual(5);
+
+      const found = listRes.body.data.find((p: any) => p.id === flexPackagingId);
+      expect(found).toBeDefined();
+      expect(found.totalLiters).toBe(10);
+      expect(found.freeLiters).toBe(10);
+      expect(found.status).toBe('DISPONIBLE');
+      expect(found.presentations).toHaveLength(2);
+    });
+
+    it('obtiene auditoría segregada de la fracción con GET /api/batches/packagings/:id', async () => {
+      const summaryRes = await request(app)
+        .get(`/api/batches/packagings/${flexPackagingId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      if (summaryRes.status !== 200) console.error('FAIL 1220:', summaryRes.status, summaryRes.body);
+      expect(summaryRes.status).toBe(200);
+      expect(summaryRes.body.packaging.id).toBe(flexPackagingId);
+      expect(summaryRes.body.volume.totalLiters).toBe(10);
+      expect(summaryRes.body.volume.freeLiters).toBe(10);
+      expect(summaryRes.body.presentations).toHaveLength(2);
+    });
+
+    it('registra retiro de socio en presentación de la fracción con POST /api/batches/packagings/:id/discharges', async () => {
+      const dischargeRes = await request(app)
+        .post(`/api/batches/packagings/${flexPackagingId}/discharges`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          bottleSize: '500 ml',
+          quantityBottles: 2,
+          staffMemberId: testStaffId,
+          notes: 'Degustación socio 500ml',
+        });
+
+      if (dischargeRes.status !== 201) console.error('FAIL 1238:', dischargeRes.status, dischargeRes.body);
+      expect(dischargeRes.status).toBe(201);
+      expect(dischargeRes.body.discharge.packagingId).toBe(flexPackagingId);
+      expect(Number(dischargeRes.body.discharge.quantityBottles)).toBe(2);
+
+      // Verificar que freeLiters se redujo en 2 * 0.5 = 1L
+      const summaryRes = await request(app)
+        .get(`/api/batches/packagings/${flexPackagingId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(summaryRes.body.volume.dischargedLiters).toBe(1);
+      expect(summaryRes.body.volume.freeLiters).toBe(9);
+    });
+
+    it('impide eliminar fracción si tiene pedidos vinculados y permite forzar con ?force=true', async () => {
+      // 1. Crear un pedido con un ítem asignado a esta fracción
+      const order = await prisma.order.create({
+        data: {
+          orderNumber: `ORD-FLEX-${Date.now()}`,
+          customerId: testCustomerId,
+          deliveryStatus: 'PENDING',
+          paymentStatus: 'PAID',
+          totalAmount: 14000,
+          totalLiters: 1.0,
+          quantityBottles: 2,
+          orderDate: new Date(),
+          items: {
+            create: {
+              packagingId: flexPackagingId,
+              flavor: 'Mora Silvestre Flex',
+              bottleSize: '500 ml',
+              quantity: 2,
+              litersPerUnit: 0.5,
+              totalLiters: 1.0,
+              unitPrice: 7000,
+              totalPrice: 14000,
+            },
+          },
+        },
+      });
+
+      // 2. Intentar eliminar la fracción sin force -> debe fallar con 400
+      const deleteFailRes = await request(app)
+        .delete(`/api/batches/packagings/${flexPackagingId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(deleteFailRes.status).toBe(400);
+      expect(deleteFailRes.body.error || deleteFailRes.body.message).toContain('pedidos vinculados');
+
+      // 3. Forzar eliminación con ?force=true
+      const deleteSuccessRes = await request(app)
+        .delete(`/api/batches/packagings/${flexPackagingId}?force=true`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(deleteSuccessRes.status).toBe(200);
+
+      // 4. Verificar que la fracción ya no existe
+      const deletedPkg = await prisma.batchPackaging.findUnique({ where: { id: flexPackagingId } });
+      expect(deletedPkg).toBeNull();
+
+      // 5. Verificar que el pedido regresó a pre-venta sin packagingId ni batchId
+      const orderAfter = await prisma.order.findUnique({
+        where: { id: order.id },
+        include: { items: true },
+      });
+      expect(orderAfter?.batchId).toBeNull();
+      expect(orderAfter?.items[0].packagingId).toBeNull();
+
+      // 6. Verificar que los litros se restituyeron al lote madre (10L devueltos -> packagedLiters = 0, remainingAvailable = 25)
+      const batchAfter = await prisma.productionBatch.findUnique({ where: { id: flexBatchId } });
+      expect(Number(batchAfter?.packagedLiters)).toBe(0);
+      expect(Number(batchAfter?.totalLitersProduced) - Number(batchAfter?.packagedLiters)).toBe(25);
+
+      // 7. Verificar que el stock de botellas fue devuelto al inventario (10 de 500ml devueltas = 100, 20 de 250ml = 100)
+      const b500Restored = await prisma.rawMaterial.findUnique({ where: { id: bottle500Id } });
+      expect(b500Restored?.currentStock).toBe(100);
+      const b250Restored = await prisma.rawMaterial.findUnique({ where: { id: bottle250Id } });
+      expect(b250Restored?.currentStock).toBe(100);
+    });
+
+    it('Eliminación Definitiva Fase A: DELETE /api/batches/:id borra el lote madre y desvincula pedidos', async () => {
+      // 1. Crear lote para probar eliminación
+      const batchRes = await request(app)
+        .post('/api/batches')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          batchCode: `LOTE-DEL-TEST-${Date.now()}`,
+          milkUsedLiters: 15,
+          flavor: 'Natural',
+          status: 'DISPONIBLE',
+        });
+      expect(batchRes.status).toBe(201);
+      const toDeleteId = batchRes.body.id;
+
+      // 2. Vincular un pedido de prueba
+      const order = await prisma.order.create({
+        data: {
+          orderNumber: `ORD-DEL-${Date.now()}`,
+          customerId: testCustomerId,
+          batchId: toDeleteId,
+          totalLiters: 2,
+          quantityBottles: 2,
+          bottleSize: '1L',
+          flavor: 'Natural',
+          totalAmount: 24000,
+          items: {
+            create: [
+              {
+                batchId: toDeleteId,
+                flavor: 'Natural',
+                bottleSize: '1L',
+                quantity: 2,
+                totalLiters: 2,
+                unitPrice: 12000,
+                totalPrice: 24000,
+              },
+            ],
+          },
+        },
+        include: { items: true },
+      });
+
+      // 3. Ejecutar DELETE /api/batches/:id
+      const delRes = await request(app)
+        .delete(`/api/batches/${toDeleteId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(delRes.status).toBe(200);
+      expect(delRes.body.message).toContain('eliminado definitivamente');
+
+      // 4. Verificar que el lote no existe en DB
+      const batchInDb = await prisma.productionBatch.findUnique({ where: { id: toDeleteId } });
+      expect(batchInDb).toBeNull();
+
+      // 5. Verificar que el pedido fue desvinculado a pre-venta sin romperse
+      const orderInDb = await prisma.order.findUnique({ where: { id: order.id }, include: { items: true } });
+      expect(orderInDb?.batchId).toBeNull();
+      expect(orderInDb?.items[0].batchId).toBeNull();
+
+      // Limpiar pedido de prueba
+      await prisma.order.delete({ where: { id: order.id } });
+    });
+  });
 });
+
