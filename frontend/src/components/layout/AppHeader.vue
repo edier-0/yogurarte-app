@@ -3,13 +3,15 @@ import { ref, computed, onMounted } from 'vue';
 import { useTheme } from '@/composables/useTheme';
 import { useAuthStore } from '@/stores/auth.store';
 import { useCrmStore } from '@/stores/crm.store';
-import { Sun, Moon, Wifi, WifiOff, LogOut } from 'lucide-vue-next';
+import { Sun, Moon, Wifi, WifiOff, LogOut, Menu } from 'lucide-vue-next';
 import LogoutConfirmModal from '@/components/common/LogoutConfirmModal.vue';
+import MobileMenuDrawer from '@/components/layout/MobileMenuDrawer.vue';
 
 const { isDark, toggleTheme } = useTheme();
 const authStore = useAuthStore();
 const crmStore = useCrmStore();
 const isLogoutModalOpen = ref(false);
+const isMobileMenuOpen = ref(false);
 
 onMounted(() => {
   if (authStore.isAuthenticated) {
@@ -43,9 +45,20 @@ function handleLogout() {
     class="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-surface-light-border bg-surface-light-card/80 px-4 backdrop-blur-md transition-colors dark:border-surface-dark-border dark:bg-surface-dark-card/80 lg:px-6"
   >
     <!-- Brand / View Title -->
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2.5 sm:gap-3">
+      <!-- Botón Menú Hamburguesa Móvil (lg:hidden) -->
+      <button
+        type="button"
+        @click="isMobileMenuOpen = true"
+        class="flex h-9 w-9 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-700 transition-all hover:bg-slate-100 hover:text-brand-800 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800 lg:hidden"
+        title="Abrir menú de navegación"
+        aria-label="Abrir menú de navegación"
+      >
+        <Menu class="h-5 w-5 stroke-[2]" />
+      </button>
+
       <div
-        class="flex h-10 w-10 items-center justify-center rounded-xl bg-hero-gradient text-white shadow-card"
+        class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-hero-gradient text-white shadow-card"
       >
         <span class="text-xl font-bold font-handwritten">Y</span>
       </div>
@@ -130,5 +143,8 @@ function handleLogout() {
 
     <!-- Modal Accesible Reka UI para Confirmación de Cierre de Sesión -->
     <LogoutConfirmModal v-model:open="isLogoutModalOpen" />
+
+    <!-- Menú Hamburguesa Lateral Móvil (Drawer con Reka UI) -->
+    <MobileMenuDrawer v-model:open="isMobileMenuOpen" />
   </header>
 </template>

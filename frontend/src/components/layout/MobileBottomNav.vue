@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { useAuthStore } from '@/stores/auth.store';
-import { ShoppingBag, Bike, FlaskConical, Wallet, Boxes, Plus } from 'lucide-vue-next';
+import { useCrmStore } from '@/stores/crm.store';
+import { ShoppingBag, Bike, MessageCircle, Wallet, Plus } from 'lucide-vue-next';
 
 const route = useRoute();
-const authStore = useAuthStore();
+const crmStore = useCrmStore();
 
 const emit = defineEmits<{
   (e: 'newOrder'): void;
@@ -35,9 +35,8 @@ const isActive = (prefix: string) => {
         <span>Pedidos</span>
       </RouterLink>
 
-      <!-- 2. Domicilios (Admin y Domiciliario) -->
+      <!-- 2. Domicilios / Rutas -->
       <RouterLink
-        v-if="authStore.isAdmin || authStore.isDriver"
         to="/operaciones/domicilios"
         class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
         :class="isActive('/operaciones/domicilios') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
@@ -46,7 +45,7 @@ const isActive = (prefix: string) => {
         <span>Rutas</span>
       </RouterLink>
 
-      <!-- FAB: Botón central de acción rápida -->
+      <!-- 3. FAB: Botón central de acción rápida (+) -->
       <div class="flex flex-1 items-center justify-center">
         <button
           type="button"
@@ -58,36 +57,34 @@ const isActive = (prefix: string) => {
         </button>
       </div>
 
-      <!-- 3. Lotes (Admin y Operador) -->
+      <!-- 4. WhatsApp / CRM (Reemplaza a Lotes, con badge de estado en vivo) -->
       <RouterLink
-        v-if="authStore.isAdmin || authStore.isOperator"
-        to="/produccion/lotes"
-        class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
-        :class="isActive('/produccion/lotes') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
+        to="/operaciones/crm"
+        class="relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
+        :class="isActive('/operaciones/crm') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
       >
-        <FlaskConical class="h-5 w-5" />
-        <span>Lotes</span>
+        <div class="relative">
+          <MessageCircle class="h-5 w-5" />
+          <span
+            v-if="crmStore.isWhatsAppConnected"
+            class="absolute -top-1 -right-1 flex h-2.5 w-2.5 items-center justify-center"
+            title="WhatsApp En Vivo"
+          >
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+          </span>
+        </div>
+        <span>WhatsApp</span>
       </RouterLink>
 
-      <!-- 4. Cuarta Pestaña Dinámica: Caja (Admin) o Insumos (Operador) -->
+      <!-- 5. Caja (Control de Caja / Finanzas) -->
       <RouterLink
-        v-if="authStore.isAdmin"
         to="/finanzas/caja"
         class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
         :class="isActive('/finanzas') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
       >
         <Wallet class="h-5 w-5" />
         <span>Caja</span>
-      </RouterLink>
-
-      <RouterLink
-        v-else-if="authStore.isOperator"
-        to="/produccion/inventario"
-        class="flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-bold transition-all active:scale-95"
-        :class="isActive('/produccion/inventario') ? 'text-brand-800 dark:text-brand-darkText' : 'text-slate-400 hover:text-slate-600 dark:text-slate-500'"
-      >
-        <Boxes class="h-5 w-5" />
-        <span>Insumos</span>
       </RouterLink>
     </nav>
   </div>
