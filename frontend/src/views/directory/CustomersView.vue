@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import {
   Users,
   AlertCircle,
@@ -19,6 +18,7 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
+  Receipt,
 } from 'lucide-vue-next';
 import {
   useDirectoryStore,
@@ -27,14 +27,45 @@ import {
 import { useCrmStore } from '@/stores/crm.store';
 import { toast } from 'vue-sonner';
 import CustomerModal from '@/components/directory/CustomerModal.vue';
+import OrderFormModal from '@/components/operations/OrderFormModal.vue';
+import CollectDebtModal, { type CustomerDebtData } from '@/components/operations/crm/CollectDebtModal.vue';
 
-const router = useRouter();
 const directoryStore = useDirectoryStore();
 const crmStore = useCrmStore();
 
-// Estado modal
+// Estado modal cliente
 const isCustomerModalOpen = ref(false);
 const customerToEdit = ref<CustomerItem | null>(null);
+
+// Estado modal pedido rápido
+const isOrderModalOpen = ref(false);
+const orderToPrefill = ref<any>(null);
+
+// Estado modal cobro de deuda
+const isDebtModalOpen = ref(false);
+const customerToCollect = ref<CustomerDebtData | null>(null);
+
+function handleQuickCreateOrder(customer: CustomerItem) {
+  orderToPrefill.value = {
+    customerId: customer.id,
+    customerName: customer.fullName,
+    customerPhone: customer.phone,
+    customerAddress: customer.address || '',
+  };
+  isOrderModalOpen.value = true;
+}
+
+function handleOpenCollectDebt(customer: CustomerItem) {
+  customerToCollect.value = {
+    id: customer.id,
+    fullName: customer.fullName,
+    phone: customer.phone,
+    address: customer.address,
+    pendingDebt: customer.deliveredPendingDebt || 0,
+    pendingOrders: [],
+  };
+  isDebtModalOpen.value = true;
+}
 
 // Acordeón de historial por tarjeta de cliente
 const expandedCustomerHistory = ref<Record<number, boolean>>({});
@@ -77,41 +108,21 @@ function openEditModal(customer: CustomerItem) {
   isCustomerModalOpen.value = true;
 }
 
-// WhatsApp inteligente: Envío/apertura CRM si Baileys está conectado, fallback wa.me si está desconectado
-async function handleSmartWhatsApp(customer: CustomerItem) {
+// WhatsApp inteligente: Previsualización editable antes de enviar
+function handleSmartWhatsApp(customer: CustomerItem) {
   const contact = (customer.phone || '').trim();
-  const digits = contact.replace(/\D/g, '');
-  const phoneWithCountry = digits.length === 10 ? `57${digits}` : digits;
-
-  // Asegurar lectura fresca del estado de WhatsApp
-  if (crmStore.status === 'DISCONNECTED' && !crmStore.isLoadingStatus) {
-    await crmStore.fetchStatus();
-  }
-
-  // Escenario A: Sesión Interna Conectada (Baileys Online)
-  if (crmStore.isWhatsAppConnected) {
-    toast.success('Abriendo conversación interna en CRM...', {
-      description: `Cliente: ${customer.fullName}`,
-    });
-    router.push({
-      path: '/operaciones/crm',
-      query: { contact: contact.replace(/^@/, '') || customer.fullName },
-    });
+  if (!contact) {
+    toast.error('El cliente no tiene un teléfono válido registrado');
     return;
   }
 
-  // Escenario B: Sesión Interna Desconectada (Fallback a wa.me)
-  if (phoneWithCountry) {
-    crmStore.openMessagePreview({
-      phone: customer.phone,
-      text: `Hola ${customer.fullName}, te saludamos desde YogurArte.`,
-      contactName: customer.fullName,
-      customerId: customer.id,
-      title: `Mensaje a ${customer.fullName}`,
-    });
-  } else {
-    toast.error('El cliente no tiene un teléfono válido registrado');
-  }
+  crmStore.openMessagePreview({
+    phone: customer.phone,
+    text: `Hola ${customer.fullName}, te saludamos de YogurArte. ¿En qué podemos colaborarte hoy?`,
+    contactName: customer.fullName,
+    customerId: customer.id,
+    title: `Mensaje a ${customer.fullName}`,
+  });
 }
 </script>
 
@@ -406,16 +417,43 @@ async function handleSmartWhatsApp(customer: CustomerItem) {
         </div>
 
         <!-- Botonera de Acción de la Tarjeta -->
-        <div class="mt-4 flex items-center gap-2 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
+        <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
+          <!-- Botón Rápido Crear Pedido -->
+          <button
+            type="button"
+            @click="handleQuickCreateOrder(c)"
+            class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand-800 hover:bg-brand-900 px-3 py-2 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 dark:bg-brand-700 dark:hover:bg-brand-600"
+            title="Crear un pedido para este cliente"
+          >
+            <Plus class="h-3.5 w-3.5 stroke-[2.5]" />
+            <span>Crear Pedido</span>
+          </button>
+
+          <!-- Botón Cobrar Pedidos con Deuda -->
+          <button
+            type="button"
+            @click="handleOpenCollectDebt(c)"
+            class="inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-bold transition-all active:scale-95"
+            :class="
+              c.deliveredPendingDebt > 0
+                ? 'bg-amber-500 hover:bg-amber-600 text-white font-black shadow-xs ring-2 ring-amber-500/20'
+                : 'border border-surface-light-border bg-surface-light-canvas text-slate-600 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800'
+            "
+            :title="c.deliveredPendingDebt > 0 ? `Cobrar ${formatCurrency(c.deliveredPendingDebt)} de deuda de este cliente` : 'Registrar abono / cobro a este cliente'"
+          >
+            <Receipt class="h-3.5 w-3.5 stroke-[2.5]" />
+            <span>{{ c.deliveredPendingDebt > 0 ? `Cobrar (${formatCurrency(c.deliveredPendingDebt)})` : 'Cobrar' }}</span>
+          </button>
+
           <!-- Botón de WhatsApp Inteligente -->
           <button
             type="button"
             @click="handleSmartWhatsApp(c)"
-            class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-300/80 bg-emerald-50 px-2.5 py-2 text-xs font-extrabold text-emerald-800 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
-            :title="c.phone && c.phone.startsWith('@') ? 'Abrir chat CRM' : 'Abrir WhatsApp'"
+            class="inline-flex flex-1 min-w-[100px] items-center justify-center gap-1.5 rounded-xl border border-emerald-300/80 bg-emerald-50 px-2.5 py-2 text-xs font-extrabold text-emerald-800 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
+            :title="c.phone && c.phone.startsWith('@') ? 'Abrir chat CRM' : 'Enviar mensaje de WhatsApp con previsualización'"
           >
             <MessageCircle class="h-4 w-4 stroke-[2]" />
-            <span>{{ c.phone && c.phone.startsWith('@') ? 'Chat CRM' : 'WhatsApp' }}</span>
+            <span>WhatsApp</span>
           </button>
 
           <!-- Botón de Edición -->
@@ -485,6 +523,20 @@ async function handleSmartWhatsApp(customer: CustomerItem) {
     <CustomerModal
       v-model:open="isCustomerModalOpen"
       :customer-to-edit="customerToEdit"
+      @saved="directoryStore.fetchCustomers"
+    />
+
+    <!-- Modal Rápido de Creación de Pedido -->
+    <OrderFormModal
+      v-model:open="isOrderModalOpen"
+      :order-to-edit="orderToPrefill"
+      @saved="directoryStore.fetchCustomers"
+    />
+
+    <!-- Modal Cobrar Pedidos con Deuda -->
+    <CollectDebtModal
+      v-model:open="isDebtModalOpen"
+      :customer="customerToCollect"
       @saved="directoryStore.fetchCustomers"
     />
   </div>
