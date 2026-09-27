@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { refDebounced } from '@vueuse/core';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
+import { useCrmStore } from './crm.store';
 
 export type DeliveryStatus =
   | 'PENDING'
@@ -536,23 +537,17 @@ export const useOperationsStore = defineStore('operations', () => {
         rawMessage: string;
         phone: string;
         customerName: string;
+        customerId?: number;
       }>(`/orders/${orderId}/whatsapp`);
 
-      const phone = (res.phone || '').trim();
-      const isUsername = phone.startsWith('@') || /[a-zA-Z]/.test(phone);
-
-      if (isUsername || !res.whatsappUrl) {
-        // Enviar por CRM interno
-        await http.post('/crm/messages', {
-          recipient: phone,
-          text: res.rawMessage,
-        });
-        toast.success(`Mensaje enviado vía CRM interno a ${phone}`);
-      } else {
-        // Abrir WhatsApp Web / App
-        window.open(res.whatsappUrl, '_blank');
-        toast.info('Abriendo WhatsApp...');
-      }
+      const crmStore = useCrmStore();
+      await crmStore.sendSmartWhatsApp({
+        phone: res.phone,
+        text: res.rawMessage,
+        customerId: res.customerId,
+        contactName: res.customerName,
+        fallbackUrl: res.whatsappUrl,
+      });
     } catch {
       toast.error('No se pudo despachar el mensaje de WhatsApp');
     }

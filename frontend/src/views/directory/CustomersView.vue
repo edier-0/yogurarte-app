@@ -24,10 +24,13 @@ import {
   useDirectoryStore,
   type CustomerItem,
 } from '@/stores/directory.store';
+import { useCrmStore } from '@/stores/crm.store';
+import { toast } from 'vue-sonner';
 import CustomerModal from '@/components/directory/CustomerModal.vue';
 
 const router = useRouter();
 const directoryStore = useDirectoryStore();
+const crmStore = useCrmStore();
 
 // Estado modal
 const isCustomerModalOpen = ref(false);
@@ -74,23 +77,40 @@ function openEditModal(customer: CustomerItem) {
   isCustomerModalOpen.value = true;
 }
 
-// WhatsApp inteligente: CRM si es @username, enlace externo si es número
-function handleSmartWhatsApp(customer: CustomerItem) {
+// WhatsApp inteligente: Envío/apertura CRM si Baileys está conectado, fallback wa.me si está desconectado
+async function handleSmartWhatsApp(customer: CustomerItem) {
   const contact = (customer.phone || '').trim();
-  if (contact.startsWith('@') || /[a-zA-Z]/.test(contact)) {
-    // Redirección al CRM omnicanal interno
+  const digits = contact.replace(/\D/g, '');
+  const phoneWithCountry = digits.length === 10 ? `57${digits}` : digits;
+
+  // Asegurar lectura fresca del estado de WhatsApp
+  if (crmStore.status === 'DISCONNECTED' && !crmStore.isLoadingStatus) {
+    await crmStore.fetchStatus();
+  }
+
+  // Escenario A: Sesión Interna Conectada (Baileys Online)
+  if (crmStore.isWhatsAppConnected) {
+    toast.success('Abriendo conversación interna en CRM...', {
+      description: `Cliente: ${customer.fullName}`,
+    });
     router.push({
       path: '/operaciones/crm',
-      query: { contact: contact.replace(/^@/, '') },
+      query: { contact: contact.replace(/^@/, '') || customer.fullName },
     });
-  } else {
-    // Enlace externo directo a WhatsApp
-    const digits = contact.replace(/\D/g, '');
-    const phoneWithCountry = digits.startsWith('57') ? digits : `57${digits}`;
+    return;
+  }
+
+  // Escenario B: Sesión Interna Desconectada (Fallback a wa.me)
+  if (phoneWithCountry) {
     const url = `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(
       `Hola ${customer.fullName}, te saludamos desde YogurArte.`
     )}`;
     window.open(url, '_blank');
+    toast.info('Sesión interna desconectada: abriendo WhatsApp...', {
+      description: `Destinatario: ${customer.fullName}`,
+    });
+  } else {
+    toast.error('El cliente no tiene un teléfono válido registrado');
   }
 }
 </script>

@@ -32,6 +32,7 @@ import { http } from '@/api/client';
 import { getSocket } from '@/api/socket';
 import { toast } from 'vue-sonner';
 import { useProductionStore } from '@/stores/production.store';
+import { useCrmStore } from '@/stores/crm.store';
 import CrmQrModal from '@/components/operations/crm/CrmQrModal.vue';
 import QuickRepliesModal from '@/components/operations/crm/QuickRepliesModal.vue';
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
@@ -88,11 +89,12 @@ const activeMainTab = ref<MainTab>('CHATS');
 
 const route = useRoute();
 const productionStore = useProductionStore();
+const crmStore = useCrmStore();
 
-// Estado de Conexión Baileys
-const whatsappStatus = ref<'CONNECTED' | 'CONNECTING' | 'DISCONNECTED'>('DISCONNECTED');
-const qrCodeDataUrl = ref<string | null>(null);
-const connectedPhoneNumber = ref<string | null>(null);
+// Estado de Conexión Baileys sincronizado reactivamente con Pinia
+const whatsappStatus = computed(() => crmStore.status);
+const qrCodeDataUrl = computed(() => crmStore.qrCodeDataUrl);
+const connectedPhoneNumber = computed(() => crmStore.connectedPhoneNumber);
 
 // Conversaciones y mensajes
 const conversations = ref<ChatConversationItem[]>([]);
@@ -170,16 +172,7 @@ function scrollToBottom(smooth = false) {
 
 // Carga de estado de WhatsApp
 async function fetchStatus() {
-  try {
-    const res = await http.get<any>('/crm/status');
-    if (res) {
-      whatsappStatus.value = res.status || 'DISCONNECTED';
-      qrCodeDataUrl.value = res.qr || null;
-      connectedPhoneNumber.value = res.phoneNumber || null;
-    }
-  } catch {
-    whatsappStatus.value = 'DISCONNECTED';
-  }
+  await crmStore.fetchStatus();
 }
 
 // Carga de conversaciones
@@ -406,9 +399,9 @@ async function handleUnlinkChat(conv: any) {
 // Manejadores de WebSockets
 function onStatusUpdate(data: any) {
   if (data) {
-    whatsappStatus.value = data.status || 'DISCONNECTED';
-    qrCodeDataUrl.value = data.qr || null;
-    connectedPhoneNumber.value = data.phoneNumber || null;
+    crmStore.status = data.status || 'DISCONNECTED';
+    crmStore.qrCodeDataUrl = data.qr || null;
+    crmStore.connectedPhoneNumber = data.phoneNumber || null;
   }
 }
 

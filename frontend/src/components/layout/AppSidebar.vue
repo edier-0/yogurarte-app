@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
 import {
@@ -14,7 +14,11 @@ import {
   Users,
   Briefcase,
   CheckCircle2,
+  LogOut,
 } from 'lucide-vue-next';
+import LogoutConfirmModal from '@/components/common/LogoutConfirmModal.vue';
+
+const isLogoutModalOpen = ref(false);
 
 interface NavItem {
   id: string;
@@ -212,6 +216,20 @@ const isItemActive = (itemPath: string) => {
           <span>Seguro</span>
         </div>
       </div>
+
+      <!-- Botón de Cerrar Sesión Accesible con Confirmación -->
+      <button
+        type="button"
+        @click="isLogoutModalOpen = true"
+        class="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-surface-light-border bg-surface-light-card py-2 text-xs font-bold text-slate-600 transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-400 dark:hover:border-rose-900/40 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
+        title="Cerrar sesión en el sistema"
+      >
+        <LogOut class="h-3.5 w-3.5 stroke-[2]" />
+        <span>Cerrar Sesión</span>
+      </button>
     </div>
+
+    <!-- Modal de Confirmación Reka UI -->
+    <LogoutConfirmModal v-model:open="isLogoutModalOpen" />
   </aside>
 </template>

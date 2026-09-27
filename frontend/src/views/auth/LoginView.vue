@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
 import {
@@ -10,7 +10,6 @@ import {
   LogIn,
   AlertCircle,
   ShieldCheck,
-  Check,
 } from 'lucide-vue-next';
 import { toast } from 'vue-sonner';
 
@@ -23,15 +22,6 @@ const password = ref('');
 const showPassword = ref(false);
 const isSubmitting = ref(false);
 const loginError = ref('');
-
-onMounted(async () => {
-  await authStore.fetchPublicUsers();
-});
-
-function selectUser(userItem: { username: string }) {
-  username.value = userItem.username;
-  loginError.value = '';
-}
 
 async function handleLogin() {
   if (!username.value.trim() || !password.value.trim()) {
@@ -79,35 +69,7 @@ async function handleLogin() {
           </p>
         </div>
 
-        <!-- Selector Rápido de Usuarios Públicos -->
-        <div v-if="authStore.publicUsers.length > 0" class="mt-6">
-          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
-            Acceso Rápido de Usuarios
-          </label>
-          <div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pb-1">
-            <button
-              v-for="u in authStore.publicUsers"
-              :key="u.id"
-              type="button"
-              @click="selectUser(u)"
-              class="inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-bold transition-all active:scale-95"
-              :class="[
-                username.toLowerCase() === u.username.toLowerCase()
-                  ? 'border-brand-800 bg-brand-50 text-brand-800 dark:border-brand-500 dark:bg-brand-950/60 dark:text-brand-300'
-                  : 'border-surface-light-border bg-surface-light-canvas text-slate-700 hover:border-slate-300 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:border-slate-600'
-              ]"
-            >
-              <Check v-if="username.toLowerCase() === u.username.toLowerCase()" class="h-3.5 w-3.5 stroke-[2.5]" />
-              <User v-else class="h-3.5 w-3.5 text-slate-400 stroke-[2]" />
-              <span>{{ u.name.split(' ')[0] }}</span>
-              <span class="rounded px-1 text-[9px] font-extrabold uppercase opacity-80" :class="u.role === 'ADMIN' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'">
-                {{ u.role }}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Formulario -->
+        <!-- Formulario Estándar Seguro -->
         <form @submit.prevent="handleLogin" class="mt-6 space-y-4">
           <!-- Campo Usuario -->
           <div>

@@ -16,6 +16,7 @@ import {
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
+import { useCrmStore } from '@/stores/crm.store';
 
 export interface LoyaltyCustomerItem {
   id: number;
@@ -45,6 +46,7 @@ const emit = defineEmits<{
   (e: 'open-chat', customer: { id: number; fullName: string; phone: string }): void;
 }>();
 
+const crmStore = useCrmStore();
 const customers = ref<LoyaltyCustomerItem[]>([]);
 const pagination = ref({
   page: 1,
@@ -127,10 +129,7 @@ async function handleRedeemReward(cust: LoyaltyCustomerItem) {
 }
 
 // Notificar por WhatsApp institucional
-function handleNotifyWhatsApp(cust: LoyaltyCustomerItem) {
-  const cleanDigits = cust.phone.replace(/\D/g, '');
-  const targetPhone = cleanDigits.length === 10 ? `57${cleanDigits}` : cleanDigits;
-
+async function handleNotifyWhatsApp(cust: LoyaltyCustomerItem) {
   let textMessage = '';
   if (cust.rewardsAvailable > 0) {
     textMessage = `Estimado/a *${cust.fullName}*, le saludamos de *YogurArte*. Nos complace informarle que en nuestro Programa de Fidelización acumula ${cust.totalBottles} botellas y cuenta con *${cust.rewardsAvailable} botella(s) de 1 Litro GRATIS* lista(s) para reclamar en su próximo pedido. ¡Gracias por su preferencia!`;
@@ -139,8 +138,13 @@ function handleNotifyWhatsApp(cust: LoyaltyCustomerItem) {
     textMessage = `Estimado/a *${cust.fullName}*, le saludamos de *YogurArte*. Le recordamos que en su tarjeta de fidelización lleva *${cust.currentCycleBottles}/10 botellas*. Le faltan solo *${remaining} botella(s)* para recibir su próximo litro totalmente gratis.`;
   }
 
-  const url = `https://wa.me/${targetPhone}?text=${encodeURIComponent(textMessage)}`;
-  window.open(url, '_blank');
+  await crmStore.sendSmartWhatsApp({
+    phone: cust.phone,
+    text: textMessage,
+    customerId: cust.id,
+    contactName: cust.fullName,
+  });
+
   emit('open-chat', { id: cust.id, fullName: cust.fullName, phone: cust.phone });
 }
 

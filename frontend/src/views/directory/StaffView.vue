@@ -28,6 +28,7 @@ import {
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { refDebounced } from '@vueuse/core';
+import { useCrmStore } from '@/stores/crm.store';
 import StaffModal, { type StaffMemberItem } from '@/components/directory/StaffModal.vue';
 import StaffPaymentModal from '@/components/directory/StaffPaymentModal.vue';
 import NequiConfigModal from '@/components/directory/NequiConfigModal.vue';
@@ -244,11 +245,17 @@ function openPaymentForMember(staffId: number) {
   isPaymentModalOpen.value = true;
 }
 
+const crmStore = useCrmStore();
+
 async function handleSharePaymentWhatsApp(paymentId: number) {
   try {
-    const res = await http.get<{ whatsappUrl: string }>(`/staff/payments/${paymentId}/whatsapp`);
-    if (res?.whatsappUrl) {
-      window.open(res.whatsappUrl, '_blank');
+    const res = await http.get<{ whatsappUrl: string; message?: string; phone?: string }>(`/staff/payments/${paymentId}/whatsapp`);
+    if (res) {
+      await crmStore.sendSmartWhatsApp({
+        phone: res.phone || '',
+        text: res.message || '',
+        fallbackUrl: res.whatsappUrl,
+      });
     }
   } catch {
     // Interceptor

@@ -1,11 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useTheme } from '@/composables/useTheme';
 import { useAuthStore } from '@/stores/auth.store';
-import { Sun, Moon, Wifi, LogOut } from 'lucide-vue-next';
+import { useCrmStore } from '@/stores/crm.store';
+import { Sun, Moon, Wifi, WifiOff, LogOut } from 'lucide-vue-next';
+import LogoutConfirmModal from '@/components/common/LogoutConfirmModal.vue';
 
 const { isDark, toggleTheme } = useTheme();
 const authStore = useAuthStore();
+const crmStore = useCrmStore();
+const isLogoutModalOpen = ref(false);
+
+onMounted(() => {
+  crmStore.initSocketListeners();
+  crmStore.fetchStatus();
+});
 
 defineProps<{
   title?: string;
@@ -23,7 +32,7 @@ const userInitials = computed(() => {
 });
 
 function handleLogout() {
-  authStore.logout();
+  isLogoutModalOpen.value = true;
 }
 </script>
 
@@ -57,13 +66,24 @@ function handleLogout() {
 
     <!-- Actions / Theme / User / Logout -->
     <div class="flex items-center gap-2 sm:gap-3">
-      <!-- Status Badge CRM -->
-      <div
-        class="hidden items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-400 md:inline-flex"
+      <!-- Status Badge CRM Reactivo -->
+      <RouterLink
+        to="/operaciones/crm"
+        class="hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold transition-all md:inline-flex"
+        :class="
+          crmStore.isWhatsAppConnected
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-400'
+            : crmStore.status === 'CONNECTING'
+            ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-400'
+            : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
+        "
+        title="Estado de WhatsApp (Clic para gestionar en CRM)"
       >
-        <Wifi class="h-3.5 w-3.5 animate-pulse text-emerald-500" />
-        <span>Baileys Online</span>
-      </div>
+        <Wifi v-if="crmStore.isWhatsAppConnected" class="h-3.5 w-3.5 animate-pulse text-emerald-500" />
+        <Wifi v-else-if="crmStore.status === 'CONNECTING'" class="h-3.5 w-3.5 animate-ping text-amber-500" />
+        <WifiOff v-else class="h-3.5 w-3.5 text-slate-400" />
+        <span>{{ crmStore.isWhatsAppConnected ? 'Baileys Online' : (crmStore.status === 'CONNECTING' ? 'Conectando...' : 'WhatsApp Offline') }}</span>
+      </RouterLink>
 
       <!-- Theme Switcher Button -->
       <button
@@ -105,5 +125,8 @@ function handleLogout() {
         </button>
       </div>
     </div>
+
+    <!-- Modal Accesible Reka UI para Confirmación de Cierre de Sesión -->
+    <LogoutConfirmModal v-model:open="isLogoutModalOpen" />
   </header>
 </template>
