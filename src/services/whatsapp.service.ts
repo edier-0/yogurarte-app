@@ -17,6 +17,30 @@ import { usePrismaAuthState, clearPrismaAuthSession } from './whatsappAuth.servi
 
 export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED';
 
+/**
+ * Normaliza números y JIDs de Colombia para prevenir bifurcación de chats en WhatsApp.
+ * Si WhatsApp reporta formato '5793XXXXXXXX' (13 dígitos con el prefijo '9' de telefonía móvil),
+ * lo normaliza al estándar canónico '573XXXXXXXX' (12 dígitos).
+ */
+export function normalizeColombianJid(jidOrPhone: string): string {
+  if (!jidOrPhone) return jidOrPhone;
+  const str = jidOrPhone.trim();
+  if (str.includes('@')) {
+    const parts = str.split('@');
+    const rawUser = parts[0];
+    const domain = parts.slice(1).join('@');
+    const [userNumber, device] = rawUser.split(':');
+    const normalizedUser = userNumber.replace(/^579(3\d{9})$/, '57$1');
+    const fullUser = device ? `${normalizedUser}:${device}` : normalizedUser;
+    return `${fullUser}@${domain}`;
+  }
+  const digits = str.replace(/\D/g, '');
+  if (/^579(3\d{9})$/.test(digits)) {
+    return digits.replace(/^579(3\d{9})$/, '57$1');
+  }
+  return str;
+}
+
 class WhatsAppService {
   private sock: WASocket | null = null;
   public io: SocketIOServer | null = null;
@@ -281,10 +305,11 @@ class WhatsAppService {
    */
   private async processIncomingMessage(msg: WAMessage) {
     if (!msg.message) return;
-    const remoteJid = msg.key.remoteJid;
-    if (!remoteJid || remoteJid.includes('@broadcast') || remoteJid.includes('status@broadcast')) {
+    const rawRemoteJid = msg.key.remoteJid;
+    if (!rawRemoteJid || rawRemoteJid.includes('@broadcast') || rawRemoteJid.includes('status@broadcast')) {
       return;
     }
+    const remoteJid = normalizeColombianJid(rawRemoteJid);
 
     const fromMe = Boolean(msg.key.fromMe);
     const messageId = msg.key.id || `MSG-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -393,8 +418,8 @@ class WhatsAppService {
       ? new Date(Number(msg.messageTimestamp) * 1000)
       : new Date();
 
-    const rawNumber = remoteJid.split('@')[0];
-    const cleanNumber = rawNumber.replace(/\D/g, '');
+    const rawNumber = remoteJid.split('@')[0].split(':')[0];
+    const cleanNumber = normalizeColombianJid(rawNumber.replace(/\D/g, ''));
     const isLid = remoteJid.endsWith('@lid');
 
     // 1. Buscar si ya existe una conversación exactamente con este remoteJid
@@ -413,7 +438,7 @@ class WhatsAppService {
         if (lidRecord && lidRecord.value) {
           const parsed = JSON.parse(lidRecord.value);
           if (parsed && typeof parsed === 'string') {
-            mappedPhoneNumber = parsed.replace(/\D/g, '');
+            mappedPhoneNumber = normalizeColombianJid(parsed.replace(/\D/g, ''));
           }
         }
       } catch (e) {
@@ -534,11 +559,12 @@ class WhatsAppService {
       }
     }
 
-    const effectivePhone =
+    const effectivePhone = normalizeColombianJid(
       matchingCustomer?.phone?.replace(/\D/g, '') ||
       phoneToSearch ||
       conversation?.phoneNumber ||
-      cleanNumber;
+      cleanNumber
+    );
 
     // 7. Crear o actualizar conversación
     if (!conversation) {
@@ -627,12 +653,13 @@ class WhatsAppService {
       throw new Error('WhatsApp no está conectado actualmente. Por favor escanea el código QR.');
     }
 
-    let cleanJid = remoteJid.trim();
+    let cleanJid = normalizeColombianJid(remoteJid.trim());
     if (!cleanJid.includes('@')) {
       let rawDigits = cleanJid.replace(/\D/g, '');
       if (rawDigits.length === 10 && rawDigits.startsWith('3')) {
         rawDigits = `57${rawDigits}`;
       }
+      rawDigits = normalizeColombianJid(rawDigits);
       cleanJid = `${rawDigits}@s.whatsapp.net`;
     } else if (!cleanJid.endsWith('@s.whatsapp.net') && !cleanJid.endsWith('@lid') && !cleanJid.endsWith('@g.us')) {
       let rawDigits = cleanJid.replace(/\D/g, '');
@@ -640,12 +667,14 @@ class WhatsAppService {
         if (rawDigits.length === 10 && rawDigits.startsWith('3')) {
           rawDigits = `57${rawDigits}`;
         }
+        rawDigits = normalizeColombianJid(rawDigits);
         cleanJid = `${rawDigits}@s.whatsapp.net`;
       } else {
         throw new Error(`El destinatario "${remoteJid}" no corresponde a un JID o número de WhatsApp válido`);
       }
     }
-    const cleanNumber = cleanJid.split('@')[0].replace(/\D/g, '');
+    cleanJid = normalizeColombianJid(cleanJid);
+    const cleanNumber = normalizeColombianJid(cleanJid.split('@')[0].split(':')[0].replace(/\D/g, ''));
 
     const sentMsg = await this.sock.sendMessage(cleanJid, { text: text.trim() });
     const messageId = sentMsg?.key?.id || `OUT-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -823,6 +852,66 @@ class WhatsAppService {
           await prisma.chatConversation.delete({
             where: { id: lidConv.id },
           });
+        }
+      }
+
+      // Rutina para unificar chats con prefijos duplicados de Colombia (5793... vs 573...)
+      const duplicate579Convs = await prisma.chatConversation.findMany({
+        where: {
+          OR: [
+            { remoteJid: { startsWith: '5793' } },
+            { phoneNumber: { startsWith: '5793' } },
+          ],
+        },
+        include: { messages: true },
+      });
+
+      for (const conv579 of duplicate579Convs) {
+        const canonicalJid = normalizeColombianJid(conv579.remoteJid);
+        const canonicalPhone = normalizeColombianJid(conv579.phoneNumber);
+        if (canonicalJid !== conv579.remoteJid || canonicalPhone !== conv579.phoneNumber) {
+          const primaryConv = await prisma.chatConversation.findFirst({
+            where: {
+              id: { not: conv579.id },
+              OR: [
+                { remoteJid: canonicalJid },
+                { phoneNumber: canonicalPhone },
+              ],
+            },
+          });
+
+          if (primaryConv) {
+            console.log(`🔗 Fusionando chat duplicado 579 #${conv579.id} en principal #${primaryConv.id}`);
+            await prisma.chatMessage.updateMany({
+              where: { conversationId: conv579.id },
+              data: { conversationId: primaryConv.id },
+            });
+            const lastMsg = await prisma.chatMessage.findFirst({
+              where: { conversationId: primaryConv.id },
+              orderBy: { timestamp: 'desc' },
+            });
+            if (lastMsg) {
+              await prisma.chatConversation.update({
+                where: { id: primaryConv.id },
+                data: {
+                  lastMessageText: lastMsg.text,
+                  lastMessageTimestamp: lastMsg.timestamp,
+                  lastMessageFromMe: lastMsg.fromMe,
+                },
+              });
+            }
+            await prisma.chatConversation.delete({
+              where: { id: conv579.id },
+            });
+          } else {
+            await prisma.chatConversation.update({
+              where: { id: conv579.id },
+              data: {
+                remoteJid: canonicalJid,
+                phoneNumber: canonicalPhone,
+              },
+            });
+          }
         }
       }
     } catch (err) {

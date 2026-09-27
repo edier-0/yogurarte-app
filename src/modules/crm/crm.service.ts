@@ -1,9 +1,11 @@
 import prisma from '../../prisma.js';
-import whatsappService from '../../services/whatsapp.service.js';
+import whatsappService, { normalizeColombianJid } from '../../services/whatsapp.service.js';
 import { BadRequestError, NotFoundError } from '../../shared/errors/appError.js';
 import { getLocalDateString } from '../../shared/utils/dateUtils.js';
 import {
   SendCrmMessageInput,
+  MergeChatInput,
+  UnlinkChatInput,
   CreateRecurringScheduleInput,
   UpdateRecurringScheduleInput,
   CreateQuickReplyInput,
@@ -51,15 +53,21 @@ export async function getConversations(query: GetConversationsQuery) {
 
   if (search && search.trim()) {
     const q = search.trim();
+    const normalizedQ = normalizeColombianJid(q);
     where.OR = [
       { contactName: { contains: q, mode: 'insensitive' } },
       { phoneNumber: { contains: q, mode: 'insensitive' } },
+      { phoneNumber: { contains: normalizedQ, mode: 'insensitive' } },
+      { remoteJid: { contains: q, mode: 'insensitive' } },
+      { remoteJid: { contains: normalizedQ, mode: 'insensitive' } },
       { lastMessageText: { contains: q, mode: 'insensitive' } },
       { customer: { fullName: { contains: q, mode: 'insensitive' } } },
+      { customer: { phone: { contains: q, mode: 'insensitive' } } },
+      { customer: { phone: { contains: normalizedQ, mode: 'insensitive' } } },
     ];
   }
 
-  return prisma.chatConversation.findMany({
+  const rawConversations = await prisma.chatConversation.findMany({
     where,
     include: {
       customer: {
@@ -92,6 +100,58 @@ export async function getConversations(query: GetConversationsQuery) {
       { lastMessageTimestamp: { sort: 'desc', nulls: 'last' } },
       { updatedAt: 'desc' },
     ],
+  });
+
+  const customerIds = Array.from(new Set(rawConversations.map((c) => c.customerId).filter(Boolean))) as number[];
+  const bottleCountMap = new Map<number, number>();
+
+  if (customerIds.length > 0) {
+    const ordersAgg = await prisma.order.groupBy({
+      by: ['customerId'],
+      where: {
+        customerId: { in: customerIds },
+        deliveryStatus: { not: 'CANCELLED' },
+      },
+      _sum: {
+        quantityBottles: true,
+      },
+    });
+
+    for (const agg of ordersAgg) {
+      if (agg.customerId) {
+        bottleCountMap.set(agg.customerId, agg._sum.quantityBottles || 0);
+      }
+    }
+  }
+
+  return rawConversations.map((conv) => {
+    if (conv.customer) {
+      const totalBottles = bottleCountMap.has(conv.customer.id)
+        ? bottleCountMap.get(conv.customer.id)!
+        : (conv.customer.orders?.reduce((sum, o) => sum + (o.quantityBottles || 1), 0) || 0);
+      const redeemed = conv.customer.loyaltyRedeemedCount || 0;
+      const netBottles = Math.max(0, totalBottles - redeemed * 10);
+      const currentCycle = netBottles % 10;
+      const rewardsAvailable = Math.floor(netBottles / 10);
+      const progressPercent = Math.min(100, Math.round((currentCycle / 10) * 100));
+      const bottlesNeeded = Math.max(0, 10 - currentCycle);
+
+      return {
+        ...conv,
+        customer: {
+          ...conv.customer,
+          loyaltySummary: {
+            totalBottles,
+            redeemedCount: redeemed,
+            currentCycleBottles: currentCycle,
+            rewardsAvailable,
+            progressPercent,
+            bottlesNeeded,
+          },
+        },
+      };
+    }
+    return conv;
   });
 }
 
@@ -140,11 +200,11 @@ export async function getConversationMessages(conversationId: number, query: Get
  * al JID correspondiente (...@s.whatsapp.net o ...@lid)
  */
 export async function resolveRecipientJid(recipient: string, customerId?: number | null): Promise<string> {
-  const trimmed = recipient.trim();
+  const trimmed = normalizeColombianJid(recipient.trim());
 
   // 1. Si ya es un JID completo y válido de WhatsApp
   if (trimmed.endsWith('@s.whatsapp.net') || trimmed.endsWith('@lid') || trimmed.endsWith('@g.us')) {
-    return trimmed;
+    return normalizeColombianJid(trimmed);
   }
 
   // 2. Si contiene dígitos telefónicos válidos (mínimo 7 dígitos)
@@ -154,6 +214,7 @@ export async function resolveRecipientJid(recipient: string, customerId?: number
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
       cleanPhone = `57${cleanPhone}`;
     }
+    cleanPhone = normalizeColombianJid(cleanPhone);
     return `${cleanPhone}@s.whatsapp.net`;
   }
 
@@ -165,7 +226,7 @@ export async function resolveRecipientJid(recipient: string, customerId?: number
       select: { remoteJid: true, phoneNumber: true },
     });
     if (existingConv?.remoteJid && (existingConv.remoteJid.endsWith('@s.whatsapp.net') || existingConv.remoteJid.endsWith('@lid'))) {
-      return existingConv.remoteJid;
+      return normalizeColombianJid(existingConv.remoteJid);
     }
 
     const customer = await prisma.customer.findUnique({
@@ -179,6 +240,7 @@ export async function resolveRecipientJid(recipient: string, customerId?: number
         if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
           cleanPhone = `57${cleanPhone}`;
         }
+        cleanPhone = normalizeColombianJid(cleanPhone);
         return `${cleanPhone}@s.whatsapp.net`;
       }
     }
@@ -417,6 +479,281 @@ export async function linkCustomer(conversationId: number, customerId: number | 
   }
 
   return conversation;
+}
+
+/**
+ * Fusión de chats duplicados en el CRM (ej. 57 vs 579 o creación de hilos separados).
+ * Mueve transaccionalmente todos los mensajes, actualiza la conversación canónica
+ * y elimina la conversación redundante.
+ */
+export async function mergeChats(input: MergeChatInput) {
+  const sourceChatId = Number(input.sourceChatId);
+  const targetClientId = Number(input.targetClientId);
+  const rawCanonicalJid = input.canonicalJid ? normalizeColombianJid(input.canonicalJid) : undefined;
+
+  if (!sourceChatId || isNaN(sourceChatId)) {
+    throw new BadRequestError('ID de conversación origen inválido');
+  }
+  if (!targetClientId || isNaN(targetClientId)) {
+    throw new BadRequestError('ID de cliente destino inválido');
+  }
+
+  const sourceChat = await prisma.chatConversation.findUnique({
+    where: { id: sourceChatId },
+    include: { messages: true },
+  });
+  if (!sourceChat) {
+    throw new NotFoundError('Conversación origen no encontrada');
+  }
+
+  const targetCustomer = await prisma.customer.findUnique({
+    where: { id: targetClientId },
+  });
+  if (!targetCustomer) {
+    throw new NotFoundError('Cliente destino no encontrado');
+  }
+
+  const cleanCustomerPhone = targetCustomer.phone
+    ? normalizeColombianJid(targetCustomer.phone.replace(/\D/g, ''))
+    : null;
+
+  // Ejecución atómica en transacción
+  const result = await prisma.$transaction(async (tx) => {
+    // 1. Buscar si ya existe una conversación vinculada al cliente destino (excluyendo la origen)
+    let targetConv = await tx.chatConversation.findFirst({
+      where: {
+        id: { not: sourceChatId },
+        customerId: targetClientId,
+      },
+    });
+
+    // 2. Si no hay por customerId, buscar por teléfono o JID canónico
+    if (!targetConv && cleanCustomerPhone) {
+      targetConv = await tx.chatConversation.findFirst({
+        where: {
+          id: { not: sourceChatId },
+          OR: [
+            { phoneNumber: cleanCustomerPhone },
+            { remoteJid: `${cleanCustomerPhone}@s.whatsapp.net` },
+            ...(rawCanonicalJid ? [{ remoteJid: rawCanonicalJid }] : []),
+          ],
+        },
+      });
+    }
+
+    if (targetConv) {
+      // FUSIÓN: Mover todos los mensajes de sourceChat a targetConv
+      await tx.chatMessage.updateMany({
+        where: { conversationId: sourceChatId },
+        data: { conversationId: targetConv.id },
+      });
+
+      // Eliminar el chat origen duplicado
+      await tx.chatConversation.delete({
+        where: { id: sourceChatId },
+      });
+
+      // Determinar el JID canónico final
+      const finalJid = rawCanonicalJid || normalizeColombianJid(targetConv.remoteJid);
+      const finalPhone = cleanCustomerPhone || normalizeColombianJid(targetConv.phoneNumber);
+
+      // Obtener el último mensaje cronológico
+      const lastMsg = await tx.chatMessage.findFirst({
+        where: { conversationId: targetConv.id },
+        orderBy: { timestamp: 'desc' },
+      });
+
+      const updatedTarget = await tx.chatConversation.update({
+        where: { id: targetConv.id },
+        data: {
+          customerId: targetClientId,
+          contactName: targetCustomer.fullName,
+          phoneNumber: finalPhone,
+          remoteJid: finalJid,
+          lastMessageText: lastMsg ? lastMsg.text : targetConv.lastMessageText,
+          lastMessageTimestamp: lastMsg ? lastMsg.timestamp : targetConv.lastMessageTimestamp,
+          lastMessageFromMe: lastMsg ? lastMsg.fromMe : targetConv.lastMessageFromMe,
+          unreadCount: 0,
+        },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+              address: true,
+              loyaltyRedeemedCount: true,
+              orders: {
+                select: {
+                  id: true,
+                  orderNumber: true,
+                  quantityBottles: true,
+                  totalAmount: true,
+                  paidAmount: true,
+                  pendingAmount: true,
+                  paymentStatus: true,
+                  deliveryStatus: true,
+                  deliveryDate: true,
+                  orderDate: true,
+                },
+                orderBy: { orderDate: 'desc' },
+                take: 10,
+              },
+            },
+          },
+          messages: {
+            orderBy: { timestamp: 'asc' },
+          },
+        },
+      });
+
+      return { conversation: updatedTarget, deletedId: sourceChatId };
+    } else {
+      // VINCULACIÓN DIRECTA: Si no existía otra conversación, sourceChat pasa a ser la conversación canónica
+      const finalJid = rawCanonicalJid || normalizeColombianJid(sourceChat.remoteJid);
+      const finalPhone = cleanCustomerPhone || normalizeColombianJid(sourceChat.phoneNumber);
+
+      const updatedSource = await tx.chatConversation.update({
+        where: { id: sourceChatId },
+        data: {
+          customerId: targetClientId,
+          contactName: targetCustomer.fullName,
+          phoneNumber: finalPhone,
+          remoteJid: finalJid,
+          unreadCount: 0,
+        },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+              address: true,
+              loyaltyRedeemedCount: true,
+              orders: {
+                select: {
+                  id: true,
+                  orderNumber: true,
+                  quantityBottles: true,
+                  totalAmount: true,
+                  paidAmount: true,
+                  pendingAmount: true,
+                  paymentStatus: true,
+                  deliveryStatus: true,
+                  deliveryDate: true,
+                  orderDate: true,
+                },
+                orderBy: { orderDate: 'desc' },
+                take: 10,
+              },
+            },
+          },
+          messages: {
+            orderBy: { timestamp: 'asc' },
+          },
+        },
+      });
+
+      return { conversation: updatedSource, deletedId: null };
+    }
+  });
+
+  // Notificar a Socket.IO
+  try {
+    if (whatsappService.io) {
+      if (result.deletedId) {
+        whatsappService.io.emit('whatsapp:conversation_deleted', { conversationId: result.deletedId });
+        whatsappService.io.emit('whatsapp:conversations_merged', {
+          targetId: result.conversation.id,
+          sourceId: result.deletedId,
+        });
+      }
+      whatsappService.io.emit('whatsapp:conversation_updated', {
+        conversation: result.conversation,
+      });
+    }
+  } catch (socketErr) {
+    console.warn('Error emitiendo evento de merge vía socket:', socketErr);
+  }
+
+  // Calcular fidelización histórica
+  const conv = result.conversation;
+  if (conv.customer) {
+    const ordersAgg = await prisma.order.aggregate({
+      where: {
+        customerId: targetClientId,
+        deliveryStatus: { not: 'CANCELLED' },
+      },
+      _sum: {
+        quantityBottles: true,
+      },
+    });
+
+    const totalBottles = ordersAgg._sum.quantityBottles || 0;
+    const redeemed = conv.customer.loyaltyRedeemedCount || 0;
+    const netBottles = Math.max(0, totalBottles - redeemed * 10);
+    const currentCycle = netBottles % 10;
+    const rewardsAvailable = Math.floor(netBottles / 10);
+    const progressPercent = Math.min(100, Math.round((currentCycle / 10) * 100));
+    const bottlesNeeded = Math.max(0, 10 - currentCycle);
+
+    return {
+      ...conv,
+      customer: {
+        ...conv.customer,
+        loyaltySummary: {
+          totalBottles,
+          redeemedCount: redeemed,
+          currentCycleBottles: currentCycle,
+          rewardsAvailable,
+          progressPercent,
+          bottlesNeeded,
+        },
+      },
+    };
+  }
+
+  return conv;
+}
+
+/**
+ * Desvincula un chat de su cliente registrado (sin borrar mensajes ni historial)
+ */
+export async function unlinkChat(input: UnlinkChatInput) {
+  const chatId = Number(input.chatId);
+  if (!chatId || isNaN(chatId)) {
+    throw new BadRequestError('ID de conversación inválido');
+  }
+
+  const existing = await prisma.chatConversation.findUnique({
+    where: { id: chatId },
+  });
+  if (!existing) {
+    throw new NotFoundError('Conversación no encontrada');
+  }
+
+  const updated = await prisma.chatConversation.update({
+    where: { id: chatId },
+    data: {
+      customerId: null,
+    },
+    include: {
+      customer: true,
+      messages: {
+        orderBy: { timestamp: 'asc' },
+      },
+    },
+  });
+
+  try {
+    if (whatsappService.io) {
+      whatsappService.io.emit('whatsapp:conversation_updated', {
+        conversation: updated,
+      });
+    }
+  } catch (e) {}
+
+  return updated;
 }
 
 // ==========================================

@@ -42,6 +42,22 @@ export const linkCustomerSchema = z.object({
 });
 
 /**
+ * Esquema para fusionar conversaciones duplicadas en el CRM
+ */
+export const mergeChatSchema = z.object({
+  sourceChatId: z.coerce.number().int().positive('El ID de conversación origen debe ser un entero positivo'),
+  targetClientId: z.coerce.number().int().positive('El ID de cliente destino debe ser un entero positivo'),
+  canonicalJid: z.string().min(5, 'El JID canónico es inválido').optional(),
+});
+
+/**
+ * Esquema para desvincular un chat de su cliente asociado
+ */
+export const unlinkChatSchema = z.object({
+  chatId: z.coerce.number().int().positive('El ID de conversación debe ser un entero positivo'),
+});
+
+/**
  * Esquema para actualizar la etiqueta de estado de un chat (Embudo)
  */
 export const updateConversationTagSchema = z.object({
@@ -150,6 +166,8 @@ export const getRecurringQuerySchema = z.object({
 
 export type SendCrmMessageInput = z.infer<typeof sendCrmMessageSchema>;
 export type LinkCustomerInput = z.infer<typeof linkCustomerSchema>;
+export type MergeChatInput = z.infer<typeof mergeChatSchema>;
+export type UnlinkChatInput = z.infer<typeof unlinkChatSchema>;
 export type UpdateConversationTagInput = z.infer<typeof updateConversationTagSchema>;
 export type CreateRecurringScheduleInput = z.infer<typeof createRecurringScheduleSchema>;
 export type UpdateRecurringScheduleInput = z.infer<typeof updateRecurringScheduleSchema>;

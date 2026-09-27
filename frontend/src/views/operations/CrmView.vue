@@ -19,7 +19,15 @@ import {
   CheckCheck,
   MapPin,
   Plus,
+  UserCheck,
+  GitMerge,
 } from 'lucide-vue-next';
+import {
+  DialogRoot,
+  DialogPortal,
+  DialogOverlay,
+  DialogContent,
+} from 'reka-ui';
 import { http } from '@/api/client';
 import { getSocket } from '@/api/socket';
 import { toast } from 'vue-sonner';
@@ -30,6 +38,9 @@ import OrderFormModal from '@/components/operations/OrderFormModal.vue';
 import LoyaltyTab from '@/components/operations/crm/LoyaltyTab.vue';
 import TemplatesTab from '@/components/operations/crm/TemplatesTab.vue';
 import RecurringTab from '@/components/operations/crm/RecurringTab.vue';
+import MergeChatModal from '@/components/operations/crm/MergeChatModal.vue';
+import ClientChatInfo from '@/components/operations/crm/ClientChatInfo.vue';
+import RecurringEditModal from '@/components/operations/crm/RecurringEditModal.vue';
 
 export interface ChatMessageItem {
   id: number;
@@ -101,6 +112,10 @@ const isQrModalOpen = ref(false);
 const isQuickRepliesModalOpen = ref(false);
 const isOrderModalOpen = ref(false);
 const orderToPrefill = ref<any>(null);
+const isMergeModalOpen = ref(false);
+const isRecurringModalOpen = ref(false);
+const recurringToPrefill = ref<any>(null);
+const isMobileClientInfoOpen = ref(false);
 
 // Control responsive móvil (true = viendo chat activo, false = viendo sidebar)
 const isMobileChatOpen = ref(false);
@@ -308,16 +323,79 @@ function handleApplyQuickReply(text: string) {
 }
 
 // Crear pedido desde el chat
-function handleOpenCreateOrder() {
-  if (!selectedConversation.value) return;
+function handleOpenCreateOrder(overrideCustomer?: any) {
+  if (!selectedConversation.value && !overrideCustomer) return;
   const c = selectedConversation.value;
+  const cust = overrideCustomer || c?.customer;
   orderToPrefill.value = {
-    customerId: c.customerId || null,
-    customerName: c.customer?.fullName || c.contactName || '',
-    customerPhone: c.customer?.phone || c.phoneNumber || '',
-    customerAddress: c.customer?.address || '',
+    customerId: cust?.id || c?.customerId || null,
+    customerName: cust?.fullName || c?.contactName || '',
+    customerPhone: cust?.phone || c?.phoneNumber || '',
+    customerAddress: cust?.address || '',
   };
   isOrderModalOpen.value = true;
+}
+
+// Abrir modal de compra recurrente prellenado
+function handleOpenRecurring(cust?: any) {
+  const targetCust = cust || selectedConversation.value?.customer;
+  if (!targetCust) {
+    toast.error('Debes vincular un cliente primero para programar compras frecuentes');
+    return;
+  }
+  const nextWeek = new Date();
+  nextWeek.setDate(nextWeek.getDate() + 15);
+  recurringToPrefill.value = {
+    customerId: targetCust.id,
+    customer: {
+      id: targetCust.id,
+      fullName: targetCust.fullName,
+      phone: targetCust.phone,
+      address: targetCust.address,
+    },
+    frequencyDays: 15,
+    preferredFlavor: productionStore.activeFlavors[0]?.name || 'Fresa',
+    bottleSize: '1L',
+    quantity: 1,
+    nextDate: nextWeek.toISOString().split('T')[0],
+    isActive: true,
+  };
+  isRecurringModalOpen.value = true;
+}
+
+// Abrir modal de unificación / cambio de cliente
+function handleOpenMerge(conv?: any) {
+  if (conv) {
+    selectedConversation.value = conv;
+  }
+  if (!selectedConversation.value) return;
+  isMergeModalOpen.value = true;
+}
+
+// Chat unificado exitosamente
+async function handleChatMerged(targetConv: any) {
+  await fetchConversations();
+  if (targetConv && targetConv.id) {
+    const updated = conversations.value.find((c) => c.id === targetConv.id) || targetConv;
+    selectConversation(updated);
+  }
+}
+
+// Desvincular chat de cliente
+async function handleUnlinkChat(conv: any) {
+  try {
+    await http.post('/crm/chats/unlink', { chatId: conv.id });
+    toast.success('Chat desvinculado del cliente exitosamente');
+    if (selectedConversation.value && selectedConversation.value.id === conv.id) {
+      selectedConversation.value.customerId = null;
+      selectedConversation.value.customer = null;
+    }
+    await fetchConversations();
+  } catch (err: any) {
+    toast.error('Error al desvincular chat', {
+      description: err?.response?.data?.error || err.message,
+    });
+  }
 }
 
 // Manejadores de WebSockets
@@ -544,9 +622,9 @@ onUnmounted(() => {
       v-if="activeMainTab === 'CHATS'"
       class="h-[calc(100vh-14rem)] min-h-[580px] max-h-[860px] rounded-3xl border border-surface-light-border bg-surface-light-card shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card overflow-hidden grid grid-cols-1 md:grid-cols-12"
     >
-      <!-- SIDEBAR DE CHATS (Columna 4 de 12 en desktop) -->
+      <!-- SIDEBAR DE CHATS (Columna 3 de 12 en desktop) -->
       <div
-        class="border-r border-surface-light-border dark:border-surface-dark-border flex flex-col h-full min-h-0 overflow-hidden md:col-span-4 lg:col-span-4"
+        class="border-r border-surface-light-border dark:border-surface-dark-border flex flex-col h-full min-h-0 overflow-hidden md:col-span-4 lg:col-span-3 xl:col-span-3"
         :class="{ 'hidden md:flex': isMobileChatOpen }"
       >
         <!-- Buscador de Chats (shrink-0) -->
@@ -650,16 +728,19 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- VENTANA DE CHAT ACTIVA (Columna 8 de 12 en desktop) -->
+      <!-- VENTANA DE CHAT ACTIVA (Columna flexible en desktop) -->
       <div
-        class="flex flex-col h-full min-h-0 overflow-hidden md:col-span-8 lg:col-span-8 bg-surface-light-canvas/20 dark:bg-surface-dark-canvas/20"
-        :class="{ 'hidden md:flex': !isMobileChatOpen }"
+        class="flex flex-col h-full min-h-0 overflow-hidden md:col-span-8 bg-surface-light-canvas/20 dark:bg-surface-dark-canvas/20"
+        :class="[
+          { 'hidden md:flex': !isMobileChatOpen },
+          selectedConversation ? 'lg:col-span-5 xl:col-span-6' : 'lg:col-span-9 xl:col-span-9'
+        ]"
       >
         <!-- CASO 1: HAY CHAT SELECCIONADO -->
         <template v-if="selectedConversation">
           <!-- Cabecera del Chat (shrink-0 fija) -->
           <div class="shrink-0 p-3.5 sm:p-4 border-b border-surface-light-border dark:border-surface-dark-border bg-surface-light-card dark:bg-surface-dark-card flex items-center justify-between gap-2">
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2.5 min-w-0">
               <!-- Botón Volver en Móvil -->
               <button
                 type="button"
@@ -673,8 +754,8 @@ onUnmounted(() => {
                 {{ ((selectedConversation.customer?.fullName || selectedConversation.contactName || selectedConversation.phoneNumber).charAt(0) || 'C').toUpperCase() }}
               </div>
 
-              <div>
-                <h3 class="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <div class="min-w-0">
+                <h3 class="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
                   <span>{{ selectedConversation.customer?.fullName || selectedConversation.contactName || selectedConversation.phoneNumber }}</span>
                 </h3>
 
@@ -687,24 +768,49 @@ onUnmounted(() => {
                     <span>{{ selectedConversation.customer?.phone || selectedConversation.phoneNumber }}</span>
                   </a>
 
-                  <span v-if="selectedConversation.customer?.address" class="hidden sm:inline-flex items-center gap-1 truncate max-w-[200px]">
-                    <MapPin class="h-3 w-3 stroke-[2] text-slate-400" />
-                    <span>{{ selectedConversation.customer.address }}</span>
+                  <span v-if="selectedConversation.customer?.address" class="hidden sm:inline-flex items-center gap-1 truncate max-w-[140px] xl:max-w-[200px]">
+                    <MapPin class="h-3 w-3 stroke-[2] text-slate-400 shrink-0" />
+                    <span class="truncate">{{ selectedConversation.customer.address }}</span>
                   </span>
                 </div>
               </div>
             </div>
 
-            <!-- Botón Rápido + Crear Pedido -->
-            <button
-              type="button"
-              @click="handleOpenCreateOrder"
-              class="inline-flex items-center gap-1.5 rounded-xl bg-hero-gradient px-3 py-1.5 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 shrink-0"
-            >
-              <Plus class="h-3.5 w-3.5 stroke-[2.5]" />
-              <span class="hidden sm:inline">Crear Pedido</span>
-              <span class="sm:hidden">Pedido</span>
-            </button>
+            <!-- Botonera del Header del Chat -->
+            <div class="flex items-center gap-1.5 shrink-0">
+              <!-- Botón Info Cliente en móvil/tablet -->
+              <button
+                type="button"
+                @click="isMobileClientInfoOpen = true"
+                class="lg:hidden inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-200 dark:hover:bg-slate-800 transition-colors shadow-xs"
+                title="Ver datos del cliente y fidelización"
+              >
+                <UserCheck class="h-3.5 w-3.5 text-brand-800 dark:text-brand-darkText" />
+                <span class="hidden xs:inline text-[11px]">Cliente</span>
+              </button>
+
+              <!-- Botón Unificar / Cambiar Cliente -->
+              <button
+                type="button"
+                @click="handleOpenMerge()"
+                class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-card px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-200 dark:hover:bg-slate-800 transition-colors shadow-xs"
+                title="Cambiar o unificar cliente"
+              >
+                <GitMerge class="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span class="hidden sm:inline text-[11px]">Unificar</span>
+              </button>
+
+              <!-- Botón Rápido + Crear Pedido -->
+              <button
+                type="button"
+                @click="handleOpenCreateOrder()"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-hero-gradient px-3 py-1.5 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 shrink-0"
+              >
+                <Plus class="h-3.5 w-3.5 stroke-[2.5]" />
+                <span class="hidden sm:inline">Crear Pedido</span>
+                <span class="sm:hidden">Pedido</span>
+              </button>
+            </div>
           </div>
 
           <!-- Área de Mensajes (flex-1 min-h-0 overflow-y-auto) -->
@@ -809,6 +915,20 @@ onUnmounted(() => {
           </div>
         </template>
       </div>
+
+      <!-- PANEL LATERAL DE INFORMACIÓN Y ACCIONES DEL CLIENTE (Columna 3 de 12 en desktop) -->
+      <div
+        v-if="selectedConversation"
+        class="hidden lg:flex lg:col-span-4 xl:col-span-3 flex-col h-full min-h-0 border-l border-surface-light-border dark:border-surface-dark-border overflow-hidden"
+      >
+        <ClientChatInfo
+          :conversation="selectedConversation"
+          @open-recurring="handleOpenRecurring"
+          @open-merge="handleOpenMerge"
+          @unlink="handleUnlinkChat"
+          @create-order="handleOpenCreateOrder"
+        />
+      </div>
     </div>
 
     <!-- ========================================== -->
@@ -851,5 +971,38 @@ onUnmounted(() => {
       :order-to-edit="orderToPrefill"
       @saved="fetchConversations"
     />
+
+    <MergeChatModal
+      v-model:open="isMergeModalOpen"
+      :source-chat="selectedConversation"
+      @merged="handleChatMerged"
+    />
+
+    <RecurringEditModal
+      v-model:open="isRecurringModalOpen"
+      :schedule-to-edit="recurringToPrefill"
+      @saved="fetchConversations"
+    />
+
+    <!-- Drawer / Modal Móvil de Información del Cliente -->
+    <DialogRoot :open="isMobileClientInfoOpen" @update:open="(val: boolean) => isMobileClientInfoOpen = val">
+      <DialogPortal>
+        <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm lg:hidden" />
+        <DialogContent
+          class="fixed inset-y-0 right-0 z-50 w-full max-w-sm border-l border-surface-light-border bg-surface-light-card p-0 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card lg:hidden flex flex-col"
+        >
+          <ClientChatInfo
+            v-if="selectedConversation"
+            :conversation="selectedConversation"
+            :show-close-button="true"
+            @open-recurring="handleOpenRecurring"
+            @open-merge="handleOpenMerge"
+            @unlink="handleUnlinkChat"
+            @create-order="handleOpenCreateOrder"
+            @close="isMobileClientInfoOpen = false"
+          />
+        </DialogContent>
+      </DialogPortal>
+    </DialogRoot>
   </div>
 </template>

@@ -93,6 +93,24 @@ export const linkCustomer = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+export const mergeChats = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await crmService.mergeChats(req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const unlinkChat = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await crmService.unlinkChat(req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ==========================================
 // 3. PROGRAMA DE FIDELIZACIÓN "10 + 1 GRATIS"
 // ==========================================
