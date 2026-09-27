@@ -131,6 +131,78 @@ describe('Inventory & Compound Recipes (Insumos Compuestos & Regla Contable)', (
     expect(Array.isArray(res.body.data)).toBe(true);
   });
 
+  it('DELETE /api/inventory/materials/:id debe eliminar permanentemente si el insumo NO tiene registros asociados', async () => {
+    // Crear un insumo temporal sin compras, movimientos ni usos
+    const orphanMat = await prisma.rawMaterial.create({
+      data: {
+        code: `ORPHAN_${Date.now()}`,
+        name: 'Insumo Huérfano Test',
+        category: 'INSUMO',
+        unit: 'Unidades',
+        currentStock: 0,
+        avgCost: 100,
+        isActive: true,
+      },
+    });
+
+    const res = await request(app)
+      .delete(`/api/inventory/materials/${orphanMat.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.action).toBe('DELETED');
+
+    const check = await prisma.rawMaterial.findUnique({ where: { id: orphanMat.id } });
+    expect(check).toBeNull();
+  });
+
+  it('DELETE /api/inventory/materials/:id debe desactivar (soft-delete) si tiene registros asociados', async () => {
+    // strawberryId ya fue usado en la fabricación de compoundJamId (tiene supplyPreparationsUsed)
+    const res = await request(app)
+      .delete(`/api/inventory/materials/${strawberryId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.action).toBe('DEACTIVATED');
+
+    // Verificar en BD que sigue existiendo pero isActive: false
+    const check = await prisma.rawMaterial.findUnique({ where: { id: strawberryId } });
+    expect(check).not.toBeNull();
+    expect(check?.isActive).toBe(false);
+
+    // Verificar que GET /api/inventory/materials (sin includeInactive) NO lo retorna
+    const listActive = await request(app)
+      .get('/api/inventory/materials')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const activeMaterials = Array.isArray(listActive.body) ? listActive.body : listActive.body.items;
+    const found = activeMaterials.find((m: any) => m.id === strawberryId);
+    expect(found).toBeUndefined();
+
+    // Verificar que con includeInactive=true SÍ lo retorna
+    const listAll = await request(app)
+      .get('/api/inventory/materials?includeInactive=true')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const allMaterials = Array.isArray(listAll.body) ? listAll.body : listAll.body.items;
+    const foundInactive = allMaterials.find((m: any) => m.id === strawberryId);
+    expect(foundInactive).toBeDefined();
+    expect(foundInactive.isActive).toBe(false);
+  });
+
+  it('PUT /api/inventory/materials/:id debe permitir reactivar un insumo desactivado', async () => {
+    const res = await request(app)
+      .put(`/api/inventory/materials/${strawberryId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.isActive).toBe(true);
+
+    const check = await prisma.rawMaterial.findUnique({ where: { id: strawberryId } });
+    expect(check?.isActive).toBe(true);
+  });
+
   afterAll(async () => {
     if (compoundJamId) {
       await prisma.compoundRecipeItem.deleteMany({ where: { compoundMaterialId: compoundJamId } }).catch(() => {});

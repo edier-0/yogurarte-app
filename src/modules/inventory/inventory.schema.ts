@@ -33,7 +33,9 @@ export const updateMaterialSchema = z.object({
   isCompound: z.boolean().optional(),
   recipeYield: z.coerce.number().positive().optional(),
   recipeIngredients: z.array(recipeIngredientItemSchema).optional(),
+  isActive: z.boolean().optional(),
 });
+
 
 export const prepareCompoundSchema = z.object({
   quantityToProduce: z.coerce.number().positive('La cantidad a preparar debe ser mayor a 0'),

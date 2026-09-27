@@ -263,6 +263,7 @@ export const updateMaterial = async (id: number, data: UpdateMaterialInput) => {
         currentStock: currentStock !== undefined ? Number(currentStock) : undefined,
         isCompound: isCompound !== undefined ? Boolean(isCompound) : undefined,
         recipeYield: recipeYield !== undefined ? cleanYield : undefined,
+        isActive: data.isActive !== undefined ? Boolean(data.isActive) : undefined,
       },
       include: {
         recipeIngredients: {
@@ -327,24 +328,85 @@ export const prepareCompoundMaterial = async (id: number, data: any) => {
 };
 
 /**
- * Desactivación lógica (soft-delete) para preservar integridad con compras y lotes
+ * Eliminación híbrida de insumo:
+ * - Si no tiene registros asociados: se elimina permanentemente de la base de datos.
+ * - Si ya tiene registros históricos vinculados (compras, lotes, mermas, recetas): se desactiva (isActive: false)
+ *   para preservar la trazabilidad contable y asegurar que no aparezca en ningún formulario del sistema.
  */
 export const deleteMaterial = async (id: number) => {
   const existing = await prisma.rawMaterial.findUnique({
     where: { id },
+    include: {
+      _count: {
+        select: {
+          purchases: true,
+          batchUsages: true,
+          packagingUsages: true,
+          adjustments: true,
+          supplyPreparationsOutput: true,
+          supplyPreparationsUsed: true,
+          usedInRecipes: true,
+        },
+      },
+    },
   });
 
   if (!existing) {
     throw new NotFoundError('Insumo no encontrado');
   }
 
-  await prisma.rawMaterial.update({
-    where: { id },
-    data: { isActive: false },
+  // Verificar si está referenciado en fracciones de envasado
+  const batchPackagingRef = await prisma.batchPackaging.findFirst({
+    where: {
+      OR: [
+        { bottle1LRawMaterialId: id },
+        { bottle2LRawMaterialId: id },
+        { labelRawMaterialId: id },
+        { fruitRawMaterialId: id },
+      ],
+    },
   });
 
-  return { message: 'Insumo eliminado/desactivado correctamente' };
+  const hasAssociatedRecords =
+    existing._count.purchases > 0 ||
+    existing._count.batchUsages > 0 ||
+    existing._count.packagingUsages > 0 ||
+    existing._count.adjustments > 0 ||
+    existing._count.supplyPreparationsOutput > 0 ||
+    existing._count.supplyPreparationsUsed > 0 ||
+    existing._count.usedInRecipes > 0 ||
+    !!batchPackagingRef;
+
+  if (hasAssociatedRecords) {
+    // Desactivación lógica (soft-delete): ya no aparecerá en formularios
+    await prisma.rawMaterial.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
+    return {
+      success: true,
+      action: 'DEACTIVATED',
+      message: `El insumo "${existing.name}" tiene registros históricos asociados y ha sido desactivado para que no aparezca en los formularios.`,
+    };
+  }
+
+  // Si no tiene ningún registro asociado, se elimina físicamente
+  await prisma.compoundRecipeItem.deleteMany({
+    where: { compoundMaterialId: id },
+  });
+
+  await prisma.rawMaterial.delete({
+    where: { id },
+  });
+
+  return {
+    success: true,
+    action: 'DELETED',
+    message: `El insumo "${existing.name}" ha sido eliminado permanentemente del sistema.`,
+  };
 };
+
 
 // ============================================================================
 // 2. COMPRAS DE INSUMOS Y COSTEO PROMEDIO PONDERADO (PURCHASES)

@@ -70,6 +70,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:open', val: boolean): void;
   (e: 'saved'): void;
+  (e: 'delete', id: number): void;
 }>();
 
 // Estado del formulario
@@ -608,24 +609,38 @@ async function handleSave() {
           </div>
 
           <!-- Botones de Acción -->
-          <div class="flex items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              @click="emit('update:open', false)"
-              class="rounded-xl border border-surface-light-border bg-surface-light-card px-4 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              Cancelar
-            </button>
+          <div class="flex items-center justify-between gap-2 pt-3">
+            <div>
+              <button
+                v-if="props.materialToEdit?.id"
+                type="button"
+                @click="emit('delete', props.materialToEdit.id); emit('update:open', false)"
+                class="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-bold text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/60"
+              >
+                <Trash2 class="h-3.5 w-3.5 stroke-[2]" />
+                <span>Eliminar Insumo</span>
+              </button>
+            </div>
 
-            <button
-              type="submit"
-              :disabled="isSubmitting"
-              class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-5 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95 disabled:opacity-50"
-            >
-              <ChefHat v-if="isCompound" class="h-4 w-4 stroke-[2]" />
-              <Boxes v-else class="h-4 w-4 stroke-[2]" />
-              <span>{{ isSubmitting ? 'Guardando...' : materialToEdit ? 'Guardar Cambios' : 'Registrar Insumo' }}</span>
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                @click="emit('update:open', false)"
+                class="rounded-xl border border-surface-light-border bg-surface-light-card px-4 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="submit"
+                :disabled="isSubmitting"
+                class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-5 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95 disabled:opacity-50"
+              >
+                <ChefHat v-if="isCompound" class="h-4 w-4 stroke-[2]" />
+                <Boxes v-else class="h-4 w-4 stroke-[2]" />
+                <span>{{ isSubmitting ? 'Guardando...' : materialToEdit ? 'Guardar Cambios' : 'Registrar Insumo' }}</span>
+              </button>
+            </div>
           </div>
         </form>
       </DialogContent>

@@ -6,6 +6,12 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  DialogRoot,
+  DialogPortal,
+  DialogOverlay,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
 } from 'reka-ui';
 import {
   Boxes,
@@ -26,10 +32,12 @@ import {
   User,
   ChefHat,
   Edit3,
+  Trash2,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
+import { toast } from 'vue-sonner';
 import { formatStockQuantity } from '@/utils/formatters';
 import InventoryMovementModal from '@/components/production/InventoryMovementModal.vue';
 import PurchaseStockModal from '@/components/production/PurchaseStockModal.vue';
@@ -91,7 +99,7 @@ export interface AdjustmentItem {
   };
 }
 
-export type MaterialCategoryChip = 'ALL' | 'COMPOUND' | 'DAIRY' | 'PACKAGING' | 'FRUIT' | 'CRITICAL';
+export type MaterialCategoryChip = 'ALL' | 'COMPOUND' | 'DAIRY' | 'PACKAGING' | 'FRUIT' | 'CRITICAL' | 'INACTIVE';
 
 // Estado de datos
 const materials = ref<MaterialItem[]>([]);
@@ -129,10 +137,10 @@ const formatDate = (dateStr: string) => {
   }).format(d);
 };
 
-// Carga de Insumos y Kardex
+// Carga de Insumos y Kardex (incluyendo inactivos para gestión de bajas)
 async function fetchMaterials() {
   try {
-    const res = await http.get<any>('/inventory/materials');
+    const res = await http.get<any>('/inventory/materials?includeInactive=true');
     if (Array.isArray(res)) {
       materials.value = res;
     } else if (res && Array.isArray(res.items)) {
@@ -167,13 +175,15 @@ onMounted(() => {
   refreshAll();
 });
 
-// Métricas Superiores
+// Métricas Superiores (computadas únicamente sobre insumos activos)
 const totalInventoryValue = computed(() => {
-  return materials.value.reduce((acc, m) => acc + (Number(m.currentStock || 0) * Number(m.avgCost || 0)), 0);
+  return materials.value
+    .filter((m) => m.isActive !== false)
+    .reduce((acc, m) => acc + (Number(m.currentStock || 0) * Number(m.avgCost || 0)), 0);
 });
 
 const criticalStockMaterials = computed(() => {
-  return materials.value.filter((m) => Number(m.currentStock || 0) <= Number(m.minStockAlert || 0));
+  return materials.value.filter((m) => m.isActive !== false && Number(m.currentStock || 0) <= Number(m.minStockAlert || 0));
 });
 
 const totalAdjustmentsCount = computed(() => {
@@ -182,6 +192,8 @@ const totalAdjustmentsCount = computed(() => {
 
 // Lógica de clasificación por categoría
 function matchesCategory(m: MaterialItem, chip: MaterialCategoryChip): boolean {
+  if (chip === 'INACTIVE') return m.isActive === false;
+  if (m.isActive === false) return false;
   if (chip === 'ALL') return true;
   if (chip === 'COMPOUND') return Boolean(m.isCompound);
   if (chip === 'CRITICAL') return Number(m.currentStock || 0) <= Number(m.minStockAlert || 0);
@@ -226,13 +238,15 @@ function matchesCategory(m: MaterialItem, chip: MaterialCategoryChip): boolean {
 
 // Conteos por chip
 const chipCounts = computed(() => {
-  const all = materials.value.length;
-  const compound = materials.value.filter((m) => m.isCompound).length;
-  const dairy = materials.value.filter((m) => matchesCategory(m, 'DAIRY')).length;
-  const packaging = materials.value.filter((m) => matchesCategory(m, 'PACKAGING')).length;
-  const fruit = materials.value.filter((m) => matchesCategory(m, 'FRUIT')).length;
+  const activeList = materials.value.filter((m) => m.isActive !== false);
+  const all = activeList.length;
+  const compound = activeList.filter((m) => m.isCompound).length;
+  const dairy = activeList.filter((m) => matchesCategory(m, 'DAIRY')).length;
+  const packaging = activeList.filter((m) => matchesCategory(m, 'PACKAGING')).length;
+  const fruit = activeList.filter((m) => matchesCategory(m, 'FRUIT')).length;
   const critical = criticalStockMaterials.value.length;
-  return { all, compound, dairy, packaging, fruit, critical };
+  const inactive = materials.value.filter((m) => m.isActive === false).length;
+  return { all, compound, dairy, packaging, fruit, critical, inactive };
 });
 
 // Insumos filtrados reactivamente
@@ -345,27 +359,74 @@ function handleMovementSaved() {
   refreshAll();
 }
 
-// Lista de insumos compuestos para el modal de preparación
+// Lista de insumos compuestos activos para el modal de preparación
 const compoundMaterials = computed(() => {
-  return materials.value.filter((m) => m.isCompound);
+  return materials.value.filter((m) => m.isActive !== false && m.isCompound);
 });
 
-// Opciones de insumo para el modal
+// Opciones de insumo activas para los modales y formularios
 const materialOptions = computed<any[]>(() => {
-  return materials.value.map((m) => ({
-    id: m.id,
-    name: m.name,
-    category: m.category,
-    unit: m.unit,
-    currentStock: m.currentStock,
-    minStockAlert: m.minStockAlert,
-    avgCost: m.avgCost,
-    code: m.code,
-    isCompound: m.isCompound,
-    recipeYield: m.recipeYield,
-    recipeIngredients: m.recipeIngredients,
-  }));
+  return materials.value
+    .filter((m) => m.isActive !== false)
+    .map((m) => ({
+      id: m.id,
+      name: m.name,
+      category: m.category,
+      unit: m.unit,
+      currentStock: m.currentStock,
+      minStockAlert: m.minStockAlert,
+      avgCost: m.avgCost,
+      code: m.code,
+      isCompound: m.isCompound,
+      recipeYield: m.recipeYield,
+      recipeIngredients: m.recipeIngredients,
+    }));
 });
+
+// Modal de confirmación para eliminar o desactivar insumo
+const isDeleteDialogOpen = ref<boolean>(false);
+const materialToDelete = ref<MaterialItem | null>(null);
+const isDeletingMaterial = ref<boolean>(false);
+
+function confirmDeleteMaterial(mat: MaterialItem) {
+  materialToDelete.value = mat;
+  isDeleteDialogOpen.value = true;
+}
+
+function handleDeleteFromModal(id: number) {
+  const mat = materials.value.find((m) => m.id === id);
+  if (mat) {
+    confirmDeleteMaterial(mat);
+  }
+}
+
+async function executeDeleteMaterial() {
+  if (!materialToDelete.value) return;
+  isDeletingMaterial.value = true;
+  try {
+    const res = await http.delete<{ success: boolean; action: string; message: string }>(
+      `/inventory/materials/${materialToDelete.value.id}`
+    );
+    toast.success(res.message || 'Insumo procesado correctamente');
+    isDeleteDialogOpen.value = false;
+    materialToDelete.value = null;
+    await fetchMaterials();
+  } catch (err: any) {
+    toast.error(err?.response?.data?.message || err?.message || 'Error al procesar el insumo');
+  } finally {
+    isDeletingMaterial.value = false;
+  }
+}
+
+async function reactivateMaterial(mat: MaterialItem) {
+  try {
+    await http.put(`/inventory/materials/${mat.id}`, { isActive: true });
+    toast.success(`Insumo "${mat.name}" reactivado correctamente`);
+    await fetchMaterials();
+  } catch (err: any) {
+    toast.error(err?.response?.data?.message || err?.message || 'Error al reactivar el insumo');
+  }
+}
 </script>
 
 <template>
@@ -615,6 +676,22 @@ const materialOptions = computed<any[]>(() => {
                 <AlertTriangle class="h-3.5 w-3.5 stroke-[2]" />
                 <span>Stock Crítico ({{ chipCounts.critical }})</span>
               </button>
+
+              <!-- Inactivos / Desactivados (visible si existen) -->
+              <button
+                v-if="chipCounts.inactive > 0"
+                type="button"
+                @click="selectedCategoryChip = 'INACTIVE'"
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all"
+                :class="
+                  selectedCategoryChip === 'INACTIVE'
+                    ? 'bg-rose-700 text-white shadow-sm dark:bg-rose-800'
+                    : 'bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-950/60'
+                "
+              >
+                <Trash2 class="h-3.5 w-3.5 stroke-[2]" />
+                <span>Desactivados ({{ chipCounts.inactive }})</span>
+              </button>
             </div>
           </div>
         </div>
@@ -625,11 +702,13 @@ const materialOptions = computed<any[]>(() => {
             v-for="mat in filteredMaterials"
             :key="mat.id"
             class="flex flex-col justify-between rounded-2xl border bg-surface-light-card p-5 shadow-card transition-all hover:border-slate-300 dark:bg-surface-dark-card dark:hover:border-slate-700"
-            :class="
-              mat.currentStock <= mat.minStockAlert
-                ? 'border-amber-400/60 bg-amber-50/20 dark:border-amber-500/40 dark:bg-amber-950/10'
-                : 'border-surface-light-border dark:border-surface-dark-border'
-            "
+            :class="[
+              mat.isActive === false
+                ? 'border-dashed border-rose-300 bg-rose-50/15 dark:border-rose-900/40 dark:bg-rose-950/10 opacity-90'
+                : mat.currentStock <= mat.minStockAlert
+                  ? 'border-amber-400/60 bg-amber-50/20 dark:border-amber-500/40 dark:bg-amber-950/10'
+                  : 'border-surface-light-border dark:border-surface-dark-border'
+            ]"
           >
             <!-- Cabecera de la Tarjeta -->
             <div>
@@ -655,9 +734,16 @@ const materialOptions = computed<any[]>(() => {
                   </h3>
                 </div>
 
-                <!-- Badge de Alerta -->
+                <!-- Badge de Estado / Alerta -->
                 <span
-                  v-if="mat.currentStock <= mat.minStockAlert"
+                  v-if="mat.isActive === false"
+                  class="inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-black text-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
+                >
+                  <Trash2 class="h-3 w-3 stroke-[2.5]" />
+                  <span>Desactivado</span>
+                </span>
+                <span
+                  v-else-if="mat.currentStock <= mat.minStockAlert"
                   class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-black text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
                 >
                   <AlertTriangle class="h-3.5 w-3.5 stroke-[2.5]" />
@@ -734,13 +820,46 @@ const materialOptions = computed<any[]>(() => {
               </div>
             </div>
 
-            <!-- Botón de Acción -->
+            <!-- Botones de Acción -->
             <div class="mt-5 border-t border-surface-light-border pt-4 dark:border-surface-dark-border">
-              <div v-if="mat.isCompound" class="grid grid-cols-3 gap-1.5">
+              <!-- Caso 1: Insumo Desactivado -->
+              <div v-if="mat.isActive === false" class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  @click="reactivateMaterial(mat)"
+                  class="flex-1 inline-flex items-center justify-center gap-1 rounded-xl bg-emerald-50 py-2 text-[11px] font-extrabold text-emerald-800 transition-colors hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60"
+                  title="Reactivar este insumo para que vuelva a estar disponible en formularios"
+                >
+                  <CheckCircle2 class="h-3.5 w-3.5 stroke-[2]" />
+                  <span>Reactivar</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="openKardexModal(mat.id, mat.name)"
+                  class="flex-1 inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                  title="Ver Kardex y movimientos de almacén"
+                >
+                  <ArrowUpDown class="h-3.5 w-3.5 stroke-[2]" />
+                  <span>Kardex</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="confirmDeleteMaterial(mat)"
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/60"
+                  title="Eliminar permanentemente si no tiene registros históricos"
+                >
+                  <Trash2 class="h-3.5 w-3.5 stroke-[2]" />
+                </button>
+              </div>
+
+              <!-- Caso 2: Insumo Compuesto Activo -->
+              <div v-else-if="mat.isCompound" class="flex items-center gap-1.5">
                 <button
                   type="button"
                   @click="openPrepareModal(mat.id)"
-                  class="inline-flex items-center justify-center gap-1 rounded-xl bg-amber-100 py-2 text-[11px] font-black text-amber-900 transition-colors hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:hover:bg-amber-900/80"
+                  class="flex-1 inline-flex items-center justify-center gap-1 rounded-xl bg-amber-100 py-2 text-[11px] font-black text-amber-900 transition-colors hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:hover:bg-amber-900/80"
                   title="Fabricar o preparar este insumo compuesto"
                 >
                   <ChefHat class="h-3.5 w-3.5 stroke-[2]" />
@@ -750,7 +869,7 @@ const materialOptions = computed<any[]>(() => {
                 <button
                   type="button"
                   @click="openEditMaterialModal(mat)"
-                  class="inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                  class="flex-1 inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
                   title="Editar receta de fabricación"
                 >
                   <Edit3 class="h-3.5 w-3.5 stroke-[2]" />
@@ -760,19 +879,29 @@ const materialOptions = computed<any[]>(() => {
                 <button
                   type="button"
                   @click="openKardexModal(mat.id, mat.name)"
-                  class="inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                  class="flex-1 inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
                   title="Ver Kardex y movimientos de almacén"
                 >
                   <ArrowUpDown class="h-3.5 w-3.5 stroke-[2]" />
                   <span>Kardex</span>
                 </button>
+
+                <button
+                  type="button"
+                  @click="confirmDeleteMaterial(mat)"
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/60"
+                  title="Eliminar o desactivar insumo"
+                >
+                  <Trash2 class="h-3.5 w-3.5 stroke-[2]" />
+                </button>
               </div>
 
-              <div v-else class="grid grid-cols-3 gap-1.5">
+              <!-- Caso 3: Insumo Simple Activo -->
+              <div v-else class="flex items-center gap-1.5">
                 <button
                   type="button"
                   @click="openPurchaseModal(mat.id)"
-                  class="inline-flex items-center justify-center gap-1 rounded-xl bg-brand-50 py-2 text-[11px] font-extrabold text-brand-800 transition-colors hover:bg-brand-100 dark:bg-brand-900/40 dark:text-brand-darkText dark:hover:bg-brand-900/60"
+                  class="flex-1 inline-flex items-center justify-center gap-1 rounded-xl bg-brand-50 py-2 text-[11px] font-extrabold text-brand-800 transition-colors hover:bg-brand-100 dark:bg-brand-900/40 dark:text-brand-darkText dark:hover:bg-brand-900/60"
                   title="Registrar compra de este insumo"
                 >
                   <Plus class="h-3.5 w-3.5 stroke-[2.5]" />
@@ -782,7 +911,7 @@ const materialOptions = computed<any[]>(() => {
                 <button
                   type="button"
                   @click="openEditMaterialModal(mat)"
-                  class="inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                  class="flex-1 inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
                   title="Editar datos del insumo"
                 >
                   <Edit3 class="h-3.5 w-3.5 stroke-[2]" />
@@ -792,11 +921,20 @@ const materialOptions = computed<any[]>(() => {
                 <button
                   type="button"
                   @click="openKardexModal(mat.id, mat.name)"
-                  class="inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
+                  class="flex-1 inline-flex items-center justify-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 text-[11px] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800"
                   title="Ver Kardex y movimientos de almacén"
                 >
                   <ArrowUpDown class="h-3.5 w-3.5 stroke-[2]" />
                   <span>Kardex</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="confirmDeleteMaterial(mat)"
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/60"
+                  title="Eliminar o desactivar insumo"
+                >
+                  <Trash2 class="h-3.5 w-3.5 stroke-[2]" />
                 </button>
               </div>
             </div>
@@ -985,6 +1123,7 @@ const materialOptions = computed<any[]>(() => {
       :material-to-edit="materialToEdit"
       :available-ingredients="materialOptions"
       @saved="refreshAll"
+      @delete="handleDeleteFromModal"
     />
 
     <!-- Modal de Fabricación / Preparación de Insumo Compuesto -->
@@ -994,5 +1133,65 @@ const materialOptions = computed<any[]>(() => {
       :preselected-material-id="preselectedCompoundId"
       @prepared="refreshAll"
     />
+
+    <!-- Modal de Confirmación de Eliminación / Desactivación -->
+    <DialogRoot v-model:open="isDeleteDialogOpen">
+      <DialogPortal>
+        <DialogOverlay class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <DialogContent class="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] dark:border-surface-dark-border dark:bg-surface-dark-card">
+          <div class="flex items-start gap-3.5">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+              <Trash2 class="h-5 w-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <DialogTitle class="text-base font-extrabold text-slate-900 dark:text-white">
+                ¿Eliminar o desactivar insumo?
+              </DialogTitle>
+              <DialogDescription class="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                Estás a punto de retirar <span class="font-bold text-slate-800 dark:text-slate-200">"{{ materialToDelete?.name }}"</span> ({{ materialToDelete?.code }}).
+              </DialogDescription>
+            </div>
+          </div>
+
+          <div class="mt-4 rounded-xl border border-surface-light-border bg-surface-light-canvas p-3.5 text-xs text-slate-600 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 space-y-2">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="font-bold text-slate-400">Stock actual:</span>
+              <span class="font-black text-slate-800 dark:text-slate-100">
+                {{ formatStockQuantity(materialToDelete?.currentStock, materialToDelete?.unit) }} {{ materialToDelete?.unit }}
+              </span>
+            </div>
+            <div class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+              ℹ️ <strong>Comportamiento seguro del sistema:</strong>
+              <ul class="mt-1 list-disc pl-4 space-y-1">
+                <li>Si el insumo <strong>no tiene historial</strong> de compras, recetas ni consumos, será <strong>eliminado permanentemente</strong>.</li>
+                <li>Si ya <strong>tiene registros asociados</strong>, se <strong>desactivará automáticamente</strong> para proteger la trazabilidad contable y no volverá a aparecer en los formularios de producción ni pedidos.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="mt-6 flex items-center justify-end gap-2.5">
+            <button
+              type="button"
+              @click="isDeleteDialogOpen = false"
+              :disabled="isDeletingMaterial"
+              class="rounded-xl border border-surface-light-border bg-surface-light-card px-4 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Cancelar
+            </button>
+
+            <button
+              type="button"
+              @click="executeDeleteMaterial"
+              :disabled="isDeletingMaterial"
+              class="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-sm transition-all hover:bg-rose-700 active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw v-if="isDeletingMaterial" class="h-3.5 w-3.5 animate-spin" />
+              <Trash2 v-else class="h-3.5 w-3.5 stroke-[2.2]" />
+              <span>{{ isDeletingMaterial ? 'Procesando...' : 'Sí, eliminar / desactivar' }}</span>
+            </button>
+          </div>
+        </DialogContent>
+      </DialogPortal>
+    </DialogRoot>
   </div>
 </template>
