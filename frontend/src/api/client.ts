@@ -20,6 +20,42 @@ export const apiClient: AxiosInstance = axios.create({
   },
 });
 
+/**
+ * Determina si la ruta activa actual es una pantalla pública de autenticación
+ * donde está prohibido mostrar alertas invasivas de expiración o sesión caducada.
+ */
+export function isCurrentAuthRoute(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const path = (window.location.pathname || '').toLowerCase();
+  const hash = (window.location.hash || '').toLowerCase();
+
+  return (
+    path === '/login' ||
+    path.startsWith('/login') ||
+    path === '/auth' ||
+    path.startsWith('/auth') ||
+    path === '/recuperar' ||
+    path.startsWith('/recuperar') ||
+    path === '/recuperar-password' ||
+    path === '/forgot-password' ||
+    hash.includes('/login') ||
+    hash.includes('/recuperar') ||
+    hash.includes('/forgot-password')
+  );
+}
+
+let lastExpiredToastTime = 0;
+function showExpiredSessionToast(title: string, description: string) {
+  const now = Date.now();
+  if (now - lastExpiredToastTime < 3000) return;
+  lastExpiredToastTime = now;
+  toast.error(title, {
+    description,
+    duration: 4000,
+  });
+}
+
 // Interceptor de Petición: Validación de expiración e inyección de token Bearer
 apiClient.interceptors.request.use(
   (config) => {
@@ -47,12 +83,16 @@ apiClient.interceptors.request.use(
         // Si el token almacenado está expirado, purgar de inmediato y bloquear la petición
         if (isTokenExpired(token)) {
           purgeAuthStorage();
-          toast.error('Sesión Caducada', {
-            description: 'Tu sesión ha expirado. Por favor inicia sesión nuevamente.',
-          });
 
-          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-            window.location.href = '/login';
+          if (!isCurrentAuthRoute()) {
+            showExpiredSessionToast(
+              'Sesión Caducada',
+              'Tu sesión ha expirado. Por favor inicia sesión nuevamente.'
+            );
+
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+              window.location.href = '/login';
+            }
           }
 
           return Promise.reject(
@@ -94,18 +134,17 @@ apiClient.interceptors.response.use(
     if ((status === 401 || status === 403) && !isLoginEndpoint) {
       purgeAuthStorage();
 
-      const message =
-        status === 401
-          ? 'Tu sesión ha caducado o no tienes autorización. Redirigiendo a inicio de sesión...'
-          : 'Acceso denegado: no tienes permisos para acceder a este recurso.';
+      if (!isCurrentAuthRoute()) {
+        const message =
+          status === 401
+            ? 'Tu sesión ha caducado o no tienes autorización. Redirigiendo a inicio de sesión...'
+            : 'Acceso denegado: no tienes permisos para acceder a este recurso.';
 
-      toast.error(status === 401 ? 'Sesión Caducada' : 'Acceso Denegado', {
-        description: message,
-        duration: 4000,
-      });
+        showExpiredSessionToast(status === 401 ? 'Sesión Caducada' : 'Acceso Denegado', message);
 
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        window.location.href = '/login';
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       }
 
       return Promise.reject(error);

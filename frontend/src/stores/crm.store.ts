@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { http } from '@/api/client';
 import { getSocket } from '@/api/socket';
 import { toast } from 'vue-sonner';
+import { isTokenExpired } from '@/utils/jwt';
 
 export type WhatsAppSessionStatus = 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED';
 
@@ -25,6 +26,17 @@ export const useCrmStore = defineStore('crm', () => {
   const isWhatsAppConnected = computed(() => status.value === 'CONNECTED');
 
   async function fetchStatus(): Promise<WhatsAppSessionStatus> {
+    const rawToken =
+      localStorage.getItem('yogurarte_token') ||
+      localStorage.getItem('token') ||
+      localStorage.getItem('auth_token');
+
+    // Blindaje: No disparar llamadas protegidas a /crm/status si no hay token válido
+    if (!rawToken || isTokenExpired(rawToken)) {
+      status.value = 'DISCONNECTED';
+      return 'DISCONNECTED';
+    }
+
     isLoadingStatus.value = true;
     try {
       const res = await http.get<{

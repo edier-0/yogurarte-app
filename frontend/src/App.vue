@@ -17,7 +17,17 @@ onErrorCaptured((err) => {
 });
 
 const isAuthLayout = computed(() => {
-  return route.meta?.layout === 'auth';
+  return (
+    route.meta?.layout === 'auth' ||
+    route.path === '/login' ||
+    route.path === '/recuperar' ||
+    route.path === '/forgot-password' ||
+    (typeof window !== 'undefined' &&
+      (window.location.pathname === '/login' ||
+        window.location.pathname.startsWith('/login') ||
+        window.location.pathname === '/recuperar' ||
+        window.location.pathname.startsWith('/recuperar')))
+  );
 });
 
 const headerTitle = computed(() => {

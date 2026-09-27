@@ -12,8 +12,10 @@ const crmStore = useCrmStore();
 const isLogoutModalOpen = ref(false);
 
 onMounted(() => {
-  crmStore.initSocketListeners();
-  crmStore.fetchStatus();
+  if (authStore.isAuthenticated) {
+    crmStore.initSocketListeners();
+    crmStore.fetchStatus();
+  }
 });
 
 defineProps<{
