@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const idParamSchema = z.object({
-  id: z.coerce.number({ invalid_type_error: 'El ID especificado no es un número válido' }).int('El ID debe ser un número entero').positive('El ID debe ser un número entero positivo'),
+  id: z.coerce.number().int('El ID debe ser un número entero').positive('El ID debe ser un número entero positivo'),
 }).passthrough();
 
 export const orderPaymentParamsSchema = z.object({

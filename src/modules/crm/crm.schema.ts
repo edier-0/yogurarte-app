@@ -69,11 +69,11 @@ export const updateConversationTagSchema = z.object({
  */
 export const createRecurringScheduleSchema = z.object({
   customerId: z.coerce
-    .number({ invalid_type_error: 'Debes seleccionar un cliente válido' })
+    .number()
     .int('El ID de cliente debe ser un entero')
     .positive('El ID de cliente debe ser positivo'),
   frequencyDays: z.coerce
-    .number({ invalid_type_error: 'La frecuencia debe ser un número entero de días' })
+    .number()
     .int('La frecuencia debe ser en días enteros')
     .min(1, 'La frecuencia mínima es de 1 día')
     .max(365, 'La frecuencia máxima es de 365 días')
@@ -82,7 +82,7 @@ export const createRecurringScheduleSchema = z.object({
   preferredFlavor: z.string().min(2, 'Ingresa un sabor válido'),
   bottleSize: z.enum(['1L', '2L']),
   quantity: z.coerce
-    .number({ invalid_type_error: 'La cantidad debe ser un número entero' })
+    .number()
     .int('La cantidad debe ser entera')
     .min(1, 'La cantidad mínima es 1'),
   nextDate: z.string().min(4, 'La fecha de recordatorio es obligatoria'),
