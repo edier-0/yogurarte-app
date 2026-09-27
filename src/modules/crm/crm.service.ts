@@ -747,6 +747,10 @@ export async function unlinkChat(input: UnlinkChatInput) {
 
   try {
     if (whatsappService.io) {
+      whatsappService.io.emit('whatsapp:conversation_unlinked', {
+        conversationId: chatId,
+        conversation: updated,
+      });
       whatsappService.io.emit('whatsapp:conversation_updated', {
         conversation: updated,
       });

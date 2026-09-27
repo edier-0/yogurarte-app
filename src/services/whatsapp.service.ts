@@ -626,6 +626,10 @@ class WhatsAppService {
 
       if (this.io && savedMessage) {
         this.io.emit('whatsapp:message', {
+          conversationId: conversation.id,
+          customerId: conversation.customerId || null,
+          canonicalJid: conversation.remoteJid,
+          phoneNumber: conversation.phoneNumber,
           conversation,
           message: savedMessage,
         });
@@ -765,6 +769,10 @@ class WhatsAppService {
 
     if (this.io) {
       this.io.emit('whatsapp:message', {
+        conversationId: conversation.id,
+        customerId: conversation.customerId || null,
+        canonicalJid: conversation.remoteJid,
+        phoneNumber: conversation.phoneNumber,
         conversation,
         message: savedMessage,
       });

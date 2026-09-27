@@ -276,9 +276,14 @@ async function handleSendMessage() {
 
     messageInput.value = '';
 
-    // Si la API responde con el mensaje creado, añadirlo de inmediato
+    // Si la API responde con el mensaje creado, añadirlo de inmediato evitando duplicados
     if (res && res.message) {
-      activeMessages.value.push(res.message);
+      const already = activeMessages.value.some(
+        (m) => m.id === res.message.id || (m.messageId && m.messageId === res.message.messageId)
+      );
+      if (!already) {
+        activeMessages.value.push(res.message);
+      }
       conv.lastMessageText = textToSend;
       conv.lastMessageTimestamp = new Date().toISOString();
       conv.lastMessageFromMe = true;
@@ -407,29 +412,96 @@ function onStatusUpdate(data: any) {
   }
 }
 
-function onNewMessage(payload: { conversationId: number; message: ChatMessageItem; conversation: ChatConversationItem }) {
-  if (!payload) return;
+function onNewMessage(payload: {
+  conversationId?: number;
+  customerId?: number | null;
+  canonicalJid?: string;
+  phoneNumber?: string;
+  message: ChatMessageItem;
+  conversation?: ChatConversationItem;
+}) {
+  if (!payload || !payload.message) return;
 
-  // 1. Si coincide con el chat abierto, agregar mensaje
-  if (selectedConversation.value && selectedConversation.value.id === payload.conversationId) {
-    activeMessages.value.push(payload.message);
-    scrollToBottom(true);
+  const msg = payload.message;
+  const targetConvId = payload.conversationId || msg.conversationId || payload.conversation?.id;
+  const targetCustomerId = payload.customerId || payload.conversation?.customerId || null;
+
+  // Extraer dígitos telefónicos limpios (últimos 10 dígitos)
+  const rawPhone =
+    payload.phoneNumber ||
+    payload.conversation?.phoneNumber ||
+    payload.canonicalJid ||
+    (msg as any).remoteJid ||
+    '';
+  const phoneDigits = rawPhone.replace(/\D/g, '').slice(-10);
+
+  // 1. Identificar si corresponde a la conversación actualmente abierta en pantalla
+  const isCurrentOpen =
+    selectedConversation.value &&
+    (
+      (targetConvId && selectedConversation.value.id === targetConvId) ||
+      (targetCustomerId && selectedConversation.value.customerId && selectedConversation.value.customerId === targetCustomerId) ||
+      (phoneDigits && phoneDigits.length >= 7 && (selectedConversation.value.phoneNumber || selectedConversation.value.remoteJid || '').replace(/\D/g, '').slice(-10) === phoneDigits)
+    );
+
+  if (isCurrentOpen) {
+    // Deduplicación estricta en activeMessages para evitar duplicar mensajes agregados optimísticamente
+    const alreadyExists = activeMessages.value.some((m) => {
+      if (m.id && msg.id && m.id === msg.id) return true;
+      if (m.messageId && msg.messageId && m.messageId === msg.messageId) return true;
+      return false;
+    });
+
+    if (!alreadyExists) {
+      activeMessages.value.push(msg);
+      scrollToBottom(true);
+    }
   }
 
-  // 2. Actualizar listado en sidebar
-  const existingIndex = conversations.value.findIndex((c) => c.id === payload.conversationId);
+  // 2. Búsqueda multi-capa en la lista de conversaciones (sidebar) para no duplicar tarjetas
+  const existingIndex = conversations.value.findIndex((c) => {
+    // Capa 1: Coincidencia por ID primario de BD
+    if (targetConvId && c.id === targetConvId) return true;
+    // Capa 2: Coincidencia por Customer ID vinculado
+    if (targetCustomerId && c.customerId && c.customerId === targetCustomerId) return true;
+    // Capa 3: Coincidencia por los últimos 10 dígitos del teléfono
+    if (phoneDigits && phoneDigits.length >= 7) {
+      const cDigits = (c.phoneNumber || c.remoteJid || '').replace(/\D/g, '').slice(-10);
+      if (cDigits && cDigits === phoneDigits) return true;
+    }
+    return false;
+  });
+
   if (existingIndex !== -1) {
     const target = conversations.value[existingIndex];
-    target.lastMessageText = payload.message.text || 'Archivo multimedia';
-    target.lastMessageTimestamp = payload.message.timestamp || new Date().toISOString();
-    target.lastMessageFromMe = payload.message.fromMe;
-    if (selectedConversation.value?.id !== payload.conversationId && !payload.message.fromMe) {
+    // Actualizar datos del chat en caliente
+    target.lastMessageText = msg.text || (msg.messageType === 'STICKER' ? '✨ Sticker' : '📷 Multimedia');
+    target.lastMessageTimestamp = msg.timestamp || new Date().toISOString();
+    target.lastMessageFromMe = msg.fromMe;
+
+    // Si viene información de cliente o contacto más fresca, sincronizarla
+    if (payload.conversation) {
+      if (payload.conversation.customer && !target.customer) {
+        target.customer = payload.conversation.customer;
+      }
+      if (payload.conversation.customerId && !target.customerId) {
+        target.customerId = payload.conversation.customerId;
+      }
+      if (payload.conversation.contactName && (!target.contactName || target.contactName === target.phoneNumber)) {
+        target.contactName = payload.conversation.contactName;
+      }
+    }
+
+    // Si el chat NO está abierto y el mensaje es entrante (!fromMe), incrementar no leídos
+    if (!isCurrentOpen && !msg.fromMe) {
       target.unreadCount = (target.unreadCount || 0) + 1;
     }
-    // Mover al inicio de la lista
+
+    // Subir la conversación al tope de la lista
     conversations.value.splice(existingIndex, 1);
     conversations.value.unshift(target);
   } else if (payload.conversation) {
+    // Si realmente es un chat completamente nuevo que no existía en memoria
     conversations.value.unshift(payload.conversation);
   }
 }
@@ -438,6 +510,54 @@ function onConversationRead(data: { conversationId: number }) {
   const conv = conversations.value.find((c) => c.id === data.conversationId);
   if (conv) {
     conv.unreadCount = 0;
+  }
+}
+
+function onConversationsMerged(data: { targetId: number; sourceId: number }) {
+  if (!data) return;
+  conversations.value = conversations.value.filter((c) => c.id !== data.sourceId);
+
+  if (selectedConversation.value && selectedConversation.value.id === data.sourceId) {
+    const target = conversations.value.find((c) => c.id === data.targetId);
+    if (target) {
+      selectConversation(target);
+    } else {
+      fetchConversations();
+    }
+  }
+}
+
+function onConversationDeleted(data: { conversationId: number }) {
+  if (!data) return;
+  conversations.value = conversations.value.filter((c) => c.id !== data.conversationId);
+  if (selectedConversation.value && selectedConversation.value.id === data.conversationId) {
+    selectedConversation.value = null;
+    activeMessages.value = [];
+  }
+}
+
+function onConversationUnlinked(data: { conversationId: number; conversation?: any }) {
+  if (!data) return;
+  const conv = conversations.value.find((c) => c.id === data.conversationId);
+  if (conv) {
+    conv.customerId = null;
+    conv.customer = null;
+  }
+  if (selectedConversation.value && selectedConversation.value.id === data.conversationId) {
+    selectedConversation.value.customerId = null;
+    selectedConversation.value.customer = null;
+  }
+}
+
+function onConversationUpdated(data: { conversation: any }) {
+  if (!data || !data.conversation) return;
+  const updated = data.conversation;
+  const idx = conversations.value.findIndex((c) => c.id === updated.id);
+  if (idx !== -1) {
+    conversations.value[idx] = { ...conversations.value[idx], ...updated };
+  }
+  if (selectedConversation.value && selectedConversation.value.id === updated.id) {
+    selectedConversation.value = { ...selectedConversation.value, ...updated };
   }
 }
 
@@ -470,6 +590,10 @@ onMounted(() => {
   socket.on('whatsapp:status', onStatusUpdate);
   socket.on('whatsapp:message', onNewMessage);
   socket.on('whatsapp:conversation_read', onConversationRead);
+  socket.on('whatsapp:conversations_merged', onConversationsMerged);
+  socket.on('whatsapp:conversation_deleted', onConversationDeleted);
+  socket.on('whatsapp:conversation_unlinked', onConversationUnlinked);
+  socket.on('whatsapp:conversation_updated', onConversationUpdated);
 });
 
 onUnmounted(() => {
@@ -477,6 +601,10 @@ onUnmounted(() => {
   socket.off('whatsapp:status', onStatusUpdate);
   socket.off('whatsapp:message', onNewMessage);
   socket.off('whatsapp:conversation_read', onConversationRead);
+  socket.off('whatsapp:conversations_merged', onConversationsMerged);
+  socket.off('whatsapp:conversation_deleted', onConversationDeleted);
+  socket.off('whatsapp:conversation_unlinked', onConversationUnlinked);
+  socket.off('whatsapp:conversation_updated', onConversationUpdated);
 });
 </script>
 
