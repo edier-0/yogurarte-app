@@ -571,17 +571,56 @@ export const createOrder = async (data: CreateOrderInput) => {
         };
       });
 
-      // Si algún ítem tiene packagingId pero no batchId, resolver el batchId de la fracción
-      const pendingPkgIds = rawParsed.filter((i) => i.packagingId && !i.batchId).map((i) => i.packagingId as number);
-      if (pendingPkgIds.length > 0) {
+      // Validación de existencia y resolución bidireccional de batchId y packagingId
+      const allPkgIds = rawParsed.map((i) => i.packagingId).filter(Boolean) as number[];
+      if (allPkgIds.length > 0) {
         const pkgs = await tx.batchPackaging.findMany({
-          where: { id: { in: pendingPkgIds } },
+          where: { id: { in: allPkgIds } },
           select: { id: true, batchId: true },
         });
         const pkgMap = new Map(pkgs.map((p) => [p.id, p.batchId]));
         for (const it of rawParsed) {
-          if (it.packagingId && !it.batchId && pkgMap.has(it.packagingId)) {
-            it.batchId = pkgMap.get(it.packagingId) ?? null;
+          if (it.packagingId) {
+            if (pkgMap.has(it.packagingId)) {
+              if (!it.batchId) it.batchId = pkgMap.get(it.packagingId) ?? null;
+            } else {
+              it.packagingId = null;
+            }
+          }
+        }
+      }
+
+      const allBatchIds = rawParsed.map((i) => i.batchId).filter(Boolean) as number[];
+      if (allBatchIds.length > 0) {
+        const existingBatches = await tx.productionBatch.findMany({
+          where: { id: { in: allBatchIds } },
+          select: { id: true },
+        });
+        const validBatchSet = new Set(existingBatches.map((b) => b.id));
+        for (const it of rawParsed) {
+          if (it.batchId && !validBatchSet.has(it.batchId)) {
+            it.batchId = null;
+          }
+        }
+      }
+
+      // Si algún ítem tiene batchId pero no packagingId, verificar si ese lote ya fue fraccionado (Fase B)
+      const pendingBatchIds = rawParsed.filter((i) => i.batchId && !i.packagingId).map((i) => i.batchId as number);
+      if (pendingBatchIds.length > 0) {
+        const pkgsForBatches = await tx.batchPackaging.findMany({
+          where: { batchId: { in: pendingBatchIds } },
+        });
+        for (const it of rawParsed) {
+          if (it.batchId && !it.packagingId) {
+            const matchingPkgs = pkgsForBatches.filter((p) => p.batchId === it.batchId);
+            if (matchingPkgs.length > 0) {
+              const exactFlavorPkg = matchingPkgs.find(
+                (p) => p.flavor.toLowerCase().trim() === it.flavor.toLowerCase().trim()
+              ) || matchingPkgs[0];
+              if (exactFlavorPkg) {
+                it.packagingId = exactFlavorPkg.id;
+              }
+            }
           }
         }
       }
@@ -937,9 +976,11 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
 
     let parsedBatchId = batchId !== undefined ? (batchId ? Number(batchId) : null) : currentOrder.batchId;
 
-    if (parsedBatchId && parsedBatchId !== currentOrder.batchId) {
+    if (parsedBatchId) {
       const bObj = await tx.productionBatch.findUnique({ where: { id: parsedBatchId } });
-      if (bObj && bObj.status === 'EN_FERMENTACION') {
+      if (!bObj) {
+        parsedBatchId = null;
+      } else if (parsedBatchId !== currentOrder.batchId && bObj.status === 'EN_FERMENTACION') {
         throw new BadRequestError(
           `No es posible vincular pedidos al lote "${bObj.batchCode}" porque se encuentra en etapa de FERMENTACIÓN BASE. Solo se pueden vincular pedidos a lotes fraccionados y disponibles.`
         );
@@ -990,17 +1031,56 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
         };
       });
 
-      // Si algún ítem tiene packagingId pero no batchId, resolver el batchId de la fracción
-      const pendingPkgIds = rawParsed.filter((i) => i.packagingId && !i.batchId).map((i) => i.packagingId as number);
-      if (pendingPkgIds.length > 0) {
+      // Validación de existencia y resolución bidireccional de batchId y packagingId
+      const allPkgIds = rawParsed.map((i) => i.packagingId).filter(Boolean) as number[];
+      if (allPkgIds.length > 0) {
         const pkgs = await tx.batchPackaging.findMany({
-          where: { id: { in: pendingPkgIds } },
+          where: { id: { in: allPkgIds } },
           select: { id: true, batchId: true },
         });
         const pkgMap = new Map(pkgs.map((p) => [p.id, p.batchId]));
         for (const it of rawParsed) {
-          if (it.packagingId && !it.batchId && pkgMap.has(it.packagingId)) {
-            it.batchId = pkgMap.get(it.packagingId) ?? null;
+          if (it.packagingId) {
+            if (pkgMap.has(it.packagingId)) {
+              if (!it.batchId) it.batchId = pkgMap.get(it.packagingId) ?? null;
+            } else {
+              it.packagingId = null;
+            }
+          }
+        }
+      }
+
+      const allBatchIds = rawParsed.map((i) => i.batchId).filter(Boolean) as number[];
+      if (allBatchIds.length > 0) {
+        const existingBatches = await tx.productionBatch.findMany({
+          where: { id: { in: allBatchIds } },
+          select: { id: true },
+        });
+        const validBatchSet = new Set(existingBatches.map((b) => b.id));
+        for (const it of rawParsed) {
+          if (it.batchId && !validBatchSet.has(it.batchId)) {
+            it.batchId = null;
+          }
+        }
+      }
+
+      // Si algún ítem tiene batchId pero no packagingId, verificar si ese lote ya fue fraccionado (Fase B)
+      const pendingBatchIds = rawParsed.filter((i) => i.batchId && !i.packagingId).map((i) => i.batchId as number);
+      if (pendingBatchIds.length > 0) {
+        const pkgsForBatches = await tx.batchPackaging.findMany({
+          where: { batchId: { in: pendingBatchIds } },
+        });
+        for (const it of rawParsed) {
+          if (it.batchId && !it.packagingId) {
+            const matchingPkgs = pkgsForBatches.filter((p) => p.batchId === it.batchId);
+            if (matchingPkgs.length > 0) {
+              const exactFlavorPkg = matchingPkgs.find(
+                (p) => p.flavor.toLowerCase().trim() === it.flavor.toLowerCase().trim()
+              ) || matchingPkgs[0];
+              if (exactFlavorPkg) {
+                it.packagingId = exactFlavorPkg.id;
+              }
+            }
           }
         }
       }
@@ -1110,9 +1190,17 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
           const discharges = (batchObj.discharges || []).filter((d) => !d.packagingId).reduce((sum, d) => sum + d.totalLiters, 0);
           const availableLiters = Math.max(0, batchObj.totalLitersProduced - (batchObj.packagedLiters || 0) - otherSold - discharges);
 
-          if (requestedLiters > availableLiters + 0.001) {
+          // Litros que este pedido ya tenía previamente asignados a este lote en Fase A
+          const prevAssignedLiters = (currentOrder.items || [])
+            .filter((it) => it.batchId === bId && !it.packagingId)
+            .reduce((sum, it) => sum + it.totalLiters, 0) +
+            (currentOrder.batchId === bId && !(currentOrder.items || []).some((it) => it.batchId) ? currentOrder.totalLiters : 0);
+
+          const additionalLitersNeeded = Math.max(0, requestedLiters - prevAssignedLiters);
+
+          if (additionalLitersNeeded > availableLiters + 0.001) {
             throw new BadRequestError(
-              `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters.toFixed(1)}L disponibles (este pedido requiere ${requestedLiters.toFixed(1)}L de este lote).`
+              `Capacidad excedida: El lote "${batchObj.batchCode}" (${batchObj.flavor}) solo tiene ${availableLiters.toFixed(1)}L disponibles (este pedido requiere ${additionalLitersNeeded.toFixed(1)}L adicionales de este lote).`
             );
           }
         }
