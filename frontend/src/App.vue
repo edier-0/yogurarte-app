@@ -5,6 +5,7 @@ import { Toaster, toast } from 'vue-sonner';
 import { useTheme } from '@/composables/useTheme';
 import AppLayout from '@/layouts/AppLayout.vue';
 import ConfirmModal from '@/components/common/ConfirmModal.vue';
+import WhatsAppMessagePreviewModal from '@/components/operations/crm/WhatsAppMessagePreviewModal.vue';
 
 const { isDark } = useTheme();
 const route = useRoute();
@@ -84,6 +85,9 @@ const onNewOrder = () => {
 
   <!-- Diálogo de Confirmación Asíncrono Global -->
   <ConfirmModal />
+
+  <!-- Diálogo Global de Previsualización y Edición de Mensajes de WhatsApp -->
+  <WhatsAppMessagePreviewModal />
 </template>
 
 <style scoped>

@@ -102,12 +102,12 @@ async function handleSmartWhatsApp(customer: CustomerItem) {
 
   // Escenario B: Sesión Interna Desconectada (Fallback a wa.me)
   if (phoneWithCountry) {
-    const url = `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(
-      `Hola ${customer.fullName}, te saludamos desde YogurArte.`
-    )}`;
-    window.open(url, '_blank');
-    toast.info('Sesión interna desconectada: abriendo WhatsApp...', {
-      description: `Destinatario: ${customer.fullName}`,
+    crmStore.openMessagePreview({
+      phone: customer.phone,
+      text: `Hola ${customer.fullName}, te saludamos desde YogurArte.`,
+      contactName: customer.fullName,
+      customerId: customer.id,
+      title: `Mensaje a ${customer.fullName}`,
     });
   } else {
     toast.error('El cliente no tiene un teléfono válido registrado');

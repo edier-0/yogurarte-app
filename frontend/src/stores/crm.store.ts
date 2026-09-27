@@ -15,6 +15,20 @@ export interface SmartWhatsAppOptions {
   fallbackUrl?: string | null;
 }
 
+export interface MessagePreviewOptions {
+  phone: string;
+  text: string;
+  contactName?: string | null;
+  customerId?: number | null;
+  title?: string;
+  fallbackUrl?: string | null;
+  onConfirm?: (editedText: string) => Promise<void> | void;
+}
+
+export interface MessagePreviewModalState extends MessagePreviewOptions {
+  isOpen: boolean;
+}
+
 export const useCrmStore = defineStore('crm', () => {
   const status = ref<WhatsAppSessionStatus>('DISCONNECTED');
   const qrCodeDataUrl = ref<string | null>(null);
@@ -22,6 +36,16 @@ export const useCrmStore = defineStore('crm', () => {
   const isLoadingStatus = ref(false);
   const isSendingMessage = ref(false);
   let isSocketInitialized = false;
+
+  const messagePreview = ref<MessagePreviewModalState>({
+    isOpen: false,
+    phone: '',
+    text: '',
+    contactName: null,
+    customerId: null,
+    title: 'Previsualización de Mensaje WhatsApp',
+    fallbackUrl: null,
+  });
 
   const isWhatsAppConnected = computed(() => status.value === 'CONNECTED');
 
@@ -142,6 +166,41 @@ export const useCrmStore = defineStore('crm', () => {
     }
   }
 
+  function openMessagePreview(options: MessagePreviewOptions) {
+    messagePreview.value = {
+      isOpen: true,
+      phone: options.phone || '',
+      text: options.text || '',
+      contactName: options.contactName || null,
+      customerId: options.customerId || null,
+      title: options.title || 'Previsualización de Mensaje WhatsApp',
+      fallbackUrl: options.fallbackUrl || null,
+      onConfirm: options.onConfirm,
+    };
+  }
+
+  function closeMessagePreview() {
+    messagePreview.value.isOpen = false;
+  }
+
+  async function confirmAndSendPreview(editedText: string) {
+    if (!messagePreview.value.isOpen) return;
+    const current = { ...messagePreview.value };
+    closeMessagePreview();
+
+    if (current.onConfirm) {
+      await current.onConfirm(editedText);
+    } else {
+      await sendSmartWhatsApp({
+        phone: current.phone,
+        text: editedText,
+        customerId: current.customerId || undefined,
+        contactName: current.contactName || undefined,
+        fallbackUrl: current.fallbackUrl || undefined,
+      });
+    }
+  }
+
   return {
     status,
     qrCodeDataUrl,
@@ -149,8 +208,12 @@ export const useCrmStore = defineStore('crm', () => {
     isLoadingStatus,
     isSendingMessage,
     isWhatsAppConnected,
+    messagePreview,
     fetchStatus,
     initSocketListeners,
     sendSmartWhatsApp,
+    openMessagePreview,
+    closeMessagePreview,
+    confirmAndSendPreview,
   };
 });

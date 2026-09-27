@@ -99,11 +99,13 @@ const availableFlavors = computed(() => {
 async function loadCustomers() {
   isSearchingCustomers.value = true;
   try {
-    const res = await http.get<any>('/customers', { params: { limit: '50' } });
-    if (res && Array.isArray(res.customers)) {
-      customerList.value = res.customers;
-    } else if (Array.isArray(res)) {
+    const res = await http.get<any>('/customers', { params: { paginate: 'false' } });
+    if (res && Array.isArray(res)) {
       customerList.value = res;
+    } else if (res && Array.isArray(res.items)) {
+      customerList.value = res.items;
+    } else if (res && Array.isArray(res.customers)) {
+      customerList.value = res.customers;
     }
   } catch {
     // silently fail
@@ -114,15 +116,16 @@ async function loadCustomers() {
 
 const filteredCustomers = computed(() => {
   const q = customerSearch.value.trim().toLowerCase();
-  if (!q) return customerList.value.slice(0, 10);
+  if (!q) return customerList.value.slice(0, 15);
+  const cleanQ = q.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   return customerList.value
-    .filter(
-      (c) =>
-        c.fullName.toLowerCase().includes(q) ||
-        c.phone.toLowerCase().includes(q) ||
-        (c.address && c.address.toLowerCase().includes(q))
-    )
-    .slice(0, 10);
+    .filter((c) => {
+      const name = (c.fullName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const phone = c.phone || '';
+      const address = (c.address || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return name.includes(cleanQ) || phone.includes(q) || address.includes(cleanQ);
+    })
+    .slice(0, 15);
 });
 
 function selectCustomer(cust: CustomerOption) {

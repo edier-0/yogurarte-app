@@ -21,6 +21,7 @@ import {
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import RecurringEditModal, { RecurringScheduleData } from './RecurringEditModal.vue';
+import OrderFormModal from '@/components/operations/OrderFormModal.vue';
 
 export interface RecurringScheduleItem {
   id: number;
@@ -51,6 +52,32 @@ const isGeneratingOrderId = ref<number | null>(null);
 
 const isModalOpen = ref(false);
 const scheduleToEdit = ref<RecurringScheduleData | null>(null);
+
+const isOrderModalOpen = ref(false);
+const orderToPrefill = ref<any>(null);
+
+function handleQuickCreateOrder(schedule: RecurringScheduleItem) {
+  const unitPrice = schedule.bottleSize === '2L' ? 22000 : 12000;
+  const quantity = schedule.quantity || 1;
+  orderToPrefill.value = {
+    customerId: schedule.customerId,
+    customerName: schedule.customer.fullName,
+    customerPhone: schedule.customer.phone,
+    customerAddress: schedule.customer.address || '',
+    items: [
+      {
+        batchId: null,
+        bottleSize: schedule.bottleSize || '1L',
+        flavor: schedule.preferredFlavor || 'Natural',
+        quantity,
+        unitPrice,
+        totalPrice: quantity * unitPrice,
+      },
+    ],
+    notes: schedule.notes ? `Cliente Frecuente: ${schedule.notes}` : 'Pedido programado recurrente',
+  };
+  isOrderModalOpen.value = true;
+}
 
 // Paginación estricta a 12 registros por página
 const currentPage = ref<number>(1);
@@ -414,6 +441,17 @@ onMounted(() => {
 
         <!-- Acciones Inferiores -->
         <div class="mt-5 pt-3.5 border-t border-surface-light-border dark:border-surface-dark-border flex items-center justify-between gap-2">
+          <!-- Botón Rápido Crear Pedido para este Cliente -->
+          <button
+            type="button"
+            @click="handleQuickCreateOrder(sch)"
+            class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand-800 hover:bg-brand-900 px-3 py-2 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 dark:bg-brand-700 dark:hover:bg-brand-600"
+            title="Crear un pedido a medida para este cliente frecuente con sus preferencias prellenadas"
+          >
+            <Plus class="h-3.5 w-3.5 stroke-[2.5]" />
+            <span>Crear Pedido</span>
+          </button>
+
           <!-- Botón Generar Pedido de Hoy -->
           <button
             type="button"
@@ -423,7 +461,7 @@ onMounted(() => {
             title="Generar comanda oficial de hoy a partir de esta recurrencia"
           >
             <ShoppingBag class="h-3.5 w-3.5 stroke-[2.5]" :class="{ 'animate-bounce': isGeneratingOrderId === sch.id }" />
-            <span>Generar Pedido de Hoy</span>
+            <span>Generar Hoy</span>
           </button>
 
           <!-- Toggle Pausa / Reactivar -->
@@ -501,6 +539,13 @@ onMounted(() => {
       v-model:open="isModalOpen"
       :schedule-to-edit="scheduleToEdit"
       @saved="loadSchedules"
+    />
+
+    <!-- Modal Rápido de Creación de Pedido para Cliente Frecuente -->
+    <OrderFormModal
+      v-model:open="isOrderModalOpen"
+      :order-to-edit="orderToPrefill"
+      @saved="() => loadSchedules(currentPage)"
     />
   </div>
 </template>

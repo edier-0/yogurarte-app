@@ -249,12 +249,13 @@ const crmStore = useCrmStore();
 
 async function handleSharePaymentWhatsApp(paymentId: number) {
   try {
-    const res = await http.get<{ whatsappUrl: string; message?: string; phone?: string }>(`/staff/payments/${paymentId}/whatsapp`);
+    const res = await http.get<{ whatsappUrl: string; message?: string; phone?: string; staffName?: string }>(`/staff/payments/${paymentId}/whatsapp`);
     if (res) {
-      await crmStore.sendSmartWhatsApp({
+      crmStore.openMessagePreview({
         phone: res.phone || '',
         text: res.message || '',
         fallbackUrl: res.whatsappUrl,
+        title: 'Comprobante de Pago de Nómina',
       });
     }
   } catch {

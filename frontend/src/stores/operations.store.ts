@@ -541,15 +541,16 @@ export const useOperationsStore = defineStore('operations', () => {
       }>(`/orders/${orderId}/whatsapp`);
 
       const crmStore = useCrmStore();
-      await crmStore.sendSmartWhatsApp({
+      crmStore.openMessagePreview({
         phone: res.phone,
         text: res.rawMessage,
         customerId: res.customerId,
         contactName: res.customerName,
         fallbackUrl: res.whatsappUrl,
+        title: `Confirmar Despacho a ${res.customerName}`,
       });
     } catch {
-      toast.error('No se pudo despachar el mensaje de WhatsApp');
+      toast.error('No se pudo preparar el mensaje de WhatsApp');
     }
   }
 

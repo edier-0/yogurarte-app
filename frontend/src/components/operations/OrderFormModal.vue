@@ -41,7 +41,7 @@ const emit = defineEmits<{
 const store = useOperationsStore();
 const productionStore = useProductionStore();
 
-const isEditing = computed(() => Boolean(props.orderToEdit));
+const isEditing = computed(() => Boolean(props.orderToEdit && props.orderToEdit.id));
 
 // Sabores base del catálogo institucional YogurArte obtenidos dinámicamente
 const activeCatalogFlavors = computed(() => {
@@ -141,13 +141,14 @@ function isCustomOptionNeeded(item: OrderItem): boolean {
 const customerSuggestions = computed(() => {
   const q = customerSearch.value.trim().toLowerCase();
   if (!q) return [];
+  const cleanQ = q.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   return store.customers
-    .filter(
-      (c) =>
-        c.fullName.toLowerCase().includes(q) ||
-        (c.phone && c.phone.includes(q))
-    )
-    .slice(0, 5);
+    .filter((c) => {
+      const name = (c.fullName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const phone = c.phone || '';
+      return name.includes(cleanQ) || phone.includes(q);
+    })
+    .slice(0, 8);
 });
 
 // Selección de cliente predictivo
@@ -321,30 +322,44 @@ const handleSubmit = async () => {
 
   isSubmitting.value = true;
   try {
+    const finalCustId =
+      typeof customerId.value === 'number' && !isNaN(customerId.value) && customerId.value > 0
+        ? customerId.value
+        : undefined;
+
     const payload = {
-      customerId: customerId.value || undefined,
+      customerId: finalCustId,
       customerName: customerName.value.trim(),
       customerPhone: customerPhone.value.trim(),
       customerAddress: customerAddress.value.trim(),
       deliveryType: deliveryType.value,
       deliveryDate: deliveryDate.value ? deliveryDate.value : undefined,
-      deliveryDriverId: deliveryType.value === 'DOMICILIARIO' ? deliveryDriverId.value : null,
-      deliveryFee: Number(deliveryFee.value) || 0,
-      discount: discountAmount.value,
-      totalAmount: grandTotal.value,
-      paidAmount: Number(paidAmount.value) || 0,
-      paymentMethod: paymentMethod.value,
+      deliveryDriverId:
+        deliveryType.value === 'DOMICILIARIO' &&
+        typeof deliveryDriverId.value === 'number' &&
+        !isNaN(deliveryDriverId.value) &&
+        deliveryDriverId.value > 0
+          ? deliveryDriverId.value
+          : null,
+      deliveryFee: Math.max(0, Number(deliveryFee.value) || 0),
+      discount: Math.max(0, Number(discountAmount.value) || 0),
+      totalAmount: Math.max(0, Number(grandTotal.value) || 0),
+      paidAmount: Math.max(0, Number(paidAmount.value) || 0),
+      paymentMethod: paymentMethod.value || 'EFECTIVO',
       notes: notes.value.trim() || undefined,
       items: items.value.map((it) => ({
-        batchId: it.batchId !== undefined ? it.batchId : null,
-        bottleSize: it.bottleSize,
-        flavor: it.flavor,
-        quantity: it.quantity,
-        unitPrice: it.unitPrice,
+        batchId:
+          typeof it.batchId === 'number' && !isNaN(it.batchId) && it.batchId > 0
+            ? it.batchId
+            : null,
+        bottleSize: it.bottleSize || '1L',
+        flavor: it.flavor || 'Natural',
+        quantity: Math.max(1, Number(it.quantity) || 1),
+        unitPrice: Math.max(0, Number(it.unitPrice) || (it.bottleSize === '2L' ? 22000 : 12000)),
       })),
     };
 
-    if (isEditing.value && props.orderToEdit) {
+    if (isEditing.value && props.orderToEdit && props.orderToEdit.id) {
       await store.updateOrder(props.orderToEdit.id, payload);
     } else {
       await store.createOrder(payload);
