@@ -115,6 +115,9 @@ interface DashboardData {
     customerName?: string;
     total: number;
     totalAmount?: number;
+    paidAmount?: number;
+    pendingAmount?: number;
+    paymentStatus?: string;
     status: string;
     deliveryStatus: string;
   }>;
@@ -270,15 +273,23 @@ async function loadDashboard() {
         },
         recentOrders: (Array.isArray(res.recentOrders) ? res.recentOrders : [])
           .slice(0, 5)
-          .map((o: any) => ({
-            id: o.id,
-            orderNumber: o.orderNumber || 'PED-000',
-            customerName: o.customer?.fullName || o.customerName || 'Cliente mostrador',
-            total: Number(o.totalAmount ?? o.total ?? 0),
-            totalAmount: Number(o.totalAmount ?? o.total ?? 0),
-            status: o.paymentStatus || o.status || 'PENDING',
-            deliveryStatus: o.deliveryStatus || 'PENDING',
-          })),
+          .map((o: any) => {
+            const total = Number(o.totalAmount ?? o.total ?? 0);
+            const paid = Number(o.paidAmount ?? 0);
+            const pending = Number(o.pendingAmount ?? Math.max(0, total - paid));
+            return {
+              id: o.id,
+              orderNumber: o.orderNumber || 'PED-000',
+              customerName: o.customer?.fullName || o.customerName || 'Cliente mostrador',
+              total,
+              totalAmount: total,
+              paidAmount: paid,
+              pendingAmount: pending,
+              paymentStatus: o.paymentStatus || o.status || 'PENDING',
+              status: o.paymentStatus || o.status || 'PENDING',
+              deliveryStatus: o.deliveryStatus || 'PENDING',
+            };
+          }),
       };
     }
   } catch (err) {
@@ -760,8 +771,8 @@ onMounted(() => {
             :key="order.id"
             class="flex items-center justify-between rounded-2xl border border-surface-light-border bg-surface-light-canvas p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas"
           >
-            <div>
-              <div class="flex items-center gap-2">
+            <div class="min-w-0 flex-1 pr-3">
+              <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-xs font-black text-slate-900 dark:text-white">
                   {{ order.orderNumber }}
                 </span>
@@ -769,13 +780,29 @@ onMounted(() => {
                   {{ order.deliveryStatus }}
                 </span>
               </div>
-              <p class="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+              <p class="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
                 {{ order.customerName || 'Cliente mostrador' }}
               </p>
             </div>
-            <span class="text-xs font-black text-slate-900 dark:text-white">
-              {{ formatCurrency(order.totalAmount ?? order.total ?? 0) }}
-            </span>
+            <div class="flex flex-col items-end gap-1 shrink-0">
+              <span class="text-xs font-black text-slate-900 dark:text-white">
+                {{ formatCurrency(order.totalAmount ?? order.total ?? 0) }}
+              </span>
+              <span
+                v-if="(order.pendingAmount ?? ((order.totalAmount ?? order.total ?? 0) - (order.paidAmount ?? 0))) > 0"
+                class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/60"
+              >
+                <AlertCircle class="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>Debe {{ formatCurrency(order.pendingAmount ?? ((order.totalAmount ?? order.total ?? 0) - (order.paidAmount ?? 0))) }}</span>
+              </span>
+              <span
+                v-else
+                class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60"
+              >
+                <CheckCircle2 class="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <span>Al día</span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
