@@ -24,7 +24,7 @@ import {
   DollarSign,
   Tag,
 } from 'lucide-vue-next';
-import { useOperationsStore, type Order, type OrderItem } from '@/stores/operations.store';
+import { useOperationsStore, type Order, type OrderItem, type DeliveryStatus } from '@/stores/operations.store';
 import { useProductionStore } from '@/stores/production.store';
 import { toast } from 'vue-sonner';
 
@@ -71,6 +71,7 @@ const customerId = ref<number | null>(null);
 const customerName = ref('');
 const customerPhone = ref('');
 const customerAddress = ref('');
+const deliveryStatus = ref<DeliveryStatus>('PENDING');
 const deliveryType = ref<'PROPIO' | 'DOMICILIARIO' | 'LOCAL'>('PROPIO');
 const deliveryDate = ref('');
 const deliveryDriverId = ref<number | null>(null);
@@ -246,6 +247,7 @@ watch(
         customerName.value = o.customerName || o.customer?.fullName || '';
         customerPhone.value = o.customerPhone || o.customer?.phone || '';
         customerAddress.value = o.customerAddress || o.customer?.address || '';
+        deliveryStatus.value = (o.deliveryStatus as DeliveryStatus) || 'PENDING';
         deliveryType.value = (o.deliveryType as any) || 'PROPIO';
         deliveryDate.value = o.deliveryDate ? o.deliveryDate.split('T')[0] : '';
         deliveryDriverId.value = o.deliveryDriverId || null;
@@ -282,6 +284,7 @@ watch(
         customerName.value = '';
         customerPhone.value = '';
         customerAddress.value = '';
+        deliveryStatus.value = 'PENDING';
         deliveryType.value = 'PROPIO';
         deliveryDate.value = '';
         deliveryDriverId.value = null;
@@ -332,6 +335,7 @@ const handleSubmit = async () => {
       customerName: customerName.value.trim(),
       customerPhone: customerPhone.value.trim(),
       customerAddress: customerAddress.value.trim(),
+      deliveryStatus: deliveryStatus.value,
       deliveryType: deliveryType.value,
       deliveryDate: deliveryDate.value ? deliveryDate.value : undefined,
       deliveryDriverId:
@@ -403,7 +407,7 @@ const formatCurrency = (val: number) => {
                 {{ isEditing ? 'Editar Pedido' : 'Nuevo Pedido Artesanal' }}
               </DialogTitle>
               <DialogDescription class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {{ isEditing ? 'Actualiza los datos, lotes, descuentos y entrega' : 'Registra la comanda de venta con abono, lote y entrega' }}
+                {{ isEditing ? 'Actualiza los datos, lotes, descuentos, estado y entrega' : 'Registra la comanda de venta con abono, lote, estado y entrega' }}
               </DialogDescription>
             </div>
           </div>
@@ -763,7 +767,26 @@ const formatCurrency = (val: number) => {
               4. Modalidad y Programación de Entrega
             </span>
 
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <!-- Estado del Pedido -->
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Estado del Pedido *
+                </label>
+                <select
+                  v-model="deliveryStatus"
+                  class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-bold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
+                >
+                  <option value="PENDING">Por Entregar</option>
+                  <option value="PREPARING">En Preparación</option>
+                  <option value="READY_FOR_DISPATCH">Listo Despacho</option>
+                  <option value="IN_ROUTE">En Camino</option>
+                  <option value="DELIVERED">Entregado</option>
+                  <option value="CANCELLED">Cancelado</option>
+                </select>
+              </div>
+
+              <!-- Tipo de Entrega -->
               <div>
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Tipo de Entrega</label>
                 <select

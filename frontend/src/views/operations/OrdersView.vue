@@ -119,8 +119,12 @@ const openPayment = (order: Order) => {
   isPaymentModalOpen.value = true;
 };
 
-const onDeliveryStatusChange = async (order: Order, newStatus: DeliveryStatus) => {
+const onDeliveryStatusChange = async (order: Order, event: Event) => {
+  const target = event.target as HTMLSelectElement;
+  const newStatus = target.value as DeliveryStatus;
   if (newStatus === 'DELIVERED') {
+    if (order.deliveryStatus === 'DELIVERED') return;
+    target.value = order.deliveryStatus; // Revertir visualmente hasta que se confirme en el modal
     orderForDelivery.value = order;
     isDeliveryModalOpen.value = true;
   } else {
@@ -458,7 +462,7 @@ const getStatusBadge = (status: DeliveryStatus) => {
             <span class="text-[11px] font-bold text-slate-400">Estado:</span>
             <select
               :value="order.deliveryStatus"
-              @change="onDeliveryStatusChange(order, ($event.target as HTMLSelectElement).value as DeliveryStatus)"
+              @change="onDeliveryStatusChange(order, $event)"
               class="rounded-lg border border-slate-200 bg-surface-light-canvas py-1 px-2 text-[11px] font-bold text-slate-800 transition-colors focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-200"
             >
               <option value="PENDING">Por Entregar</option>
