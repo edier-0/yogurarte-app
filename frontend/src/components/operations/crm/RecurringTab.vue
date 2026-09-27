@@ -17,11 +17,14 @@ import {
   Pause,
   ChevronLeft,
   ChevronRight,
+  Receipt,
+  AlertCircle,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import RecurringEditModal, { RecurringScheduleData } from './RecurringEditModal.vue';
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
+import CollectDebtModal, { type CustomerDebtData, type DebtOrderInfo } from './CollectDebtModal.vue';
 
 export interface RecurringScheduleItem {
   id: number;
@@ -31,6 +34,8 @@ export interface RecurringScheduleItem {
     fullName: string;
     phone: string;
     address?: string | null;
+    pendingDebt?: number;
+    pendingOrders?: DebtOrderInfo[];
   };
   frequencyDays: number;
   preferredFlavor: string;
@@ -78,6 +83,29 @@ function handleQuickCreateOrder(schedule: RecurringScheduleItem) {
   };
   isOrderModalOpen.value = true;
 }
+
+const isDebtModalOpen = ref(false);
+const customerToCollect = ref<CustomerDebtData | null>(null);
+
+function handleOpenCollectDebt(schedule: RecurringScheduleItem) {
+  customerToCollect.value = {
+    id: schedule.customer.id,
+    fullName: schedule.customer.fullName,
+    phone: schedule.customer.phone,
+    address: schedule.customer.address,
+    pendingDebt: schedule.customer.pendingDebt ?? 0,
+    pendingOrders: schedule.customer.pendingOrders ?? [],
+  };
+  isDebtModalOpen.value = true;
+}
+
+const formatCurrency = (val?: number | null) => {
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    maximumFractionDigits: 0,
+  }).format(val || 0);
+};
 
 // Paginación estricta a 12 registros por página
 const currentPage = ref<number>(1);
@@ -373,21 +401,34 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- Badge de Estado Activo / En Pausa -->
-            <span
-              class="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black"
-              :class="
-                sch.isActive
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
-                  : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
-              "
-            >
+            <!-- Badges Superiores: Deuda + Estado -->
+            <div class="flex items-center gap-1.5 shrink-0">
+              <!-- Badge de Deuda si tiene saldo pendiente -->
               <span
-                class="h-1.5 w-1.5 rounded-full"
-                :class="sch.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'"
-              />
-              <span>{{ sch.isActive ? 'Activo' : 'En Pausa' }}</span>
-            </span>
+                v-if="(sch.customer.pendingDebt || 0) > 0"
+                class="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black text-rose-700 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-900/60"
+                :title="`Deuda acumulada: ${formatCurrency(sch.customer.pendingDebt)}`"
+              >
+                <AlertCircle class="h-3 w-3 text-rose-500" />
+                <span>Deuda: {{ formatCurrency(sch.customer.pendingDebt) }}</span>
+              </span>
+
+              <!-- Badge de Estado Activo / En Pausa -->
+              <span
+                class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black"
+                :class="
+                  sch.isActive
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                    : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                "
+              >
+                <span
+                  class="h-1.5 w-1.5 rounded-full"
+                  :class="sch.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'"
+                />
+                <span>{{ sch.isActive ? 'Activo' : 'En Pausa' }}</span>
+              </span>
+            </div>
           </div>
 
           <!-- Detalles del Pedido Recurrente -->
@@ -440,7 +481,7 @@ onMounted(() => {
         </div>
 
         <!-- Acciones Inferiores -->
-        <div class="mt-5 pt-3.5 border-t border-surface-light-border dark:border-surface-dark-border flex items-center justify-between gap-2">
+        <div class="mt-5 pt-3.5 border-t border-surface-light-border dark:border-surface-dark-border flex flex-wrap items-center justify-between gap-2">
           <!-- Botón Rápido Crear Pedido para este Cliente -->
           <button
             type="button"
@@ -452,12 +493,28 @@ onMounted(() => {
             <span>Crear Pedido</span>
           </button>
 
+          <!-- Botón Cobrar Pedidos con Deuda -->
+          <button
+            type="button"
+            @click="handleOpenCollectDebt(sch)"
+            class="inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-bold transition-all active:scale-95"
+            :class="
+              (sch.customer.pendingDebt || 0) > 0
+                ? 'bg-amber-500 hover:bg-amber-600 text-white font-black shadow-xs ring-2 ring-amber-500/20'
+                : 'border border-surface-light-border bg-surface-light-canvas text-slate-600 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800'
+            "
+            :title="(sch.customer.pendingDebt || 0) > 0 ? `Cobrar ${formatCurrency(sch.customer.pendingDebt)} de pedidos con saldo pendiente` : 'Registrar abono / cobro a este cliente'"
+          >
+            <Receipt class="h-3.5 w-3.5 stroke-[2.5]" />
+            <span>{{ (sch.customer.pendingDebt || 0) > 0 ? `Cobrar (${formatCurrency(sch.customer.pendingDebt)})` : 'Cobrar' }}</span>
+          </button>
+
           <!-- Botón Generar Pedido de Hoy -->
           <button
             type="button"
             @click="handleGenerateOrder(sch)"
             :disabled="isGeneratingOrderId === sch.id"
-            class="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-hero-gradient px-3 py-2 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 disabled:opacity-50"
+            class="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 rounded-xl bg-hero-gradient px-3 py-2 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 disabled:opacity-50"
             title="Generar comanda oficial de hoy a partir de esta recurrencia"
           >
             <ShoppingBag class="h-3.5 w-3.5 stroke-[2.5]" :class="{ 'animate-bounce': isGeneratingOrderId === sch.id }" />
@@ -545,6 +602,13 @@ onMounted(() => {
     <OrderFormModal
       v-model:open="isOrderModalOpen"
       :order-to-edit="orderToPrefill"
+      @saved="() => loadSchedules(currentPage)"
+    />
+
+    <!-- Modal Cobrar Pedidos con Deuda para Cliente Frecuente -->
+    <CollectDebtModal
+      v-model:open="isDebtModalOpen"
+      :customer="customerToCollect"
       @saved="() => loadSchedules(currentPage)"
     />
   </div>

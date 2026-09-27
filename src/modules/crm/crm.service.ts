@@ -938,6 +938,23 @@ export async function getRecurringSchedules(query: GetRecurringQuery) {
             fullName: true,
             phone: true,
             address: true,
+            orders: {
+              where: {
+                deliveryStatus: { not: 'CANCELLED' },
+                paymentStatus: { in: ['PENDING', 'PARTIAL'] },
+              },
+              select: {
+                id: true,
+                orderNumber: true,
+                orderDate: true,
+                totalAmount: true,
+                paidAmount: true,
+                pendingAmount: true,
+                paymentStatus: true,
+                deliveryStatus: true,
+              },
+              orderBy: { orderDate: 'asc' },
+            },
           },
         },
       },
@@ -947,12 +964,35 @@ export async function getRecurringSchedules(query: GetRecurringQuery) {
     }),
   ]);
 
+  const enrichedItems = items.map((sch) => {
+    const debtOrders = sch.customer?.orders || [];
+    const pendingDebt = debtOrders.reduce((sum, o) => {
+      const p = o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0));
+      return sum + p;
+    }, 0);
+
+    return {
+      ...sch,
+      customer: {
+        id: sch.customer.id,
+        fullName: sch.customer.fullName,
+        phone: sch.customer.phone,
+        address: sch.customer.address,
+        pendingDebt,
+        pendingOrders: debtOrders.map((o) => ({
+          ...o,
+          calculatedPending: o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0)),
+        })),
+      },
+    };
+  });
+
   const totalPages = Math.ceil(totalItems / limitNum) || 1;
 
   if (paginate === true) {
     return {
-      data: items,
-      items,
+      data: enrichedItems,
+      items: enrichedItems,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -962,7 +1002,7 @@ export async function getRecurringSchedules(query: GetRecurringQuery) {
     };
   }
 
-  return Object.assign(items, {
+  return Object.assign(enrichedItems, {
     pagination: {
       page: pageNum,
       limit: limitNum,
