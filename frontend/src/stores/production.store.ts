@@ -359,8 +359,17 @@ export interface UpdateBatchPayload {
   dynamicItems?: DynamicBatchItem[];
 }
 
+export interface BatchMetricsData {
+  fermentingLiters: number;
+  finishedYogurtLiters: number;
+  averageYield: number;
+  totalBatchesCount: number;
+  totalProducedLiters: number;
+}
+
 export const useProductionStore = defineStore('production', () => {
   const batches = ref<BatchItem[]>([]);
+  const batchMetrics = ref<BatchMetricsData | null>(null);
   const isLoading = ref<boolean>(false);
   const error = ref<string | null>(null);
 
@@ -391,20 +400,29 @@ export const useProductionStore = defineStore('production', () => {
   const packagingSearchQuery = ref<string>('');
   const debouncedPackagingSearch = refDebounced(packagingSearchQuery, 300);
 
-  // Métricas superiores computadas
+  // Métricas superiores computadas (consumen nativamente /api/batches/metrics con fallback local)
   const fermentingLiters = computed(() => {
+    if (batchMetrics.value && typeof batchMetrics.value.fermentingLiters === 'number') {
+      return batchMetrics.value.fermentingLiters;
+    }
     return batches.value
       .filter((b) => b.isActive !== false && b.status === 'EN_FERMENTACION')
       .reduce((sum, b) => sum + (Number(b.milkUsedLiters) || 0), 0);
   });
 
   const finishedYogurtLiters = computed(() => {
+    if (batchMetrics.value && typeof batchMetrics.value.finishedYogurtLiters === 'number') {
+      return batchMetrics.value.finishedYogurtLiters;
+    }
     return batches.value
       .filter((b) => b.isActive !== false && b.status !== 'EN_FERMENTACION' && b.status !== 'ARCHIVADO')
       .reduce((sum, b) => sum + (Number(b.remainingAvailableLiters) || 0), 0);
   });
 
   const averageYield = computed(() => {
+    if (batchMetrics.value && typeof batchMetrics.value.averageYield === 'number' && batchMetrics.value.averageYield > 0) {
+      return batchMetrics.value.averageYield;
+    }
     const list = batches.value.filter((b) => Number(b.milkUsedLiters) > 0 && Number(b.totalLitersProduced) > 0);
     if (list.length === 0) return 96.5;
     const sum = list.reduce((acc, b) => {
@@ -490,10 +508,25 @@ export const useProductionStore = defineStore('production', () => {
         totalBatches.value = res.length;
         totalPages.value = Math.ceil(res.length / limit.value) || 1;
       }
+
+      // Sincronizar métricas consolidadas en base de datos
+      fetchBatchesMetrics();
     } catch (err: any) {
       error.value = err?.message || 'Error al cargar lotes de producción';
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  // Cargar métricas y KPIs globales de producción mediante agregación nativa
+  async function fetchBatchesMetrics(params?: any) {
+    try {
+      const data = await http.get<BatchMetricsData>('/batches/metrics', { params });
+      if (data) {
+        batchMetrics.value = data;
+      }
+    } catch (err) {
+      console.error('Error al cargar métricas de producción:', err);
     }
   }
 
@@ -931,6 +964,8 @@ export const useProductionStore = defineStore('production', () => {
     fermentingLiters,
     finishedYogurtLiters,
     averageYield,
+    batchMetrics,
+    fetchBatchesMetrics,
     chipCounts,
     filteredBatches,
     // Acciones Lotes

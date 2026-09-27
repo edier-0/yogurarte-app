@@ -23,6 +23,7 @@ import {
   recordPackagingDischarge,
   unlinkOrderFromPackaging,
   deleteBatch,
+  getBatchesMetrics,
 } from './batches.controller.js';
 import { validateBody, validateParams, validateQuery } from '../../shared/middlewares/validate.middleware.js';
 import {
@@ -32,6 +33,7 @@ import {
   deactivateBatchSchema,
   createBatchDischargeSchema,
   batchesQuerySchema,
+  batchesMetricsQuerySchema,
   pendingOrdersQuerySchema,
   batchPackagingSchema,
   partnerWithdrawalSchema,
@@ -60,6 +62,8 @@ router.delete('/packagings/:packagingId/orders/:orderId', unlinkOrderFromPackagi
 // ==========================================
 // 🥛 FASE A: LOTES BASE / FERMENTACIÓN
 // ==========================================
+router.get('/metrics', validateQuery(batchesMetricsQuerySchema), getBatchesMetrics);
+router.get('/summary', validateQuery(batchesMetricsQuerySchema), getBatchesMetrics);
 router.get('/', validateQuery(batchesQuerySchema), getBatches);
 router.get('/next-code', validateQuery(nextCodeQuerySchema), getNextBatchCode);
 router.get('/pending-orders', validateQuery(pendingOrdersQuerySchema), getPendingOrdersByFlavor);

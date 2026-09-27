@@ -28,6 +28,7 @@ import {
 import { useConfirm } from '@/composables/useConfirm';
 import TransferModal from '@/components/finance/TransferModal.vue';
 import CashMovementModal, { type MovementMode } from '@/components/finance/CashMovementModal.vue';
+import ExpenseFormModal from '@/components/finance/ExpenseFormModal.vue';
 import CashAuditBreakdownModal from '@/components/finance/CashAuditBreakdownModal.vue';
 
 const router = useRouter();
@@ -38,6 +39,8 @@ const isTransferModalOpen = ref(false);
 const isMovementModalOpen = ref(false);
 const movementModalMode = ref<MovementMode>('BASE');
 const selectedMovementToEdit = ref<any | null>(null);
+const isExpenseFormModalOpen = ref(false);
+const selectedExpenseToEdit = ref<any | null>(null);
 const isAuditModalOpen = ref(false);
 
 // Fechas para rango personalizado
@@ -82,6 +85,8 @@ function handleSelectPeriod(p: PeriodFilter) {
     if (customStartDate.value && customEndDate.value) {
       financeStore.setPeriod('custom_range', customStartDate.value, customEndDate.value);
     }
+  } else if (p === 'all') {
+    handleApplyAllHistory();
   } else {
     financeStore.setPeriod(p);
   }
@@ -122,6 +127,20 @@ function openEditMovement(mov: any) {
   isMovementModalOpen.value = true;
 }
 
+function openEditExpense(mov: any) {
+  selectedExpenseToEdit.value = {
+    id: mov.rawId,
+    category: mov.categoryLabel || mov.type || 'OPERATIVO',
+    description: mov.description || mov.concept || '',
+    amount: Math.abs(Number(mov.amount) || 0),
+    expenseDate: mov.date ? String(mov.date).slice(0, 10) : getTodayDateBogota(),
+    paymentMethod: mov.paymentMethod || 'EFECTIVO',
+    notes: mov.notes || '',
+    registeredBy: mov.registeredBy || 'Edier',
+  };
+  isExpenseFormModalOpen.value = true;
+}
+
 function openTransfer() {
   isTransferModalOpen.value = true;
 }
@@ -130,18 +149,31 @@ function openAddExpense() {
   router.push('/finanzas/gastos');
 }
 
-async function confirmDelete(id: number | string, isCash: boolean | undefined) {
-  if (!isCash || typeof id !== 'number') return;
+async function confirmDelete(id: number | string, isCash: boolean | undefined, tabCategory?: string) {
+  if (typeof id !== 'number') return;
   const { confirm } = useConfirm();
-  const ok = await confirm({
-    title: 'Eliminar Movimiento de Caja',
-    message: '¿Deseas eliminar este movimiento de caja? Se recalculará automáticamente el saldo físico y contable.',
-    confirmText: 'Eliminar Movimiento',
-    cancelText: 'Cancelar',
-    variant: 'danger',
-  });
-  if (ok) {
-    financeStore.deleteMovement(id);
+  if (isCash) {
+    const ok = await confirm({
+      title: 'Eliminar Movimiento de Caja',
+      message: '¿Deseas eliminar este movimiento de caja? Se recalculará automáticamente el saldo físico y contable.',
+      confirmText: 'Eliminar Movimiento',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+    });
+    if (ok) {
+      financeStore.deleteMovement(id);
+    }
+  } else if (tabCategory === 'EXPENSES') {
+    const ok = await confirm({
+      title: 'Eliminar Gasto Operativo',
+      message: '¿Deseas eliminar este gasto? Se recalculará automáticamente el balance y los egresos de caja.',
+      confirmText: 'Eliminar Gasto',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+    });
+    if (ok) {
+      financeStore.deleteExpense(id);
+    }
   }
 }
 </script>
@@ -263,6 +295,19 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined) {
         <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
           <button
             type="button"
+            @click="handleSelectPeriod('all')"
+            class="whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all"
+            :class="
+              financeStore.period === 'all'
+                ? 'bg-brand-800 text-white shadow-sm dark:bg-brand-500'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+            "
+          >
+            Histórico Completo
+          </button>
+
+          <button
+            type="button"
             @click="handleSelectPeriod('today')"
             class="whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all"
             :class="
@@ -305,19 +350,19 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined) {
             @click="handleSelectPeriod('custom_range')"
             class="whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all"
             :class="
-              financeStore.period === 'custom_range' || financeStore.period === 'all'
+              financeStore.period === 'custom_range'
                 ? 'bg-brand-800 text-white shadow-sm dark:bg-brand-500'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
             "
           >
-            Histórico / Rango
+            Filtrar por Fechas
           </button>
         </div>
       </div>
 
       <!-- Despliegue de Rango Personalizado (.cash-date-card) -->
       <div
-        v-if="financeStore.period === 'custom_range' || financeStore.period === 'all'"
+        v-if="financeStore.period === 'custom_range'"
         class="border-t border-surface-light-border pt-3 dark:border-surface-dark-border"
       >
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -615,13 +660,24 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined) {
               <Pencil class="h-4 w-4" />
             </button>
 
-            <!-- Botón Eliminar si es movimiento de caja -->
+            <!-- Botón Editar si es gasto operativo -->
             <button
-              v-if="mov.isCashMovement && mov.rawId"
+              v-else-if="!mov.isCashMovement && mov.rawId && mov.tabCategory === 'EXPENSES'"
               type="button"
-              @click="confirmDelete(mov.rawId, mov.isCashMovement)"
+              @click="openEditExpense(mov)"
+              class="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-800 dark:hover:bg-brand-950/40 dark:hover:text-brand-400"
+              title="Editar gasto operativo"
+            >
+              <Pencil class="h-4 w-4" />
+            </button>
+
+            <!-- Botón Eliminar si es movimiento de caja o gasto -->
+            <button
+              v-if="mov.rawId && (mov.isCashMovement || mov.tabCategory === 'EXPENSES')"
+              type="button"
+              @click="confirmDelete(mov.rawId, mov.isCashMovement, mov.tabCategory)"
               class="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-              title="Eliminar movimiento de caja"
+              :title="mov.isCashMovement ? 'Eliminar movimiento de caja' : 'Eliminar gasto operativo'"
             >
               <Trash2 class="h-4 w-4" />
             </button>
@@ -676,6 +732,12 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined) {
       v-model:open="isMovementModalOpen"
       :mode="movementModalMode"
       :movementToEdit="selectedMovementToEdit"
+      @saved="financeStore.fetchFinanceData"
+    />
+
+    <ExpenseFormModal
+      v-model:open="isExpenseFormModalOpen"
+      :expense="selectedExpenseToEdit"
       @saved="financeStore.fetchFinanceData"
     />
 

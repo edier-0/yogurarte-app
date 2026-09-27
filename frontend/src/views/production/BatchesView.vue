@@ -64,6 +64,7 @@ const selectedPackagingIdForSummary = ref<number | null>(null);
 
 onMounted(() => {
   productionStore.fetchBatches(1);
+  productionStore.fetchBatchesMetrics();
   productionStore.fetchPackagings(1);
   productionStore.fetchFlavors();
 });

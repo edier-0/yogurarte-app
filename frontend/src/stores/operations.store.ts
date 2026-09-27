@@ -84,9 +84,23 @@ export interface Order {
 export type OrderFilterChip = 'ALL' | 'ENCARGOS' | 'CON_DEUDA' | 'AL_DIA';
 export type DeliveryFilterChip = 'ALL' | 'PREPARING' | 'IN_ROUTE' | 'DELIVERED';
 
+export interface OrdersMetricsData {
+  totalOrdersCount: number;
+  totalSalesAmount: number;
+  totalPaidAmount: number;
+  totalPendingDebt: number;
+  countEncargos: number;
+  countWithDebt: number;
+  countAlDia: number;
+  countDeliveriesPreparing: number;
+  countDeliveriesInRoute: number;
+  countDeliveriesDelivered: number;
+}
+
 export const useOperationsStore = defineStore('operations', () => {
   // Estado base
   const orders = ref<Order[]>([]);
+  const ordersMetrics = ref<OrdersMetricsData | null>(null);
   const drivers = ref<Driver[]>([]);
   const customers = ref<Customer[]>([]);
   const isLoading = ref<boolean>(false);
@@ -206,50 +220,74 @@ export const useOperationsStore = defineStore('operations', () => {
     return result;
   });
 
-  // Métricas reactivas de Pedidos
-  const totalOrdersCount = computed(() => orders.value.length);
+  // Métricas reactivas de Pedidos (consumen nativamente /api/orders/metrics)
+  const totalOrdersCount = computed(() => {
+    if (ordersMetrics.value && typeof ordersMetrics.value.totalOrdersCount === 'number') {
+      return ordersMetrics.value.totalOrdersCount;
+    }
+    return orders.value.length;
+  });
 
-  const totalPendingDebt = computed(() =>
-    orders.value.reduce((acc, curr) => acc + getPendingBalance(curr), 0)
-  );
+  const totalPendingDebt = computed(() => {
+    if (ordersMetrics.value && typeof ordersMetrics.value.totalPendingDebt === 'number') {
+      return ordersMetrics.value.totalPendingDebt;
+    }
+    return orders.value.reduce((acc, curr) => acc + getPendingBalance(curr), 0);
+  });
 
-  const countWithDebt = computed(
-    () => orders.value.filter((o) => getPendingBalance(o) > 0).length
-  );
+  const countWithDebt = computed(() => {
+    if (ordersMetrics.value && typeof ordersMetrics.value.countWithDebt === 'number') {
+      return ordersMetrics.value.countWithDebt;
+    }
+    return orders.value.filter((o) => getPendingBalance(o) > 0).length;
+  });
 
-  const countAlDia = computed(
-    () => orders.value.filter((o) => getPendingBalance(o) <= 0).length
-  );
+  const countAlDia = computed(() => {
+    if (ordersMetrics.value && typeof ordersMetrics.value.countAlDia === 'number') {
+      return ordersMetrics.value.countAlDia;
+    }
+    return orders.value.filter((o) => getPendingBalance(o) <= 0).length;
+  });
 
-  const countEncargos = computed(
-    () =>
-      orders.value.filter(
-        (o) =>
-          o.deliveryStatus === 'PENDING' ||
-          o.deliveryStatus === 'PREPARING' ||
-          o.deliveryStatus === 'READY_FOR_DISPATCH' ||
-          o.deliveryStatus === 'IN_ROUTE'
-      ).length
-  );
+  const countEncargos = computed(() => {
+    if (ordersMetrics.value && typeof ordersMetrics.value.countEncargos === 'number') {
+      return ordersMetrics.value.countEncargos;
+    }
+    return orders.value.filter(
+      (o) =>
+        o.deliveryStatus === 'PENDING' ||
+        o.deliveryStatus === 'PREPARING' ||
+        o.deliveryStatus === 'READY_FOR_DISPATCH' ||
+        o.deliveryStatus === 'IN_ROUTE'
+    ).length;
+  });
 
   // Métricas de Domicilios de Hoy
-  const countDeliveriesPreparing = computed(
-    () =>
-      orders.value.filter(
-        (o) =>
-          o.deliveryStatus === 'PENDING' ||
-          o.deliveryStatus === 'PREPARING' ||
-          o.deliveryStatus === 'READY_FOR_DISPATCH'
-      ).length
-  );
+  const countDeliveriesPreparing = computed(() => {
+    if (ordersMetrics.value && typeof ordersMetrics.value.countDeliveriesPreparing === 'number') {
+      return ordersMetrics.value.countDeliveriesPreparing;
+    }
+    return orders.value.filter(
+      (o) =>
+        o.deliveryStatus === 'PENDING' ||
+        o.deliveryStatus === 'PREPARING' ||
+        o.deliveryStatus === 'READY_FOR_DISPATCH'
+    ).length;
+  });
 
-  const countDeliveriesInRoute = computed(
-    () => orders.value.filter((o) => o.deliveryStatus === 'IN_ROUTE').length
-  );
+  const countDeliveriesInRoute = computed(() => {
+    if (ordersMetrics.value && typeof ordersMetrics.value.countDeliveriesInRoute === 'number') {
+      return ordersMetrics.value.countDeliveriesInRoute;
+    }
+    return orders.value.filter((o) => o.deliveryStatus === 'IN_ROUTE').length;
+  });
 
-  const countDeliveriesDelivered = computed(
-    () => orders.value.filter((o) => o.deliveryStatus === 'DELIVERED').length
-  );
+  const countDeliveriesDelivered = computed(() => {
+    if (ordersMetrics.value && typeof ordersMetrics.value.countDeliveriesDelivered === 'number') {
+      return ordersMetrics.value.countDeliveriesDelivered;
+    }
+    return orders.value.filter((o) => o.deliveryStatus === 'DELIVERED').length;
+  });
 
   // ==========================================
   // PAGINACIÓN REACTIVA (ESTRICTA A 9 REGISTROS)
@@ -328,10 +366,24 @@ export const useOperationsStore = defineStore('operations', () => {
       } else {
         orders.value = [];
       }
+
+      // Cargar métricas agregadas nativas de base de datos
+      fetchOrdersMetrics(params);
     } catch (err: any) {
       error.value = err?.message || 'Error al cargar pedidos';
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  async function fetchOrdersMetrics(params?: Record<string, any>) {
+    try {
+      const data = await http.get<OrdersMetricsData>('/orders/metrics', { params });
+      if (data) {
+        ordersMetrics.value = data;
+      }
+    } catch (err) {
+      console.error('Error al cargar métricas de pedidos:', err);
     }
   }
 
@@ -367,6 +419,7 @@ export const useOperationsStore = defineStore('operations', () => {
     toast.success('¡Pedido Registrado!', {
       description: `Pedido ${newOrder.orderCode || ''} creado exitosamente.`,
     });
+    fetchOrdersMetrics();
     return newOrder;
   }
 
@@ -379,6 +432,7 @@ export const useOperationsStore = defineStore('operations', () => {
     toast.success('Pedido Actualizado', {
       description: `Los datos del pedido fueron guardados.`,
     });
+    fetchOrdersMetrics();
     return updated;
   }
 
@@ -389,6 +443,7 @@ export const useOperationsStore = defineStore('operations', () => {
       toast.success('Pedido Eliminado', {
         description: res?.message || 'El pedido ha sido eliminado del sistema y se liberaron sus botellas.',
       });
+      fetchOrdersMetrics();
       return true;
     } catch (err: any) {
       toast.error('Error al Eliminar Pedido', {
@@ -416,6 +471,7 @@ export const useOperationsStore = defineStore('operations', () => {
     toast.success('Estado Actualizado', {
       description: `Nuevo estado de entrega: ${payload.deliveryStatus}`,
     });
+    fetchOrdersMetrics();
     return updated;
   }
 
@@ -436,6 +492,7 @@ export const useOperationsStore = defineStore('operations', () => {
     toast.success('Abono Registrado', {
       description: `Se registró el pago de $${payload.amount.toLocaleString('es-CO')}.`,
     });
+    fetchOrdersMetrics();
     return updatedOrder;
   }
 
@@ -563,6 +620,8 @@ export const useOperationsStore = defineStore('operations', () => {
     goToDeliveriesPage,
     // Acciones
     fetchOrders,
+    fetchOrdersMetrics,
+    ordersMetrics,
     fetchDrivers,
     fetchCustomers,
     createOrder,

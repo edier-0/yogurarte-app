@@ -1,6 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import * as batchesService from './batches.service.js';
 
+export const getBatchesMetrics = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const metrics = await batchesService.getBatchesMetrics(req.query as any);
+    res.json(metrics);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getBatches = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const batches = await batchesService.getBatches(req.query as any);

@@ -355,7 +355,7 @@ export const updateExpense = async (id: number, data: UpdateExpenseInput) => {
     throw new NotFoundError('Gasto no encontrado');
   }
 
-  const { category, description, amount, expenseDate, paymentMethod, supplier, notes, registeredBy } = data;
+  const { category, description, amount, expenseDate, date, paymentMethod, supplier, notes, registeredBy } = data as any;
 
   let parsedAmount = existing.amount;
   if (amount !== undefined) {
@@ -365,7 +365,8 @@ export const updateExpense = async (id: number, data: UpdateExpenseInput) => {
     }
   }
 
-  const parsedExpenseDate = expenseDate ? parseColombiaDate(expenseDate) : existing.expenseDate;
+  const rawDate = date || expenseDate;
+  const parsedExpenseDate = rawDate ? parseColombiaDate(rawDate) : existing.expenseDate;
 
   return prisma.expense.update({
     where: { id },

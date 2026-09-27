@@ -281,6 +281,7 @@ async function handleSubmit() {
                 <option value="EFECTIVO">Efectivo Caja Menor</option>
                 <option value="NEQUI">Nequi</option>
                 <option value="BANCOLOMBIA">Bancolombia</option>
+                <option value="DAVIPLATA">DaviPlata</option>
                 <option value="TRANSFERENCIA">Transferencia Bancaria</option>
                 <option value="NEQUI_BANCOLOMBIA">Nequi o Bancolombia</option>
               </select>

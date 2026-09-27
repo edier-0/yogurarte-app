@@ -220,6 +220,12 @@ export const deletePackagingQuerySchema = z.object({
   force: z.coerce.boolean().optional(),
 });
 
+export const batchesMetricsQuerySchema = z.object({
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  status: z.string().optional(),
+});
+
 export type ExtraItemInput = z.infer<typeof extraItemSchema>;
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;
 export type UpdateBatchInput = z.infer<typeof updateBatchSchema>;
@@ -239,3 +245,4 @@ export type PatchBatchVolumeInput = z.infer<typeof patchBatchVolumeSchema>;
 export type PackagingsQueryInput = z.infer<typeof packagingsQuerySchema>;
 export type PackagingDischargeInput = z.infer<typeof packagingDischargeSchema>;
 export type DeletePackagingQueryInput = z.infer<typeof deletePackagingQuerySchema>;
+export type BatchesMetricsQueryInput = z.infer<typeof batchesMetricsQuerySchema>;

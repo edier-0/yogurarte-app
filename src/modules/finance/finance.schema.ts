@@ -74,6 +74,7 @@ export const updateExpenseSchema = z.object({
   description: z.string().min(1, 'La descripción del gasto es obligatoria').optional(),
   amount: z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
   expenseDate: z.string().optional(),
+  date: z.string().optional(),
   paymentMethod: z.string().optional(),
   supplier: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),

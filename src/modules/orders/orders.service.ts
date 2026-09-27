@@ -16,12 +16,146 @@ import {
   AddOrderPaymentInput,
   AssignDriverInput,
   CreateOrderInput,
+  OrdersMetricsQueryInput,
   OrdersQueryInput,
   UpdateDeliveryStatusInput,
   UpdateOrderInput,
   UpdateOrderPaymentInput,
 } from './orders.schema.js';
 import { syncBatchStatusBidirectional } from '../batches/batches.service.js';
+
+/**
+ * Obtener métricas y KPIs globales consolidados de pedidos, cartera y domicilios
+ * Ejecuta agregaciones nativas de base de datos (_sum, _count)
+ */
+export const getOrdersMetrics = async (query: OrdersMetricsQueryInput = {}) => {
+  const { startDate, endDate, date, month } = query;
+  const conditions: any[] = [];
+
+  if (date && typeof date === 'string') {
+    const cleanDate = date.split('T')[0];
+    const dayStart = getColombiaStartOfDay(cleanDate);
+    const dayEnd = getColombiaEndOfDay(cleanDate);
+    const dayRange = { gte: dayStart, lte: dayEnd };
+    conditions.push({
+      OR: [
+        { deliveryDate: dayRange },
+        {
+          AND: [
+            { deliveryDate: null },
+            { orderDate: dayRange },
+          ],
+        },
+      ],
+    });
+  } else if (month && typeof month === 'string') {
+    const [year, m] = month.split('-').map(Number);
+    if (year && m) {
+      const startOfMonth = getColombiaStartOfDay(`${year}-${String(m).padStart(2, '0')}-01`);
+      const lastDay = new Date(Date.UTC(year, m, 0)).getUTCDate();
+      const endOfMonth = getColombiaEndOfDay(`${year}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+      conditions.push({
+        OR: [
+          { orderDate: { gte: startOfMonth, lte: endOfMonth } },
+          { deliveryDate: { gte: startOfMonth, lte: endOfMonth } },
+        ],
+      });
+    }
+  } else if (startDate || endDate) {
+    const dateRange: any = {};
+    if (startDate) {
+      dateRange.gte = getColombiaStartOfDay(String(startDate).split('T')[0]);
+    }
+    if (endDate) {
+      dateRange.lte = getColombiaEndOfDay(String(endDate).split('T')[0]);
+    }
+    conditions.push({
+      OR: [
+        { orderDate: dateRange },
+        { deliveryDate: dateRange },
+      ],
+    });
+  }
+
+  const baseWhere = conditions.length > 0 ? { AND: conditions } : {};
+
+  // Agregaciones nativas sobre la base de datos completa
+  const [
+    generalAgg,
+    activeEncargosCount,
+    withDebtCount,
+    alDiaCount,
+    preparingCount,
+    inRouteCount,
+    deliveredCount,
+  ] = await Promise.all([
+    prisma.order.aggregate({
+      where: baseWhere,
+      _sum: {
+        totalAmount: true,
+        paidAmount: true,
+        pendingAmount: true,
+        deliveryFee: true,
+        discount: true,
+      },
+      _count: true,
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        deliveryStatus: { in: ['PENDING', 'PREPARING', 'READY_FOR_DISPATCH', 'IN_ROUTE'] },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        pendingAmount: { gt: 0 },
+        deliveryStatus: { not: 'CANCELLED' },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        OR: [
+          { pendingAmount: { lte: 0 } },
+          { paymentStatus: 'PAID' },
+        ],
+        deliveryStatus: { not: 'CANCELLED' },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        deliveryStatus: { in: ['PENDING', 'PREPARING', 'READY_FOR_DISPATCH'] },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        deliveryStatus: 'IN_ROUTE',
+      },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        deliveryStatus: 'DELIVERED',
+      },
+    }),
+  ]);
+
+  return {
+    totalOrdersCount: generalAgg._count || 0,
+    totalSalesAmount: generalAgg._sum.totalAmount || 0,
+    totalPaidAmount: generalAgg._sum.paidAmount || 0,
+    totalPendingDebt: generalAgg._sum.pendingAmount || 0,
+    countEncargos: activeEncargosCount,
+    countWithDebt: withDebtCount,
+    countAlDia: alDiaCount,
+    countDeliveriesPreparing: preparingCount,
+    countDeliveriesInRoute: inRouteCount,
+    countDeliveriesDelivered: deliveredCount,
+  };
+};
 
 /**
  * Obtener listado de pedidos con filtros avanzados, búsqueda y ordenamiento jerárquico

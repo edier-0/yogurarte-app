@@ -65,6 +65,7 @@ const handleDeleteOrder = async (order: Order) => {
 };
 
 onMounted(() => {
+  store.fetchOrdersMetrics();
   if (store.orders.length === 0) {
     store.fetchOrders();
   }

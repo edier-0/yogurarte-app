@@ -31,7 +31,7 @@ import { formatStockQuantity } from '@/utils/formatters';
 const router = useRouter();
 
 type PeriodOption = 'today' | 'this_week' | 'this_month' | 'all';
-const selectedPeriod = ref<PeriodOption>('today');
+const selectedPeriod = ref<PeriodOption>('all');
 const isLoading = ref<boolean>(false);
 
 // Modales de acciones rápidas

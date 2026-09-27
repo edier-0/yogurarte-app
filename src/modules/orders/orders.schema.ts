@@ -118,6 +118,13 @@ export const ordersQuerySchema = z.object({
   paginate: z.enum(['true', 'false']).optional(),
 });
 
+export const ordersMetricsQuerySchema = z.object({
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  date: z.string().optional(),
+  month: z.string().optional(),
+});
+
 export type OrderItemInput = z.infer<typeof orderItemSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type UpdateOrderInput = z.infer<typeof updateOrderSchema>;
@@ -126,3 +133,4 @@ export type UpdateDeliveryStatusInput = z.infer<typeof updateDeliveryStatusSchem
 export type AddOrderPaymentInput = z.infer<typeof addOrderPaymentSchema>;
 export type UpdateOrderPaymentInput = z.infer<typeof updateOrderPaymentSchema>;
 export type OrdersQueryInput = z.infer<typeof ordersQuerySchema>;
+export type OrdersMetricsQueryInput = z.infer<typeof ordersMetricsQuerySchema>;

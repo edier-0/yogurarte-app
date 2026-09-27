@@ -130,4 +130,44 @@ describe('Cash Movements Management & Pagination', () => {
     });
     expect(dbCheck).toBeNull();
   });
+
+  it('PUT /api/cash/movements/:id debe permitir actualizar medio de pago a DAVIPLATA', async () => {
+    const idToEdit = createdIds[0];
+    const resUpdate = await request(app)
+      .put(`/api/cash/movements/${idToEdit}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        paymentMethod: 'DAVIPLATA',
+        notes: 'Actualizado a canal DaviPlata',
+      });
+
+    expect(resUpdate.status).toBe(200);
+    expect(resUpdate.body.paymentMethod).toBe('DAVIPLATA');
+  });
+
+  it('GET /api/batches/metrics debe responder con métricas agregadas nativas globales', async () => {
+    const res = await request(app)
+      .get('/api/batches/metrics')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('fermentingLiters');
+    expect(res.body).toHaveProperty('finishedYogurtLiters');
+    expect(res.body).toHaveProperty('averageYield');
+    expect(res.body).toHaveProperty('totalBatchesCount');
+  });
+
+  it('GET /api/orders/metrics debe responder con métricas agregadas nativas globales', async () => {
+    const res = await request(app)
+      .get('/api/orders/metrics')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('totalOrdersCount');
+    expect(res.body).toHaveProperty('totalSalesAmount');
+    expect(res.body).toHaveProperty('totalPendingDebt');
+    expect(res.body).toHaveProperty('countEncargos');
+    expect(res.body).toHaveProperty('countWithDebt');
+    expect(res.body).toHaveProperty('countAlDia');
+  });
 });

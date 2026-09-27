@@ -34,6 +34,7 @@ const isDeliveryModalOpen = ref(false);
 const orderForDelivery = ref<Order | null>(null);
 
 onMounted(() => {
+  store.fetchOrdersMetrics();
   if (store.orders.length === 0) {
     store.fetchOrders();
   }

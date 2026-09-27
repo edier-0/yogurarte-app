@@ -1,11 +1,17 @@
 import prisma from '../../prisma.js';
-import { getColombiaDateStr, parseColombiaDate } from '../../utils/date.utils.js';
+import {
+  getColombiaDateStr,
+  parseColombiaDate,
+  getColombiaStartOfDay,
+  getColombiaEndOfDay,
+} from '../../utils/date.utils.js';
 import {
   BadRequestError,
   NotFoundError,
 } from '../../shared/errors/appError.js';
 import {
   BatchesQueryInput,
+  BatchesMetricsQueryInput,
   BatchPackagingInput,
   CreateBatchDischargeInput,
   CreateBatchInput,
@@ -92,6 +98,84 @@ export const syncBatchStatusBidirectional = async (tx: any, batchId: number) => 
   }
 
   return { batchId, remaining, status: newStatus };
+};
+
+/**
+ * Obtener métricas y KPIs globales consolidados de producción (Lotes, fermentación, disponibles, rendimiento)
+ * Ejecuta agregaciones nativas de base de datos (_sum, _count, _avg)
+ */
+export const getBatchesMetrics = async (query: BatchesMetricsQueryInput = {}) => {
+  const { startDate, endDate, status } = query;
+  const whereClause: any = { isActive: true };
+
+  if (startDate || endDate) {
+    whereClause.preparationDate = {};
+    if (startDate) whereClause.preparationDate.gte = getColombiaStartOfDay(String(startDate).split('T')[0]);
+    if (endDate) whereClause.preparationDate.lte = getColombiaEndOfDay(String(endDate).split('T')[0]);
+  }
+
+  if (status && status !== 'ALL') {
+    if (status === 'DISPONIBLE' || status === 'COMPLETADO') {
+      whereClause.status = { in: ['DISPONIBLE', 'COMPLETADO'] };
+    } else if (status === 'ACTIVE') {
+      whereClause.status = { in: ['DISPONIBLE', 'COMPLETADO', 'EN_FERMENTACION'] };
+    } else {
+      whereClause.status = status;
+    }
+  }
+
+  // Agregaciones nativas sobre la base de datos completa
+  const [fermentingAgg, producedAgg, activeFinishedBatches] = await Promise.all([
+    prisma.productionBatch.aggregate({
+      where: { ...whereClause, status: 'EN_FERMENTACION' },
+      _sum: { milkUsedLiters: true },
+      _count: true,
+    }),
+    prisma.productionBatch.aggregate({
+      where: { ...whereClause, status: { not: 'EN_FERMENTACION' } },
+      _sum: { totalLitersProduced: true, milkUsedLiters: true },
+      _avg: { yieldPercentage: true },
+      _count: true,
+    }),
+    prisma.productionBatch.findMany({
+      where: { ...whereClause, status: { notIn: ['EN_FERMENTACION', 'ARCHIVADO'] } },
+      select: {
+        id: true,
+        totalLitersProduced: true,
+        orderItems: { select: { totalLiters: true } },
+        orders: { select: { id: true, totalLiters: true } },
+        discharges: { select: { totalLiters: true } },
+      },
+    }),
+  ]);
+
+  let finishedYogurtLiters = 0;
+  for (const b of activeFinishedBatches) {
+    const soldFromItems = b.orderItems.reduce((sum: number, it: any) => sum + (Number(it.totalLiters) || 0), 0);
+    const legacySold = b.orders
+      .filter((o: any) => !b.orderItems.some((it: any) => it.orderId === o.id))
+      .reduce((sum: number, o: any) => sum + (Number(o.totalLiters) || 0), 0);
+    const discharged = b.discharges.reduce((sum: number, d: any) => sum + (Number(d.totalLiters) || 0), 0);
+    finishedYogurtLiters += Math.max(0, (Number(b.totalLitersProduced) || 0) - (soldFromItems + legacySold) - discharged);
+  }
+
+  const fermentingLiters = fermentingAgg._sum.milkUsedLiters || 0;
+  const totalProducedLiters = producedAgg._sum.totalLitersProduced || 0;
+  let averageYield = producedAgg._avg.yieldPercentage ? Math.round(producedAgg._avg.yieldPercentage * 10) / 10 : 0;
+  if (!averageYield && producedAgg._sum.milkUsedLiters && producedAgg._sum.totalLitersProduced) {
+    averageYield = Math.round(((producedAgg._sum.totalLitersProduced / producedAgg._sum.milkUsedLiters) * 100) * 10) / 10;
+  }
+  if (!averageYield) averageYield = 96.5;
+
+  const totalBatchesCount = (fermentingAgg._count || 0) + (producedAgg._count || 0);
+
+  return {
+    fermentingLiters,
+    finishedYogurtLiters: Math.round(finishedYogurtLiters * 10) / 10,
+    averageYield,
+    totalBatchesCount,
+    totalProducedLiters,
+  };
 };
 
 /**

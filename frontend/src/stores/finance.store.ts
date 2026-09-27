@@ -121,7 +121,7 @@ export const useFinanceStore = defineStore('finance', () => {
   const error = ref<string | null>(null);
 
   // Filtros de navegación
-  const period = ref<PeriodFilter>('today');
+  const period = ref<PeriodFilter>('all');
   const startDate = ref<string>('');
   const endDate = ref<string>('');
   const activeTab = ref<MovementTab>('ALL');
@@ -217,6 +217,8 @@ export const useFinanceStore = defineStore('finance', () => {
         params.period = 'week';
       } else if (period.value === 'this_month') {
         params.period = 'month';
+      } else if (period.value === 'all') {
+        params.period = 'all';
       } else if (period.value === 'custom_range') {
         if (startDate.value) params.startDate = startDate.value;
         if (endDate.value) params.endDate = endDate.value;
@@ -456,6 +458,19 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  // Eliminar un gasto operativo
+  async function deleteExpense(id: number) {
+    try {
+      await http.delete(`/expenses/${id}`);
+      toast.success('Gasto Eliminado', {
+        description: 'El gasto fue removido satisfactoriamente.',
+      });
+      await fetchFinanceData();
+    } catch {
+      // Manejado por interceptor
+    }
+  }
+
   return {
     kpis,
     movements,
@@ -483,5 +498,6 @@ export const useFinanceStore = defineStore('finance', () => {
     createCashMovement,
     updateCashMovement,
     deleteMovement,
+    deleteExpense,
   };
 });
