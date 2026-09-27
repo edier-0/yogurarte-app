@@ -165,8 +165,12 @@ app.use('/api/crm', requireAuth, crmRoutes);
 
 // 10. Fallback para SPA en Express: soporte para Vue Router en modo history
 app.get('*', (req: Request, res: Response, next: NextFunction) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+  if (req.path.startsWith('/api') || req.path.startsWith('/socket.io') || req.path.startsWith('/uploads')) {
     return next();
+  }
+  // Si la petición tiene extensión de archivo estático y no fue capturada por express.static, responder 404 real
+  if (path.extname(req.path)) {
+    return res.status(404).json({ error: 'Recurso estático no encontrado', code: 'ASSET_NOT_FOUND', path: req.path });
   }
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.resolve(__dirname, '../public/index.html'));

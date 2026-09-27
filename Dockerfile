@@ -12,15 +12,23 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
 COPY prisma ./prisma/
+COPY frontend/package*.json ./frontend/
 
 # Instalar dependencias completas de manera reproducible
 RUN npm ci
+RUN npm --prefix frontend ci
 
 # Generar cliente de Prisma
 RUN npx prisma generate
 
-# Copiar código fuente y compilar TypeScript a JavaScript limpio (dist/)
+# Copiar código fuente backend y frontend
 COPY src ./src/
+COPY frontend ./frontend/
+
+# Compilar frontend (genera public/index.html y public/assets/)
+RUN npm --prefix frontend run build
+
+# Compilar TypeScript a JavaScript limpio (dist/)
 RUN npx tsc
 
 # ==============================================================================
@@ -43,9 +51,9 @@ COPY prisma ./prisma/
 RUN npm ci --omit=dev
 RUN npx prisma generate
 
-# Copiar artefactos compilados desde el builder y assets estáticos del frontend
+# Copiar artefactos compilados desde el builder (tanto dist como public completo con assets)
 COPY --from=builder /app/dist ./dist
-COPY public ./public
+COPY --from=builder /app/public ./public
 COPY docker-entrypoint.sh ./
 
 # Crear carpetas de runtime y configurar permisos seguros para usuario no root

@@ -59,14 +59,19 @@ jobs:
       - name: 📦 Install Dependencies (npm ci)
         run: npm ci
 
-      - name: 🛡️ Audit Dependencies Security
-        run: npm audit --audit-level=high
+      - name: 🛡️ Audit Dependencies Security (Production)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: 🍶 Generate Prisma Client
+        run: npx prisma generate
 
       - name: 🔍 TypeScript Compile Check (npx tsc --noEmit)
         run: npx tsc --noEmit
 
-      - name: 🍶 Generate Prisma Client
-        run: npx prisma generate
+      - name: 🎨 Install & Build Frontend
+        run: |
+          npm --prefix frontend ci
+          npm --prefix frontend run build
 
       - name: 🗄️ Push Schema to Test Database
         run: npx prisma db push --skip-generate
