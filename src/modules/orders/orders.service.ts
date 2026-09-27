@@ -1426,24 +1426,40 @@ export const updateOrderPayment = async (orderId: number, paymentId: number, dat
     });
     if (!order) throw new NotFoundError('Pedido no encontrado');
 
-    const existingPayment = await tx.orderPayment.findUnique({ where: { id: paymentId } });
-    if (!existingPayment) throw new NotFoundError('Abono no encontrado');
+    let existingPayment = paymentId && paymentId > 0
+      ? await tx.orderPayment.findUnique({ where: { id: paymentId } })
+      : null;
 
-    const updateData: any = {};
-    if (amount !== undefined) {
-      const payAmount = Number(amount);
+    if (!existingPayment) {
+      const payAmount = amount !== undefined ? Number(amount) : order.paidAmount;
       if (payAmount <= 0) throw new BadRequestError('El monto debe ser mayor a 0');
-      updateData.amount = payAmount;
-    }
-    if (paymentMethod) updateData.paymentMethod = String(paymentMethod).trim();
-    if (paymentDate) updateData.paymentDate = parseColombiaDate(paymentDate);
-    if (notes !== undefined) updateData.notes = notes ? String(notes).trim() : null;
-    if (registeredBy) updateData.registeredBy = String(registeredBy).trim();
+      existingPayment = await tx.orderPayment.create({
+        data: {
+          orderId,
+          amount: payAmount,
+          paymentMethod: paymentMethod ? String(paymentMethod).trim() : (order.paymentMethod || 'EFECTIVO'),
+          paymentDate: paymentDate ? parseColombiaDate(paymentDate) : (order.deliveryDate || order.orderDate),
+          notes: notes !== undefined ? (notes ? String(notes).trim() : null) : (order.notes || 'Abono regularizado'),
+          registeredBy: registeredBy ? String(registeredBy).trim() : (order.registeredBy || 'Edier'),
+        },
+      });
+    } else {
+      const updateData: any = {};
+      if (amount !== undefined) {
+        const payAmount = Number(amount);
+        if (payAmount <= 0) throw new BadRequestError('El monto debe ser mayor a 0');
+        updateData.amount = payAmount;
+      }
+      if (paymentMethod) updateData.paymentMethod = String(paymentMethod).trim();
+      if (paymentDate) updateData.paymentDate = parseColombiaDate(paymentDate);
+      if (notes !== undefined) updateData.notes = notes ? String(notes).trim() : null;
+      if (registeredBy) updateData.registeredBy = String(registeredBy).trim();
 
-    await tx.orderPayment.update({
-      where: { id: paymentId },
-      data: updateData,
-    });
+      await tx.orderPayment.update({
+        where: { id: existingPayment.id },
+        data: updateData,
+      });
+    }
 
     const allPayments = await tx.orderPayment.findMany({
       where: { orderId },
@@ -1466,6 +1482,7 @@ export const updateOrderPayment = async (orderId: number, paymentId: number, dat
         paidAmount: totalPaid,
         pendingAmount,
         paymentStatus,
+        paymentMethod: paymentMethod ? String(paymentMethod).trim() : order.paymentMethod,
       },
       include: {
         customer: true,
@@ -1484,28 +1501,34 @@ export const updateOrderPayment = async (orderId: number, paymentId: number, dat
  */
 export const deleteOrderPayment = async (orderId: number, paymentId: number) => {
   return await prisma.$transaction(async (tx) => {
-    const payment = await tx.orderPayment.findUnique({
-      where: { id: paymentId },
-    });
-
-    if (!payment || payment.orderId !== orderId) {
-      throw new NotFoundError('Abono no encontrado en este pedido');
+    const order = await tx.order.findUnique({ where: { id: orderId } });
+    if (!order) {
+      throw new NotFoundError('Pedido no encontrado');
     }
 
-    await tx.orderPayment.delete({
-      where: { id: paymentId },
-    });
+    if (paymentId && paymentId > 0) {
+      const payment = await tx.orderPayment.findUnique({
+        where: { id: paymentId },
+      });
+
+      if (!payment || payment.orderId !== orderId) {
+        throw new NotFoundError('Abono no encontrado en este pedido');
+      }
+
+      await tx.orderPayment.delete({
+        where: { id: paymentId },
+      });
+    } else {
+      await tx.orderPayment.deleteMany({
+        where: { orderId },
+      });
+    }
 
     const remainingPayments = await tx.orderPayment.findMany({
       where: { orderId },
     });
 
     const totalPaid = remainingPayments.reduce((sum, p) => sum + p.amount, 0);
-    const order = await tx.order.findUnique({ where: { id: orderId } });
-    if (!order) {
-      throw new NotFoundError('Pedido no encontrado');
-    }
-
     const newPending = Math.max(0, order.totalAmount - totalPaid);
     let newStatus = 'PENDING';
     if (totalPaid >= order.totalAmount) {

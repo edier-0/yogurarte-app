@@ -44,6 +44,17 @@ export interface FinanceKpis {
 export interface UnifiedMovement {
   id: string | number;
   rawId?: number;
+  orderId?: number;
+  paymentId?: number | null;
+  orderNumber?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  itemsSummary?: string;
+  totalAmount?: number;
+  pendingAmount?: number;
+  deliveryStatus?: string;
+  flavor?: string;
   date: string;
   createdAt?: string;
   flowType: 'INFLOW' | 'OUTFLOW' | 'TRANSFER';
@@ -57,6 +68,7 @@ export interface UnifiedMovement {
   notes?: string | null;
   registeredBy?: string;
   isCashMovement?: boolean;
+  isOrderPayment?: boolean;
   type?: string;
   movementType?: string;
 }
@@ -161,6 +173,8 @@ export const useFinanceStore = defineStore('finance', () => {
       result = result.filter((m) => {
         const concept = (m.concept || '').toLowerCase();
         const desc = (m.description || '').toLowerCase();
+        const orderNum = (m.orderNumber || '').toLowerCase();
+        const cust = (m.customerName || '').toLowerCase();
         const notes = (m.notes || '').toLowerCase();
         const method = (m.paymentMethod || '').toLowerCase();
         const cat = (m.categoryLabel || '').toLowerCase();
@@ -168,6 +182,8 @@ export const useFinanceStore = defineStore('finance', () => {
         return (
           concept.includes(q) ||
           desc.includes(q) ||
+          orderNum.includes(q) ||
+          cust.includes(q) ||
           notes.includes(q) ||
           method.includes(q) ||
           cat.includes(q) ||
@@ -266,22 +282,45 @@ export const useFinanceStore = defineStore('finance', () => {
           i.category === 'AJUSTE_CAJA' ||
           (i.categoryLabel && i.categoryLabel.includes('Ajuste'));
 
+        const isOrderPay = !i.isCashMovement && (i.isOrderPayment || i.movementType === 'VENTA' || !!i.orderNumber);
+
+        let concept = i.concept || i.description;
+        if (!concept || concept === 'Cobro de Venta' || concept === 'Cobro de venta') {
+          if (isOrderPay && i.orderNumber) {
+            concept = `Pedido ${i.orderNumber} - ${i.customerName || 'Cliente'}`;
+          } else {
+            concept = i.isCashMovement ? 'Aporte o Base' : 'Cobro de Venta';
+          }
+        }
+
         unified.push({
           id: i.id || `inflow_${Math.random()}`,
           rawId: i.rawId || i.id,
+          orderId: i.orderId || (isOrderPay ? (i.rawId || i.id) : undefined),
+          paymentId: i.paymentId !== undefined ? i.paymentId : null,
+          orderNumber: i.orderNumber || undefined,
+          customerName: i.customerName || undefined,
+          customerPhone: i.customerPhone || undefined,
+          customerAddress: i.customerAddress || undefined,
+          itemsSummary: i.itemsSummary || undefined,
+          totalAmount: i.totalAmount !== undefined ? Number(i.totalAmount) : undefined,
+          pendingAmount: i.pendingAmount !== undefined ? Number(i.pendingAmount) : undefined,
+          deliveryStatus: i.deliveryStatus || undefined,
+          flavor: i.flavor || undefined,
           date: i.date || i.movementDate || i.paymentDate || new Date().toISOString(),
           createdAt: i.createdAt,
           flowType: 'INFLOW',
           tabCategory: isAdj ? 'BASE' : i.isCashMovement ? 'BASE' : 'SALES',
-          concept: i.concept || i.description || (i.isCashMovement ? 'Aporte o Base' : 'Cobro de Venta'),
-          description: i.description || i.concept || '',
+          concept,
+          description: i.description || concept || '',
           amount: Number(i.amount) || 0,
           displayAmount: Number(i.amount) || 0,
           paymentMethod: i.paymentMethod || 'EFECTIVO',
-          categoryLabel: i.categoryLabel || (isAdj ? 'Ajuste Caja' : i.isCashMovement ? 'Base / Aporte' : 'Venta'),
+          categoryLabel: i.categoryLabel || (isAdj ? 'Ajuste Caja' : i.isCashMovement ? 'Base / Aporte' : '🛒 Venta Pedido'),
           notes: i.notes || null,
           registeredBy: i.registeredBy || 'Edier',
           isCashMovement: !!i.isCashMovement,
+          isOrderPayment: isOrderPay,
           type: i.type || i.movementType || i.rawMovement?.type,
           movementType: i.movementType || i.type,
         });
@@ -471,6 +510,46 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  // Actualizar monto o método de pago de un cobro/abono de pedido
+  async function updateOrderPayment(
+    orderId: number,
+    paymentId: number,
+    payload: {
+      amount?: number;
+      paymentMethod?: string;
+      paymentDate?: string;
+      notes?: string | null;
+      registeredBy?: string;
+    }
+  ) {
+    isLoading.value = true;
+    try {
+      const res = await http.put(`/orders/${orderId}/payments/${paymentId || 0}`, payload);
+      toast.success('¡Cobro de Pedido Actualizado!', {
+        description: 'Se modificó el monto y/o medio de pago del pedido en caja exitosamente.',
+      });
+      await fetchFinanceData();
+      return res;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Eliminar un abono o cobro de pedido
+  async function deleteOrderPayment(orderId: number, paymentId: number) {
+    isLoading.value = true;
+    try {
+      const res = await http.delete(`/orders/${orderId}/payments/${paymentId || 0}`);
+      toast.success('Cobro de Pedido Eliminado', {
+        description: 'El cobro fue retirado de caja y se recalculó la deuda del pedido.',
+      });
+      await fetchFinanceData();
+      return res;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   return {
     kpis,
     movements,
@@ -499,5 +578,7 @@ export const useFinanceStore = defineStore('finance', () => {
     updateCashMovement,
     deleteMovement,
     deleteExpense,
+    updateOrderPayment,
+    deleteOrderPayment,
   };
 });

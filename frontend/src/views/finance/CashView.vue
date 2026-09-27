@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Trash2,
   Pencil,
+  ShoppingBag,
 } from 'lucide-vue-next';
 import {
   useFinanceStore,
@@ -30,6 +31,7 @@ import TransferModal from '@/components/finance/TransferModal.vue';
 import CashMovementModal, { type MovementMode } from '@/components/finance/CashMovementModal.vue';
 import ExpenseFormModal from '@/components/finance/ExpenseFormModal.vue';
 import CashAuditBreakdownModal from '@/components/finance/CashAuditBreakdownModal.vue';
+import EditOrderPaymentModal from '@/components/finance/EditOrderPaymentModal.vue';
 
 const router = useRouter();
 const financeStore = useFinanceStore();
@@ -42,6 +44,8 @@ const selectedMovementToEdit = ref<any | null>(null);
 const isExpenseFormModalOpen = ref(false);
 const selectedExpenseToEdit = ref<any | null>(null);
 const isAuditModalOpen = ref(false);
+const isOrderPaymentModalOpen = ref(false);
+const selectedOrderPaymentToEdit = ref<any | null>(null);
 
 // Fechas para rango personalizado
 const customStartDate = ref(financeStore.startDate || getTodayDateBogota());
@@ -141,6 +145,11 @@ function openEditExpense(mov: any) {
   isExpenseFormModalOpen.value = true;
 }
 
+function openEditOrderPayment(mov: any) {
+  selectedOrderPaymentToEdit.value = mov;
+  isOrderPaymentModalOpen.value = true;
+}
+
 function openTransfer() {
   isTransferModalOpen.value = true;
 }
@@ -149,10 +158,11 @@ function openAddExpense() {
   router.push('/finanzas/gastos');
 }
 
-async function confirmDelete(id: number | string, isCash: boolean | undefined, tabCategory?: string) {
-  if (typeof id !== 'number') return;
+async function confirmDelete(mov: any) {
+  if (!mov) return;
   const { confirm } = useConfirm();
-  if (isCash) {
+
+  if (mov.isCashMovement) {
     const ok = await confirm({
       title: 'Eliminar Movimiento de Caja',
       message: '¿Deseas eliminar este movimiento de caja? Se recalculará automáticamente el saldo físico y contable.',
@@ -161,9 +171,9 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined, t
       variant: 'danger',
     });
     if (ok) {
-      financeStore.deleteMovement(id);
+      financeStore.deleteMovement(mov.rawId || mov.id);
     }
-  } else if (tabCategory === 'EXPENSES') {
+  } else if (mov.tabCategory === 'EXPENSES') {
     const ok = await confirm({
       title: 'Eliminar Gasto Operativo',
       message: '¿Deseas eliminar este gasto? Se recalculará automáticamente el balance y los egresos de caja.',
@@ -172,7 +182,20 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined, t
       variant: 'danger',
     });
     if (ok) {
-      financeStore.deleteExpense(id);
+      financeStore.deleteExpense(mov.rawId || mov.id);
+    }
+  } else if (mov.isOrderPayment || mov.tabCategory === 'SALES') {
+    const orderId = mov.orderId || mov.rawId;
+    const paymentId = mov.paymentId || 0;
+    const ok = await confirm({
+      title: 'Eliminar Cobro de Pedido',
+      message: `¿Deseas eliminar este cobro de ${formatCurrency(mov.amount)} del pedido ${mov.orderNumber || ''}? Se restará del saldo recaudado de caja y aumentará la deuda pendiente del cliente.`,
+      confirmText: 'Eliminar Cobro',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+    });
+    if (ok) {
+      financeStore.deleteOrderPayment(orderId, paymentId);
     }
   }
 }
@@ -619,6 +642,42 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined, t
                 </span>
               </div>
 
+              <!-- Fila Detallada de Información de Pedido -->
+              <div
+                v-if="mov.isOrderPayment || mov.tabCategory === 'SALES'"
+                class="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300"
+              >
+                <!-- Código de Pedido en Badge -->
+                <span
+                  v-if="mov.orderNumber"
+                  class="inline-flex items-center gap-1 rounded-md bg-brand-50 px-1.5 py-0.5 font-bold text-brand-800 dark:bg-brand-950/40 dark:text-brand-darkText"
+                >
+                  <ShoppingBag class="h-3 w-3" />
+                  {{ mov.orderNumber }}
+                </span>
+
+                <!-- Nombre del Cliente -->
+                <span v-if="mov.customerName" class="font-extrabold text-slate-800 dark:text-white">
+                  {{ mov.customerName }}
+                </span>
+
+                <!-- Resumen de Productos / Sabores -->
+                <span v-if="mov.itemsSummary || mov.flavor" class="text-slate-500 dark:text-slate-400">
+                  ({{ mov.itemsSummary || mov.flavor }})
+                </span>
+
+                <!-- Total del Pedido y Saldo Pendiente -->
+                <span v-if="mov.totalAmount !== undefined && mov.totalAmount > 0" class="text-slate-400">
+                  • Total: {{ formatCurrency(mov.totalAmount) }}
+                  <template v-if="mov.pendingAmount && mov.pendingAmount > 0">
+                    <span class="text-amber-600 dark:text-amber-400 font-bold"> (Debe {{ formatCurrency(mov.pendingAmount) }})</span>
+                  </template>
+                  <template v-else-if="mov.pendingAmount === 0">
+                    <span class="text-emerald-600 dark:text-emerald-400 font-bold"> (Al día)</span>
+                  </template>
+                </span>
+              </div>
+
               <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                 <span>{{ formatMovementDate(mov.date) }}</span>
                 <span>•</span>
@@ -649,9 +708,20 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined, t
               </span>
             </div>
 
+            <!-- Botón Editar si es cobro de venta / pedido -->
+            <button
+              v-if="mov.isOrderPayment || mov.tabCategory === 'SALES'"
+              type="button"
+              @click="openEditOrderPayment(mov)"
+              class="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-400"
+              title="Editar monto o método de pago del pedido"
+            >
+              <Pencil class="h-4 w-4" />
+            </button>
+
             <!-- Botón Editar si es movimiento de caja -->
             <button
-              v-if="mov.isCashMovement && mov.rawId"
+              v-else-if="mov.isCashMovement && mov.rawId"
               type="button"
               @click="openEditMovement(mov)"
               class="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-800 dark:hover:bg-brand-950/40 dark:hover:text-brand-400"
@@ -671,13 +741,13 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined, t
               <Pencil class="h-4 w-4" />
             </button>
 
-            <!-- Botón Eliminar si es movimiento de caja o gasto -->
+            <!-- Botón Eliminar si es movimiento de caja, gasto o cobro de venta -->
             <button
-              v-if="mov.rawId && (mov.isCashMovement || mov.tabCategory === 'EXPENSES')"
+              v-if="mov.rawId && (mov.isCashMovement || mov.tabCategory === 'EXPENSES' || mov.isOrderPayment || mov.tabCategory === 'SALES')"
               type="button"
-              @click="confirmDelete(mov.rawId, mov.isCashMovement, mov.tabCategory)"
+              @click="confirmDelete(mov)"
               class="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-              :title="mov.isCashMovement ? 'Eliminar movimiento de caja' : 'Eliminar gasto operativo'"
+              :title="mov.isCashMovement ? 'Eliminar movimiento de caja' : mov.tabCategory === 'EXPENSES' ? 'Eliminar gasto operativo' : 'Eliminar cobro de venta'"
             >
               <Trash2 class="h-4 w-4" />
             </button>
@@ -743,6 +813,12 @@ async function confirmDelete(id: number | string, isCash: boolean | undefined, t
 
     <CashAuditBreakdownModal
       v-model:open="isAuditModalOpen"
+    />
+
+    <EditOrderPaymentModal
+      v-model:open="isOrderPaymentModalOpen"
+      :payment="selectedOrderPaymentToEdit"
+      @saved="financeStore.fetchFinanceData"
     />
   </div>
 </template>

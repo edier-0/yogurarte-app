@@ -170,4 +170,72 @@ describe('Cash Movements Management & Pagination', () => {
     expect(res.body).toHaveProperty('countWithDebt');
     expect(res.body).toHaveProperty('countAlDia');
   });
+
+  it('GET /api/dashboard/summary debe enriquecer cobros de venta con concepto y datos del pedido', async () => {
+    // 1. Crear un pedido con abono para la prueba
+    const orderRes = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerName: 'Cliente Prueba Caja',
+        customerPhone: '3001239999',
+        customerAddress: 'Calle Central #10',
+        bottleSize: '1L',
+        quantityBottles: 2,
+        flavor: 'Mora',
+        totalAmount: 24000,
+        paidAmount: 10000,
+        paymentMethod: 'EFECTIVO',
+        deliveryStatus: 'PENDING',
+      });
+
+    expect(orderRes.status).toBe(201);
+    const orderId = orderRes.body.id;
+    const paymentId = orderRes.body.payments?.[0]?.id || 0;
+
+    try {
+      // 2. Consultar dashboard summary
+      const summaryRes = await request(app)
+        .get('/api/dashboard/summary?period=all')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(summaryRes.status).toBe(200);
+      const inflows = summaryRes.body.detailedBreakdowns?.cashFlow?.inflows || [];
+      const orderInflow = inflows.find((i: any) => i.rawId === orderId || i.orderId === orderId);
+
+      expect(orderInflow).toBeDefined();
+      expect(orderInflow.concept).toContain('Pedido');
+      expect(orderInflow.concept).toContain('Cliente Prueba Caja');
+      expect(orderInflow.customerName).toBe('Cliente Prueba Caja');
+      expect(orderInflow.isOrderPayment).toBe(true);
+
+      // 3. Editar monto y método de pago del abono
+      const updatePaymentRes = await request(app)
+        .put(`/api/orders/${orderId}/payments/${paymentId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          amount: 15000,
+          paymentMethod: 'DAVIPLATA',
+          notes: 'Monto corregido desde caja',
+        });
+
+      expect(updatePaymentRes.status).toBe(200);
+      expect(updatePaymentRes.body.paidAmount).toBe(15000);
+      expect(updatePaymentRes.body.pendingAmount).toBe(9000);
+      expect(updatePaymentRes.body.paymentMethod).toBe('DAVIPLATA');
+
+      // 4. Verificar que se actualizó en el resumen de caja
+      const afterSummary = await request(app)
+        .get('/api/dashboard/summary?period=all')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      const updatedInflows = afterSummary.body.detailedBreakdowns?.cashFlow?.inflows || [];
+      const updatedInflow = updatedInflows.find((i: any) => i.rawId === orderId || i.orderId === orderId);
+      expect(updatedInflow).toBeDefined();
+      expect(updatedInflow.amount).toBe(15000);
+      expect(updatedInflow.paymentMethod).toBe('DAVIPLATA');
+    } finally {
+      await prisma.order.delete({ where: { id: orderId } }).catch(() => {});
+    }
+  });
 });

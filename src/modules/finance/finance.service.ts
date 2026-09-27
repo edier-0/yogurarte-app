@@ -1524,20 +1524,37 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
           ...orders
             .filter((o) => o.paidAmount > 0)
             .flatMap((o) => {
+              const customerName = o.customer?.fullName || 'Cliente';
+              const customerPhone = o.customer?.phone || '';
+              const customerAddress = o.deliveryAddress || o.customer?.address || '';
+              const orderCode = o.orderNumber
+                ? (String(o.orderNumber).startsWith('PED-') ? String(o.orderNumber) : `PED-${o.orderNumber}`)
+                : `PED-#${o.id}`;
+
+              const itemsSummary = o.items && o.items.length > 0
+                ? o.items.map((i: any) => `${i.quantity}x ${i.flavor} (${i.bottleSize})`).join(', ')
+                : `${o.quantityBottles || 1}x ${o.flavor || 'Natural'} (${o.bottleSize || '1L'})`;
+
               if (o.payments && o.payments.length > 0) {
                 return o.payments
                   .filter((p) => p.amount > 0)
                   .map((p) => ({
                     id: `order_pay_${p.id}`,
                     rawId: o.id,
+                    orderId: o.id,
                     paymentId: p.id,
-                    orderNumber: o.orderNumber,
+                    orderNumber: orderCode,
                     date: p.paymentDate || o.deliveryDate || o.orderDate,
                     createdAt: p.createdAt || o.createdAt,
-                    customerName: o.customer?.fullName || 'Cliente',
-                    customerPhone: o.customer?.phone || '',
+                    customerName,
+                    customerPhone,
+                    customerAddress,
+                    itemsSummary,
+                    concept: `Pedido ${orderCode} - ${customerName}`,
+                    description: `Cobro de venta ${orderCode} (${customerName})`,
                     amount: p.amount,
                     totalAmount: o.totalAmount,
+                    paidAmount: o.paidAmount,
                     pendingAmount: o.pendingAmount,
                     flavor: o.flavor,
                     liters: o.totalLiters,
@@ -1548,6 +1565,8 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
                     paymentMethod: p.paymentMethod || 'EFECTIVO',
                     notes: p.notes || o.notes,
                     isCashMovement: false,
+                    isOrderPayment: true,
+                    categoryLabel: '🛒 Venta Pedido',
                     movementType: 'VENTA',
                   }));
               }
@@ -1555,14 +1574,20 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
                 {
                   id: String(o.id),
                   rawId: o.id,
-                  paymentId: null as number | null,
-                  orderNumber: o.orderNumber,
+                  orderId: o.id,
+                  paymentId: 0,
+                  orderNumber: orderCode,
                   date: o.deliveryDate || o.orderDate,
                   createdAt: o.createdAt,
-                  customerName: o.customer?.fullName || 'Cliente',
-                  customerPhone: o.customer?.phone || '',
+                  customerName,
+                  customerPhone,
+                  customerAddress,
+                  itemsSummary,
+                  concept: `Pedido ${orderCode} - ${customerName}`,
+                  description: `Cobro de venta ${orderCode} (${customerName})`,
                   amount: o.paidAmount,
                   totalAmount: o.totalAmount,
+                  paidAmount: o.paidAmount,
                   pendingAmount: o.pendingAmount,
                   flavor: o.flavor,
                   liters: o.totalLiters,
@@ -1573,6 +1598,8 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
                   paymentMethod: o.paymentMethod || 'EFECTIVO',
                   notes: o.notes,
                   isCashMovement: false,
+                  isOrderPayment: true,
+                  categoryLabel: '🛒 Venta Pedido',
                   movementType: 'VENTA',
                 },
               ];
