@@ -41,59 +41,47 @@ async function runBackup() {
   const filename = `backup_cloud_yogurarte_${timestamp}.sql`;
   const filepath = path.join(backupDir, filename);
 
-  const [
-    users,
-    customers,
-    rawMaterials,
-    preparations,
-    prepItems,
-    purchases,
-    adjustments,
-    batches,
-    discharges,
-    batchUsages,
-    orders,
-    orderItems,
-    orderPayments,
-    expenses,
-    staff,
-    staffPayments,
-    cashMovements,
-    creditObligations,
-    creditPayments,
-    settings,
-    conversations,
-    messages,
-    authSessions,
-    recurringSchedules,
-    quickReplies,
-  ] = await Promise.all([
-    prisma.user.findMany(),
-    prisma.customer.findMany(),
-    prisma.rawMaterial.findMany(),
-    prisma.supplyPreparation.findMany(),
-    prisma.supplyPreparationItem.findMany(),
-    prisma.purchase.findMany(),
-    prisma.inventoryAdjustment.findMany(),
-    prisma.productionBatch.findMany(),
-    prisma.batchDischarge.findMany(),
-    prisma.batchItemUsage.findMany(),
-    prisma.order.findMany(),
-    prisma.orderItem.findMany(),
-    prisma.orderPayment.findMany(),
-    prisma.expense.findMany(),
-    prisma.staffMember.findMany(),
-    prisma.staffPayment.findMany(),
-    prisma.cashMovement.findMany(),
-    prisma.creditObligation.findMany(),
-    prisma.creditPayment.findMany(),
-    prisma.systemSetting.findMany(),
-    prisma.chatConversation.findMany(),
-    prisma.chatMessage.findMany(),
-    prisma.whatsAppAuthSession.findMany(),
-    prisma.recurringSchedule.findMany(),
-    prisma.crmQuickReply.findMany(),
-  ]);
+  const tableDefs = [
+    { name: 'User', pk: 'id' },
+    { name: 'Customer', pk: 'id' },
+    { name: 'ProductFlavor', pk: 'id' },
+    { name: 'RawMaterial', pk: 'id' },
+    { name: 'CompoundRecipeItem', pk: 'id' },
+    { name: 'SupplyPreparation', pk: 'id' },
+    { name: 'SupplyPreparationItem', pk: 'id' },
+    { name: 'Purchase', pk: 'id' },
+    { name: 'InventoryAdjustment', pk: 'id' },
+    { name: 'ProductionBatch', pk: 'id' },
+    { name: 'BatchPackaging', pk: 'id' },
+    { name: 'BatchPackagingItem', pk: 'id' },
+    { name: 'StaffMember', pk: 'id' },
+    { name: 'StaffPayment', pk: 'id' },
+    { name: 'BatchDischarge', pk: 'id' },
+    { name: 'BatchItemUsage', pk: 'id' },
+    { name: 'Order', pk: 'id' },
+    { name: 'OrderItem', pk: 'id' },
+    { name: 'OrderPayment', pk: 'id' },
+    { name: 'Expense', pk: 'id' },
+    { name: 'CashMovement', pk: 'id' },
+    { name: 'CreditObligation', pk: 'id' },
+    { name: 'CreditPayment', pk: 'id' },
+    { name: 'SystemSetting', pk: 'key' },
+    { name: 'ChatConversation', pk: 'id' },
+    { name: 'ChatMessage', pk: 'id' },
+    { name: 'WhatsAppAuthSession', pk: 'id' },
+    { name: 'RecurringSchedule', pk: 'id' },
+    { name: 'CrmQuickReply', pk: 'id' },
+  ];
+
+  const tablesData = [];
+  for (const { name, pk } of tableDefs) {
+    try {
+      const rows = await prisma.$queryRawUnsafe(`SELECT * FROM "${name}"`);
+      tablesData.push({ name, rows, pk });
+    } catch (err) {
+      console.warn(`⚠️ Tabla "${name}" omitida o no encontrada: ${err.message}`);
+    }
+  }
 
   const escapeSql = (val) => {
     if (val === null || val === undefined) return 'NULL';
@@ -107,34 +95,6 @@ async function runBackup() {
   sql += `-- COPIA DE SEGURIDAD YOGURARTE (CLOUD NEON.TECH / POSTGRESQL)\n`;
   sql += `-- FECHA: ${new Date().toLocaleString('es-CO')}\n`;
   sql += `-- ========================================================\n\n`;
-
-  const tablesData = [
-    { name: 'User', rows: users, pk: 'id' },
-    { name: 'Customer', rows: customers, pk: 'id' },
-    { name: 'RawMaterial', rows: rawMaterials, pk: 'id' },
-    { name: 'SupplyPreparation', rows: preparations, pk: 'id' },
-    { name: 'SupplyPreparationItem', rows: prepItems, pk: 'id' },
-    { name: 'Purchase', rows: purchases, pk: 'id' },
-    { name: 'InventoryAdjustment', rows: adjustments, pk: 'id' },
-    { name: 'ProductionBatch', rows: batches, pk: 'id' },
-    { name: 'StaffMember', rows: staff, pk: 'id' },
-    { name: 'StaffPayment', rows: staffPayments, pk: 'id' },
-    { name: 'BatchDischarge', rows: discharges, pk: 'id' },
-    { name: 'BatchItemUsage', rows: batchUsages, pk: 'id' },
-    { name: 'Order', rows: orders, pk: 'id' },
-    { name: 'OrderItem', rows: orderItems, pk: 'id' },
-    { name: 'OrderPayment', rows: orderPayments, pk: 'id' },
-    { name: 'Expense', rows: expenses, pk: 'id' },
-    { name: 'CashMovement', rows: cashMovements, pk: 'id' },
-    { name: 'CreditObligation', rows: creditObligations, pk: 'id' },
-    { name: 'CreditPayment', rows: creditPayments, pk: 'id' },
-    { name: 'SystemSetting', rows: settings, pk: 'key' },
-    { name: 'ChatConversation', rows: conversations, pk: 'id' },
-    { name: 'ChatMessage', rows: messages, pk: 'id' },
-    { name: 'WhatsAppAuthSession', rows: authSessions, pk: 'id' },
-    { name: 'RecurringSchedule', rows: recurringSchedules, pk: 'id' },
-    { name: 'CrmQuickReply', rows: quickReplies, pk: 'id' },
-  ];
 
   for (const { name, rows, pk } of tablesData) {
     if (rows.length === 0) continue;
@@ -156,17 +116,9 @@ async function runBackup() {
   console.log(`\n✅ ¡Copia de seguridad guardada exitosamente!`);
   console.log(`📁 Archivo: ${filepath}`);
   console.log(`📊 Resumen respaldado:`);
-  console.log(`   - 👤 Usuarios: ${users.length}`);
-  console.log(`   - 👥 Clientes: ${customers.length}`);
-  console.log(`   - 📋 Pedidos: ${orders.length}`);
-  console.log(`   - 🍶 Lotes: ${batches.length}`);
-  console.log(`   - 🛒 Compras: ${purchases.length}`);
-  console.log(`   - 🏗️ Gastos / Infraestructura: ${expenses.length}`);
-  console.log(`   - 💰 Movimientos de Caja: ${cashMovements.length}`);
-  console.log(`   - 🤝 Pagos de Nómina/Retiros: ${staffPayments.length}`);
-  console.log(`   - 💬 Conversaciones CRM: ${conversations.length}`);
-  console.log(`   - 📨 Mensajes de WhatsApp: ${messages.length}`);
-  console.log(`   - 🔑 Claves de Sesión WhatsApp: ${authSessions.length}`);
+  for (const { name, rows } of tablesData) {
+    console.log(`   - ${name}: ${rows.length} registros`);
+  }
 }
 
 runBackup()
