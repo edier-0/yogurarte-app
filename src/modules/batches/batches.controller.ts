@@ -221,6 +221,18 @@ export const unlinkOrderFromPackaging = async (req: Request, res: Response, next
   }
 };
 
+export const linkOrdersToPackaging = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await batchesService.linkOrdersToPackaging(
+      Number(req.params.packagingId),
+      req.body
+    );
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const deleteBatch = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await batchesService.deleteBatch(Number(req.params.id));

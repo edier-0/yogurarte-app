@@ -1271,6 +1271,55 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
       expect(summaryRes.body.volume.freeLiters).toBe(9);
     });
 
+    it('permite vincular pedidos masivamente a una fracción de Fase B con POST /api/batches/packagings/:id/link-orders', async () => {
+      // 1. Crear un pedido en pre-venta sin lote
+      const unlinkedOrder = await prisma.order.create({
+        data: {
+          orderNumber: `ORD-UNLINKED-${Date.now()}`,
+          customerId: testCustomerId,
+          deliveryStatus: 'PENDING',
+          paymentStatus: 'PENDING',
+          totalAmount: 14000,
+          totalLiters: 1.0,
+          quantityBottles: 2,
+          orderDate: new Date(),
+          items: {
+            create: {
+              flavor: 'Mora Silvestre Flex',
+              bottleSize: '500 ml',
+              quantity: 2,
+              litersPerUnit: 0.5,
+              totalLiters: 1.0,
+              unitPrice: 7000,
+              totalPrice: 14000,
+            },
+          },
+        },
+      });
+
+      // 2. Vincular el pedido a la fracción flexPackagingId
+      const linkRes = await request(app)
+        .post(`/api/batches/packagings/${flexPackagingId}/link-orders`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ orderIds: [unlinkedOrder.id] });
+
+      expect(linkRes.status).toBe(200);
+      expect(linkRes.body.linkedCount).toBe(1);
+
+      // 3. Verificar que el pedido ahora tiene packagingId y batchId
+      const updatedOrder = await prisma.order.findUnique({
+        where: { id: unlinkedOrder.id },
+        include: { items: true },
+      });
+      expect(updatedOrder?.batchId).toBe(flexBatchId);
+      expect(updatedOrder?.items[0].packagingId).toBe(flexPackagingId);
+
+      // 4. Desvincular para dejar la fracción limpia
+      await request(app)
+        .delete(`/api/batches/packagings/${flexPackagingId}/orders/${unlinkedOrder.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+    });
+
     it('impide eliminar fracción si tiene pedidos vinculados y permite forzar con ?force=true', async () => {
       // 1. Crear un pedido con un ítem asignado a esta fracción
       const order = await prisma.order.create({

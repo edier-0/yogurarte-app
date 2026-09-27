@@ -22,6 +22,7 @@ import {
   deleteBatchPackaging,
   recordPackagingDischarge,
   unlinkOrderFromPackaging,
+  linkOrdersToPackaging,
   deleteBatch,
   getBatchesMetrics,
 } from './batches.controller.js';
@@ -57,6 +58,7 @@ router.get('/packagings/:packagingId', getPackagingSummary);
 router.put('/packagings/:packagingId', validateBody(updateBatchPackagingSchema), updateBatchPackaging);
 router.delete('/packagings/:packagingId', deleteBatchPackaging);
 router.post('/packagings/:packagingId/discharges', validateBody(packagingDischargeSchema), recordPackagingDischarge);
+router.post('/packagings/:packagingId/link-orders', validateBody(linkOrdersToBatchSchema), linkOrdersToPackaging);
 router.delete('/packagings/:packagingId/orders/:orderId', unlinkOrderFromPackaging);
 
 // ==========================================

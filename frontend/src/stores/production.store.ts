@@ -975,6 +975,25 @@ export const useProductionStore = defineStore('production', () => {
     }
   }
 
+  async function linkOrdersToPackaging(packagingId: number, orderIds: number[]) {
+    try {
+      const res = await http.post<{ message: string; linkedCount: number; linkedLiters: number }>(
+        `/batches/packagings/${packagingId}/link-orders`,
+        { orderIds }
+      );
+      toast.success('Pedidos Vinculados', {
+        description: res.message || `${orderIds.length} pedido(s) vinculados a la fracción.`,
+      });
+      await Promise.all([fetchBatches(currentPage.value), fetchPackagings(packagingCurrentPage.value)]);
+      return true;
+    } catch (err: any) {
+      toast.error('Error al vincular pedidos', {
+        description: err?.message || 'No fue posible vincular los pedidos a la fracción.',
+      });
+      return false;
+    }
+  }
+
   return {
     batches,
     isLoading,
@@ -1032,6 +1051,7 @@ export const useProductionStore = defineStore('production', () => {
     deletePackaging,
     registerPackagingWithdrawal,
     unlinkOrderFromPackaging,
+    linkOrdersToPackaging,
     // Catálogo de Sabores
     flavors,
     isLoadingFlavors,

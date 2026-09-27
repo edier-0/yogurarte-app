@@ -1564,6 +1564,7 @@ export const getPendingOrdersByFlavor = async (flavor?: string) => {
       OR: [
         { batchId: null, items: { none: {} } },
         { items: { some: { batchId: null } } },
+        { items: { some: { packagingId: null } } },
       ],
     },
     include: {
@@ -1588,7 +1589,7 @@ export const getPendingOrdersByFlavor = async (flavor?: string) => {
   const pendingOrders = allUnassigned.filter((o) => {
     if (o.items && o.items.length > 0) {
       return o.items.some(
-        (it) => it.batchId === null && (!targetFlavor || (it.flavor || '').toLowerCase().includes(targetFlavor))
+        (it) => (!it.batchId || !it.packagingId) && (!targetFlavor || (it.flavor || '').toLowerCase().includes(targetFlavor))
       );
     }
     if (o.batchId === null) {
@@ -3399,6 +3400,103 @@ export const unlinkOrderFromPackaging = async (packagingId: number, orderId: num
       orderId,
     };
   });
+};
+
+/**
+ * Vincular pedidos masivamente a una fracción de lote existente ($transaction)
+ */
+export const linkOrdersToPackaging = async (packagingId: number, data: LinkOrdersToBatchInput) => {
+  const pkg = await prisma.batchPackaging.findUnique({
+    where: { id: packagingId },
+    include: { batch: true },
+  });
+
+  if (!pkg) {
+    throw new NotFoundError('Fracción no encontrada');
+  }
+
+  const { orderIds, autoAll } = data;
+  let targetOrderIds: number[] = [];
+
+  if (Array.isArray(orderIds) && orderIds.length > 0) {
+    targetOrderIds = orderIds.map(Number).filter((id) => !isNaN(id) && id > 0);
+  } else if (autoAll === true || (!orderIds && autoAll !== false)) {
+    const pending = await prisma.order.findMany({
+      where: {
+        deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
+        OR: [
+          { batchId: null, items: { none: {} } },
+          { items: { some: { packagingId: null } } },
+          { items: { some: { batchId: null } } },
+        ],
+        AND: [
+          {
+            OR: [
+              { flavor: { contains: pkg.flavor, mode: 'insensitive' } },
+              { items: { some: { flavor: { contains: pkg.flavor, mode: 'insensitive' } } } },
+            ],
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    targetOrderIds = pending.map((p) => p.id);
+  }
+
+  if (targetOrderIds.length === 0) {
+    return {
+      message: 'No se seleccionaron pedidos válidos para vincular.',
+      linkedCount: 0,
+      linkedLiters: 0,
+    };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Vincular orden a nivel cabecera con el batchId del lote madre
+    await tx.order.updateMany({
+      where: { id: { in: targetOrderIds } },
+      data: { batchId: pkg.batchId },
+    });
+
+    // 2. Vincular items que coincidan con el sabor de la fracción
+    await tx.orderItem.updateMany({
+      where: {
+        orderId: { in: targetOrderIds },
+        flavor: { contains: pkg.flavor.trim(), mode: 'insensitive' },
+      },
+      data: {
+        packagingId: pkg.id,
+        batchId: pkg.batchId,
+      },
+    });
+
+    // 3. Vincular cualquier item restante sin packagingId de estas órdenes seleccionadas explícitamente
+    await tx.orderItem.updateMany({
+      where: {
+        orderId: { in: targetOrderIds },
+        packagingId: null,
+      },
+      data: {
+        packagingId: pkg.id,
+        batchId: pkg.batchId,
+      },
+    });
+
+    // 4. Sincronizar estado bidireccional del lote madre
+    await syncBatchStatusBidirectional(tx, pkg.batchId);
+  });
+
+  const linkedOrders = await prisma.order.findMany({
+    where: { id: { in: targetOrderIds } },
+    select: { totalLiters: true },
+  });
+  const linkedLiters = linkedOrders.reduce((sum, o) => sum + o.totalLiters, 0);
+
+  return {
+    message: `¡${targetOrderIds.length} pedido(s) (${linkedLiters} L) vinculados exitosamente a la fracción ${pkg.packagingCode || pkg.flavor}!`,
+    linkedCount: targetOrderIds.length,
+    linkedLiters,
+  };
 };
 
 /**

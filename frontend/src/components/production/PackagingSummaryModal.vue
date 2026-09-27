@@ -15,6 +15,9 @@ import {
   UserMinus,
   ChevronLeft,
   ChevronRight,
+  Link,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-vue-next';
 import {
   useProductionStore,
@@ -39,7 +42,14 @@ const { confirm } = useConfirm();
 
 const summary = ref<PackagingSummaryData | null>(null);
 const isLoading = ref<boolean>(false);
-const activeTab = ref<'PRESENTATIONS' | 'ORDERS' | 'PARTNERS'>('PRESENTATIONS');
+const activeTab = ref<'PRESENTATIONS' | 'ORDERS' | 'LINK_ORDERS' | 'PARTNERS'>('PRESENTATIONS');
+
+// Pedidos sin lote para vincular masivamente
+const unlinkedOrders = ref<any[]>([]);
+const isLoadingUnlinked = ref<boolean>(false);
+const unlinkedFilter = ref<'MATCH' | 'ALL'>('MATCH');
+const selectedOrderIds = ref<number[]>([]);
+const isLinkingOrders = ref<boolean>(false);
 
 // Paginación local para pedidos vinculados a 5 registros
 const ordersPage = ref<number>(1);
@@ -123,12 +133,17 @@ watch(
       activeTab.value = 'PRESENTATIONS';
       ordersPage.value = 1;
       dischargesPage.value = 1;
+      selectedOrderIds.value = [];
+      unlinkedFilter.value = 'MATCH';
       await Promise.all([loadSummary(), loadStaff()]);
+      await loadUnlinkedOrders();
       if (partners.value.length > 0 && !selectedPartnerId.value) {
         selectedPartnerId.value = partners.value[0].id;
       }
     } else {
       summary.value = null;
+      unlinkedOrders.value = [];
+      selectedOrderIds.value = [];
     }
   },
   { immediate: true }
@@ -216,6 +231,132 @@ const totalDischargePages = computed(() => {
   if (!summary.value?.discharges) return 1;
   return Math.ceil(summary.value.discharges.length / dischargesLimit) || 1;
 });
+
+// Cargar pedidos sin lote
+async function loadUnlinkedOrders() {
+  if (!summary.value) return;
+  isLoadingUnlinked.value = true;
+  try {
+    const flavorParam = unlinkedFilter.value === 'MATCH' ? summary.value.packaging.flavor : undefined;
+    const res = await productionStore.fetchPendingOrders(flavorParam);
+    unlinkedOrders.value = res?.orders || [];
+    selectedOrderIds.value = selectedOrderIds.value.filter((id) =>
+      unlinkedOrders.value.some((o) => o.id === id)
+    );
+  } finally {
+    isLoadingUnlinked.value = false;
+  }
+}
+
+// Alternar filtro de sabor
+async function toggleUnlinkedFilter(filter: 'MATCH' | 'ALL') {
+  unlinkedFilter.value = filter;
+  await loadUnlinkedOrders();
+}
+
+// Seleccionar/Deseleccionar un pedido
+function toggleOrderSelection(orderId: number) {
+  const idx = selectedOrderIds.value.indexOf(orderId);
+  if (idx >= 0) {
+    selectedOrderIds.value.splice(idx, 1);
+  } else {
+    selectedOrderIds.value.push(orderId);
+  }
+}
+
+// Estado de selección total
+const isAllUnlinkedSelected = computed(() => {
+  return (
+    unlinkedOrders.value.length > 0 &&
+    selectedOrderIds.value.length === unlinkedOrders.value.length
+  );
+});
+
+function toggleSelectAllUnlinked() {
+  if (isAllUnlinkedSelected.value) {
+    selectedOrderIds.value = [];
+  } else {
+    selectedOrderIds.value = unlinkedOrders.value.map((o) => o.id);
+  }
+}
+
+// Litros totales de los pedidos seleccionados
+const selectedOrdersLiters = computed(() => {
+  return selectedOrderIds.value.reduce((sum, id) => {
+    const o = unlinkedOrders.value.find((ord) => ord.id === id);
+    return sum + (o?.totalLiters || 0);
+  }, 0);
+});
+
+// Vincular masivamente pedidos seleccionados a la fracción
+async function handleLinkSelectedOrders() {
+  if (!summary.value || selectedOrderIds.value.length === 0) return;
+
+  const count = selectedOrderIds.value.length;
+  const liters = Math.round(selectedOrdersLiters.value * 100) / 100;
+
+  const ok = await confirm({
+    title: 'Vincular Pedidos a la Fracción',
+    message: `¿Estás seguro de vincular ${count} pedido(s) (${liters} L) a la fracción "${summary.value.packaging.packagingCode || summary.value.packaging.flavor}"? Los pedidos quedarán asignados a esta fracción y se descontarán de las botellas disponibles.`,
+    confirmText: `Vincular ${count} Pedido(s)`,
+    cancelText: 'Cancelar',
+    variant: 'info',
+  });
+
+  if (!ok) return;
+
+  isLinkingOrders.value = true;
+  try {
+    const success = await productionStore.linkOrdersToPackaging(
+      summary.value.packaging.id,
+      selectedOrderIds.value
+    );
+    if (success) {
+      selectedOrderIds.value = [];
+      await Promise.all([loadSummary(), loadUnlinkedOrders()]);
+      emit('updated');
+      activeTab.value = 'ORDERS';
+    }
+  } finally {
+    isLinkingOrders.value = false;
+  }
+}
+
+// Vincular un solo pedido rápidamente
+async function handleLinkSingleOrder(order: any) {
+  if (!summary.value) return;
+
+  const ok = await confirm({
+    title: 'Vincular Pedido a la Fracción',
+    message: `¿Vincular el pedido #${order.orderNumber || order.id} de ${order.customer?.fullName || 'Cliente'} (${order.totalLiters} L) a esta fracción?`,
+    confirmText: 'Vincular Pedido',
+    cancelText: 'Cancelar',
+    variant: 'info',
+  });
+
+  if (!ok) return;
+
+  isLinkingOrders.value = true;
+  try {
+    const success = await productionStore.linkOrdersToPackaging(
+      summary.value.packaging.id,
+      [order.id]
+    );
+    if (success) {
+      selectedOrderIds.value = selectedOrderIds.value.filter((id) => id !== order.id);
+      await Promise.all([loadSummary(), loadUnlinkedOrders()]);
+      emit('updated');
+    }
+  } finally {
+    isLinkingOrders.value = false;
+  }
+}
+
+watch(activeTab, async (newTab) => {
+  if (newTab === 'LINK_ORDERS') {
+    await loadUnlinkedOrders();
+  }
+});
 </script>
 
 <template>
@@ -300,7 +441,7 @@ const totalDischargePages = computed(() => {
           </div>
 
           <!-- Pestañas de Navegación -->
-          <div class="flex items-center gap-2 border-b border-surface-light-border pb-2 dark:border-surface-dark-border">
+          <div class="flex flex-wrap items-center gap-2 border-b border-surface-light-border pb-2 dark:border-surface-dark-border">
             <button
               type="button"
               @click="activeTab = 'PRESENTATIONS'"
@@ -325,6 +466,30 @@ const totalDischargePages = computed(() => {
               "
             >
               Pedidos Vinculados ({{ summary.linkedOrders?.length || 0 }})
+            </button>
+
+            <button
+              type="button"
+              @click="activeTab = 'LINK_ORDERS'"
+              class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-black transition-all"
+              :class="
+                activeTab === 'LINK_ORDERS'
+                  ? 'bg-purple-700 text-white shadow-sm dark:bg-purple-600'
+                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100 dark:bg-purple-950/40 dark:text-purple-300'
+              "
+            >
+              <Link class="h-3.5 w-3.5 stroke-[2.5]" />
+              <span>Pedidos sin Lote</span>
+              <span
+                class="rounded-full px-2 py-0.2 text-[10px] font-black"
+                :class="
+                  activeTab === 'LINK_ORDERS'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-purple-200 text-purple-900 dark:bg-purple-800 dark:text-purple-100'
+                "
+              >
+                {{ unlinkedOrders.length }}
+              </span>
             </button>
 
             <button
@@ -532,6 +697,193 @@ const totalDischargePages = computed(() => {
                     class="rounded-xl border border-slate-200 px-3 py-1 text-xs font-bold disabled:opacity-40"
                   >
                     Siguiente
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PESTAÑA: PEDIDOS SIN LOTE (VINCULACIÓN MASIVA) -->
+          <div v-if="activeTab === 'LINK_ORDERS'" class="space-y-4">
+            <!-- Tarjeta Informativa Superior y Acción Principal -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/60 p-4 dark:border-purple-900/40 dark:bg-purple-950/20">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <h4 class="text-xs font-black uppercase tracking-wider text-purple-900 dark:text-purple-200">
+                      Asignar Pedidos en Pre-venta
+                    </h4>
+                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                      {{ summary.volume.freeLiters }} L libres en esta fracción
+                    </span>
+                  </div>
+                  <p class="mt-0.5 text-[11px] font-semibold text-purple-700/90 dark:text-purple-300/80">
+                    Marca las casillas de los pedidos que deseas vincular a esta fracción y confirma la vinculación masiva.
+                  </p>
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    @click="handleLinkSelectedOrders"
+                    :disabled="selectedOrderIds.length === 0 || isLinkingOrders"
+                    class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-hero-gradient px-4 py-2 text-xs font-black text-white shadow-md transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed sm:w-auto"
+                  >
+                    <RefreshCw v-if="isLinkingOrders" class="h-4 w-4 animate-spin" />
+                    <Link v-else class="h-4 w-4 stroke-[2.5]" />
+                    <span>Vincular Seleccionados ({{ selectedOrderIds.length }})</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Alerta de Capacidad y Resumen de Selección -->
+              <div v-if="selectedOrderIds.length > 0" class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-purple-200/70 pt-2 text-xs font-bold dark:border-purple-900/40">
+                <span class="text-purple-900 dark:text-purple-200">
+                  {{ selectedOrderIds.length }} pedido(s) seleccionado(s) · Volumen a vincular:
+                  <strong class="font-black text-brand-800 dark:text-brand-darkText">
+                    {{ Math.round(selectedOrdersLiters * 100) / 100 }} L
+                  </strong>
+                </span>
+                <span v-if="selectedOrdersLiters > summary.volume.freeLiters" class="inline-flex items-center gap-1 text-[11px] font-extrabold text-amber-700 dark:text-amber-300">
+                  <AlertTriangle class="h-3.5 w-3.5 stroke-[2]" />
+                  <span>El volumen supera los {{ summary.volume.freeLiters }}L libres</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Controles de Filtro y Selección Rápida -->
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  @click="toggleUnlinkedFilter('MATCH')"
+                  class="rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all"
+                  :class="
+                    unlinkedFilter === 'MATCH'
+                      ? 'bg-purple-700 text-white shadow-sm dark:bg-purple-600'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                  "
+                >
+                  Sabor {{ summary.packaging.flavor }}
+                </button>
+                <button
+                  type="button"
+                  @click="toggleUnlinkedFilter('ALL')"
+                  class="rounded-xl px-3 py-1.5 text-xs font-extrabold transition-all"
+                  :class="
+                    unlinkedFilter === 'ALL'
+                      ? 'bg-purple-700 text-white shadow-sm dark:bg-purple-600'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                  "
+                >
+                  Todos los pedidos sin lote
+                </button>
+              </div>
+
+              <div v-if="unlinkedOrders.length > 0" class="flex items-center gap-2">
+                <button
+                  type="button"
+                  @click="toggleSelectAllUnlinked"
+                  class="text-xs font-extrabold text-purple-700 hover:underline dark:text-purple-300"
+                >
+                  {{ isAllUnlinkedSelected ? 'Deseleccionar todos' : `Seleccionar todos (${unlinkedOrders.length})` }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Estado de Carga -->
+            <div v-if="isLoadingUnlinked" class="py-12 text-center">
+              <div class="inline-block h-7 w-7 animate-spin rounded-full border-4 border-purple-600 border-t-transparent dark:border-purple-400 dark:border-t-transparent"></div>
+              <p class="mt-2 text-xs font-bold text-slate-500">Consultando pedidos sin lote...</p>
+            </div>
+
+            <!-- Estado Vacío -->
+            <div
+              v-else-if="unlinkedOrders.length === 0"
+              class="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
+            >
+              No se encontraron pedidos pendientes sin lote con el filtro seleccionado.
+            </div>
+
+            <!-- Lista de Pedidos Disponibles para Selección -->
+            <div v-else class="space-y-2">
+              <div
+                v-for="order in unlinkedOrders"
+                :key="order.id"
+                @click="toggleOrderSelection(order.id)"
+                class="flex cursor-pointer flex-col gap-2 rounded-2xl border p-3.5 shadow-sm transition-all sm:flex-row sm:items-center sm:justify-between"
+                :class="
+                  selectedOrderIds.includes(order.id)
+                    ? 'border-purple-500 bg-purple-50/70 dark:border-purple-600 dark:bg-purple-950/40'
+                    : 'border-surface-light-border bg-surface-light-card hover:border-slate-300 dark:border-surface-dark-border dark:bg-surface-dark-card dark:hover:border-slate-600'
+                "
+              >
+                <div class="flex items-center gap-3">
+                  <!-- Checkbox de Selección -->
+                  <input
+                    type="checkbox"
+                    :checked="selectedOrderIds.includes(order.id)"
+                    @click.stop
+                    @change="toggleOrderSelection(order.id)"
+                    class="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-700 cursor-pointer"
+                  />
+
+                  <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="rounded-lg bg-surface-light-canvas px-2 py-0.5 font-mono text-xs font-black text-brand-800 border border-slate-200 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-brand-darkText">
+                        #{{ order.orderNumber || order.id }}
+                      </span>
+                      <span class="font-extrabold text-xs text-slate-800 dark:text-white">
+                        {{ order.customer?.fullName || 'Cliente General' }}
+                      </span>
+                      <span v-if="order.customer?.phone" class="text-[11px] text-slate-400">
+                        • {{ order.customer.phone }}
+                      </span>
+                    </div>
+
+                    <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <!-- Desglose de ítems del pedido -->
+                      <div v-if="order.items && order.items.length > 0" class="flex flex-wrap gap-1">
+                        <span
+                          v-for="it in order.items"
+                          :key="it.id"
+                          class="rounded-md px-1.5 py-0.5 text-[10px] font-bold"
+                          :class="
+                            (it.flavor || '').toLowerCase().includes(summary.packaging.flavor.toLowerCase())
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          "
+                        >
+                          {{ it.quantity }}x {{ it.bottleSize }} ({{ it.flavor }})
+                        </span>
+                      </div>
+                      <span v-else class="text-slate-500">
+                        {{ order.totalLiters }} L ({{ order.flavor || 'Sabor general' }})
+                      </span>
+
+                      <span class="text-slate-300 dark:text-slate-600">•</span>
+                      <span class="font-bold text-slate-700 dark:text-slate-300">Total: {{ formatCOP(order.totalAmount) }}</span>
+                      <span class="text-slate-300 dark:text-slate-600">•</span>
+                      <span class="text-slate-400">{{ formatDate(order.orderDate || order.createdAt) }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Botones y Acciones en Fila -->
+                <div class="flex items-center justify-end gap-2" @click.stop>
+                  <span class="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-black text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    {{ order.totalLiters }} L
+                  </span>
+
+                  <button
+                    type="button"
+                    @click="handleLinkSingleOrder(order)"
+                    :disabled="isLinkingOrders"
+                    class="inline-flex items-center gap-1 rounded-xl border border-purple-200 bg-purple-50 px-2.5 py-1.5 text-xs font-extrabold text-purple-700 transition-colors hover:bg-purple-100 disabled:opacity-40 dark:border-purple-800/40 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:bg-purple-900/40"
+                    title="Vincular solo este pedido inmediatamente"
+                  >
+                    <Link class="h-3.5 w-3.5" />
+                    <span class="hidden sm:inline">Vincular</span>
                   </button>
                 </div>
               </div>
