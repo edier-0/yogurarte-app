@@ -107,6 +107,15 @@ export const useOperationsStore = defineStore('operations', () => {
   const isLoading = ref<boolean>(false);
   const error = ref<string | null>(null);
 
+  // Estado modal crear pedido rápido
+  const isCreateOrderModalOpen = ref<boolean>(false);
+  const openCreateOrderModal = () => {
+    isCreateOrderModalOpen.value = true;
+  };
+  const closeCreateOrderModal = () => {
+    isCreateOrderModalOpen.value = false;
+  };
+
   // Filtros de Pedidos
   const filterChip = ref<OrderFilterChip>('ALL');
   const searchQuery = ref<string>('');
@@ -633,5 +642,8 @@ export const useOperationsStore = defineStore('operations', () => {
     setDeliveryChip,
     setDeliveryDriverFilter,
     setDeliverySearchQuery,
+    isCreateOrderModalOpen,
+    openCreateOrderModal,
+    closeCreateOrderModal,
   };
 });

@@ -9,6 +9,7 @@ const authStore = useAuthStore();
 
 const emit = defineEmits<{
   (e: 'newOrder'): void;
+  (e: 'new-order'): void;
 }>();
 
 const currentPath = computed(() => route.path);
@@ -49,7 +50,7 @@ const isActive = (prefix: string) => {
       <div class="flex flex-1 items-center justify-center">
         <button
           type="button"
-          @click="emit('newOrder')"
+          @click="emit('new-order'); emit('newOrder');"
           class="-mt-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-hero-gradient text-white shadow-elevated transition-transform active:scale-90 hover:shadow-accent"
           title="Nuevo Pedido Rápido"
         >

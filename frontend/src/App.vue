@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, onErrorCaptured } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Toaster, toast } from 'vue-sonner';
+import { Toaster } from 'vue-sonner';
 import { useTheme } from '@/composables/useTheme';
 import AppLayout from '@/layouts/AppLayout.vue';
 import ConfirmModal from '@/components/common/ConfirmModal.vue';
 import WhatsAppMessagePreviewModal from '@/components/operations/crm/WhatsAppMessagePreviewModal.vue';
+import { useOperationsStore } from '@/stores/operations.store';
 
 const { isDark } = useTheme();
 const route = useRoute();
 const router = useRouter();
+const operationsStore = useOperationsStore();
 
 // Blindaje contra errores de renderizado en vistas hijas (evita que la pantalla quede en blanco)
 onErrorCaptured((err) => {
@@ -41,10 +43,14 @@ const headerSubtitle = computed(() => {
 });
 
 const onNewOrder = () => {
-  router.push('/operaciones/pedidos');
-  toast.success('Crear Nuevo Pedido', {
-    description: 'Formulario de comanda rápida listo para ingresar datos.',
-  });
+  operationsStore.openCreateOrderModal();
+  if (route.path === '/operaciones/pedidos') {
+    if (route.query.new !== 'true') {
+      router.replace({ path: '/operaciones/pedidos', query: { new: 'true' } });
+    }
+  } else {
+    router.push({ path: '/operaciones/pedidos', query: { new: 'true' } });
+  }
 };
 </script>
 

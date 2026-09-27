@@ -635,64 +635,71 @@ watch(activeMainTab, (newTab) => {
           </div>
 
           <!-- Acciones Directas por Tarjeta de Lote Madre -->
-          <div class="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
-            <!-- Acción Editar Lote Madre -->
-            <button
-              v-if="batch.status !== 'ARCHIVADO'"
-              type="button"
-              @click="openEditBatchModal(batch)"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300"
-              title="Editar parámetros, tiempo e insumos del lote madre"
-            >
-              <Pencil class="h-3.5 w-3.5 text-slate-500" />
-              <span>Editar Lote</span>
-            </button>
+          <div class="mt-4 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
+            <div class="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-end">
+              <!-- Acción Terminar Fermentación (Solo si está en fermentación) -->
+              <button
+                v-if="batch.status === 'EN_FERMENTACION'"
+                type="button"
+                @click="openCompleteModal(batch)"
+                class="inline-flex h-9 w-full md:w-auto items-center justify-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50/80 px-3.5 text-xs font-extrabold text-purple-700 transition-colors hover:bg-purple-100 dark:border-purple-800/40 dark:bg-purple-950/40 dark:text-purple-300"
+                title="Finalizar fermentación, confirmar volumen y pasar a Disponible"
+              >
+                <CheckCircle2 class="h-3.5 w-3.5 shrink-0 text-purple-600 dark:text-purple-400" />
+                <span>Terminar Fermentación</span>
+              </button>
 
-            <!-- Acción Terminar Fermentación (Solo si está en fermentación) -->
-            <button
-              v-if="batch.status === 'EN_FERMENTACION'"
-              type="button"
-              @click="openCompleteModal(batch)"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50/80 px-3 py-1.5 text-xs font-extrabold text-purple-700 transition-colors hover:bg-purple-100 dark:border-purple-800/40 dark:bg-purple-950/40 dark:text-purple-300"
-              title="Finalizar fermentación, confirmar volumen y pasar a Disponible"
-            >
-              <CheckCircle2 class="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
-              <span>Terminar Fermentación</span>
-            </button>
+              <!-- Acción Fase B: Envasar / Fraccionar Lote (Botón Principal) -->
+              <button
+                v-if="batch.status !== 'ARCHIVADO' && (batch.remainingAvailableLiters > 0 || batch.status === 'EN_FERMENTACION')"
+                type="button"
+                @click="openPackagingModal(batch)"
+                class="inline-flex h-9 w-full md:w-auto items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 text-xs font-extrabold text-white shadow-sm transition-transform active:scale-95 hover:bg-emerald-700"
+                title="Fraccionar por sabor, botellas y presentaciones flexibles"
+              >
+                <PackageCheck class="h-3.5 w-3.5 shrink-0 stroke-[2.5]" />
+                <span>Envasar / Fraccionar</span>
+              </button>
 
-            <!-- Acción Fase B: Envasar / Fraccionar Lote -->
-            <button
-              v-if="batch.status !== 'ARCHIVADO' && (batch.remainingAvailableLiters > 0 || batch.status === 'EN_FERMENTACION')"
-              type="button"
-              @click="openPackagingModal(batch)"
-              class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm transition-transform active:scale-95 hover:bg-emerald-700"
-              title="Fraccionar por sabor, botellas y presentaciones flexibles"
-            >
-              <PackageCheck class="h-3.5 w-3.5 stroke-[2.5]" />
-              <span>Envasar / Fraccionar</span>
-            </button>
+              <!-- Fila Secundaria: Auditoría, Editar y Eliminar en cuadrícula simétrica en móvil y horizontal en desktop -->
+              <div class="grid grid-cols-2 gap-2 w-full md:w-auto md:flex md:items-center">
+                <!-- Acción Auditoría y Detalle Lote Madre -->
+                <button
+                  type="button"
+                  @click="openSummaryModal(batch)"
+                  class="inline-flex h-9 w-full md:w-auto items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300"
+                  :class="batch.status === 'ARCHIVADO' ? 'col-span-1' : ''"
+                  title="Ver balance lácteo, pedidos vinculados y retiros de socios"
+                >
+                  <Eye class="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                  <span class="truncate">Auditoría</span>
+                </button>
 
-            <!-- Acción Auditoría y Detalle Lote Madre -->
-            <button
-              type="button"
-              @click="openSummaryModal(batch)"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300"
-              title="Ver balance lácteo, pedidos vinculados y retiros de socios"
-            >
-              <Eye class="h-3.5 w-3.5 text-slate-500" />
-              <span>Auditoría y Detalle</span>
-            </button>
+                <!-- Acción Editar Lote Madre -->
+                <button
+                  v-if="batch.status !== 'ARCHIVADO'"
+                  type="button"
+                  @click="openEditBatchModal(batch)"
+                  class="inline-flex h-9 w-full md:w-auto items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300"
+                  title="Editar parámetros, tiempo e insumos del lote madre"
+                >
+                  <Pencil class="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                  <span class="truncate">Editar</span>
+                </button>
 
-            <!-- Eliminar Lote Madre Definitivamente -->
-            <button
-              type="button"
-              @click="handleDeleteBatch(batch)"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-900/40"
-              title="Eliminar lote madre definitivamente"
-            >
-              <Trash2 class="h-3.5 w-3.5 stroke-[2]" />
-              <span>Eliminar</span>
-            </button>
+                <!-- Eliminar Lote Madre Definitivamente -->
+                <button
+                  type="button"
+                  @click="handleDeleteBatch(batch)"
+                  class="inline-flex h-9 w-full md:w-auto items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-900/40"
+                  :class="batch.status !== 'ARCHIVADO' ? 'col-span-2 md:col-auto' : 'col-span-1'"
+                  title="Eliminar lote madre definitivamente"
+                >
+                  <Trash2 class="h-3.5 w-3.5 shrink-0 stroke-[2]" />
+                  <span class="truncate">Eliminar</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -947,39 +954,44 @@ watch(activeMainTab, (newTab) => {
           </div>
 
           <!-- Acciones por Fracción Envasada -->
-          <div class="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
-            <!-- Acción Editar Fracción -->
-            <button
-              type="button"
-              @click="handleEditPackagingFromCard(pkg)"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300"
-              title="Editar presentaciones y parámetros del envasado"
-            >
-              <Pencil class="h-3.5 w-3.5 text-slate-500" />
-              <span>Editar Fracción</span>
-            </button>
+          <div class="mt-4 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
+            <div class="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-end">
+              <!-- Acción Principal: Auditoría Exclusiva de Fracción -->
+              <button
+                type="button"
+                @click="openPackagingSummaryModal(pkg.id)"
+                class="inline-flex h-9 w-full md:w-auto items-center justify-center gap-1.5 rounded-xl bg-brand-900 px-3.5 text-xs font-extrabold text-white shadow-sm transition-transform active:scale-95 hover:bg-brand-950 dark:bg-white dark:text-slate-900"
+                title="Auditoría de presentaciones, pedidos vinculados y retiros de socios"
+              >
+                <Eye class="h-3.5 w-3.5 shrink-0 stroke-[2]" />
+                <span>Auditoría de Fracción</span>
+              </button>
 
-            <!-- Acción Auditoría Exclusiva de Fracción -->
-            <button
-              type="button"
-              @click="openPackagingSummaryModal(pkg.id)"
-              class="inline-flex items-center gap-1.5 rounded-xl bg-brand-900 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm transition-transform active:scale-95 hover:bg-brand-950 dark:bg-white dark:text-slate-900"
-              title="Auditoría de presentaciones, pedidos vinculados y retiros de socios"
-            >
-              <Eye class="h-3.5 w-3.5 stroke-[2]" />
-              <span>Auditoría de Fracción</span>
-            </button>
+              <!-- Fila Secundaria: Editar y Eliminar en cuadrícula simétrica en móvil y horizontal en desktop -->
+              <div class="grid grid-cols-2 gap-2 w-full md:w-auto md:flex md:items-center">
+                <!-- Acción Editar Fracción -->
+                <button
+                  type="button"
+                  @click="handleEditPackagingFromCard(pkg)"
+                  class="inline-flex h-9 w-full md:w-auto items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-300"
+                  title="Editar presentaciones y parámetros del envasado"
+                >
+                  <Pencil class="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                  <span class="truncate">Editar</span>
+                </button>
 
-            <!-- Acción Eliminar Fracción (con confirmación destructiva) -->
-            <button
-              type="button"
-              @click="handleDeletePackaging(pkg)"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-900/40"
-              title="Eliminar fracción y reintegrar litros al lote madre e insumos al inventario"
-            >
-              <Trash2 class="h-3.5 w-3.5 stroke-[2]" />
-              <span>Eliminar</span>
-            </button>
+                <!-- Acción Eliminar Fracción (con confirmación destructiva) -->
+                <button
+                  type="button"
+                  @click="handleDeletePackaging(pkg)"
+                  class="inline-flex h-9 w-full md:w-auto items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-900/40"
+                  title="Eliminar fracción y reintegrar litros al lote madre e insumos al inventario"
+                >
+                  <Trash2 class="h-3.5 w-3.5 shrink-0 stroke-[2]" />
+                  <span class="truncate">Eliminar</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -481,67 +481,70 @@ onMounted(() => {
         </div>
 
         <!-- Acciones Inferiores -->
-        <div class="mt-5 pt-3.5 border-t border-surface-light-border dark:border-surface-dark-border flex flex-wrap items-center justify-between gap-2">
-          <!-- Botón Rápido Crear Pedido para este Cliente -->
-          <button
-            type="button"
-            @click="handleQuickCreateOrder(sch)"
-            class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand-800 hover:bg-brand-900 px-3 py-2 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 dark:bg-brand-700 dark:hover:bg-brand-600"
-            title="Crear un pedido a medida para este cliente frecuente con sus preferencias prellenadas"
-          >
-            <Plus class="h-3.5 w-3.5 stroke-[2.5]" />
-            <span>Crear Pedido</span>
-          </button>
+        <div class="mt-4 space-y-2 border-t border-surface-light-border pt-3.5 dark:border-surface-dark-border">
+          <!-- Fila 1: Crear Pedido y Cobrar Deuda en proporción simétrica -->
+          <div class="grid gap-2" :class="(sch.customer.pendingDebt || 0) > 0 ? 'grid-cols-2' : 'grid-cols-1'">
+            <button
+              type="button"
+              @click="handleQuickCreateOrder(sch)"
+              class="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-brand-800 hover:bg-brand-900 px-2.5 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 dark:bg-brand-700 dark:hover:bg-brand-600 truncate"
+              title="Crear un pedido a medida para este cliente frecuente con sus preferencias prellenadas"
+            >
+              <Plus class="h-3.5 w-3.5 shrink-0 stroke-[2.5]" />
+              <span class="truncate">Crear Pedido</span>
+            </button>
 
-          <!-- Botón Cobrar Pedidos con Deuda (Solo si tiene deuda) -->
-          <button
-            v-if="(sch.customer.pendingDebt || 0) > 0"
-            type="button"
-            @click="handleOpenCollectDebt(sch)"
-            class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 px-3 py-2 text-xs font-black text-white shadow-xs transition-transform active:scale-95 ring-2 ring-amber-500/20"
-            :title="`Cobrar ${formatCurrency(sch.customer.pendingDebt)} de pedidos con saldo pendiente`"
-          >
-            <Receipt class="h-3.5 w-3.5 stroke-[2.5]" />
-            <span>Cobrar ({{ formatCurrency(sch.customer.pendingDebt) }})</span>
-          </button>
+            <button
+              v-if="(sch.customer.pendingDebt || 0) > 0"
+              type="button"
+              @click="handleOpenCollectDebt(sch)"
+              class="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 px-2 text-xs font-black text-white shadow-xs transition-transform active:scale-95 ring-1 ring-amber-500/20 truncate"
+              :title="`Cobrar ${formatCurrency(sch.customer.pendingDebt)} de pedidos con saldo pendiente`"
+            >
+              <Receipt class="h-3.5 w-3.5 shrink-0 stroke-[2.5]" />
+              <span class="truncate">Cobrar ({{ formatCurrency(sch.customer.pendingDebt) }})</span>
+            </button>
+          </div>
 
-          <!-- Botón Generar Pedido de Hoy -->
-          <button
-            type="button"
-            @click="handleGenerateOrder(sch)"
-            :disabled="isGeneratingOrderId === sch.id"
-            class="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 rounded-xl bg-hero-gradient px-3 py-2 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 disabled:opacity-50"
-            title="Generar comanda oficial de hoy a partir de esta recurrencia"
-          >
-            <ShoppingBag class="h-3.5 w-3.5 stroke-[2.5]" :class="{ 'animate-bounce': isGeneratingOrderId === sch.id }" />
-            <span>Generar Hoy</span>
-          </button>
+          <!-- Fila 2: Generar Hoy y Controles de Programación -->
+          <div class="flex items-center gap-1.5">
+            <button
+              type="button"
+              @click="handleGenerateOrder(sch)"
+              :disabled="isGeneratingOrderId === sch.id"
+              class="flex-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-hero-gradient px-3 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 disabled:opacity-50 truncate"
+              title="Generar comanda oficial de hoy a partir de esta recurrencia"
+            >
+              <ShoppingBag class="h-3.5 w-3.5 shrink-0 stroke-[2.5]" :class="{ 'animate-bounce': isGeneratingOrderId === sch.id }" />
+              <span class="truncate">Generar Hoy</span>
+            </button>
 
-          <!-- Toggle Pausa / Reactivar -->
-          <button
-            type="button"
-            @click="handleToggleStatus(sch)"
-            class="rounded-xl border border-surface-light-border bg-surface-light-canvas p-2 text-slate-600 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
-            :title="sch.isActive ? 'Poner en pausa' : 'Reactivar'"
-          >
-            <Pause v-if="sch.isActive" class="h-4 w-4" />
-            <Play v-else class="h-4 w-4 text-emerald-600" />
-          </button>
+            <!-- Toggle Pausa / Reactivar -->
+            <button
+              type="button"
+              @click="handleToggleStatus(sch)"
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-600 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+              :title="sch.isActive ? 'Poner en pausa' : 'Reactivar'"
+            >
+              <Pause v-if="sch.isActive" class="h-4 w-4" />
+              <Play v-else class="h-4 w-4 text-emerald-600" />
+            </button>
 
-          <!-- Botones Editar y Eliminar -->
-          <div class="flex items-center gap-1">
+            <!-- Botón Editar -->
             <button
               type="button"
               @click="handleOpenEdit(sch)"
-              class="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
               title="Editar programación"
             >
               <Edit2 class="h-4 w-4" />
             </button>
+
+            <!-- Botón Eliminar -->
             <button
               type="button"
               @click="handleDelete(sch)"
-              class="rounded-xl p-2 text-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40 dark:hover:text-rose-300 transition-colors"
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/30 dark:hover:bg-rose-900/40 dark:hover:text-rose-300 transition-colors"
               title="Eliminar programación"
             >
               <Trash2 class="h-4 w-4" />

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, watch, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useOperationsStore, type Order, type OrderFilterChip, type DeliveryStatus } from '@/stores/operations.store';
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
 import PaymentModal from '@/components/operations/PaymentModal.vue';
@@ -77,10 +78,36 @@ onMounted(() => {
   }
 });
 
+const route = useRoute();
+const router = useRouter();
+
 const openNewOrder = () => {
   orderToEdit.value = null;
   isFormModalOpen.value = true;
 };
+
+// Reaccionar a la apertura rápida de pedido (botón central flotante FAB + o query ?new=true)
+watch(
+  () => store.isCreateOrderModalOpen,
+  (isOpen) => {
+    if (isOpen) {
+      openNewOrder();
+      store.closeCreateOrderModal();
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => route.query.new,
+  (newVal) => {
+    if (newVal === 'true') {
+      openNewOrder();
+      router.replace({ path: route.path, query: {} });
+    }
+  },
+  { immediate: true }
+);
 
 const openEditOrder = (order: Order) => {
   orderToEdit.value = order;

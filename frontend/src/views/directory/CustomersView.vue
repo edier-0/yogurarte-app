@@ -417,50 +417,56 @@ function handleSmartWhatsApp(customer: CustomerItem) {
         </div>
 
         <!-- Botonera de Acción de la Tarjeta -->
-        <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
-          <!-- Botón Rápido Crear Pedido -->
-          <button
-            type="button"
-            @click="handleQuickCreateOrder(c)"
-            class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand-800 hover:bg-brand-900 px-3 py-2 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 dark:bg-brand-700 dark:hover:bg-brand-600"
-            title="Crear un pedido para este cliente"
-          >
-            <Plus class="h-3.5 w-3.5 stroke-[2.5]" />
-            <span>Crear Pedido</span>
-          </button>
+        <div class="mt-4 space-y-2 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
+          <!-- Fila 1: Crear Pedido y Cobrar Deuda en proporción simétrica -->
+          <div class="grid gap-2" :class="c.deliveredPendingDebt > 0 ? 'grid-cols-2' : 'grid-cols-1'">
+            <!-- Botón Rápido Crear Pedido -->
+            <button
+              type="button"
+              @click="handleQuickCreateOrder(c)"
+              class="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-brand-800 hover:bg-brand-900 px-2.5 text-xs font-extrabold text-white shadow-xs transition-transform active:scale-95 dark:bg-brand-700 dark:hover:bg-brand-600 truncate"
+              title="Crear un pedido para este cliente"
+            >
+              <Plus class="h-3.5 w-3.5 shrink-0 stroke-[2.5]" />
+              <span class="truncate">Crear Pedido</span>
+            </button>
 
-          <!-- Botón Cobrar Pedidos con Deuda (Solo si tiene deuda) -->
-          <button
-            v-if="c.deliveredPendingDebt > 0"
-            type="button"
-            @click="handleOpenCollectDebt(c)"
-            class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 px-3 py-2 text-xs font-black text-white shadow-xs transition-transform active:scale-95 ring-2 ring-amber-500/20"
-            :title="`Cobrar ${formatCurrency(c.deliveredPendingDebt)} de deuda de este cliente`"
-          >
-            <Receipt class="h-3.5 w-3.5 stroke-[2.5]" />
-            <span>Cobrar ({{ formatCurrency(c.deliveredPendingDebt) }})</span>
-          </button>
+            <!-- Botón Cobrar Pedidos con Deuda (Solo si tiene deuda) -->
+            <button
+              v-if="c.deliveredPendingDebt > 0"
+              type="button"
+              @click="handleOpenCollectDebt(c)"
+              class="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 px-2 text-xs font-black text-white shadow-xs transition-transform active:scale-95 ring-1 ring-amber-500/20 truncate"
+              :title="`Cobrar ${formatCurrency(c.deliveredPendingDebt)} de deuda de este cliente`"
+            >
+              <Receipt class="h-3.5 w-3.5 shrink-0 stroke-[2.5]" />
+              <span class="truncate">Cobrar ({{ formatCurrency(c.deliveredPendingDebt) }})</span>
+            </button>
+          </div>
 
-          <!-- Botón de WhatsApp Inteligente -->
-          <button
-            type="button"
-            @click="handleSmartWhatsApp(c)"
-            class="inline-flex flex-1 min-w-[100px] items-center justify-center gap-1.5 rounded-xl border border-emerald-300/80 bg-emerald-50 px-2.5 py-2 text-xs font-extrabold text-emerald-800 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
-            :title="c.phone && c.phone.startsWith('@') ? 'Abrir chat CRM' : 'Enviar mensaje de WhatsApp con previsualización'"
-          >
-            <MessageCircle class="h-4 w-4 stroke-[2]" />
-            <span>WhatsApp</span>
-          </button>
+          <!-- Fila 2: WhatsApp principal con lápiz integrado armónicamente a su lado -->
+          <div class="flex items-center gap-2">
+            <!-- Botón de WhatsApp Inteligente -->
+            <button
+              type="button"
+              @click="handleSmartWhatsApp(c)"
+              class="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-300/80 bg-emerald-50 px-2.5 text-xs font-extrabold text-emerald-800 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60 truncate"
+              :title="c.phone && c.phone.startsWith('@') ? 'Abrir chat CRM' : 'Enviar mensaje de WhatsApp con previsualización'"
+            >
+              <MessageCircle class="h-4 w-4 shrink-0 stroke-[2]" />
+              <span class="truncate">WhatsApp</span>
+            </button>
 
-          <!-- Botón de Edición -->
-          <button
-            type="button"
-            @click="openEditModal(c)"
-            class="inline-flex items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas p-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800"
-            title="Editar cliente"
-          >
-            <Edit3 class="h-4 w-4 stroke-[2]" />
-          </button>
+            <!-- Botón de Edición -->
+            <button
+              type="button"
+              @click="openEditModal(c)"
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800"
+              title="Editar cliente"
+            >
+              <Edit3 class="h-4 w-4 stroke-[2]" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
