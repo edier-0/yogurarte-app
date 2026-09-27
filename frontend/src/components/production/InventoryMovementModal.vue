@@ -173,7 +173,7 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
           <!-- Tipo de Movimiento (Entrada vs Salida) -->
           <div>
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -236,7 +236,7 @@ async function handleSubmit() {
                 <input
                   v-model.number="quantity"
                   type="number"
-                  min="0.01"
+                  min="0"
                   step="any"
                   placeholder="10"
                   required

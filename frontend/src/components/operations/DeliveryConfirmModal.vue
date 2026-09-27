@@ -387,8 +387,8 @@ const handleConfirm = async () => {
 
               <input
                 type="number"
-                step="500"
-                min="1"
+                step="any"
+                min="0"
                 :max="currentPending"
                 v-model.number="partialAmount"
                 class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2.5 px-3 text-sm font-black text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"

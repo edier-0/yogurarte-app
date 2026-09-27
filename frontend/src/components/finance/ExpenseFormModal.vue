@@ -163,7 +163,7 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
           <!-- Categoría -->
           <div>
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -190,7 +190,7 @@ async function handleSubmit() {
                 <input
                   v-model.number="amount"
                   type="number"
-                  min="1"
+                  min="0"
                   step="any"
                   placeholder="50000"
                   required

@@ -381,7 +381,7 @@ async function handleSave() {
         </div>
 
         <!-- Formulario -->
-        <form @submit.prevent="handleSave" class="mt-5 space-y-4">
+        <form @submit.prevent="handleSave" novalidate class="mt-5 space-y-4">
           <!-- Alerta de Error -->
           <div
             v-if="errorMessage"
@@ -497,7 +497,7 @@ async function handleSave() {
                 <input
                   v-model.number="recipeYield"
                   type="number"
-                  min="0.1"
+                  min="0"
                   step="any"
                   required
                   class="w-20 rounded-xl border border-surface-light-border bg-white px-2.5 py-1.5 text-xs font-black text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
@@ -532,7 +532,7 @@ async function handleSave() {
                   <input
                     v-model.number="row.quantity"
                     type="number"
-                    min="0.001"
+                    min="0"
                     step="any"
                     placeholder="Cant."
                     class="mt-0.5 w-full rounded-lg border border-surface-light-border bg-surface-light-card px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-white"

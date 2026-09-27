@@ -312,7 +312,7 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <form v-if="batch" @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form v-if="batch" @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
           <!-- Resumen de Leche Inoculada -->
           <div class="rounded-2xl border border-surface-light-border bg-slate-50/70 p-3.5 dark:border-surface-dark-border dark:bg-surface-dark-canvas">
             <div class="flex items-center justify-between text-xs">
@@ -342,8 +342,8 @@ async function handleSubmit() {
               <input
                 v-model.number="finalLiters"
                 type="number"
-                min="0.1"
-                step="0.1"
+                min="0"
+                step="any"
                 required
                 placeholder="Ej. 26 (almíbar) o 11 (griego)"
                 class="w-full rounded-2xl border-2 border-emerald-500/80 bg-surface-light-canvas px-4 py-3 text-lg font-black text-slate-900 focus:border-emerald-600 focus:outline-none dark:border-emerald-600/70 dark:bg-surface-dark-canvas dark:text-white pr-20 shadow-sm"
@@ -439,7 +439,7 @@ async function handleSubmit() {
                       <input
                         v-model.number="item.dosage"
                         type="number"
-                        min="0.01"
+                        min="0"
                         step="any"
                         :placeholder="isKgUnit(item.unit) ? 'g/L' : 'Cant.'"
                         class="w-full rounded-lg border border-purple-200 bg-white px-2 py-1 text-xs font-black text-slate-900 focus:border-purple-600 focus:outline-none dark:border-purple-800 dark:bg-slate-900 dark:text-white text-right pr-8"

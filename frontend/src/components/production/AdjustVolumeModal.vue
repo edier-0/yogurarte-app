@@ -154,7 +154,7 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <form v-if="batch" @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form v-if="batch" @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
           <!-- Resumen de Estado Actual del Lote -->
           <div class="rounded-2xl border border-surface-light-border bg-slate-50/70 p-3.5 dark:border-surface-dark-border dark:bg-surface-dark-canvas">
             <div class="flex flex-wrap items-center justify-between gap-2">
@@ -193,8 +193,8 @@ async function handleSubmit() {
               <input
                 v-model.number="newVolume"
                 type="number"
-                min="0.1"
-                step="0.1"
+                min="0"
+                step="any"
                 required
                 placeholder="Ej. 11 (griego) o 26 (almíbar)"
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-base font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"

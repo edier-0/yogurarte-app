@@ -465,7 +465,7 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
           <!-- Banner Informativo Fase A -->
           <div class="rounded-2xl border border-purple-200 bg-purple-50/70 p-3.5 text-xs text-purple-900 dark:border-purple-800/40 dark:bg-purple-950/30 dark:text-purple-300">
             <div class="flex items-start gap-2.5">
@@ -562,7 +562,7 @@ async function handleSubmit() {
                 <input
                   v-model.number="milkUsedLiters"
                   type="number"
-                  min="1"
+                  min="0"
                   step="any"
                   placeholder="50"
                   required
@@ -582,7 +582,7 @@ async function handleSubmit() {
                 <input
                   v-model.number="expectedLiters"
                   type="number"
-                  min="0.1"
+                  min="0"
                   step="any"
                   placeholder="48"
                   class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
@@ -621,9 +621,8 @@ async function handleSubmit() {
                 <input
                   v-model.number="fermentationHours"
                   type="number"
-                  min="1"
-                  max="72"
-                  step="0.5"
+                  min="0"
+                  step="any"
                   required
                   class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
                 />
@@ -724,8 +723,8 @@ async function handleSubmit() {
                           v-if="isKgUnit(item.unit)"
                           v-model.number="item.dosage"
                           type="number"
-                          min="0.001"
-                          step="0.001"
+                          min="0"
+                          step="any"
                           placeholder="Dosis g/L"
                           class="w-full rounded-lg border border-purple-200 bg-white px-2.5 py-1 text-xs font-black text-slate-900 focus:border-purple-600 focus:outline-none dark:border-purple-800 dark:bg-slate-900 dark:text-white text-right pr-9"
                         />
@@ -733,8 +732,8 @@ async function handleSubmit() {
                           v-else
                           v-model.number="item.dosage"
                           type="number"
-                          min="1"
-                          step="1"
+                          min="0"
+                          step="any"
                           placeholder="Cant."
                           class="w-full rounded-lg border border-purple-200 bg-white px-2.5 py-1 text-xs font-black text-slate-900 focus:border-purple-600 focus:outline-none dark:border-purple-800 dark:bg-slate-900 dark:text-white text-right pr-9"
                         />

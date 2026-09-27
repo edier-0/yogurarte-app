@@ -401,7 +401,7 @@ const formatCurrency = (val: number) => {
           </DialogClose>
         </div>
 
-        <form @submit.prevent="handleSubmit" class="mt-6 space-y-6">
+        <form @submit.prevent="handleSubmit" novalidate class="mt-6 space-y-6">
           <!-- 1. Sección Cliente -->
           <div class="rounded-2xl bg-surface-light-canvas p-4 dark:bg-surface-dark-canvas space-y-4">
             <div class="flex items-center justify-between">
@@ -598,7 +598,8 @@ const formatCurrency = (val: number) => {
                   </div>
                   <input
                     type="number"
-                    step="500"
+                    step="any"
+                    min="0"
                     v-model.number="item.unitPrice"
                     @input="onItemChange(item)"
                     class="w-full rounded-lg border border-slate-200 bg-surface-light-canvas py-1.5 px-2 text-xs font-bold dark:border-slate-700 dark:bg-surface-dark-canvas"
@@ -724,8 +725,8 @@ const formatCurrency = (val: number) => {
                   <DollarSign class="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                   <input
                     type="number"
-                    min="500"
-                    step="500"
+                    min="0"
+                    step="any"
                     v-model.number="discountFixedAmount"
                     placeholder="2000"
                     class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 pl-9 pr-3 text-xs font-bold text-slate-900 focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
@@ -792,7 +793,7 @@ const formatCurrency = (val: number) => {
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Flete de Domicilio ($)</label>
                 <input
                   type="number"
-                  step="500"
+                  step="any"
                   min="0"
                   v-model.number="deliveryFee"
                   placeholder="0"
@@ -813,7 +814,7 @@ const formatCurrency = (val: number) => {
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Abono Inicial ($)</label>
                 <input
                   type="number"
-                  step="1000"
+                  step="any"
                   min="0"
                   v-model.number="paidAmount"
                   placeholder="0"

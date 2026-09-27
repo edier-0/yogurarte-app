@@ -230,7 +230,7 @@ async function handlePrepare() {
         </div>
 
         <!-- Formulario -->
-        <form @submit.prevent="handlePrepare" class="mt-5 space-y-4">
+        <form @submit.prevent="handlePrepare" novalidate class="mt-5 space-y-4">
           <!-- Alerta de Error -->
           <div
             v-if="errorMessage"
@@ -264,7 +264,7 @@ async function handlePrepare() {
               <input
                 v-model.number="quantityToProduce"
                 type="number"
-                min="0.1"
+                min="0"
                 step="any"
                 required
                 placeholder="Ej. 5"

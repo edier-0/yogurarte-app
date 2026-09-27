@@ -134,7 +134,7 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
           <!-- Selector de Dirección del Traslado -->
           <div>
             <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
@@ -208,7 +208,7 @@ async function handleSubmit() {
                 <input
                   v-model.number="amount"
                   type="number"
-                  min="1"
+                  min="0"
                   step="any"
                   placeholder="50000"
                   required

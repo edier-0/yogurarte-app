@@ -197,7 +197,7 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
           <!-- Toggle Compra a Cuotas / Crédito -->
           <div class="flex items-center justify-between rounded-2xl border border-surface-light-border bg-surface-light-canvas p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas">
             <div class="flex items-center gap-2">
@@ -238,7 +238,7 @@ async function handleSubmit() {
                 <input
                   v-model.number="amount"
                   type="number"
-                  min="1"
+                  min="0"
                   step="any"
                   placeholder="35000"
                   required

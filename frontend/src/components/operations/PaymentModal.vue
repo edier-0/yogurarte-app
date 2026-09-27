@@ -103,7 +103,7 @@ const formatCurrency = (val: number) => {
           </DialogClose>
         </div>
 
-        <form v-if="order" @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form v-if="order" @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
           <!-- Pending balance highlight -->
           <div class="flex items-center justify-between rounded-2xl bg-amber-50 p-3.5 dark:bg-amber-950/40">
             <div>
@@ -123,8 +123,8 @@ const formatCurrency = (val: number) => {
             </label>
             <input
               type="number"
-              step="500"
-              min="1"
+              step="any"
+              min="0"
               required
               v-model.number="amount"
               class="w-full rounded-xl border border-slate-200 bg-surface-light-canvas py-2.5 px-3 text-sm font-extrabold text-slate-900 focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-white"

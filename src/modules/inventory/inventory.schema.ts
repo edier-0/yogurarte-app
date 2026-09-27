@@ -95,7 +95,7 @@ export const inventoryMovementsQuerySchema = z.object({
 
 export const createPurchaseSchema = z.object({
   rawMaterialId: z.coerce.number().int().positive('ID de insumo inválido'),
-  quantity: z.coerce.number().positive('La cantidad debe ser mayor a 0'),
+  quantity: z.coerce.number().min(0, 'La cantidad no puede ser negativa'),
   unitCost: z.coerce.number().min(0).optional(),
   totalCost: z.coerce.number().min(0).optional(),
   supplier: z.string().optional().nullable(),
@@ -110,7 +110,7 @@ export const createPurchaseSchema = z.object({
 export const updatePurchaseSchema = z.object({
   supplier: z.string().optional().nullable(),
   invoiceNumber: z.string().optional().nullable(),
-  quantity: z.coerce.number().positive().optional(),
+  quantity: z.coerce.number().min(0).optional(),
   unitCost: z.coerce.number().min(0).optional(),
   totalCost: z.coerce.number().min(0).optional(),
   purchaseDate: z.string().optional(),

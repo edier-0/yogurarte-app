@@ -256,7 +256,7 @@ async function handleSave() {
           </button>
         </div>
 
-        <form @submit.prevent="handleSave" class="mt-5 space-y-4">
+        <form @submit.prevent="handleSave" novalidate class="mt-5 space-y-4">
           <!-- Selector de Cliente con Autocomplete -->
           <div class="relative">
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -358,8 +358,8 @@ async function handleSave() {
                 <input
                   v-model.number="form.quantity"
                   type="number"
-                  min="1"
-                  max="100"
+                  min="0"
+                  step="any"
                   class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 pl-9 pr-3 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
                   required
                 />

@@ -188,7 +188,7 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
           <!-- Selección del Colaborador -->
           <div>
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -237,8 +237,8 @@ async function handleSubmit() {
                 <input
                   v-model.number="amount"
                   type="number"
-                  min="1"
-                  step="1000"
+                  min="0"
+                  step="any"
                   placeholder="50000"
                   required
                   class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-10 pr-3.5 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
@@ -254,7 +254,7 @@ async function handleSubmit() {
                 v-model.number="deductions"
                 type="number"
                 min="0"
-                step="1000"
+                step="any"
                 placeholder="0"
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               />

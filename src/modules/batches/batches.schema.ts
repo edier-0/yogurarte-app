@@ -7,7 +7,7 @@ export const extraItemSchema = z.object({
 });
 
 export const createBatchSchema = z.object({
-  milkUsedLiters: z.coerce.number().positive('La cantidad de leche debe ser mayor a 0'),
+  milkUsedLiters: z.coerce.number().min(0, 'La cantidad de leche no puede ser negativa'),
   totalLitersProduced: z.coerce.number().optional(),
   bottles1LProduced: z.coerce.number().min(0).optional().default(0),
   bottles2LProduced: z.coerce.number().min(0).optional().default(0),
@@ -77,12 +77,12 @@ export const patchBatchStatusSchema = z.object({
 });
 
 export const patchBatchVolumeSchema = z.object({
-  totalLitersProduced: z.coerce.number().positive('El volumen producido debe ser mayor a 0'),
+  totalLitersProduced: z.coerce.number().min(0, 'El volumen producido no puede ser negativo'),
   notes: z.string().optional(),
   status: z.string().optional(),
   dynamicItems: z.array(z.object({
     rawMaterialId: z.coerce.number().int().positive(),
-    quantityUsed: z.coerce.number().positive('La cantidad debe ser mayor a 0'),
+    quantityUsed: z.coerce.number().min(0, 'La cantidad no puede ser negativa'),
     unitCost: z.coerce.number().optional(),
     dosagePerLiter: z.coerce.number().optional(),
     dosageUnit: z.string().optional(),
@@ -92,7 +92,7 @@ export const patchBatchVolumeSchema = z.object({
 export const packagingContainerItemSchema = z.object({
   rawMaterialId: z.coerce.number().int().positive('ID de insumo inválido'),
   containerName: z.string().optional(),
-  capacityLiters: z.coerce.number().positive('La capacidad en litros debe ser mayor a 0'),
+  capacityLiters: z.coerce.number().min(0, 'La capacidad en litros no puede ser negativa'),
   quantity: z.coerce.number().int().min(0, 'La cantidad no puede ser negativa'),
   unitCost: z.coerce.number().optional(),
   price: z.coerce.number().min(0).optional(),

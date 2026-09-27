@@ -814,7 +814,7 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
           <!-- Resumen del Lote Madre -->
           <div v-if="batch" class="rounded-2xl border border-surface-light-border bg-slate-50/70 p-3.5 dark:border-surface-dark-border dark:bg-surface-dark-canvas">
             <div class="flex flex-wrap items-center justify-between gap-2">
@@ -948,7 +948,7 @@ async function handleSubmit() {
                     v-model.number="bottles1L"
                     type="number"
                     min="0"
-                    step="1"
+                    step="any"
                     placeholder="0"
                     class="w-full rounded-xl border bg-surface-light-canvas px-3.5 py-2.5 text-sm font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-canvas"
                     :class="
@@ -983,7 +983,7 @@ async function handleSubmit() {
                     v-model.number="bottles2L"
                     type="number"
                     min="0"
-                    step="1"
+                    step="any"
                     placeholder="0"
                     class="w-full rounded-xl border bg-surface-light-canvas px-3.5 py-2.5 text-sm font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-canvas"
                     :class="
@@ -1057,8 +1057,8 @@ async function handleSubmit() {
                       <input
                         v-model.number="c.capacityLiters"
                         type="number"
-                        min="0.1"
-                        step="0.05"
+                        min="0"
+                        step="any"
                         placeholder="Ej. 0.5"
                         class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas px-2.5 py-1 text-xs font-extrabold text-slate-900 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
                       />
@@ -1070,8 +1070,8 @@ async function handleSubmit() {
                       <input
                         v-model.number="c.quantity"
                         type="number"
-                        min="1"
-                        step="1"
+                        min="0"
+                        step="any"
                         placeholder="0"
                         class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas px-2.5 py-1 text-xs font-extrabold text-slate-900 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
                       />
@@ -1084,7 +1084,7 @@ async function handleSubmit() {
                         v-model.number="c.price"
                         type="number"
                         min="0"
-                        step="500"
+                        step="any"
                         placeholder="0"
                         class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas px-2.5 py-1 text-xs font-extrabold text-slate-900 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
                       />
@@ -1145,7 +1145,7 @@ async function handleSubmit() {
                       v-model.number="labelQuantity"
                       type="number"
                       min="0"
-                      step="1"
+                      step="any"
                       @input="isLabelQtyManual = true"
                       placeholder="0"
                       class="w-full rounded-xl border bg-surface-light-card px-3.5 py-2 text-xs font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-card"
@@ -1202,7 +1202,7 @@ async function handleSubmit() {
                     v-model.number="price1L"
                     type="number"
                     min="0"
-                    step="500"
+                    step="any"
                     placeholder="12000"
                     class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-8 pr-3.5 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
                   />
@@ -1219,7 +1219,7 @@ async function handleSubmit() {
                     v-model.number="price2L"
                     type="number"
                     min="0"
-                    step="500"
+                    step="any"
                     placeholder="24000"
                     class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-8 pr-3.5 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
                   />
@@ -1302,8 +1302,8 @@ async function handleSubmit() {
                       <input
                         v-model.number="item.dosagePerLiter"
                         type="number"
-                        min="0.001"
-                        step="0.001"
+                        min="0"
+                        step="any"
                         placeholder="Ej. 120"
                         class="w-full rounded-xl border bg-surface-light-canvas px-3 py-1.5 text-xs font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-canvas pr-10"
                         :class="
@@ -1326,7 +1326,7 @@ async function handleSubmit() {
                     <input
                       v-model.number="item.quantityUsed"
                       type="number"
-                      min="0.01"
+                      min="0"
                       step="any"
                       :placeholder="`Cant. en ${getExtraItemCalc(item)?.material.unit}`"
                       class="w-full rounded-xl border bg-surface-light-canvas px-3 py-1.5 text-xs font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-canvas"

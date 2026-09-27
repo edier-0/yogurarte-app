@@ -4,8 +4,8 @@ export const orderItemSchema = z.object({
   batchId: z.coerce.number().optional().nullable(),
   bottleSize: z.string().optional().default('1L'),
   flavor: z.string().optional().default('Natural'),
-  quantity: z.coerce.number().min(1, 'La cantidad debe ser al menos 1').default(1),
-  unitPrice: z.coerce.number().optional(),
+  quantity: z.coerce.number().min(0, 'La cantidad no puede ser negativa').default(1),
+  unitPrice: z.coerce.number().min(0).optional(),
 });
 
 export const createOrderSchema = z.object({
@@ -84,7 +84,7 @@ export const updateDeliveryStatusSchema = z.object({
 });
 
 export const addOrderPaymentSchema = z.object({
-  amount: z.coerce.number().positive('El monto del abono debe ser mayor a 0'),
+  amount: z.coerce.number().min(0, 'El monto del abono no puede ser negativo'),
   paymentMethod: z.string().optional(),
   paymentDate: z.string().optional(),
   notes: z.string().optional().nullable(),
@@ -92,7 +92,7 @@ export const addOrderPaymentSchema = z.object({
 });
 
 export const updateOrderPaymentSchema = z.object({
-  amount: z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
+  amount: z.coerce.number().min(0, 'El monto no puede ser negativo').optional(),
   paymentMethod: z.string().optional(),
   paymentDate: z.string().optional(),
   notes: z.string().optional().nullable(),

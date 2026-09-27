@@ -611,7 +611,8 @@ const totalDischargePages = computed(() => {
                   <input
                     v-model.number="withdrawalQuantity"
                     type="number"
-                    min="1"
+                    min="0"
+                    step="any"
                     class="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs font-bold dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                   />
                 </div>

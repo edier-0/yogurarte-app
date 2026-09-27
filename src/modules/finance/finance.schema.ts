@@ -19,7 +19,7 @@ export const cashMovementTypeEnum = z.enum([
 
 export const createCashMovementSchema = z.object({
   type: cashMovementTypeEnum.default('BASE_INICIAL'),
-  amount: z.coerce.number().positive('El monto debe ser mayor a 0'),
+  amount: z.coerce.number().min(0, 'El monto no puede ser negativo'),
   movementDate: z.string().optional(),
   date: z.string().optional(),
   concept: z.string().optional(),
@@ -34,7 +34,7 @@ export const createCashMovementSchema = z.object({
 
 export const updateCashMovementSchema = z.object({
   type: z.string().optional(),
-  amount: z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
+  amount: z.coerce.number().min(0, 'El monto no puede ser negativo').optional(),
   movementDate: z.string().optional(),
   date: z.string().optional(),
   concept: z.string().optional(),
@@ -61,7 +61,7 @@ export const cashMovementsQuerySchema = z.object({
 export const createExpenseSchema = z.object({
   category: z.string().optional().default('OTRO'),
   description: z.string().min(1, 'La descripción del gasto es obligatoria'),
-  amount: z.coerce.number().positive('El monto debe ser mayor a 0'),
+  amount: z.coerce.number().min(0, 'El monto no puede ser negativo'),
   expenseDate: z.string().optional(),
   paymentMethod: z.string().optional().default('EFECTIVO'),
   supplier: z.string().optional().nullable(),
@@ -72,7 +72,7 @@ export const createExpenseSchema = z.object({
 export const updateExpenseSchema = z.object({
   category: z.string().optional(),
   description: z.string().min(1, 'La descripción del gasto es obligatoria').optional(),
-  amount: z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
+  amount: z.coerce.number().min(0, 'El monto no puede ser negativo').optional(),
   expenseDate: z.string().optional(),
   date: z.string().optional(),
   paymentMethod: z.string().optional(),
