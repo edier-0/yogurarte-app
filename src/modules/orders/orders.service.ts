@@ -22,7 +22,7 @@ import {
   UpdateOrderInput,
   UpdateOrderPaymentInput,
 } from './orders.schema.js';
-import { syncBatchStatusBidirectional } from '../batches/batches.service.js';
+import { syncBatchStatusBidirectional, computePackagingPresentations } from '../batches/batches.service.js';
 
 /**
  * Obtener métricas y KPIs globales consolidados de pedidos, cartera y domicilios
@@ -527,6 +527,7 @@ export const createOrder = async (data: CreateOrderInput) => {
 
     let parsedItems: Array<{
       batchId?: number | null;
+      packagingId?: number | null;
       bottleSize: string;
       flavor: string;
       quantity: number;
@@ -545,6 +546,11 @@ export const createOrder = async (data: CreateOrderInput) => {
           ? Number(item.unitPrice)
           : (size === '2L' ? 24000 : 12000);
 
+        let itemPackagingId: number | null = null;
+        if (item.packagingId !== undefined && item.packagingId !== null && !isNaN(Number(item.packagingId))) {
+          itemPackagingId = Number(item.packagingId);
+        }
+
         let itemBatchId: number | null = null;
         if (item.batchId !== undefined && item.batchId !== null && !isNaN(Number(item.batchId))) {
           itemBatchId = Number(item.batchId);
@@ -554,6 +560,7 @@ export const createOrder = async (data: CreateOrderInput) => {
 
         return {
           batchId: itemBatchId,
+          packagingId: itemPackagingId,
           bottleSize: size,
           flavor: (item.flavor || 'Natural').trim(),
           quantity: qty,
@@ -564,10 +571,30 @@ export const createOrder = async (data: CreateOrderInput) => {
         };
       });
 
+      // Si algún ítem tiene packagingId pero no batchId, resolver el batchId de la fracción
+      const pendingPkgIds = rawParsed.filter((i) => i.packagingId && !i.batchId).map((i) => i.packagingId as number);
+      if (pendingPkgIds.length > 0) {
+        const pkgs = await tx.batchPackaging.findMany({
+          where: { id: { in: pendingPkgIds } },
+          select: { id: true, batchId: true },
+        });
+        const pkgMap = new Map(pkgs.map((p) => [p.id, p.batchId]));
+        for (const it of rawParsed) {
+          if (it.packagingId && !it.batchId && pkgMap.has(it.packagingId)) {
+            it.batchId = pkgMap.get(it.packagingId) ?? null;
+          }
+        }
+      }
+
       // Consolidar ítems idénticos
       for (const it of rawParsed) {
         const existing = parsedItems.find(
-          (c) => c.bottleSize === it.bottleSize && c.flavor.toLowerCase() === it.flavor.toLowerCase() && c.unitPrice === it.unitPrice && c.batchId === it.batchId
+          (c) =>
+            c.bottleSize === it.bottleSize &&
+            c.flavor.toLowerCase() === it.flavor.toLowerCase() &&
+            c.unitPrice === it.unitPrice &&
+            c.batchId === it.batchId &&
+            c.packagingId === it.packagingId
         );
         if (existing) {
           existing.quantity += it.quantity;
@@ -673,10 +700,37 @@ export const createOrder = async (data: CreateOrderInput) => {
       }
     }
 
-    // 5. Validar capacidad de cada lote
+    // 5. Validar capacidad de cada lote fraccionado (Fase B) y lote madre (Fase A)
+    const pkgLitersMap = new Map<number, number>();
+    for (const item of parsedItems) {
+      if (item.packagingId) {
+        const cur = pkgLitersMap.get(item.packagingId) || 0;
+        pkgLitersMap.set(item.packagingId, cur + item.totalLiters);
+      }
+    }
+
+    for (const [pId, requestedLiters] of pkgLitersMap.entries()) {
+      const pkgObj = await tx.batchPackaging.findUnique({
+        where: { id: pId },
+        include: {
+          orderItems: { where: { order: { deliveryStatus: { not: 'CANCELLED' } } } },
+          discharges: true,
+        },
+      });
+
+      if (pkgObj) {
+        const computed = computePackagingPresentations(pkgObj);
+        if (requestedLiters > computed.freeLiters + 0.001) {
+          throw new BadRequestError(
+            `Capacidad excedida: El lote envasado "${pkgObj.packagingCode || pkgObj.flavor}" solo tiene ${computed.freeLiters.toFixed(1)}L libres disponibles, pero este pedido requiere ${requestedLiters.toFixed(1)}L.`
+          );
+        }
+      }
+    }
+
     const batchLitersMap = new Map<number, number>();
     for (const item of parsedItems) {
-      if (item.batchId) {
+      if (item.batchId && !item.packagingId) {
         const cur = batchLitersMap.get(item.batchId) || 0;
         batchLitersMap.set(item.batchId, cur + item.totalLiters);
       }
@@ -687,8 +741,8 @@ export const createOrder = async (data: CreateOrderInput) => {
         where: { id: bId },
         include: {
           orders: { select: { id: true, totalLiters: true } },
-          orderItems: { select: { id: true, orderId: true, totalLiters: true } },
-          discharges: { select: { totalLiters: true } },
+          orderItems: { select: { id: true, orderId: true, totalLiters: true, packagingId: true } },
+          discharges: { select: { totalLiters: true, packagingId: true } },
         },
       });
 
@@ -699,13 +753,12 @@ export const createOrder = async (data: CreateOrderInput) => {
           );
         }
 
-        const soldFromItems = batchObj.orderItems.reduce((sum, it) => sum + it.totalLiters, 0);
         const legacyOrdersSold = batchObj.orders
           .filter((o) => !batchObj.orderItems.some((it) => it.orderId === o.id))
           .reduce((sum, o) => sum + o.totalLiters, 0);
-        const sold = soldFromItems + legacyOrdersSold;
-        const discharges = (batchObj.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
-        const availableLiters = Math.max(0, batchObj.totalLitersProduced - sold - discharges);
+        const directSold = batchObj.orderItems.filter((it) => !it.packagingId).reduce((sum, it) => sum + it.totalLiters, 0) + legacyOrdersSold;
+        const directDischarged = (batchObj.discharges || []).filter((d) => !d.packagingId).reduce((sum, d) => sum + d.totalLiters, 0);
+        const availableLiters = Math.max(0, batchObj.totalLitersProduced - (batchObj.packagedLiters || 0) - directSold - directDischarged);
 
         if (requestedLiters > availableLiters + 0.001) {
           throw new BadRequestError(
@@ -789,6 +842,7 @@ export const createOrder = async (data: CreateOrderInput) => {
             items: {
               create: parsedItems.map((i) => ({
                 batchId: i.batchId || null,
+                packagingId: i.packagingId || null,
                 bottleSize: i.bottleSize,
                 flavor: i.flavor,
                 quantity: i.quantity,
@@ -911,6 +965,11 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
           ? Number(item.unitPrice)
           : (size === '2L' ? 24000 : 12000);
 
+        let itemPackagingId: number | null = null;
+        if (item.packagingId !== undefined && item.packagingId !== null && !isNaN(Number(item.packagingId))) {
+          itemPackagingId = Number(item.packagingId);
+        }
+
         let itemBatchId: number | null = null;
         if (item.batchId !== undefined && item.batchId !== null && !isNaN(Number(item.batchId))) {
           itemBatchId = Number(item.batchId);
@@ -920,6 +979,7 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
 
         return {
           batchId: itemBatchId,
+          packagingId: itemPackagingId,
           bottleSize: size,
           flavor: (item.flavor || 'Natural').trim(),
           quantity: qty,
@@ -930,11 +990,31 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
         };
       });
 
+      // Si algún ítem tiene packagingId pero no batchId, resolver el batchId de la fracción
+      const pendingPkgIds = rawParsed.filter((i) => i.packagingId && !i.batchId).map((i) => i.packagingId as number);
+      if (pendingPkgIds.length > 0) {
+        const pkgs = await tx.batchPackaging.findMany({
+          where: { id: { in: pendingPkgIds } },
+          select: { id: true, batchId: true },
+        });
+        const pkgMap = new Map(pkgs.map((p) => [p.id, p.batchId]));
+        for (const it of rawParsed) {
+          if (it.packagingId && !it.batchId && pkgMap.has(it.packagingId)) {
+            it.batchId = pkgMap.get(it.packagingId) ?? null;
+          }
+        }
+      }
+
       // Consolidar ítems idénticos
       const parsedItems: typeof rawParsed = [];
       for (const it of rawParsed) {
         const existing = parsedItems.find(
-          (c) => c.bottleSize === it.bottleSize && c.flavor.toLowerCase() === it.flavor.toLowerCase() && c.unitPrice === it.unitPrice && c.batchId === it.batchId
+          (c) =>
+            c.bottleSize === it.bottleSize &&
+            c.flavor.toLowerCase() === it.flavor.toLowerCase() &&
+            c.unitPrice === it.unitPrice &&
+            c.batchId === it.batchId &&
+            c.packagingId === it.packagingId
         );
         if (existing) {
           existing.quantity += it.quantity;
@@ -970,10 +1050,38 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
         ? parsedItems[0].bottleSize
         : 'MIXTO';
 
-      // Validar capacidad de cada lote
+      // Validar capacidad de cada lote fraccionado (Fase B) y lote madre (Fase A)
+      const pkgLitersMap = new Map<number, number>();
+      for (const item of parsedItems) {
+        if (item.packagingId) {
+          const cur = pkgLitersMap.get(item.packagingId) || 0;
+          pkgLitersMap.set(item.packagingId, cur + item.totalLiters);
+        }
+      }
+
+      for (const [pId, requestedLiters] of pkgLitersMap.entries()) {
+        const pkgObj = await tx.batchPackaging.findUnique({
+          where: { id: pId },
+          include: {
+            orderItems: { where: { order: { deliveryStatus: { not: 'CANCELLED' } } } },
+            discharges: true,
+          },
+        });
+
+        if (pkgObj) {
+          const otherOrderItems = pkgObj.orderItems.filter((it: any) => it.orderId !== id);
+          const computed = computePackagingPresentations({ ...pkgObj, orderItems: otherOrderItems });
+          if (requestedLiters > computed.freeLiters + 0.001) {
+            throw new BadRequestError(
+              `Capacidad excedida: El lote envasado "${pkgObj.packagingCode || pkgObj.flavor}" solo tiene ${computed.freeLiters.toFixed(1)}L libres disponibles, pero el pedido requiere ${requestedLiters.toFixed(1)}L.`
+            );
+          }
+        }
+      }
+
       const batchLitersMap = new Map<number, number>();
       for (const item of parsedItems) {
-        if (item.batchId) {
+        if (item.batchId && !item.packagingId) {
           const cur = batchLitersMap.get(item.batchId) || 0;
           batchLitersMap.set(item.batchId, cur + item.totalLiters);
         }
@@ -984,8 +1092,8 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
           where: { id: bId },
           include: {
             orders: { select: { id: true, totalLiters: true } },
-            orderItems: { select: { id: true, orderId: true, totalLiters: true } },
-            discharges: { select: { totalLiters: true } },
+            orderItems: { select: { id: true, orderId: true, totalLiters: true, packagingId: true } },
+            discharges: { select: { totalLiters: true, packagingId: true } },
           },
         });
 
@@ -996,11 +1104,11 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
             );
           }
 
-          const otherItems = batchObj.orderItems.filter((it) => it.orderId !== id);
+          const otherItems = batchObj.orderItems.filter((it) => it.orderId !== id && !it.packagingId);
           const otherLegacyOrders = batchObj.orders.filter((o) => o.id !== id && !batchObj.orderItems.some((it) => it.orderId === o.id));
           const otherSold = otherItems.reduce((sum, it) => sum + it.totalLiters, 0) + otherLegacyOrders.reduce((sum, o) => sum + o.totalLiters, 0);
-          const discharges = (batchObj.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
-          const availableLiters = Math.max(0, batchObj.totalLitersProduced - otherSold - discharges);
+          const discharges = (batchObj.discharges || []).filter((d) => !d.packagingId).reduce((sum, d) => sum + d.totalLiters, 0);
+          const availableLiters = Math.max(0, batchObj.totalLitersProduced - (batchObj.packagedLiters || 0) - otherSold - discharges);
 
           if (requestedLiters > availableLiters + 0.001) {
             throw new BadRequestError(
@@ -1068,6 +1176,7 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
         data: parsedItemsList.map((i) => ({
           orderId: id,
           batchId: i.batchId || null,
+          packagingId: i.packagingId || null,
           bottleSize: i.bottleSize,
           flavor: i.flavor,
           quantity: i.quantity,

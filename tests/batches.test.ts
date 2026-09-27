@@ -1149,7 +1149,7 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
       bottle250Id = b250.id;
 
       await prisma.rawMaterial.updateMany({
-        where: { code: { in: ['BOTELLA_1L', 'BOTELLA_2L', 'ETIQUETA', 'LECHE', 'LECHE_TEST'] } },
+        where: { code: { in: ['BOTELLA_1L', 'BOTELLA_2L', 'ETIQUETA', 'LECHE', 'LECHE_TEST', 'AZUCAR', 'LECHE_POLVO'] } },
         data: { currentStock: 1000 },
       });
     });

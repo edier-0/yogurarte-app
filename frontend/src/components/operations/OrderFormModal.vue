@@ -99,41 +99,60 @@ const items = ref<OrderItem[]>([
   },
 ]);
 
-// Lotes activos disponibles para asignación
-const activeBatches = computed(() => {
-  return productionStore.batches.filter(
-    (b) =>
-      b.isActive !== false &&
-      (b.status === 'DISPONIBLE' || b.status === 'EN_FERMENTACION')
+// Lotes fraccionados y envasados (Fase B) activos y con saldo disponible
+const activePackagings = computed(() => {
+  const source = productionStore.availablePackagings.length > 0
+    ? productionStore.availablePackagings
+    : productionStore.packagings;
+  return source.filter(
+    (p) => p.status === 'DISPONIBLE' || (p.freeLiters !== undefined && p.freeLiters > 0)
   );
 });
 
-// Helper de selección de lote vs pre-venta
+// Helper de selección de lote envasado (Fase B) vs pre-venta
 function getItemSelectionKey(item: OrderItem): string {
+  if (item.packagingId) {
+    return `pkg_${item.packagingId}`;
+  }
   if (item.batchId) {
-    return `batch_${item.batchId}`;
+    const matched = activePackagings.value.find((p) => p.batchId === item.batchId);
+    if (matched) return `pkg_${matched.id}`;
   }
   return `presale_${item.flavor}`;
 }
 
 function setItemSelectionKey(item: OrderItem, key: string) {
-  if (key.startsWith('batch_')) {
-    const bId = Number(key.replace('batch_', ''));
-    const b = productionStore.batches.find((x) => x.id === bId);
-    item.batchId = bId;
-    if (b) {
-      item.flavor = b.flavor;
+  if (key.startsWith('pkg_')) {
+    const pId = Number(key.replace('pkg_', ''));
+    const source = productionStore.availablePackagings.length > 0
+      ? productionStore.availablePackagings
+      : productionStore.packagings;
+    const pkg = source.find((x) => x.id === pId);
+    item.packagingId = pId;
+    if (pkg) {
+      item.batchId = pkg.batchId;
+      item.flavor = pkg.flavor;
+      if (item.bottleSize === '2L' && pkg.price2L) {
+        item.unitPrice = pkg.price2L;
+      } else if (item.bottleSize === '1L' && pkg.price1L) {
+        item.unitPrice = pkg.price1L;
+      }
+      onItemChange(item);
     }
   } else if (key.startsWith('presale_')) {
     const fl = key.replace('presale_', '');
+    item.packagingId = null;
     item.batchId = null;
     item.flavor = fl;
   }
 }
 
 function isCustomOptionNeeded(item: OrderItem): boolean {
+  if (item.packagingId) {
+    return !activePackagings.value.some((p) => p.id === item.packagingId);
+  }
   if (item.batchId) {
-    return !activeBatches.value.some((b) => b.id === item.batchId);
+    return true;
   }
   return !activeCatalogFlavors.value.includes(item.flavor);
 }
@@ -164,13 +183,15 @@ const selectCustomer = (c: { id: number; fullName: string; phone: string; addres
 
 // Items helpers
 const addItem = () => {
+  const defaultPkg = activePackagings.value[0];
   items.value.push({
-    batchId: null,
+    batchId: defaultPkg ? defaultPkg.batchId : null,
+    packagingId: defaultPkg ? defaultPkg.id : null,
     bottleSize: '1L',
-    flavor: 'Natural',
+    flavor: defaultPkg ? defaultPkg.flavor : (activeCatalogFlavors.value[0] || 'Natural'),
     quantity: 1,
-    unitPrice: 12000,
-    totalPrice: 12000,
+    unitPrice: defaultPkg?.price1L || 12000,
+    totalPrice: defaultPkg?.price1L || 12000,
   });
 };
 
@@ -234,12 +255,14 @@ const pendingBalance = computed(() => {
 // Inicialización / Reset
 watch(
   () => props.open,
-  (val) => {
+  async (val) => {
     if (val) {
       if (store.customers.length === 0) store.fetchCustomers();
       if (store.drivers.length === 0) store.fetchDrivers();
-      if (productionStore.batches.length === 0) productionStore.fetchBatches();
       if (productionStore.flavors.length === 0) productionStore.fetchFlavors();
+
+      // Cargar fracciones envasadas disponibles en Fase B
+      const availablePkgs = await productionStore.fetchAvailablePackagings();
 
       if (props.orderToEdit) {
         const o = props.orderToEdit;
@@ -268,9 +291,10 @@ watch(
         }
 
         if (o.items && o.items.length > 0) {
-          items.value = o.items.map((it) => ({
+          items.value = o.items.map((it: any) => ({
             id: it.id,
             batchId: it.batchId || null,
+            packagingId: it.packagingId || null,
             bottleSize: it.bottleSize || '1L',
             flavor: it.flavor || 'Natural',
             quantity: it.quantity || 1,
@@ -295,14 +319,18 @@ watch(
         discountPercentage.value = '';
         discountFixedAmount.value = '';
         notes.value = '';
+
+        // Si hay un lote activo en Fase B, asignarlo automáticamente por defecto
+        const defaultPkg = availablePkgs.length > 0 ? availablePkgs[0] : (activePackagings.value[0] || null);
         items.value = [
           {
-            batchId: null,
+            batchId: defaultPkg ? defaultPkg.batchId : null,
+            packagingId: defaultPkg ? defaultPkg.id : null,
             bottleSize: '1L',
-            flavor: 'Natural',
+            flavor: defaultPkg ? defaultPkg.flavor : (activeCatalogFlavors.value[0] || 'Natural'),
             quantity: 1,
-            unitPrice: 12000,
-            totalPrice: 12000,
+            unitPrice: defaultPkg?.price1L || 12000,
+            totalPrice: defaultPkg?.price1L || 12000,
           },
         ];
       }
@@ -355,6 +383,10 @@ const handleSubmit = async () => {
         batchId:
           typeof it.batchId === 'number' && !isNaN(it.batchId) && it.batchId > 0
             ? it.batchId
+            : null,
+        packagingId:
+          typeof it.packagingId === 'number' && !isNaN(it.packagingId) && it.packagingId > 0
+            ? it.packagingId
             : null,
         bottleSize: it.bottleSize || '1L',
         flavor: it.flavor || 'Natural',
@@ -526,15 +558,15 @@ const formatCurrency = (val: number) => {
                 :key="idx"
                 class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-surface-light-card p-3 dark:border-slate-700 dark:bg-surface-dark-card sm:flex-nowrap"
               >
-                <!-- Selector de Sabor vinculado a Lotes Activos / Pre-venta -->
+                <!-- Selector de Sabor vinculado a Lotes Envasados (Fase B) / Pre-venta -->
                 <div class="w-full sm:flex-1">
                   <div class="flex items-center justify-between mb-0.5">
-                    <label class="block text-[10px] font-bold uppercase text-slate-400">Sabor y Lote</label>
+                    <label class="block text-[10px] font-bold uppercase text-slate-400">Sabor y Lote Envasado (Fase B)</label>
                     <span
-                      v-if="item.batchId"
-                      class="text-[9px] font-extrabold text-brand-800 dark:text-emerald-400"
+                      v-if="item.packagingId || item.batchId"
+                      class="text-[9px] font-extrabold text-emerald-600 dark:text-emerald-400"
                     >
-                      Lote Asignado
+                      Envasado Fase B
                     </span>
                     <span
                       v-else
@@ -548,14 +580,14 @@ const formatCurrency = (val: number) => {
                     @change="setItemSelectionKey(item, ($event.target as HTMLSelectElement).value)"
                     class="w-full rounded-lg border border-slate-200 bg-surface-light-canvas py-1.5 px-2 text-xs font-semibold text-slate-900 focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-100"
                   >
-                    <!-- Grupo 1: Lotes Activos en Producción -->
-                    <optgroup v-if="activeBatches.length > 0" label="Lotes Activos en Producción">
+                    <!-- Grupo 1: Lotes Envasados Disponibles (Fase B) -->
+                    <optgroup v-if="activePackagings.length > 0" label="Lotes Envasados Disponibles (Fase B)">
                       <option
-                        v-for="b in activeBatches"
-                        :key="`b_${b.id}`"
-                        :value="`batch_${b.id}`"
+                        v-for="p in activePackagings"
+                        :key="`pkg_${p.id}`"
+                        :value="`pkg_${p.id}`"
                       >
-                        {{ b.flavor }} — Lote {{ b.batchCode }} ({{ b.status === 'EN_FERMENTACION' ? 'En Fermentación' : `${b.remainingAvailableLiters ?? b.totalLitersProduced}L disp.` }})
+                        {{ p.flavor }} — {{ p.packagingCode || `Lote #${p.id}` }} ({{ p.freeLiters }}L disp. · {{ p.bottles1L }} de 1L / {{ p.bottles2L }} de 2L)
                       </option>
                     </optgroup>
 
@@ -571,7 +603,7 @@ const formatCurrency = (val: number) => {
                     </optgroup>
 
                     <!-- Opción preservada si el sabor asignado es personalizado -->
-                    <optgroup v-if="isCustomOptionNeeded(item)" label="Sabor Actual Asignado">
+                    <optgroup v-if="isCustomOptionNeeded(item)" label="Asignación Actual">
                       <option :value="getItemSelectionKey(item)">
                         {{ item.flavor }} (Asignado al pedido)
                       </option>

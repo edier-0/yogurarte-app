@@ -14,6 +14,7 @@ const toOptionalNumber = (val: unknown, fallback?: number) => {
 
 export const orderItemSchema = z.object({
   batchId: z.preprocess(toNullableNumber, z.number().int().positive().nullable().optional()),
+  packagingId: z.preprocess(toNullableNumber, z.number().int().positive().nullable().optional()),
   bottleSize: z.string().optional().default('1L'),
   flavor: z.string().optional().default('Natural'),
   quantity: z.preprocess((v) => toOptionalNumber(v, 1), z.number().min(0, 'La cantidad no puede ser negativa').default(1)),

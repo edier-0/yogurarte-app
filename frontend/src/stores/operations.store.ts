@@ -18,6 +18,7 @@ export type PaymentStatus = 'PENDING' | 'PARTIAL' | 'PAID';
 export interface OrderItem {
   id?: number;
   batchId?: number | null;
+  packagingId?: number | null;
   bottleSize: string;
   flavor: string;
   quantity: number;

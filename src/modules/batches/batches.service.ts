@@ -56,10 +56,13 @@ export const syncBatchStatusBidirectional = async (tx: any, batchId: number) => 
       },
       orderItems: {
         where: { order: { deliveryStatus: { not: 'CANCELLED' } } },
-        select: { id: true, orderId: true, totalLiters: true },
+        select: { id: true, orderId: true, totalLiters: true, packagingId: true },
       },
       discharges: {
-        select: { totalLiters: true },
+        select: { totalLiters: true, packagingId: true },
+      },
+      packagings: {
+        select: { id: true },
       },
     },
   });
@@ -217,6 +220,7 @@ export const getBatches = async (query: BatchesQueryInput) => {
             id: true,
             orderId: true,
             totalLiters: true,
+            packagingId: true,
           },
         },
         discharges: {
@@ -224,6 +228,7 @@ export const getBatches = async (query: BatchesQueryInput) => {
             totalLiters: true,
             reasonType: true,
             totalAmount: true,
+            packagingId: true,
           },
         },
       },
@@ -237,7 +242,9 @@ export const getBatches = async (query: BatchesQueryInput) => {
         .reduce((sum, o) => sum + o.totalLiters, 0);
       const totalSoldLiters = soldFromItems + legacySold;
       const totalDischargedLiters = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
-      const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
+      const directSoldLiters = b.orderItems.filter((i) => !i.packagingId).reduce((sum, i) => sum + i.totalLiters, 0) + legacySold;
+      const directDischargedLiters = (b.discharges || []).filter((d) => !d.packagingId).reduce((sum, d) => sum + d.totalLiters, 0);
+      const remainingAvailableLiters = Math.max(0, Math.round((b.totalLitersProduced - (b.packagedLiters || 0) - directSoldLiters - directDischargedLiters) * 100) / 100);
       return {
         id: b.id,
         batchCode: b.batchCode,
@@ -318,6 +325,7 @@ export const getBatches = async (query: BatchesQueryInput) => {
             totalLiters: true,
             totalPrice: true,
             bottleSize: true,
+            packagingId: true,
           },
         },
         discharges: {
@@ -403,8 +411,10 @@ export const getBatches = async (query: BatchesQueryInput) => {
       }
     }
 
-    const remainingAvailableLiters = Math.max(0, b.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
-    const unpackagedLiters = Math.max(0, b.totalLitersProduced - (b.packagedLiters || 0));
+    const directSoldLiters = b.orderItems.filter((i) => !i.packagingId).reduce((sum, i) => sum + i.totalLiters, 0) + legacyOrdersSold;
+    const directDischargedLiters = (b.discharges || []).filter((d) => !d.packagingId).reduce((sum, d) => sum + d.totalLiters, 0);
+    const remainingAvailableLiters = Math.max(0, Math.round((b.totalLitersProduced - (b.packagedLiters || 0) - directSoldLiters - directDischargedLiters) * 100) / 100);
+    const unpackagedLiters = Math.max(0, Math.round((b.totalLitersProduced - (b.packagedLiters || 0)) * 100) / 100);
 
     return {
       ...b,
@@ -1696,7 +1706,7 @@ export const createBatchDischarge = async (id: number, data: CreateBatchDischarg
     where: { id },
     include: {
       orders: { select: { id: true, totalLiters: true } },
-      orderItems: { select: { id: true, orderId: true, totalLiters: true } },
+      orderItems: { select: { id: true, orderId: true, totalLiters: true, packagingId: true } },
       discharges: true,
     },
   });
@@ -1723,6 +1733,7 @@ export const createBatchDischarge = async (id: number, data: CreateBatchDischarg
     .reduce((sum, o) => sum + o.totalLiters, 0);
   const totalSoldLiters = soldLitersFromItems + legacyOrdersSold;
   const totalDischargedLiters = batch.discharges.reduce((sum, d) => sum + d.totalLiters, 0);
+
   const remainingAvailableLiters = Math.max(0, batch.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
 
   const size = (bottleSize || '1L').toUpperCase().trim();
@@ -3473,7 +3484,7 @@ export const getBatchSummary = async (batchId: number) => {
   const partnerDischargedLiters = partnerDischarges.reduce((sum, d) => sum + d.totalLiters, 0);
 
   const remainingAvailableLiters = Math.max(0, batch.totalLitersProduced - totalSoldLiters - totalDischargedLiters);
-  const unpackagedLiters = Math.max(0, batch.totalLitersProduced - (batch.packagedLiters || 0));
+  const unpackagedLiters = Math.max(0, Math.round((batch.totalLitersProduced - (batch.packagedLiters || 0)) * 100) / 100);
 
   const totalBottles1LProduced = batch.bottles1LProduced || 0;
   const totalBottles2LProduced = batch.bottles2LProduced || 0;

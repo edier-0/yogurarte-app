@@ -391,7 +391,9 @@ export const useProductionStore = defineStore('production', () => {
 
   // Estado Fase B: Fracciones Envasadas
   const packagings = ref<BatchPackagingCardItem[]>([]);
+  const availablePackagings = ref<BatchPackagingCardItem[]>([]);
   const isLoadingPackagings = ref<boolean>(false);
+  const isLoadingAvailablePackagings = ref<boolean>(false);
   const packagingCurrentPage = ref<number>(1);
   const packagingLimit = ref<number>(5);
   const totalPackagings = ref<number>(0);
@@ -887,6 +889,32 @@ export const useProductionStore = defineStore('production', () => {
     }
   }
 
+  // Cargar lotes fraccionados disponibles para selección en pedidos y operaciones
+  async function fetchAvailablePackagings(): Promise<BatchPackagingCardItem[]> {
+    isLoadingAvailablePackagings.value = true;
+    try {
+      const res = await http.get<{
+        data: BatchPackagingCardItem[];
+        pagination: { total: number; page: number; limit: number; totalPages: number };
+      }>('/batches/packagings', {
+        params: {
+          page: 1,
+          limit: 100,
+          status: 'DISPONIBLE',
+        },
+      });
+      if (res && res.data) {
+        availablePackagings.value = res.data.filter((p) => p.status === 'DISPONIBLE' || p.freeLiters > 0);
+      }
+      return availablePackagings.value;
+    } catch (err) {
+      console.error('Error al cargar fracciones envasadas disponibles:', err);
+      return [];
+    } finally {
+      isLoadingAvailablePackagings.value = false;
+    }
+  }
+
   async function goToPackagingPage(page: number) {
     if (page < 1 || page > totalPackagingPages.value) return;
     await fetchPackagings(page);
@@ -987,7 +1015,9 @@ export const useProductionStore = defineStore('production', () => {
     deleteBatch,
     // Estado y Acciones Fase B (Fracciones)
     packagings,
+    availablePackagings,
     isLoadingPackagings,
+    isLoadingAvailablePackagings,
     packagingCurrentPage,
     packagingLimit,
     totalPackagings,
@@ -996,6 +1026,7 @@ export const useProductionStore = defineStore('production', () => {
     packagingSearchQuery,
     debouncedPackagingSearch,
     fetchPackagings,
+    fetchAvailablePackagings,
     goToPackagingPage,
     fetchPackagingSummary,
     deletePackaging,

@@ -525,6 +525,8 @@ watch(activeMainTab, (newTab) => {
                       ? 'border border-purple-200 bg-purple-100 text-purple-800 dark:border-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
                       : (batch.status === 'DISPONIBLE' || batch.status === 'COMPLETADO') && batch.remainingAvailableLiters > 0
                       ? 'border border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : (batch.packagedLiters || 0) >= (batch.totalLitersProduced || batch.milkUsedLiters || 1) - 0.05
+                      ? 'border border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800/60 dark:bg-brand-950/40 dark:text-brand-300'
                       : batch.status === 'AGOTADO' || batch.remainingAvailableLiters <= 0
                       ? 'border border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
                       : 'border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
@@ -536,6 +538,7 @@ watch(activeMainTab, (newTab) => {
                   "
                 >
                   <Timer v-if="batch.status === 'EN_FERMENTACION'" class="h-3 w-3 stroke-[2.5]" />
+                  <PackageCheck v-else-if="(batch.packagedLiters || 0) >= (batch.totalLitersProduced || batch.milkUsedLiters || 1) - 0.05 && batch.remainingAvailableLiters <= 0" class="h-3 w-3 stroke-[2.5]" />
                   <CheckCircle2 v-else-if="batch.remainingAvailableLiters > 0" class="h-3 w-3 stroke-[2.5]" />
                   <span>
                     {{
@@ -543,6 +546,8 @@ watch(activeMainTab, (newTab) => {
                         ? 'En Fermentación'
                         : batch.remainingAvailableLiters > 0
                         ? 'Disponible'
+                        : (batch.packagedLiters || 0) >= (batch.totalLitersProduced || batch.milkUsedLiters || 1) - 0.05
+                        ? 'Envasado Total'
                         : 'Agotado'
                     }}
                   </span>
