@@ -42,102 +42,104 @@ function handleLogout() {
 
 <template>
   <header
-    class="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-surface-light-border bg-surface-light-card/80 px-4 backdrop-blur-md transition-colors dark:border-surface-dark-border dark:bg-surface-dark-card/80 lg:px-6"
+    class="sticky top-0 z-30 h-16 w-full border-b border-surface-light-border bg-surface-light-card/80 backdrop-blur-md transition-colors dark:border-surface-dark-border dark:bg-surface-dark-card/80"
   >
-    <!-- Brand / View Title -->
-    <div class="flex items-center gap-2.5 sm:gap-3">
-      <!-- Botón Menú Hamburguesa Móvil (lg:hidden) -->
-      <button
-        type="button"
-        @click="isMobileMenuOpen = true"
-        class="flex h-9 w-9 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-700 transition-all hover:bg-slate-100 hover:text-brand-800 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800 lg:hidden"
-        title="Abrir menú de navegación"
-        aria-label="Abrir menú de navegación"
-      >
-        <Menu class="h-5 w-5 stroke-[2]" />
-      </button>
-
-      <div
-        class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-hero-gradient text-white shadow-card"
-      >
-        <span class="text-xl font-bold font-handwritten">Y</span>
-      </div>
-      <div>
-        <div class="flex items-center gap-2">
-          <h1 class="text-base font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-lg">
-            {{ title || 'YogurArte' }}
-          </h1>
-          <span
-            class="hidden rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-brand-800 dark:bg-brand-darkSurface dark:text-brand-darkText sm:inline-flex"
-          >
-            Artesanal
-          </span>
-        </div>
-        <p class="text-xs font-medium text-surface-light-muted dark:text-surface-dark-muted">
-          {{ subtitle || 'Fonseca, La Guajira' }}
-        </p>
-      </div>
-    </div>
-
-    <!-- Actions / Theme / User / Logout -->
-    <div class="flex items-center gap-2 sm:gap-3">
-      <!-- Status Badge CRM Reactivo -->
-      <RouterLink
-        to="/operaciones/crm"
-        class="hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold transition-all md:inline-flex"
-        :class="
-          crmStore.isWhatsAppConnected
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-400'
-            : crmStore.status === 'CONNECTING'
-            ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-400'
-            : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-        "
-        title="Estado de WhatsApp (Clic para gestionar en CRM)"
-      >
-        <Wifi v-if="crmStore.isWhatsAppConnected" class="h-3.5 w-3.5 animate-pulse text-emerald-500" />
-        <Wifi v-else-if="crmStore.status === 'CONNECTING'" class="h-3.5 w-3.5 animate-ping text-amber-500" />
-        <WifiOff v-else class="h-3.5 w-3.5 text-slate-400" />
-        <span>{{ crmStore.isWhatsAppConnected ? 'Baileys Online' : (crmStore.status === 'CONNECTING' ? 'Conectando...' : 'WhatsApp Offline') }}</span>
-      </RouterLink>
-
-      <!-- Theme Switcher Button -->
-      <button
-        type="button"
-        @click="toggleTheme"
-        class="flex h-9 w-9 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-700 transition-all hover:bg-slate-100 hover:text-brand-800 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-brand-darkText"
-        :title="isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
-      >
-        <Moon v-if="isDark" class="h-4 w-4 text-brand-darkText transition-transform" />
-        <Sun v-else class="h-4 w-4 text-amber-500 transition-transform" />
-      </button>
-
-      <!-- Active User Profile Avatar & Name -->
-      <div class="flex items-center gap-2 pl-1">
-        <div class="hidden text-right sm:block">
-          <p class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">
-            {{ authStore.user?.name || 'Usuario' }}
-          </p>
-          <span class="rounded bg-brand-50 px-1.5 py-0.2 text-[9px] font-extrabold uppercase text-brand-800 dark:bg-brand-950 dark:text-brand-300">
-            {{ authStore.user?.role || 'Invitado' }}
-          </span>
-        </div>
-
-        <div
-          class="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-200 bg-brand-50 font-bold text-brand-800 shadow-sm dark:border-brand-900 dark:bg-brand-950 dark:text-brand-300"
-          :title="authStore.user?.name || 'Perfil'"
-        >
-          <span class="text-xs font-black">{{ userInitials }}</span>
-        </div>
-
-        <!-- Botón Cerrar Sesión -->
+    <div class="flex h-full w-full items-center justify-between px-4 sm:px-6">
+      <!-- Brand / View Title -->
+      <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <!-- Botón Menú Hamburguesa Móvil (lg:hidden) -->
         <button
           type="button"
-          @click="handleLogout"
-          class="flex h-9 w-9 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-500 transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400 dark:hover:border-rose-900/40 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
-          title="Cerrar sesión"
+          @click="isMobileMenuOpen = true"
+          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-700 transition-all hover:bg-slate-100 hover:text-brand-800 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800 lg:hidden"
+          title="Abrir menú de navegación"
+          aria-label="Abrir menú de navegación"
         >
-          <LogOut class="h-4 w-4 stroke-[2]" />
+          <Menu class="h-5 w-5 stroke-[2]" />
         </button>
+
+        <div
+          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-hero-gradient text-white shadow-card"
+        >
+          <span class="text-xl font-bold font-handwritten">Y</span>
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <h1 class="text-base font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-lg truncate whitespace-nowrap">
+              {{ title || 'YogurArte' }}
+            </h1>
+            <span
+              class="hidden rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-brand-800 dark:bg-brand-darkSurface dark:text-brand-darkText sm:inline-flex shrink-0"
+            >
+              Artesanal
+            </span>
+          </div>
+          <p class="truncate text-xs font-medium text-surface-light-muted dark:text-surface-dark-muted">
+            {{ subtitle || 'Fonseca, La Guajira' }}
+          </p>
+        </div>
+      </div>
+
+      <!-- Actions / Theme / User / Logout -->
+      <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+        <!-- Status Badge CRM Reactivo -->
+        <RouterLink
+          to="/operaciones/crm"
+          class="hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold transition-all md:inline-flex"
+          :class="
+            crmStore.isWhatsAppConnected
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-400'
+              : crmStore.status === 'CONNECTING'
+              ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-400'
+              : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
+          "
+          title="Estado de WhatsApp (Clic para gestionar en CRM)"
+        >
+          <Wifi v-if="crmStore.isWhatsAppConnected" class="h-3.5 w-3.5 animate-pulse text-emerald-500" />
+          <Wifi v-else-if="crmStore.status === 'CONNECTING'" class="h-3.5 w-3.5 animate-ping text-amber-500" />
+          <WifiOff v-else class="h-3.5 w-3.5 text-slate-400" />
+          <span>{{ crmStore.isWhatsAppConnected ? 'Baileys Online' : (crmStore.status === 'CONNECTING' ? 'Conectando...' : 'WhatsApp Offline') }}</span>
+        </RouterLink>
+
+        <!-- Theme Switcher Button -->
+        <button
+          type="button"
+          @click="toggleTheme"
+          class="flex h-9 w-9 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-700 transition-all hover:bg-slate-100 hover:text-brand-800 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-brand-darkText"
+          :title="isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
+        >
+          <Moon v-if="isDark" class="h-4 w-4 text-brand-darkText transition-transform" />
+          <Sun v-else class="h-4 w-4 text-amber-500 transition-transform" />
+        </button>
+
+        <!-- Active User Profile Avatar & Name -->
+        <div class="flex items-center gap-2 pl-1">
+          <div class="hidden text-right sm:block">
+            <p class="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">
+              {{ authStore.user?.name || 'Usuario' }}
+            </p>
+            <span class="rounded bg-brand-50 px-1.5 py-0.2 text-[9px] font-extrabold uppercase text-brand-800 dark:bg-brand-950 dark:text-brand-300">
+              {{ authStore.user?.role || 'Invitado' }}
+            </span>
+          </div>
+
+          <div
+            class="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-200 bg-brand-50 font-bold text-brand-800 shadow-sm dark:border-brand-900 dark:bg-brand-950 dark:text-brand-300"
+            :title="authStore.user?.name || 'Perfil'"
+          >
+            <span class="text-xs font-black">{{ userInitials }}</span>
+          </div>
+
+          <!-- Botón Cerrar Sesión -->
+          <button
+            type="button"
+            @click="handleLogout"
+            class="flex h-9 w-9 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-canvas text-slate-500 transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400 dark:hover:border-rose-900/40 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
+            title="Cerrar sesión"
+          >
+            <LogOut class="h-4 w-4 stroke-[2]" />
+          </button>
+        </div>
       </div>
     </div>
 

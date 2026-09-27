@@ -38,8 +38,7 @@ const headerTitle = computed(() => {
 });
 
 const headerSubtitle = computed(() => {
-  const domain = (route.meta?.domain as string) || 'Sistema Operativo Integral';
-  return `${domain} • Vue 3 & TypeScript`;
+  return (route.meta?.domain as string) || 'Operaciones';
 });
 
 const onNewOrder = () => {

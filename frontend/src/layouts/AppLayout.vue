@@ -19,7 +19,7 @@ const emit = defineEmits<{
     <AppSidebar />
 
     <!-- Main Content Area con Scroll Independiente -->
-    <div class="flex flex-1 flex-col h-screen overflow-hidden pb-20 lg:pb-0">
+    <div class="flex flex-1 flex-col h-screen min-w-0 overflow-hidden pb-20 lg:pb-0">
       <!-- Sticky Top Header -->
       <AppHeader
         :title="headerTitle"

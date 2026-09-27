@@ -325,12 +325,12 @@ onMounted(() => {
       </div>
 
       <!-- Selector de Períodos y Botón de Recarga -->
-      <div class="flex items-center gap-2">
-        <div class="flex items-center rounded-xl border border-surface-light-border bg-surface-light-card p-1 shadow-xs dark:border-surface-dark-border dark:bg-surface-dark-card">
+      <div class="flex items-center gap-2 w-full sm:w-auto">
+        <div class="grid grid-cols-4 flex-1 items-center rounded-xl border border-surface-light-border bg-surface-light-card p-1 shadow-xs dark:border-surface-dark-border dark:bg-surface-dark-card sm:flex sm:flex-initial">
           <button
             type="button"
             @click="changePeriod('today')"
-            class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all"
+            class="rounded-lg px-2.5 py-1.5 text-center text-xs font-bold transition-all"
             :class="selectedPeriod === 'today' ? 'bg-hero-gradient text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'"
           >
             Hoy
@@ -338,7 +338,7 @@ onMounted(() => {
           <button
             type="button"
             @click="changePeriod('this_week')"
-            class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all"
+            class="rounded-lg px-2.5 py-1.5 text-center text-xs font-bold transition-all"
             :class="selectedPeriod === 'this_week' ? 'bg-hero-gradient text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'"
           >
             Semana
@@ -346,7 +346,7 @@ onMounted(() => {
           <button
             type="button"
             @click="changePeriod('this_month')"
-            class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all"
+            class="rounded-lg px-2.5 py-1.5 text-center text-xs font-bold transition-all"
             :class="selectedPeriod === 'this_month' ? 'bg-hero-gradient text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'"
           >
             Mes
@@ -354,7 +354,7 @@ onMounted(() => {
           <button
             type="button"
             @click="changePeriod('all')"
-            class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all"
+            class="rounded-lg px-2.5 py-1.5 text-center text-xs font-bold transition-all"
             :class="selectedPeriod === 'all' ? 'bg-hero-gradient text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'"
           >
             Histórico
@@ -364,8 +364,9 @@ onMounted(() => {
         <button
           type="button"
           @click="loadDashboard"
-          class="flex h-9 w-9 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-card text-slate-600 transition-colors hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
-          :title="'Actualizar datos'"
+          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-surface-light-border bg-surface-light-card text-slate-600 shadow-xs transition-colors hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800"
+          title="Actualizar datos"
+          aria-label="Actualizar datos del dashboard"
         >
           <RotateCw class="h-4 w-4" :class="{ 'animate-spin': isLoading }" />
         </button>
