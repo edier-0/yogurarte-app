@@ -98,7 +98,7 @@ describe('Golden Master Characterization Suite — Comportamiento Base Inmutable
     it('POST /api/orders debe registrar un pedido completo con ítems mixtos, flete y abono parcial', async () => {
       const payload = {
         customerName: 'Cliente Golden Master Vitest',
-        customerPhone: '3009998877',
+        customerPhone: '3009998899',
         customerAddress: 'Calle 10 # 5-20 Barrio Centro',
         customerNeighborhood: 'Centro',
         items: [
@@ -129,7 +129,7 @@ describe('Golden Master Characterization Suite — Comportamiento Base Inmutable
       expect(order).toHaveProperty('customerId');
       expect(order).toHaveProperty('customer');
       expect(order.customer.fullName).toBe('Cliente Golden Master Vitest');
-      expect(order.customer.phone).toBe('3009998877');
+      expect(order.customer.phone).toBe('3009998899');
 
       // Congelar cálculos matemáticos de facturación
       // Subtotal ítems = (2 * 12000) + (1 * 24000) = 48000

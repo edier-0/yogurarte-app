@@ -1149,12 +1149,32 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
       bottle250Id = b250.id;
 
       await prisma.rawMaterial.updateMany({
-        where: { code: { in: ['BOTELLA_1L', 'BOTELLA_2L', 'ETIQUETA', 'LECHE', 'LECHE_TEST', 'AZUCAR', 'LECHE_POLVO'] } },
+        where: {
+          OR: [
+            { code: { in: ['BOTELLA_1L', 'BOTELLA_2L', 'ETIQUETA', 'LECHE', 'LECHE_TEST', 'AZUCAR', 'AZUCAR_DE_KILO_RIO_P', 'LECHE_POLVO', 'LECHE_EN_POLVO_DE_LA'] } },
+            { name: { contains: 'leche', mode: 'insensitive' } },
+            { name: { contains: 'azucar', mode: 'insensitive' } },
+            { name: { contains: 'azúcar', mode: 'insensitive' } },
+          ],
+        },
         data: { currentStock: 1000 },
       });
     });
 
     it('permite registrar presentaciones flexibles arbitrarias con cálculo volumétrico dinámico', async () => {
+      // Reaprovisionar stock de leche y azúcar antes de solicitar el lote de 25L
+      await prisma.rawMaterial.updateMany({
+        where: {
+          OR: [
+            { code: { in: ['LECHE', 'LECHE_TEST', 'AZUCAR', 'AZUCAR_DE_KILO_RIO_P'] } },
+            { name: { contains: 'leche', mode: 'insensitive' } },
+            { name: { contains: 'azucar', mode: 'insensitive' } },
+            { name: { contains: 'azúcar', mode: 'insensitive' } },
+          ],
+        },
+        data: { currentStock: 1000 },
+      });
+
       // Crear lote base de 25 litros
       const bRes = await request(app)
         .post('/api/batches')
