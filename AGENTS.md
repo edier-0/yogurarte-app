@@ -29,7 +29,7 @@ npx vitest run tests/orders.test.ts
 npm run build && npm start
 docker compose up --build -d
 ```
-API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/socket.io`). Pruebas necesitan Postgres (`DATABASE_URL` o `TEST_DATABASE_URL` local/CI).
+API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/socket.io`). Pruebas necesitan Postgres (`DATABASE_URL` o `TEST_DATABASE_URL` local/CI). En Windows PowerShell: usar `cmd.exe /c "..."` si `npx` está restringido o para encadenar comandos con `&&`.
 
 ## Convenciones
 - Comentarios, UI y errores de API en **español**.
@@ -47,6 +47,7 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
 - WhatsApp: no borrar sesión para “arreglar” reconexión (401 vs 440/515).
 - El README (árbol `src/controllers`) está desactualizado; fiarse de `app.ts` y `modules/`.
 - Transacciones Prisma cuando stock, caja y pagos deban coincidir. No editar el cliente generado.
+- `User` ≠ `StaffMember`: `User` = cuentas de acceso/login al sistema (sin dependencias FK). `StaffMember` = nómina, colaboradores y liquidaciones de jornales/socios.
 
 ## Forma de trabajar
 - Planificar antes de tocar código si el cambio cruza módulos (caja + pedidos, lote + inventario) o el contrato de datos.
@@ -61,5 +62,5 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
 
 ## Verificación
 - Backend: `npx tsc --noEmit` y `npx vitest run tests/<dominio>.test.ts` (o `npm test`). Golden-master de costeo/lotes: `tests/golden_master.test.ts`.
-- Frontend: flujo en el navegador (o Vite) en las rutas que comparten el estado; no basta un screenshot.
+- Frontend: `npm --prefix frontend run build` (valida `vue-tsc` con `noUnusedLocals` y empaquetado Vite). Probar flujo en el navegador en las rutas que comparten estado.
 - UI: desktop y móvil si cambió layout. Corregir regresiones antes de dar por cerrado.

@@ -25,4 +25,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - PowerShell no soporta `&&` → usar `cmd.exe /c` para encadenar comandos.
 
 ## Próximos pasos
-- Monitorear GitHub Actions y despliegue automático en Render tras push a `develop` y `main`.
+- CI/CD y despliegue en Render operativos al 100% (verde en main y develop). Listo para siguientes tareas de producto.
