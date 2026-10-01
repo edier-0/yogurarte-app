@@ -1,0 +1,22 @@
+---
+description: Patrón de módulos Express (rutas, Zod, AppError, Prisma)
+globs: src/**/*.ts
+alwaysApply: false
+---
+
+# Módulos del backend
+
+```
+src/modules/<name>/
+  <name>.routes.ts
+  <name>.controller.ts
+  <name>.service.ts
+  <name>.schema.ts
+```
+
+- Validar con Zod + `validateBody` / `validateQuery` / `validateParams` de `src/shared/middlewares/validate.middleware.ts`.
+- Controladores delgados; los servicios dueños de Prisma y las reglas. Usar `src/shared/errors/appError.ts`.
+- Auth: `requireAuth` / `requireRole` de `src/shared/middlewares/auth.middleware.ts`.
+- Importar archivos hermanos con extensión `.js` (`from './orders.service.js'`).
+- WhatsApp vive en `src/services/`, no bajo `modules/`.
+- Conservar los montajes dobles existentes (`/api/auth` + `/api/users`, alias de clientes, alias de caja).

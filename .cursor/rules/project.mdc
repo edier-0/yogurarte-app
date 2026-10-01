@@ -1,0 +1,15 @@
+---
+description: Convenciones generales de YogurArte para agentes
+alwaysApply: true
+---
+
+# YogurArte
+
+ERP/CRM de yogur artesanal. UI y mensajes de API en español. Briefing: `AGENTS.md`. Al empezar lee `MEMORY.md`; al terminar una tarea, actualízalo (breve, sin secretos).
+
+- API canónica: `src/modules/<dominio>/` + montaje en `src/app.ts`. No agregar funcionalidad en `src/controllers`, `src/routes` ni `src/schemas`.
+- Los imports ESM de TypeScript usan sufijo `.js`. Lanzar subclases de `AppError`; los controladores solo hacen `next(error)`.
+- SPA: Vue 3 `<script setup lang="ts">`, Pinia, rutas en `frontend/src/router/routes.ts`, HTTP vía `frontend/src/api/client.ts`.
+- La deuda del cliente se calcula desde pedidos/pagos, no es una columna de saldo en `Customer`. Mantener separados los canales de caja (efectivo vs Nequi/banco).
+- Pruebas: `npm test` (Vitest + Postgres, secuencial). Typecheck: `npx tsc --noEmit`. No hay script de ESLint.
+- Nunca hacer commit de `.env` ni pegar secretos, claves JWT o URLs remotas de BD.

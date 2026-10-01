@@ -1,0 +1,13 @@
+---
+description: Patrones de la SPA Vue 3 (Pinia, RBAC del router, cliente Axios)
+globs: frontend/**/*.{vue,ts}
+alwaysApply: false
+---
+
+# Frontend
+
+- Composition API, `<script setup lang="ts">`. Alias `@` → `frontend/src`.
+- Llamar a la API solo con `http` / `apiClient` en `frontend/src/api/client.ts` (`baseURL: '/api'`).
+- Roles en la UI: `ADMIN` | `OPERADOR` | `DOMICILIARIO`. Mapear roles de BD con `normalizeRole` en `stores/auth.store.ts` (`PRODUCCION`/`VENTAS` → `OPERADOR`, `SOCIO` → `ADMIN`).
+- Poner vistas en `views/{operations,production,finance,directory,dashboard,auth}/`. Los modales del dominio se quedan junto a ese dominio.
+- Toasts: `vue-sonner`. No saltarse los interceptores JWT ni inventar una segunda instancia de Axios.
