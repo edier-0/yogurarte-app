@@ -5,7 +5,8 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - App ERP/CRM en uso: producción (Fase A/B), inventario, pedidos/domicilio, caja bimonetaria, créditos, personal y CRM WhatsApp (Baileys + Socket.IO).
 - API canónica en `src/modules/` montada desde `src/app.ts`. Carpetas `src/controllers|routes|schemas` son restos; no son la fuente de verdad.
 - Contexto de agentes listo: `AGENTS.md`, `MEMORY.md`, `.cursor/rules/` (español).
-- Trabajo en curso (sin commit al init): auth (`auth.controller|schema|service`), `staff.service`, `auth.store`, `StaffModal.vue`, `UserModal.vue` nuevo (usuarios de acceso vs nómina).
+- CRUD de usuarios del sistema operativo en frontend y backend.
+- Reparado CI y Render: corregido TS6133 en `StaffView.vue` y actualizado `nodemailer@10.0.13` por advisory de seguridad high.
 
 ## Decisiones (y por qué)
 - Módulos (`routes` + controller delgado + service + Zod) para aislar dominio y no inflar controladores legacy.
@@ -15,12 +16,13 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Roles UI normalizados (`OPERADOR`/`ADMIN`/`DOMICILIARIO`) aunque la BD tenga `PRODUCCION`/`VENTAS`/`SOCIO`.
 - Vitest secuencial contra Postgres: las suites se pisan el schema si corren en paralelo.
 - Frontend HTTP único (`api/client.ts`): JWT, 401 y toasts consistentes.
+- `build:frontend` usa `npm --prefix frontend ci` para evitar mutación de package.json y build reproducible.
 
 ## Aprendizajes y errores a evitar
-- No fiarse del árbol del README (`src/controllers` como capa principal).
-- No inventar ESLint: no hay script en `package.json`.
-- No pegar secretos, JWT ni URLs de BD remota en docs (tampoco en `MEMORY.md`).
+- `vue-tsc` corre con `noUnusedLocals: true`: imports no utilizados en `.vue` botan TS6133 y rompen `npm run build` en Render.
+- `npm audit --omit=dev --audit-level=high` en CI rompe ante nuevos advisories en dependencias de producción (ej. nodemailer).
+- PowerShell bloquea `npx` directo → usar siempre `cmd.exe /c "..."`.
+- PowerShell no soporta `&&` → usar `cmd.exe /c` para encadenar comandos.
 
 ## Próximos pasos
-- Cerrar y verificar el flujo de usuarios de sistema (`UserModal`) vs personal/nómina (`StaffModal`).
-- Tras cambios de API, actualizar el `tests/<dominio>.test.ts` correspondiente.
+- Monitorear GitHub Actions y despliegue automático en Render tras push a `develop` y `main`.

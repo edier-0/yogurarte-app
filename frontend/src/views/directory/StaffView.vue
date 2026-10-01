@@ -23,7 +23,6 @@ import {
   Edit3,
   Search,
   MessageCircle,
-  ShieldCheck,
   UserCheck,
   Trash2,
   UserPlus,
