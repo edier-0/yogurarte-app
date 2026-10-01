@@ -133,7 +133,7 @@ export const createUser = async (data: CreateUserInput) => {
     throw new ConflictError('El nombre de usuario ya está registrado');
   }
 
-  const validRoles = ['ADMIN', 'PRODUCCION', 'OPERADOR', 'VENTAS', 'DOMICILIARIO'];
+  const validRoles = ['ADMIN', 'SOCIO', 'PRODUCCION', 'OPERADOR', 'VENTAS', 'DOMICILIARIO'];
   const assignedRole = role && validRoles.includes(role.toUpperCase()) ? role.toUpperCase() : 'VENTAS';
 
   // Hashear contraseña y PIN con bcrypt
@@ -150,7 +150,7 @@ export const createUser = async (data: CreateUserInput) => {
       phone: phone ? String(phone).trim() : null,
       email: email ? String(email).trim().toLowerCase() : null,
       bankInfo: bankInfo ? String(bankInfo).trim() : null,
-      isActive: true,
+      isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
     },
     select: {
       id: true,
@@ -199,7 +199,7 @@ export const updateUser = async (id: number, data: UpdateUserInput) => {
     updateData.pin = String(pin).trim();
   }
   if (role) {
-    const validRoles = ['ADMIN', 'PRODUCCION', 'OPERADOR', 'VENTAS', 'DOMICILIARIO'];
+    const validRoles = ['ADMIN', 'SOCIO', 'PRODUCCION', 'OPERADOR', 'VENTAS', 'DOMICILIARIO'];
     if (validRoles.includes(role.toUpperCase())) {
       updateData.role = role.toUpperCase();
     }
@@ -229,17 +229,17 @@ export const updateUser = async (id: number, data: UpdateUserInput) => {
 };
 
 /**
- * Eliminar usuario (protegiendo a administradores principales)
+ * Eliminar usuario (Permite al ADMIN eliminar a cualquier usuario, admin o socio, excepto su propia cuenta en sesión)
  */
-export const deleteUser = async (id: number) => {
+export const deleteUser = async (id: number, currentUserId?: number) => {
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing) {
     throw new NotFoundError('Usuario no encontrado');
   }
 
-  // No permitir eliminar a los socios administradores principales
-  if (existing.username === 'edier' || existing.username === 'yeilin') {
-    throw new BadRequestError('No es posible eliminar a los administradores principales');
+  // Prevenir que un administrador elimine su propia cuenta en sesión
+  if (currentUserId && id === currentUserId) {
+    throw new BadRequestError('No puedes eliminar tu propia cuenta de usuario en sesión activa');
   }
 
   await prisma.user.delete({ where: { id } });

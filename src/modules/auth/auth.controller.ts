@@ -61,7 +61,7 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
 
 export const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await authService.deleteUser(Number(req.params.id));
+    const result = await authService.deleteUser(Number(req.params.id), req.user?.id);
     res.json(result);
   } catch (error) {
     next(error);

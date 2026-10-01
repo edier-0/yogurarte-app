@@ -137,8 +137,15 @@ export const deleteStaff = async (id: number) => {
     throw new NotFoundError('Integrante no encontrado');
   }
 
-  const deleted = await prisma.staffMember.delete({
-    where: { id },
+  const deleted = await prisma.$transaction(async (tx) => {
+    // Desvincular mermas/descargas asociadas para preservar la trazabilidad del lote
+    await tx.batchDischarge.updateMany({
+      where: { staffMemberId: id },
+      data: { staffMemberId: null },
+    });
+    return tx.staffMember.delete({
+      where: { id },
+    });
   });
 
   return { message: 'Integrante eliminado correctamente', staff: deleted };

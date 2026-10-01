@@ -25,13 +25,20 @@ import {
   MessageCircle,
   ShieldCheck,
   UserCheck,
+  Trash2,
+  UserPlus,
+  Phone,
+  Mail,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { refDebounced } from '@vueuse/core';
 import { useCrmStore } from '@/stores/crm.store';
+import { useConfirm } from '@/composables/useConfirm';
+import { toast } from 'vue-sonner';
 import StaffModal, { type StaffMemberItem } from '@/components/directory/StaffModal.vue';
 import StaffPaymentModal from '@/components/directory/StaffPaymentModal.vue';
 import NequiConfigModal from '@/components/directory/NequiConfigModal.vue';
+import UserModal, { type UserItem } from '@/components/directory/UserModal.vue';
 
 interface StaffPaymentItem {
   id: number;
@@ -54,13 +61,6 @@ interface StaffPaymentItem {
   };
 }
 
-interface UserItem {
-  id: number;
-  name: string;
-  username: string;
-  role: string;
-  isActive?: boolean;
-}
 
 type StaffChip = 'ALL' | 'PARTNERS' | 'EMPLOYEES';
 
@@ -90,6 +90,12 @@ const isPaymentModalOpen = ref(false);
 const preselectedStaffId = ref<number | null>(null);
 
 const isNequiModalOpen = ref(false);
+
+// Modal de Usuarios del Sistema
+const isUserModalOpen = ref(false);
+const userToEdit = ref<UserItem | null>(null);
+
+const { confirm } = useConfirm();
 
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat('es-CO', {
@@ -138,16 +144,16 @@ async function fetchPayments() {
 
 async function fetchUsers() {
   try {
-    // Intentar primero endpoint público o protegido
-    const data = await http.get<UserItem[]>('/users/public-list');
+    // Endpoint admin con datos completos (phone, email, bankInfo)
+    const data = await http.get<UserItem[]>('/users');
     if (Array.isArray(data)) {
       usersList.value = data;
     }
   } catch {
     try {
-      const dataAdmin = await http.get<UserItem[]>('/users');
-      if (Array.isArray(dataAdmin)) {
-        usersList.value = dataAdmin;
+      const dataPublic = await http.get<UserItem[]>('/users/public-list');
+      if (Array.isArray(dataPublic)) {
+        usersList.value = dataPublic;
       }
     } catch {
       // Ignorar si no tiene permisos
@@ -260,6 +266,37 @@ async function handleSharePaymentWhatsApp(paymentId: number) {
     }
   } catch {
     // Interceptor
+  }
+}
+
+// Gestión de Usuarios del Sistema
+function openCreateUserModal() {
+  userToEdit.value = null;
+  isUserModalOpen.value = true;
+}
+
+function openEditUserModal(user: UserItem) {
+  userToEdit.value = user;
+  isUserModalOpen.value = true;
+}
+
+async function handleDeleteUser(user: UserItem) {
+  const accepted = await confirm({
+    title: `¿Eliminar al usuario "${user.name || user.username}"?`,
+    message: 'Esta acción es irreversible. El usuario perderá su acceso al sistema permanentemente.',
+    confirmText: 'Sí, Eliminar',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+  });
+
+  if (!accepted) return;
+
+  try {
+    await http.delete(`/users/${user.id}`);
+    toast.success(`Usuario "${user.name || user.username}" eliminado correctamente`);
+    await fetchUsers();
+  } catch (err: any) {
+    toast.error(err?.response?.data?.message || 'Error al eliminar el usuario');
   }
 }
 </script>
@@ -710,9 +747,15 @@ async function handleSharePaymentWhatsApp(paymentId: number) {
               </p>
             </div>
 
-            <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-800 dark:bg-brand-900/40 dark:text-brand-darkText">
-              <ShieldCheck class="h-5 w-5 stroke-[2]" />
-            </div>
+            <button
+              type="button"
+              @click="openCreateUserModal"
+              class="inline-flex items-center gap-1.5 rounded-xl bg-hero-gradient px-3 py-2 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95"
+            >
+              <UserPlus class="h-4 w-4 stroke-[2.5]" />
+              <span class="hidden sm:inline">+ Usuario</span>
+              <span class="sm:hidden">+</span>
+            </button>
           </div>
 
           <!-- Grilla de Usuarios -->
@@ -720,33 +763,91 @@ async function handleSharePaymentWhatsApp(paymentId: number) {
             <div
               v-for="u in usersList"
               :key="u.id"
-              class="flex items-center justify-between rounded-2xl border border-surface-light-border bg-surface-light-canvas p-4 dark:border-surface-dark-border dark:bg-surface-dark-canvas"
+              class="flex flex-col justify-between rounded-2xl border border-surface-light-border bg-surface-light-canvas p-4 transition-all hover:border-slate-300 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:hover:border-slate-700"
             >
-              <div class="flex items-center gap-3">
-                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-800 text-white font-black text-xs shadow-xs">
-                  {{ (u.name || u.username || 'U').charAt(0).toUpperCase() }}
+              <!-- Fila superior: Avatar + Datos + Badge de Rol -->
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-3">
+                  <div
+                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-xs shadow-xs"
+                    :class="
+                      u.isActive !== false
+                        ? 'bg-brand-800 text-white'
+                        : 'bg-slate-300 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
+                    "
+                  >
+                    {{ (u.name || u.username || 'U').charAt(0).toUpperCase() }}
+                  </div>
+                  <div>
+                    <h4 class="text-xs font-extrabold text-slate-900 dark:text-white">
+                      {{ u.name || u.username }}
+                    </h4>
+                    <span class="block text-[11px] font-semibold text-slate-400">
+                      @{{ u.username }}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <h4 class="text-xs font-extrabold text-slate-900 dark:text-white">
-                    {{ u.name || u.username }}
-                  </h4>
-                  <span class="block text-[11px] font-semibold text-slate-400">
-                    @{{ u.username }}
-                  </span>
-                </div>
-              </div>
 
-              <div>
+                <!-- Badge de Rol -->
                 <span
-                  class="rounded-lg px-2.5 py-1 text-[10px] font-black uppercase"
+                  class="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-black uppercase"
                   :class="
                     u.role === 'ADMIN'
                       ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                      : 'bg-brand-50 text-brand-800 dark:bg-brand-950/60 dark:text-brand-darkText'
+                      : u.role === 'SOCIO'
+                        ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
+                        : u.role === 'DOMICILIARIO'
+                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                          : 'bg-brand-50 text-brand-800 dark:bg-brand-950/60 dark:text-brand-darkText'
                   "
                 >
                   {{ u.role }}
                 </span>
+              </div>
+
+              <!-- Estado Activo/Inactivo -->
+              <div class="mt-2.5 flex items-center gap-1.5">
+                <span
+                  class="inline-block h-2 w-2 rounded-full"
+                  :class="u.isActive !== false ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'"
+                ></span>
+                <span class="text-[11px] font-bold" :class="u.isActive !== false ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'">
+                  {{ u.isActive !== false ? 'Activo' : 'Inactivo' }}
+                </span>
+              </div>
+
+              <!-- Info extra (teléfono, email) -->
+              <div v-if="u.phone || u.email" class="mt-2 space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                <div v-if="u.phone" class="flex items-center gap-1.5 font-semibold">
+                  <Phone class="h-3 w-3 stroke-[2] text-slate-400" />
+                  <span>{{ u.phone }}</span>
+                </div>
+                <div v-if="u.email" class="flex items-center gap-1.5 font-semibold">
+                  <Mail class="h-3 w-3 stroke-[2] text-slate-400" />
+                  <span>{{ u.email }}</span>
+                </div>
+              </div>
+
+              <!-- Botones de Acción -->
+              <div class="mt-3 flex items-center justify-end gap-2 border-t border-surface-light-border pt-3 dark:border-surface-dark-border">
+                <button
+                  type="button"
+                  @click="openEditUserModal(u)"
+                  class="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+                  title="Editar usuario"
+                >
+                  <Edit3 class="h-3.5 w-3.5 stroke-[2]" />
+                  <span>Editar</span>
+                </button>
+                <button
+                  type="button"
+                  @click="handleDeleteUser(u)"
+                  class="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-950/60 transition-colors"
+                  title="Eliminar usuario"
+                >
+                  <Trash2 class="h-3.5 w-3.5 stroke-[2]" />
+                  <span>Eliminar</span>
+                </button>
               </div>
             </div>
 
@@ -755,7 +856,7 @@ async function handleSharePaymentWhatsApp(paymentId: number) {
               class="col-span-full py-6 text-center text-xs font-semibold text-slate-400"
             >
               <UserCheck class="mx-auto h-8 w-8 text-slate-300 mb-1" />
-              Sesión de acceso administrada por autenticación central
+              No hay usuarios registrados. Crea uno con el botón "+ Usuario".
             </div>
           </div>
         </div>
@@ -779,6 +880,12 @@ async function handleSharePaymentWhatsApp(paymentId: number) {
     <NequiConfigModal
       v-model:open="isNequiModalOpen"
       @saved="refreshAll"
+    />
+
+    <UserModal
+      v-model:open="isUserModalOpen"
+      :user-to-edit="userToEdit"
+      @saved="fetchUsers"
     />
   </div>
 </template>

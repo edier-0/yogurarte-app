@@ -19,9 +19,11 @@ import {
   AlertCircle,
   Save,
   UserPlus,
+  Trash2,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
+import { useConfirm } from '@/composables/useConfirm';
 
 export interface StaffMemberItem {
   id: number;
@@ -96,9 +98,36 @@ const isFormValid = computed(() => {
   return fullName.value.trim().length > 0;
 });
 
+const isDeleting = ref(false);
+const { confirm } = useConfirm();
+
 function handleClose() {
   emit('update:open', false);
   errorMessage.value = '';
+}
+
+async function handleDeleteStaff() {
+  if (!props.staffToEdit?.id) return;
+
+  const ok = await confirm({
+    title: '¿Eliminar integrante del equipo?',
+    message: `¿Estás seguro de eliminar a "${props.staffToEdit.fullName}" (${props.staffToEdit.type === 'SOCIO' ? 'Socio' : 'Colaborador'})? Esta acción removerá su ficha y desvinculará sus registros del directorio.`,
+    confirmText: 'Sí, eliminar',
+    variant: 'danger',
+  });
+  if (!ok) return;
+
+  isDeleting.value = true;
+  try {
+    await http.delete(`/staff/${props.staffToEdit.id}`);
+    toast.success('Integrante eliminado correctamente');
+    emit('saved');
+    handleClose();
+  } catch (err: any) {
+    errorMessage.value = err?.response?.data?.message || err?.message || 'Error al eliminar integrante';
+  } finally {
+    isDeleting.value = false;
+  }
 }
 
 async function handleSubmit() {
@@ -321,22 +350,37 @@ async function handleSubmit() {
           </div>
 
           <!-- Botones de Acción -->
-          <div class="flex items-center justify-end gap-2.5 pt-3">
-            <button
-              type="button"
-              @click="handleClose"
-              class="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              :disabled="!isFormValid || isSubmitting"
-              class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-5 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95 disabled:opacity-50"
-            >
-              <Save class="h-4 w-4 stroke-[2.5]" />
-              <span>{{ isSubmitting ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Registrar Integrante') }}</span>
-            </button>
+          <div class="flex items-center justify-between gap-2.5 pt-3 border-t border-surface-light-border dark:border-surface-dark-border">
+            <div>
+              <button
+                v-if="isEditing"
+                type="button"
+                @click="handleDeleteStaff"
+                :disabled="isDeleting || isSubmitting"
+                class="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-950/60 transition-colors disabled:opacity-50"
+              >
+                <Trash2 class="h-4 w-4 stroke-[2]" />
+                <span>{{ isDeleting ? 'Eliminando...' : 'Eliminar' }}</span>
+              </button>
+            </div>
+
+            <div class="flex items-center gap-2.5">
+              <button
+                type="button"
+                @click="handleClose"
+                class="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                :disabled="!isFormValid || isSubmitting || isDeleting"
+                class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-5 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95 disabled:opacity-50"
+              >
+                <Save class="h-4 w-4 stroke-[2.5]" />
+                <span>{{ isSubmitting ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Registrar Integrante') }}</span>
+              </button>
+            </div>
           </div>
         </form>
       </DialogContent>

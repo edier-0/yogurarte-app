@@ -41,8 +41,8 @@ export interface ForgotPasswordResponse {
 export function normalizeRole(rawRole?: string | null): UserRole | null {
   if (!rawRole) return null;
   const upper = rawRole.toUpperCase().trim();
-  if (upper === 'ADMIN') return 'ADMIN';
-  if (upper === 'OPERADOR' || upper === 'PRODUCCION') return 'OPERADOR';
+  if (upper === 'ADMIN' || upper === 'SOCIO') return 'ADMIN';
+  if (upper === 'OPERADOR' || upper === 'PRODUCCION' || upper === 'VENTAS') return 'OPERADOR';
   if (upper === 'DOMICILIARIO' || upper === 'REPARTIDOR') return 'DOMICILIARIO';
   return null;
 }
