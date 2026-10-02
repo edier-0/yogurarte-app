@@ -20,14 +20,15 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - En compras de inventario (`createPurchase`), el proveedor se persiste en `Expense.supplier` y al editar gastos de insumos se sincroniza con `Purchase.supplier`.
 - Flujo de caja en `finance.service`: compras con `registerExpense: true` se consolidan vía `Expense` para evitar doble resta en caja y evitar duplicados con ID cruzado en movimientos.
 - Eliminación sincronizada bidireccional: al eliminar un gasto o una compra de insumos, se revierte el stock en `RawMaterial`, se eliminan ambos registros (`Purchase` y `Expense`) atómicamente y se restaura el saldo en caja sin generar 404 por ID cruzado.
+- Multimedia WhatsApp en CRM: unwrapping recursivo (`viewOnce`, `ephemeral`), persistencia Base64 en Postgres para imágenes `<= 500 KB` (inmune a Render), fallback a `jpegThumbnail` para imágenes salientes del móvil, proxy `/uploads` en Vite y visor Lightbox en `CrmView.vue`.
 
 ## Aprendizajes y errores a evitar
 - `vue-tsc` corre con `noUnusedLocals: true`: imports no utilizados en `.vue` botan TS6133 y rompen `npm run build` en Render.
 - `npm audit --omit=dev --audit-level=high` en CI rompe ante nuevos advisories en dependencias de producción (ej. nodemailer).
 - PowerShell bloquea `npx` directo → usar siempre `cmd.exe /c "..."`.
 - PowerShell no soporta `&&` → usar `cmd.exe /c` para encadenar comandos.
-- `getDashboardSummary` no debe sumar `purchases` y `expenses` juntos sin filtrar los que ya generaron egreso automático en caja.
-- Eliminar solo el `Expense` de una compra dejaba la `Purchase` activa descontando dinero como `unexpensedPurchase`.
+- Baileys falla la descarga de buffer en fotos enviadas desde la app móvil si no sincroniza llaves; usar `jpegThumbnail` en Base64 evita imágenes en blanco.
+- Sin proxy `/uploads` en Vite, las imágenes locales del CRM retornan 404 en desarrollo (:5173).
 
 ## Próximos pasos
-- Compras, gastos, inventario y control de caja 100% sincronizados en creación, edición y eliminación. Listo para merge.
+- Visualización de fotos y multimedia en CRM 100% implementada y verificada. Lista para commit y fusión.

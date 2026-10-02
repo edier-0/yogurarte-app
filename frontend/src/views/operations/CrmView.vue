@@ -21,12 +21,15 @@ import {
   Plus,
   UserCheck,
   GitMerge,
+  ExternalLink,
+  X,
 } from 'lucide-vue-next';
 import {
   DialogRoot,
   DialogPortal,
   DialogOverlay,
   DialogContent,
+  DialogTitle,
 } from 'reka-ui';
 import { http } from '@/api/client';
 import { getSocket } from '@/api/socket';
@@ -52,6 +55,7 @@ export interface ChatMessageItem {
   messageType: string;
   text?: string | null;
   mediaUrl?: string | null;
+  mediaMimeType?: string | null;
   status: string;
   timestamp: string;
 }
@@ -121,6 +125,15 @@ const isMobileClientInfoOpen = ref(false);
 
 // Control responsive móvil (true = viendo chat activo, false = viendo sidebar)
 const isMobileChatOpen = ref(false);
+
+// Visor / Lightbox de imágenes de WhatsApp
+const previewImageUrl = ref<string | null>(null);
+
+function openImageModal(url?: string | null) {
+  if (url) {
+    previewImageUrl.value = url;
+  }
+}
 
 const messagesContainer = ref<HTMLElement | null>(null);
 
@@ -572,6 +585,17 @@ function handleOpenChatFromCustomer(customer: { id: number; fullName: string; ph
   }
 }
 
+function onMediaUpdated(payload: any) {
+  if (!payload || !payload.messageId || !payload.mediaUrl) return;
+  const target = activeMessages.value.find((m) => m.messageId === payload.messageId);
+  if (target) {
+    target.mediaUrl = payload.mediaUrl;
+    if (payload.mediaMimeType) {
+      target.mediaMimeType = payload.mediaMimeType;
+    }
+  }
+}
+
 onMounted(() => {
   fetchStatus();
   fetchConversations();
@@ -582,6 +606,7 @@ onMounted(() => {
   const socket = getSocket();
   socket.on('whatsapp:status', onStatusUpdate);
   socket.on('whatsapp:message', onNewMessage);
+  socket.on('whatsapp:media_updated', onMediaUpdated);
   socket.on('whatsapp:conversation_read', onConversationRead);
   socket.on('whatsapp:conversations_merged', onConversationsMerged);
   socket.on('whatsapp:conversation_deleted', onConversationDeleted);
@@ -593,6 +618,7 @@ onUnmounted(() => {
   const socket = getSocket();
   socket.off('whatsapp:status', onStatusUpdate);
   socket.off('whatsapp:message', onNewMessage);
+  socket.off('whatsapp:media_updated', onMediaUpdated);
   socket.off('whatsapp:conversation_read', onConversationRead);
   socket.off('whatsapp:conversations_merged', onConversationsMerged);
   socket.off('whatsapp:conversation_deleted', onConversationDeleted);
@@ -955,7 +981,52 @@ onUnmounted(() => {
                 v-if="msg.fromMe"
                 class="ml-auto bg-brand-800 text-white rounded-2xl rounded-tr-xs p-3 max-w-[85%] sm:max-w-[75%] shadow-sm"
               >
-                <p class="text-xs whitespace-pre-line leading-relaxed font-medium">
+                <!-- Sticker -->
+                <div
+                  v-if="msg.mediaUrl && (msg.messageType?.toUpperCase() === 'STICKER' || msg.mediaUrl.match(/\.webp/i))"
+                  class="mb-1.5 cursor-pointer flex justify-end"
+                  @click="openImageModal(msg.mediaUrl)"
+                >
+                  <img
+                    :src="msg.mediaUrl"
+                    alt="Sticker"
+                    loading="lazy"
+                    class="max-h-36 max-w-[140px] object-contain transition-transform duration-200 hover:scale-105"
+                  />
+                </div>
+
+                <!-- Imagen adjunta -->
+                <div
+                  v-else-if="msg.mediaUrl && (msg.messageType?.toUpperCase() === 'IMAGE' || msg.mediaUrl.startsWith('data:image') || msg.mediaUrl.match(/\.(jpeg|jpg|png|webp|gif)/i))"
+                  class="mb-2 overflow-hidden rounded-xl border border-white/20 cursor-pointer group relative bg-black/20"
+                  @click="openImageModal(msg.mediaUrl)"
+                >
+                  <img
+                    :src="msg.mediaUrl"
+                    alt="Imagen enviada"
+                    loading="lazy"
+                    class="max-h-72 w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                  />
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <span class="rounded-full bg-black/60 p-2 text-white shadow-md">
+                      <ExternalLink class="h-4 w-4" />
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Audio -->
+                <div
+                  v-else-if="msg.mediaUrl && (msg.messageType?.toUpperCase() === 'AUDIO' || msg.mediaUrl.startsWith('data:audio') || msg.mediaUrl.match(/\.(ogg|mp3|m4a|wav)/i))"
+                  class="mb-2 min-w-[200px]"
+                >
+                  <audio :src="msg.mediaUrl" controls class="w-full h-8" />
+                </div>
+
+                <!-- Texto / Pie de foto -->
+                <p
+                  v-if="msg.text && (!msg.mediaUrl || (msg.text !== '📷 Imagen' && msg.text !== '✨ Sticker' && msg.text !== '🎵 Nota de voz / Audio'))"
+                  class="text-xs whitespace-pre-line leading-relaxed font-medium"
+                >
                   {{ msg.text }}
                 </p>
                 <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-brand-200">
@@ -969,7 +1040,52 @@ onUnmounted(() => {
                 v-else
                 class="mr-auto bg-surface-light-card border border-surface-light-border text-slate-900 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-white rounded-2xl rounded-tl-xs p-3 max-w-[85%] sm:max-w-[75%] shadow-sm"
               >
-                <p class="text-xs whitespace-pre-line leading-relaxed font-medium">
+                <!-- Sticker -->
+                <div
+                  v-if="msg.mediaUrl && (msg.messageType?.toUpperCase() === 'STICKER' || msg.mediaUrl.match(/\.webp/i))"
+                  class="mb-1.5 cursor-pointer flex justify-start"
+                  @click="openImageModal(msg.mediaUrl)"
+                >
+                  <img
+                    :src="msg.mediaUrl"
+                    alt="Sticker"
+                    loading="lazy"
+                    class="max-h-36 max-w-[140px] object-contain transition-transform duration-200 hover:scale-105"
+                  />
+                </div>
+
+                <!-- Imagen adjunta -->
+                <div
+                  v-else-if="msg.mediaUrl && (msg.messageType?.toUpperCase() === 'IMAGE' || msg.mediaUrl.startsWith('data:image') || msg.mediaUrl.match(/\.(jpeg|jpg|png|webp|gif)/i))"
+                  class="mb-2 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer group relative bg-black/5"
+                  @click="openImageModal(msg.mediaUrl)"
+                >
+                  <img
+                    :src="msg.mediaUrl"
+                    alt="Imagen recibida"
+                    loading="lazy"
+                    class="max-h-72 w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                  />
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <span class="rounded-full bg-black/60 p-2 text-white shadow-md">
+                      <ExternalLink class="h-4 w-4" />
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Audio -->
+                <div
+                  v-else-if="msg.mediaUrl && (msg.messageType?.toUpperCase() === 'AUDIO' || msg.mediaUrl.startsWith('data:audio') || msg.mediaUrl.match(/\.(ogg|mp3|m4a|wav)/i))"
+                  class="mb-2 min-w-[200px]"
+                >
+                  <audio :src="msg.mediaUrl" controls class="w-full h-8" />
+                </div>
+
+                <!-- Texto / Pie de foto -->
+                <p
+                  v-if="msg.text && (!msg.mediaUrl || (msg.text !== '📷 Imagen' && msg.text !== '✨ Sticker' && msg.text !== '🎵 Nota de voz / Audio'))"
+                  class="text-xs whitespace-pre-line leading-relaxed font-medium"
+                >
                   {{ msg.text }}
                 </p>
                 <div class="mt-1 text-left text-[10px] text-slate-400">
@@ -1122,6 +1238,55 @@ onUnmounted(() => {
             @create-order="handleOpenCreateOrder"
             @close="isMobileClientInfoOpen = false"
           />
+        </DialogContent>
+      </DialogPortal>
+    </DialogRoot>
+
+    <!-- Modal Visor de Imagen en Pantalla Completa (Lightbox) -->
+    <DialogRoot :open="Boolean(previewImageUrl)" @update:open="(val: boolean) => { if (!val) previewImageUrl = null }">
+      <DialogPortal>
+        <DialogOverlay class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm animate-fade-in" />
+        <DialogContent
+          class="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 sm:p-6 outline-none focus:outline-none pointer-events-none"
+        >
+          <DialogTitle class="sr-only">Vista previa de imagen de WhatsApp</DialogTitle>
+          <div class="relative max-h-[92vh] max-w-[95vw] sm:max-w-4xl flex flex-col items-center pointer-events-auto bg-slate-900/95 rounded-2xl p-3 border border-white/10 shadow-2xl backdrop-blur-md">
+            <!-- Barra superior con botón descargar/abrir y botón cerrar -->
+            <div class="w-full flex items-center justify-between pb-2 px-1 text-white border-b border-white/10 mb-2">
+              <span class="text-xs font-semibold text-slate-300">Imagen de WhatsApp</span>
+              <div class="flex items-center gap-2">
+                <a
+                  v-if="previewImageUrl"
+                  :href="previewImageUrl"
+                  target="_blank"
+                  download="whatsapp-imagen"
+                  class="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-medium text-white transition-colors"
+                  title="Abrir o descargar imagen"
+                >
+                  <ExternalLink class="h-3.5 w-3.5" />
+                  <span>Abrir original</span>
+                </a>
+                <button
+                  type="button"
+                  @click="previewImageUrl = null"
+                  class="rounded-lg bg-white/10 hover:bg-white/20 p-1.5 text-slate-300 hover:text-white transition-colors"
+                  title="Cerrar"
+                >
+                  <X class="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <!-- Imagen grande centrada con scroll si es muy grande -->
+            <div class="overflow-auto flex items-center justify-center max-h-[80vh] max-w-full rounded-xl">
+              <img
+                v-if="previewImageUrl"
+                :src="previewImageUrl"
+                alt="Imagen de chat"
+                class="max-h-[78vh] w-auto max-w-full rounded-lg object-contain shadow-md"
+              />
+            </div>
+          </div>
         </DialogContent>
       </DialogPortal>
     </DialogRoot>

@@ -315,23 +315,47 @@ class WhatsAppService {
     const messageId = msg.key.id || `MSG-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     const pushName = msg.pushName || null;
 
+    // Desenvolver posibles wrappers de WhatsApp (viewOnce, ephemeral, etc.)
+    let content: any = msg.message;
+    while (
+      content?.ephemeralMessage?.message ||
+      content?.viewOnceMessage?.message ||
+      content?.viewOnceMessageV2?.message ||
+      content?.viewOnceMessageV2Extension?.message ||
+      content?.documentWithCaptionMessage?.message
+    ) {
+      content =
+        content?.ephemeralMessage?.message ||
+        content?.viewOnceMessage?.message ||
+        content?.viewOnceMessageV2?.message ||
+        content?.viewOnceMessageV2Extension?.message ||
+        content?.documentWithCaptionMessage?.message;
+    }
+
+    if (!content) return;
+
+    const unwrappedMsg: WAMessage = {
+      ...msg,
+      message: content,
+    };
+
     let text = '';
     let messageType = 'TEXT';
     let mediaUrl: string | null = null;
     let mediaMimeType: string | null = null;
 
-    if (msg.message.conversation) {
-      text = msg.message.conversation;
-    } else if (msg.message.extendedTextMessage?.text) {
-      text = msg.message.extendedTextMessage.text;
-    } else if (msg.message.imageMessage) {
+    if (content.conversation) {
+      text = content.conversation;
+    } else if (content.extendedTextMessage?.text) {
+      text = content.extendedTextMessage.text;
+    } else if (content.imageMessage) {
       messageType = 'IMAGE';
-      text = msg.message.imageMessage.caption || '📷 Imagen';
-      mediaMimeType = 'image/jpeg';
+      text = content.imageMessage.caption || '📷 Imagen';
+      mediaMimeType = content.imageMessage.mimetype || 'image/jpeg';
       try {
         if (this.sock) {
           const buffer = (await downloadMediaMessage(
-            msg,
+            unwrappedMsg,
             'buffer',
             {},
             {
@@ -339,21 +363,39 @@ class WhatsAppService {
               reuploadRequest: this.sock.updateMediaMessage,
             }
           )) as Buffer;
-          if (buffer) {
-            mediaUrl = await this.saveMediaBuffer(messageId, 'jpg', buffer);
+          if (buffer && buffer.length > 0) {
+            // Si la imagen es <= 500 KB, persistir en Base64 para garantizar disponibilidad en Neon PostgreSQL (inmune al disco efímero de Render)
+            if (buffer.length <= 500 * 1024) {
+              mediaUrl = `data:${mediaMimeType};base64,${buffer.toString('base64')}`;
+              this.saveMediaBuffer(messageId, 'jpg', buffer).catch(() => {});
+            } else {
+              mediaUrl = await this.saveMediaBuffer(messageId, 'jpg', buffer);
+            }
           }
         }
       } catch (err) {
-        console.warn('Aviso: no se pudo descargar imagen:', err);
+        console.warn('Aviso: no se pudo descargar imagen por buffer:', err);
       }
-    } else if (msg.message.stickerMessage) {
+
+      // Si falló la descarga completa del buffer, usar el jpegThumbnail embebido en el mensaje de WhatsApp
+      if (!mediaUrl && content.imageMessage.jpegThumbnail) {
+        try {
+          const thumbBuffer = Buffer.from(content.imageMessage.jpegThumbnail);
+          if (thumbBuffer && thumbBuffer.length > 0) {
+            mediaUrl = `data:image/jpeg;base64,${thumbBuffer.toString('base64')}`;
+          }
+        } catch (e) {
+          console.warn('Aviso: error al procesar jpegThumbnail:', e);
+        }
+      }
+    } else if (content.stickerMessage) {
       messageType = 'STICKER';
       text = '✨ Sticker';
       mediaMimeType = 'image/webp';
       try {
         if (this.sock) {
           const buffer = (await downloadMediaMessage(
-            msg,
+            unwrappedMsg,
             'buffer',
             {},
             {
@@ -362,8 +404,8 @@ class WhatsAppService {
             }
           )) as Buffer;
           if (buffer) {
-            // Opción B: Persistencia directa en Base64 para stickers (15-50 KB) para que no dependan del disco efímero de Render
-            if (buffer.length <= 120 * 1024) {
+            // Persistencia directa en Base64 para stickers (15-50 KB)
+            if (buffer.length <= 150 * 1024) {
               mediaUrl = `data:image/webp;base64,${buffer.toString('base64')}`;
             } else {
               mediaUrl = await this.saveMediaBuffer(messageId, 'webp', buffer);
@@ -373,15 +415,16 @@ class WhatsAppService {
       } catch (err) {
         console.warn('Aviso: no se pudo descargar sticker:', err);
       }
-    } else if (msg.message.audioMessage) {
+    } else if (content.audioMessage) {
       messageType = 'AUDIO';
       text = '🎵 Nota de voz / Audio';
-      mediaMimeType = msg.message.audioMessage.mimetype || 'audio/ogg; codecs=opus';
-      const ext = mediaMimeType.includes('mp4') ? 'm4a' : 'ogg';
+      const audioMime = content.audioMessage.mimetype || 'audio/ogg; codecs=opus';
+      mediaMimeType = audioMime;
+      const ext = audioMime.includes('mp4') ? 'm4a' : 'ogg';
       try {
         if (this.sock) {
           const buffer = (await downloadMediaMessage(
-            msg,
+            unwrappedMsg,
             'buffer',
             {},
             {
@@ -396,16 +439,16 @@ class WhatsAppService {
       } catch (err) {
         console.warn('Aviso: no se pudo descargar nota de voz:', err);
       }
-    } else if (msg.message.videoMessage) {
+    } else if (content.videoMessage) {
       messageType = 'VIDEO';
-      text = msg.message.videoMessage.caption || '🎥 Video';
-    } else if (msg.message.documentMessage) {
+      text = content.videoMessage.caption || '🎥 Video';
+    } else if (content.documentMessage) {
       messageType = 'DOCUMENT';
-      text = msg.message.documentMessage.fileName || '📄 Documento';
-    } else if (msg.message.locationMessage) {
+      text = content.documentMessage.fileName || '📄 Documento';
+    } else if (content.locationMessage) {
       messageType = 'LOCATION';
       text = '📍 Ubicación';
-    } else if (msg.message.contactMessage) {
+    } else if (content.contactMessage) {
       messageType = 'CONTACT';
       text = '👤 Contacto';
     }
