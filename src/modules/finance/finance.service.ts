@@ -244,6 +244,7 @@ export const getExpenses = async (query: ExpensesQueryInput) => {
       { description: { contains: q, mode: 'insensitive' } },
       { notes: { contains: q, mode: 'insensitive' } },
       { registeredBy: { contains: q, mode: 'insensitive' } },
+      { supplier: { contains: q, mode: 'insensitive' } },
     ];
   }
 
@@ -368,7 +369,7 @@ export const updateExpense = async (id: number, data: UpdateExpenseInput) => {
   const rawDate = date || expenseDate;
   const parsedExpenseDate = rawDate ? parseColombiaDate(rawDate) : existing.expenseDate;
 
-  return prisma.expense.update({
+  const updatedExpense = await prisma.expense.update({
     where: { id },
     data: {
       category: category !== undefined ? category.trim() : existing.category,
@@ -381,6 +382,36 @@ export const updateExpense = async (id: number, data: UpdateExpenseInput) => {
       registeredBy: registeredBy !== undefined ? (registeredBy ? registeredBy.trim() : null) : existing.registeredBy,
     },
   });
+
+  // Si es un gasto de compra de insumos, sincronizar también el proveedor y método de pago en la tabla Purchase si coincide
+  if (
+    (existing.category === 'INSUMOS_EXTRA' || category === 'INSUMOS_EXTRA' || existing.category === 'MATERIA_PRIMA') &&
+    supplier !== undefined
+  ) {
+    try {
+      const cleanSupplier = supplier ? String(supplier).trim() : null;
+      const matchingPurchase = await prisma.purchase.findFirst({
+        where: {
+          totalCost: existing.amount,
+          purchaseDate: existing.expenseDate,
+        },
+        orderBy: { id: 'desc' },
+      });
+      if (matchingPurchase) {
+        await prisma.purchase.update({
+          where: { id: matchingPurchase.id },
+          data: {
+            supplier: cleanSupplier,
+            paymentMethod: paymentMethod !== undefined ? String(paymentMethod).trim() : matchingPurchase.paymentMethod,
+          },
+        });
+      }
+    } catch (syncErr) {
+      console.warn('Advertencia al sincronizar proveedor en Purchase:', syncErr);
+    }
+  }
+
+  return updatedExpense;
 };
 
 /**
@@ -919,6 +950,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
         description: true,
         amount: true,
         paymentMethod: true,
+        supplier: true,
         notes: true,
         registeredBy: true,
       },
@@ -1128,8 +1160,17 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
   const inProcessLiters = inProcessOrders.reduce((sum, o) => sum + o.totalLiters, 0);
   const totalDispatchedLiters = deliveredLiters + totalPartnerDischargedLiters;
 
-  const totalRawMaterialPurchases = purchases.reduce((sum, p) => sum + p.totalCost, 0);
-  const totalGeneralExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const rawMaterialExpenses = expenses.filter(
+    (e) => e.category === 'INSUMOS_EXTRA' || e.category === 'MATERIA_PRIMA'
+  );
+  const generalExpenses = expenses.filter(
+    (e) => e.category !== 'INSUMOS_EXTRA' && e.category !== 'MATERIA_PRIMA'
+  );
+
+  const totalRawMaterialPurchases = purchases.length > 0
+    ? purchases.reduce((sum, p) => sum + p.totalCost, 0)
+    : rawMaterialExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalGeneralExpenses = generalExpenses.reduce((sum, e) => sum + e.amount, 0);
   const totalExpenses = totalRawMaterialPurchases + totalGeneralExpenses + totalPayrollExpenses;
   const totalOutflow =
     totalRawMaterialPurchases +
@@ -1177,7 +1218,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
       cashInHand -= m.amount;
       digitalBank += m.amount;
     } else if (m.type === 'TRASLADO_BANCO_A_EFECTIVO') {
-      cashInHand += m.amount;
+      cashInHand -= m.amount;
       digitalBank -= m.amount;
     }
   }
@@ -1207,18 +1248,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     }
   }
 
-  // 3. Compras de Insumos
-  for (const p of purchases) {
-    if (isCash(p.paymentMethod)) {
-      cashInHand -= p.totalCost;
-      totalOutflowCash += p.totalCost;
-    } else {
-      digitalBank -= p.totalCost;
-      totalOutflowBank += p.totalCost;
-    }
-  }
-
-  // 4. Gastos Generales
+  // 3. Gastos y Compras de Insumos (Evitar doble descuento: expenses ya contiene los egresos de compras)
   for (const e of expenses) {
     if (isCash(e.paymentMethod)) {
       cashInHand -= e.amount;
@@ -1226,6 +1256,29 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     } else {
       digitalBank -= e.amount;
       totalOutflowBank += e.amount;
+    }
+  }
+
+  // Compras de insumos en tabla Purchase que no tengan egreso registrado en Expense (evitar omisiones)
+  const unexpensedPurchases = purchases.filter((p) => {
+    const pDate = p.purchaseDate ? new Date(p.purchaseDate).toISOString().split('T')[0] : '';
+    return !expenses.some((e) => {
+      const eDate = e.expenseDate ? new Date(e.expenseDate).toISOString().split('T')[0] : '';
+      return (
+        (e.category === 'INSUMOS_EXTRA' || e.category === 'MATERIA_PRIMA') &&
+        Math.abs(e.amount - p.totalCost) < 1 &&
+        (!pDate || !eDate || pDate === eDate)
+      );
+    });
+  });
+
+  for (const p of unexpensedPurchases) {
+    if (isCash(p.paymentMethod)) {
+      cashInHand -= p.totalCost;
+      totalOutflowCash += p.totalCost;
+    } else {
+      digitalBank -= p.totalCost;
+      totalOutflowBank += p.totalCost;
     }
   }
 
@@ -1649,7 +1702,24 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
           return getEffTime(b) - getEffTime(a);
         }),
         outflows: [
-          ...purchases.map((p) => ({
+          ...expenses.map((e) => {
+            const isRawMaterial = e.category === 'INSUMOS_EXTRA' || e.category === 'MATERIA_PRIMA';
+            return {
+              id: `exp_${e.id}`,
+              rawId: e.id,
+              date: e.expenseDate,
+              createdAt: e.createdAt,
+              category: isRawMaterial ? 'COMPRA_INSUMO' : 'GASTO_GENERAL',
+              categoryLabel: isRawMaterial ? '🥛 Compra Insumo' : `⚙️ ${e.category}`,
+              description: e.description,
+              amount: e.amount,
+              supplier: e.supplier || (isRawMaterial ? 'Proveedor local' : undefined),
+              notes: e.notes,
+              registeredBy: e.registeredBy,
+              paymentMethod: e.paymentMethod || 'EFECTIVO',
+            };
+          }),
+          ...unexpensedPurchases.map((p) => ({
             id: `purch_${p.id}`,
             rawId: p.id,
             date: p.purchaseDate,
@@ -1663,19 +1733,6 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
             supplier: p.supplier || 'Proveedor local',
             paymentMethod: p.paymentMethod || 'EFECTIVO',
             notes: p.notes,
-          })),
-          ...expenses.map((e) => ({
-            id: `exp_${e.id}`,
-            rawId: e.id,
-            date: e.expenseDate,
-            createdAt: e.createdAt,
-            category: 'GASTO_GENERAL',
-            categoryLabel: `⚙️ ${e.category}`,
-            description: e.description,
-            amount: e.amount,
-            notes: e.notes,
-            registeredBy: e.registeredBy,
-            paymentMethod: e.paymentMethod || 'EFECTIVO',
           })),
           ...payrollPayments.map((p) => ({
             id: `pay_${p.id}`,

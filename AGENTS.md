@@ -54,11 +54,21 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
 - Cambios pequeños y alineados al patrón del módulo/vista de referencia.
 - Al terminar: qué se hizo, cómo se verificó y actualizar `MEMORY.md`.
 
+## Flujo Git y Commits
+- Ramas: crear siempre una rama temática (`fix/<kebab-case>`, `feat/<kebab-case>`, `refactor/<kebab-case>`) a partir de `develop`. No commitear directo en `develop` ni `main`.
+- Mensajes de commit: Conventional Commits (`fix(scope): ...`, `feat(scope): ...`, `docs: ...`) con descripción en español.
+- Cuando el usuario pida commitear cambios:
+  1. Verificar compilación y tipos (`npx tsc --noEmit` y build frontend).
+  2. Asegurar que los cambios se ubiquen en su rama correspondiente (`fix/...`, `feat/...`).
+  3. Crear commit atómico con mensaje convencional y descriptivo.
+  4. Dejar la rama preparada para posterior fusión con `develop` y `main`.
+
 ## Límites
 - ✅ Siempre: actualizar `MEMORY.md` al terminar cada tarea.
 - ✅ Siempre: seguir `src/modules/` + `app.ts`; typecheck/pruebas del dominio tocado; no commitear `.env` ni secretos.
+- ✅ Siempre: al commitear cambios, usar rama temática (`fix/...`, `feat/...`) y Conventional Commits.
 - ⚠️ Pregunta antes: dependencias nuevas, archivos/módulos nuevos, migraciones Prisma, cambiar formato de datos o romper alias de API.
-- 🚫 Nunca: credenciales/tokens en docs o código; features en carpetas legacy; mezclar canales de caja; persistir deuda en `Customer`; lint/format inventados; wipe de auth WhatsApp sin pedirlo.
+- 🚫 Nunca: credenciales/tokens en docs o código; features en carpetas legacy; mezclar canales de caja; persistir deuda en `Customer`; lint/format inventados; wipe de auth WhatsApp sin pedirlo; commitear directo a `main` o `develop`.
 
 ## Verificación
 - Backend: `npx tsc --noEmit` y `npx vitest run tests/<dominio>.test.ts` (o `npm test`). Golden-master de costeo/lotes: `tests/golden_master.test.ts`.

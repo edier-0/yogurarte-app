@@ -80,8 +80,24 @@ const isExpenseFormModalOpen = ref(false);
 const selectedExpenseToEdit = ref<ExpenseItem | null>(null);
 const isLoading = ref(false);
 
+function getDisplayTitle(expense: ExpenseItem): string {
+  if (!expense?.description) return '';
+  return expense.description.replace(/\s*-\s*Prov:\s*(.+)$/i, '').trim() || expense.description;
+}
+
+function getDisplaySupplier(expense: ExpenseItem): string | null {
+  if (expense.supplier && expense.supplier.trim() !== '') {
+    return expense.supplier.trim();
+  }
+  const match = expense.description?.match(/\s*-\s*Prov:\s*(.+)$/i);
+  return match ? match[1].trim() : null;
+}
+
 function openEditExpense(expense: ExpenseItem) {
-  selectedExpenseToEdit.value = expense;
+  selectedExpenseToEdit.value = {
+    ...expense,
+    supplier: getDisplaySupplier(expense),
+  };
   isExpenseFormModalOpen.value = true;
 }
 
@@ -519,7 +535,7 @@ async function deleteCredit(id: number) {
               <div>
                 <div class="flex items-center gap-2">
                   <span class="text-sm font-extrabold text-slate-900 dark:text-white">
-                    {{ expense.description }}
+                    {{ getDisplayTitle(expense) }}
                   </span>
                   <span
                     class="rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider"
@@ -543,7 +559,7 @@ async function deleteCredit(id: number) {
                   <span class="font-bold text-slate-700 dark:text-slate-300">
                     {{ expense.paymentMethod }}
                   </span>
-                  <span v-if="expense.supplier">• Prov: {{ expense.supplier }}</span>
+                  <span v-if="getDisplaySupplier(expense)">• Prov: {{ getDisplaySupplier(expense) }}</span>
                   <span v-if="expense.registeredBy">• Por: {{ expense.registeredBy }}</span>
                 </div>
 

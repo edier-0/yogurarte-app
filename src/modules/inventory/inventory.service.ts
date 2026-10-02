@@ -498,10 +498,11 @@ export const createPurchase = async (data: CreatePurchaseInput) => {
       expense = await tx.expense.create({
         data: {
           category: expenseCategory || 'INSUMOS_EXTRA',
-          description: `Compra de ${material.name} (${parsedQty} ${material.unit}) - Prov: ${supplier ? supplier.trim() : 'Varios'}`,
+          description: `Compra de ${material.name} (${parsedQty} ${material.unit})`,
           amount: Math.round(parsedTotalCost),
           expenseDate: dateObj,
           paymentMethod: paymentMethod ? paymentMethod.trim() : 'EFECTIVO',
+          supplier: supplier ? supplier.trim() : null,
           notes: notes ? notes.trim() : null,
           registeredBy: registeredBy || 'Edier',
         },

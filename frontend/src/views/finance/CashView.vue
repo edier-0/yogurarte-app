@@ -139,6 +139,7 @@ function openEditExpense(mov: any) {
     amount: Math.abs(Number(mov.amount) || 0),
     expenseDate: mov.date ? String(mov.date).slice(0, 10) : getTodayDateBogota(),
     paymentMethod: mov.paymentMethod || 'EFECTIVO',
+    supplier: mov.supplier || null,
     notes: mov.notes || '',
     registeredBy: mov.registeredBy || 'Edier',
   };

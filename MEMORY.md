@@ -17,12 +17,15 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Vitest secuencial contra Postgres: las suites se pisan el schema si corren en paralelo.
 - Frontend HTTP único (`api/client.ts`): JWT, 401 y toasts consistentes.
 - `build:frontend` usa `npm --prefix frontend ci` para evitar mutación de package.json y build reproducible.
+- En compras de inventario (`createPurchase`), el proveedor se persiste en `Expense.supplier` y al editar gastos de insumos se sincroniza con `Purchase.supplier`.
+- Flujo de caja en `finance.service`: compras con `registerExpense: true` se consolidan vía `Expense` para evitar doble resta en caja y evitar duplicados con ID cruzado en movimientos.
 
 ## Aprendizajes y errores a evitar
 - `vue-tsc` corre con `noUnusedLocals: true`: imports no utilizados en `.vue` botan TS6133 y rompen `npm run build` en Render.
 - `npm audit --omit=dev --audit-level=high` en CI rompe ante nuevos advisories en dependencias de producción (ej. nodemailer).
 - PowerShell bloquea `npx` directo → usar siempre `cmd.exe /c "..."`.
 - PowerShell no soporta `&&` → usar `cmd.exe /c` para encadenar comandos.
+- `getDashboardSummary` no debe sumar `purchases` y `expenses` juntos sin filtrar los que ya generaron egreso automático en caja.
 
 ## Próximos pasos
-- CI/CD y despliegue en Render operativos al 100% (verde en main y develop). Listo para siguientes tareas de producto.
+- Compras, gastos y control de caja alineados y sin desfase de saldos. Listo para siguientes tareas de producto.

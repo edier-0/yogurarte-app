@@ -66,7 +66,22 @@ watch(
     if (props.expense) {
       amount.value = Math.abs(Number(props.expense.amount) || 0);
       category.value = props.expense.category || 'OPERATIVO';
-      description.value = props.expense.description || '';
+
+      let rawDesc = props.expense.description || '';
+      let initialSupplier = props.expense.supplier || '';
+
+      // Soporte retroactivo para compras antiguas con "- Prov: Proveedor" en la descripción
+      const provMatch = rawDesc.match(/\s*-\s*Prov:\s*(.+)$/i);
+      if (provMatch) {
+        if (!initialSupplier || initialSupplier.trim() === '') {
+          initialSupplier = provMatch[1].trim();
+        }
+        rawDesc = rawDesc.replace(/\s*-\s*Prov:\s*(.+)$/i, '').trim();
+      }
+
+      description.value = rawDesc;
+      supplier.value = initialSupplier;
+
       const rawMethod = (props.expense.paymentMethod || 'EFECTIVO').toUpperCase().trim();
       paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI';
       const rawDate = props.expense.expenseDate;
