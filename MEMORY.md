@@ -19,6 +19,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - `build:frontend` usa `npm --prefix frontend ci` para evitar mutación de package.json y build reproducible.
 - En compras de inventario (`createPurchase`), el proveedor se persiste en `Expense.supplier` y al editar gastos de insumos se sincroniza con `Purchase.supplier`.
 - Flujo de caja en `finance.service`: compras con `registerExpense: true` se consolidan vía `Expense` para evitar doble resta en caja y evitar duplicados con ID cruzado en movimientos.
+- Eliminación sincronizada bidireccional: al eliminar un gasto o una compra de insumos, se revierte el stock en `RawMaterial`, se eliminan ambos registros (`Purchase` y `Expense`) atómicamente y se restaura el saldo en caja sin generar 404 por ID cruzado.
 
 ## Aprendizajes y errores a evitar
 - `vue-tsc` corre con `noUnusedLocals: true`: imports no utilizados en `.vue` botan TS6133 y rompen `npm run build` en Render.
@@ -26,6 +27,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - PowerShell bloquea `npx` directo → usar siempre `cmd.exe /c "..."`.
 - PowerShell no soporta `&&` → usar `cmd.exe /c` para encadenar comandos.
 - `getDashboardSummary` no debe sumar `purchases` y `expenses` juntos sin filtrar los que ya generaron egreso automático en caja.
+- Eliminar solo el `Expense` de una compra dejaba la `Purchase` activa descontando dinero como `unexpensedPurchase`.
 
 ## Próximos pasos
-- Compras, gastos y control de caja alineados y sin desfase de saldos. Listo para siguientes tareas de producto.
+- Compras, gastos, inventario y control de caja 100% sincronizados en creación, edición y eliminación. Listo para merge.

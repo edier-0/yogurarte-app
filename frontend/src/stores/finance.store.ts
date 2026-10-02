@@ -69,6 +69,9 @@ export interface UnifiedMovement {
   registeredBy?: string;
   isCashMovement?: boolean;
   isOrderPayment?: boolean;
+  isPurchase?: boolean;
+  purchaseId?: number;
+  supplier?: string | null;
   type?: string;
   movementType?: string;
 }
@@ -336,19 +339,30 @@ export const useFinanceStore = defineStore('finance', () => {
 
         const isBaseWithdrawal = o.category === 'RETIRO_BASE' || o.movementType === 'RETIRO_BASE';
 
+        const isPurchaseItem =
+          !!o.isPurchase ||
+          String(o.id).startsWith('purch_') ||
+          o.category === 'COMPRA_INSUMO' ||
+          (o.categoryLabel && o.categoryLabel.includes('Compra'));
+
+        const purchaseId = o.purchaseId || (String(o.id).startsWith('purch_') ? Number(o.rawId) : undefined);
+
         unified.push({
           id: o.id || `outflow_${Math.random()}`,
           rawId: o.rawId || o.id,
+          purchaseId,
+          isPurchase: isPurchaseItem,
+          supplier: o.supplier || null,
           date: o.date || o.expenseDate || o.purchaseDate || o.movementDate || new Date().toISOString(),
           createdAt: o.createdAt,
           flowType: 'OUTFLOW',
           tabCategory: isAdj || isBaseWithdrawal ? 'BASE' : 'EXPENSES',
-          concept: o.concept || o.description || o.name || 'Gasto Operativo',
+          concept: o.concept || o.description || o.name || (isPurchaseItem ? 'Compra de Insumo' : 'Gasto Operativo'),
           description: o.description || o.concept || o.name || '',
           amount: Number(o.amount) || 0,
           displayAmount: -Math.abs(Number(o.amount) || 0),
           paymentMethod: o.paymentMethod || 'EFECTIVO',
-          categoryLabel: o.categoryLabel || o.category || 'Gasto',
+          categoryLabel: o.categoryLabel || o.category || (isPurchaseItem ? '🥛 Compra Insumo' : 'Gasto'),
           notes: o.notes || null,
           registeredBy: o.registeredBy || 'Edier',
           isCashMovement: !!o.isCashMovement,
@@ -510,6 +524,22 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  // Eliminar una compra de materia prima o insumo
+  async function deletePurchase(id: number) {
+    isLoading.value = true;
+    try {
+      await http.delete(`/inventory/purchases/${id}`);
+      toast.success('Compra Eliminada', {
+        description: 'La compra fue eliminada, el stock revertido y la caja actualizada.',
+      });
+      await fetchFinanceData();
+    } catch {
+      // Manejado por interceptor
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   // Actualizar monto o método de pago de un cobro/abono de pedido
   async function updateOrderPayment(
     orderId: number,
@@ -578,6 +608,7 @@ export const useFinanceStore = defineStore('finance', () => {
     updateCashMovement,
     deleteMovement,
     deleteExpense,
+    deletePurchase,
     updateOrderPayment,
     deleteOrderPayment,
   };

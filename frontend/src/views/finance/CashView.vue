@@ -174,6 +174,21 @@ async function confirmDelete(mov: any) {
     if (ok) {
       financeStore.deleteMovement(mov.rawId || mov.id);
     }
+  } else if (mov.isPurchase || String(mov.id).startsWith('purch_') || mov.categoryLabel?.includes('Compra')) {
+    const ok = await confirm({
+      title: 'Eliminar Compra de Insumo',
+      message: '¿Deseas eliminar esta compra de insumo? Se revertirá el stock en inventario y se recalculará el saldo de caja.',
+      confirmText: 'Eliminar Compra',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+    });
+    if (ok) {
+      if (mov.purchaseId || String(mov.id).startsWith('purch_')) {
+        financeStore.deletePurchase(mov.purchaseId || mov.rawId);
+      } else {
+        financeStore.deleteExpense(mov.rawId || mov.id);
+      }
+    }
   } else if (mov.tabCategory === 'EXPENSES') {
     const ok = await confirm({
       title: 'Eliminar Gasto Operativo',
@@ -748,7 +763,7 @@ async function confirmDelete(mov: any) {
               type="button"
               @click="confirmDelete(mov)"
               class="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-              :title="mov.isCashMovement ? 'Eliminar movimiento de caja' : mov.tabCategory === 'EXPENSES' ? 'Eliminar gasto operativo' : 'Eliminar cobro de venta'"
+              :title="mov.isCashMovement ? 'Eliminar movimiento de caja' : (mov.isPurchase || mov.categoryLabel?.includes('Compra')) ? 'Eliminar compra de insumo' : mov.tabCategory === 'EXPENSES' ? 'Eliminar gasto operativo' : 'Eliminar cobro de venta'"
             >
               <Trash2 class="h-4 w-4" />
             </button>

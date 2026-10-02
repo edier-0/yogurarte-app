@@ -604,6 +604,7 @@ export const deletePurchase = async (id: number) => {
   }
 
   await prisma.$transaction(async (tx) => {
+    // 1. Revertir el stock en inventario
     await tx.rawMaterial.update({
       where: { id: purchase.rawMaterialId },
       data: {
@@ -611,12 +612,37 @@ export const deletePurchase = async (id: number) => {
       },
     });
 
+    // 2. Buscar y eliminar gasto vinculado si se registró automáticamente en caja
+    const pDate = purchase.purchaseDate ? new Date(purchase.purchaseDate).toISOString().split('T')[0] : '';
+    const matchingExpense = await tx.expense.findFirst({
+      where: {
+        amount: purchase.totalCost,
+        category: { in: ['INSUMOS_EXTRA', 'MATERIA_PRIMA'] },
+        ...(pDate
+          ? {
+              expenseDate: {
+                gte: new Date(`${pDate}T00:00:00.000Z`),
+                lte: new Date(`${pDate}T23:59:59.999Z`),
+              },
+            }
+          : {}),
+      },
+      orderBy: { id: 'desc' },
+    });
+
+    if (matchingExpense) {
+      await tx.expense.delete({
+        where: { id: matchingExpense.id },
+      });
+    }
+
+    // 3. Eliminar el registro de compra
     await tx.purchase.delete({
       where: { id },
     });
   });
 
-  return { message: 'Compra eliminada y stock revertido correctamente' };
+  return { message: 'Compra eliminada, stock revertido y egreso de caja cancelado correctamente' };
 };
 
 /**

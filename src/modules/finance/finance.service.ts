@@ -415,7 +415,7 @@ export const updateExpense = async (id: number, data: UpdateExpenseInput) => {
 };
 
 /**
- * Eliminar un gasto
+ * Eliminar un gasto (y sincronizar con compra e inventario si corresponde)
  */
 export const deleteExpense = async (id: number) => {
   const existing = await prisma.expense.findUnique({
@@ -423,9 +423,110 @@ export const deleteExpense = async (id: number) => {
   });
 
   if (!existing) {
+    // Si no se encuentra en Expense, verificar si el ID corresponde a una Purchase (ej. eliminado desde Control de Caja purch_X)
+    const existingPurchase = await prisma.purchase.findUnique({
+      where: { id },
+      include: { rawMaterial: true },
+    });
+
+    if (existingPurchase) {
+      await prisma.$transaction(async (tx) => {
+        // 1. Revertir el stock en inventario
+        await tx.rawMaterial.update({
+          where: { id: existingPurchase.rawMaterialId },
+          data: {
+            currentStock: Math.max(0, existingPurchase.rawMaterial.currentStock - existingPurchase.quantity),
+          },
+        });
+
+        // 2. Eliminar cualquier gasto vinculado residual
+        const pDate = existingPurchase.purchaseDate
+          ? new Date(existingPurchase.purchaseDate).toISOString().split('T')[0]
+          : '';
+        const linkedExpense = await tx.expense.findFirst({
+          where: {
+            amount: existingPurchase.totalCost,
+            category: { in: ['INSUMOS_EXTRA', 'MATERIA_PRIMA'] },
+            ...(pDate
+              ? {
+                  expenseDate: {
+                    gte: new Date(`${pDate}T00:00:00.000Z`),
+                    lte: new Date(`${pDate}T23:59:59.999Z`),
+                  },
+                }
+              : {}),
+          },
+          orderBy: { id: 'desc' },
+        });
+
+        if (linkedExpense) {
+          await tx.expense.delete({
+            where: { id: linkedExpense.id },
+          });
+        }
+
+        // 3. Eliminar la compra
+        await tx.purchase.delete({
+          where: { id },
+        });
+      });
+
+      return { message: 'Compra de insumo eliminada, stock revertido y caja actualizada correctamente' };
+    }
+
     throw new NotFoundError('Gasto no encontrado');
   }
 
+  // Si existe en Expense y es una compra de materia prima/insumos, sincronizar con Purchase e inventario
+  const isRawMaterialExpense =
+    existing.category === 'INSUMOS_EXTRA' || existing.category === 'MATERIA_PRIMA';
+
+  if (isRawMaterialExpense) {
+    const eDate = existing.expenseDate
+      ? new Date(existing.expenseDate).toISOString().split('T')[0]
+      : '';
+    const matchingPurchase = await prisma.purchase.findFirst({
+      where: {
+        totalCost: existing.amount,
+        ...(eDate
+          ? {
+              purchaseDate: {
+                gte: new Date(`${eDate}T00:00:00.000Z`),
+                lte: new Date(`${eDate}T23:59:59.999Z`),
+              },
+            }
+          : {}),
+      },
+      include: { rawMaterial: true },
+      orderBy: { id: 'desc' },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      if (matchingPurchase) {
+        // Revertir stock de materia prima
+        await tx.rawMaterial.update({
+          where: { id: matchingPurchase.rawMaterialId },
+          data: {
+            currentStock: Math.max(0, matchingPurchase.rawMaterial.currentStock - matchingPurchase.quantity),
+          },
+        });
+
+        // Eliminar compra
+        await tx.purchase.delete({
+          where: { id: matchingPurchase.id },
+        });
+      }
+
+      // Eliminar gasto
+      await tx.expense.delete({
+        where: { id },
+      });
+    });
+
+    return { message: 'Gasto y compra de insumo eliminados, stock revertido correctamente' };
+  }
+
+  // Gasto operativo común (servicios, combustible, etc.)
   await prisma.expense.delete({
     where: { id },
   });
@@ -1717,11 +1818,14 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
               notes: e.notes,
               registeredBy: e.registeredBy,
               paymentMethod: e.paymentMethod || 'EFECTIVO',
+              isPurchase: isRawMaterial,
             };
           }),
           ...unexpensedPurchases.map((p) => ({
             id: `purch_${p.id}`,
             rawId: p.id,
+            purchaseId: p.id,
+            isPurchase: true,
             date: p.purchaseDate,
             createdAt: p.createdAt,
             category: 'COMPRA_INSUMO',
