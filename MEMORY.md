@@ -21,6 +21,8 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Flujo de caja en `finance.service`: compras con `registerExpense: true` se consolidan vía `Expense` para evitar doble resta en caja y evitar duplicados con ID cruzado en movimientos.
 - Eliminación sincronizada bidireccional: al eliminar un gasto o una compra de insumos, se revierte el stock en `RawMaterial`, se eliminan ambos registros (`Purchase` y `Expense`) atómicamente y se restaura el saldo en caja sin generar 404 por ID cruzado.
 - Multimedia WhatsApp en CRM: unwrapping recursivo (`viewOnce`, `ephemeral`), persistencia Base64 en Postgres para imágenes `<= 500 KB` (inmune a Render), fallback a `jpegThumbnail` para imágenes salientes del móvil, proxy `/uploads` en Vite y visor Lightbox en `CrmView.vue`.
+- Costeo de producción Fase A/B: desacoplado `packagingCost` de `ProductionBatch.totalCost`/`costPerLiter`. El costo base por litro representa estrictamente la base láctea líquida. Cada fracción envasada (`BatchPackaging`) calcula su costo total sumando `(litros * costPerLiter base) + packagingCost`, evitando duplicación de costos.
+- Control de insumos y stock en lotes: en `BatchModal.vue` alerta en tiempo real y bloqueo si la leche requerida supera el stock; en `CompleteFermentationModal.vue` entrada dual (báscula en gramos vs dosis g/L), alertas de insumos ya usados en Fase A y prevención de doble adición de azúcar.
 
 ## Aprendizajes y errores a evitar
 - `vue-tsc` corre con `noUnusedLocals: true`: imports no utilizados en `.vue` botan TS6133 y rompen `npm run build` en Render.
@@ -29,6 +31,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - PowerShell no soporta `&&` → usar `cmd.exe /c` para encadenar comandos.
 - Baileys falla la descarga de buffer en fotos enviadas desde la app móvil si no sincroniza llaves; usar `jpegThumbnail` en Base64 evita imágenes en blanco.
 - Sin proxy `/uploads` en Vite, las imágenes locales del CRM retornan 404 en desarrollo (:5173).
+- Nunca acumular el costo de empaque/botellas dentro del lote madre (`ProductionBatch.totalCost`), de lo contrario se infla el costo por litro base y se duplica en los resúmenes de envasado.
 
 ## Próximos pasos
-- Visualización de fotos y multimedia en CRM 100% implementada y verificada. Lista para commit y fusión.
+- Validar con el usuario el flujo en producción y coordinar la fusión con `develop` y `main`.

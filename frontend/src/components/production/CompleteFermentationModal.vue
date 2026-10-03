@@ -63,6 +63,7 @@ interface FermentationChecklistItem {
   avgCost: number;
   selected: boolean;
   dosage: number | '';
+  entryMode: 'TOTAL_GRAMS' | 'PER_LITER';
 }
 
 const candidateMaterials = ref<FermentationChecklistItem[]>([]);
@@ -81,16 +82,45 @@ function isKgUnit(unit?: string): boolean {
   );
 }
 
+function getPreviousUsage(rawMaterialId: number) {
+  if (!props.batch?.itemsUsed || !Array.isArray(props.batch.itemsUsed)) return null;
+  return props.batch.itemsUsed.find((u: any) => u.rawMaterialId === rawMaterialId) || null;
+}
+
+const wasSugarUsedInFaseA = computed(() => {
+  if (!props.batch) return false;
+  if ((props.batch.initialSugarGrams || 0) > 0) return true;
+  if (props.batch.itemsUsed && Array.isArray(props.batch.itemsUsed)) {
+    return props.batch.itemsUsed.some((u: any) => {
+      const name = (u.rawMaterial?.name || '').toLowerCase();
+      const code = (u.rawMaterial?.code || '').toLowerCase();
+      return name.includes('azúcar') || name.includes('azucar') || code.includes('azucar');
+    });
+  }
+  return false;
+});
+
+const isSugarItem = (item: FermentationChecklistItem) => {
+  const n = (item.name || '').toLowerCase();
+  return n.includes('azúcar') || n.includes('azucar');
+};
+
 function getItemCalc(item: FermentationChecklistItem) {
   const isKg = isKgUnit(item.unit);
   const dose = typeof item.dosage === 'number' && !isNaN(item.dosage) ? item.dosage : 0;
   const liters = typeof finalLiters.value === 'number' ? finalLiters.value : 0;
 
   if (isKg) {
-    const totalGrams = Math.round(dose * liters);
-    const quantityUsedKg = Math.round(totalGrams) / 1000;
+    let totalGrams = 0;
+    if (item.entryMode === 'PER_LITER') {
+      totalGrams = Math.round(dose * liters);
+    } else {
+      totalGrams = Math.round(dose);
+    }
+    const quantityUsedKg = Number((totalGrams / 1000).toFixed(4));
     const totalCost = Math.round(quantityUsedKg * (item.avgCost || 0));
     const isStockInsufficient = quantityUsedKg > (item.currentStock || 0);
+    const doseEquiv = liters > 0 ? (totalGrams / liters).toFixed(1) : '0';
 
     return {
       isKg: true,
@@ -98,7 +128,11 @@ function getItemCalc(item: FermentationChecklistItem) {
       quantityUsed: quantityUsedKg,
       totalCost,
       isStockInsufficient,
-      displayText: totalGrams > 0 ? `${totalGrams.toLocaleString('es-CO')} g (${quantityUsedKg.toFixed(3)} kg)` : '0 g',
+      doseEquiv,
+      displayText:
+        totalGrams > 0
+          ? `${totalGrams.toLocaleString('es-CO')} g (${quantityUsedKg.toFixed(3)} kg)`
+          : '0 g',
     };
   } else {
     const qty = dose;
@@ -111,6 +145,7 @@ function getItemCalc(item: FermentationChecklistItem) {
       quantityUsed: qty,
       totalCost,
       isStockInsufficient,
+      doseEquiv: '0',
       displayText: `${qty} ${item.unit}`,
     };
   }
@@ -151,6 +186,7 @@ async function loadCandidateMaterials() {
         avgCost: m.avgCost,
         selected: false,
         dosage: '',
+        entryMode: isKgUnit(m.unit) ? 'TOTAL_GRAMS' : 'TOTAL_GRAMS',
       }));
     }
   } catch {
@@ -163,14 +199,23 @@ async function loadCandidateMaterials() {
 function toggleItemSelection(item: FermentationChecklistItem) {
   item.selected = !item.selected;
   if (item.selected && (!item.dosage || item.dosage <= 0)) {
+    const lower = item.name.toLowerCase();
+    const isSugar = lower.includes('azúcar') || lower.includes('azucar');
+    const isSyrup = lower.includes('almíbar') || lower.includes('almibar');
+
+    // Si es azúcar y ya se usó en Fase A, NO autocompletar para evitar doble adición
+    if (isSugar && wasSugarUsedInFaseA.value) {
+      item.dosage = '';
+      return;
+    }
+
     if (isKgUnit(item.unit)) {
-      const lower = item.name.toLowerCase();
-      if (lower.includes('almíbar') || lower.includes('almibar')) {
-        item.dosage = 50;
-      } else if (lower.includes('azúcar') || lower.includes('azucar')) {
-        item.dosage = 100;
+      if (item.entryMode === 'PER_LITER') {
+        if (isSyrup) item.dosage = 50;
+        else if (isSugar) item.dosage = 100;
+        else item.dosage = 10;
       } else {
-        item.dosage = 10;
+        item.dosage = '';
       }
     } else {
       item.dosage = 1;
@@ -250,11 +295,20 @@ async function handleSubmit() {
       .map((it) => {
         const calc = getItemCalc(it);
         const isKg = isKgUnit(it.unit);
+        const liters = Number(finalLiters.value) || 1;
+        let dosagePerLiter: number | undefined;
+        if (isKg) {
+          if (it.entryMode === 'PER_LITER' && typeof it.dosage === 'number') {
+            dosagePerLiter = it.dosage;
+          } else if (calc.totalGrams > 0 && liters > 0) {
+            dosagePerLiter = Math.round((calc.totalGrams / liters) * 10) / 10;
+          }
+        }
         return {
           rawMaterialId: it.rawMaterialId,
           quantityUsed: calc.quantityUsed,
           unitCost: it.avgCost || 0,
-          dosagePerLiter: isKg && typeof it.dosage === 'number' ? it.dosage : undefined,
+          dosagePerLiter,
           dosageUnit: isKg ? 'g/L' : it.unit,
         };
       })
@@ -408,47 +462,125 @@ async function handleSubmit() {
               No hay insumos adicionales disponibles.
             </div>
 
-            <div v-else class="max-h-48 space-y-2 overflow-y-auto pr-1">
+            <div v-else class="max-h-60 space-y-2.5 overflow-y-auto pr-1">
               <div
                 v-for="item in candidateMaterials"
                 :key="item.rawMaterialId"
-                class="flex flex-col gap-1.5 rounded-xl border p-2.5 transition-all text-xs"
+                class="flex flex-col gap-2 rounded-xl border p-2.5 transition-all text-xs"
                 :class="
                   item.selected
-                    ? 'border-purple-300 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-950/20'
+                    ? 'border-purple-300 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-950/20 shadow-xs'
                     : 'border-slate-200/70 bg-white dark:border-slate-800 dark:bg-surface-dark-canvas'
                 "
               >
-                <div class="flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2 cursor-pointer min-w-0 flex-1" @click="toggleItemSelection(item)">
-                    <button type="button" class="text-purple-600 shrink-0">
+                <!-- Fila Principal: Checkbox, Nombre, Stock e Insignia Fase A -->
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex items-start gap-2 cursor-pointer min-w-0 flex-1" @click="toggleItemSelection(item)">
+                    <button type="button" class="text-purple-600 shrink-0 mt-0.5">
                       <CheckSquare v-if="item.selected" class="h-4 w-4" />
                       <Square v-else class="h-4 w-4 text-slate-400" />
                     </button>
-                    <div class="min-w-0 truncate">
-                      <span class="font-bold text-slate-900 dark:text-white">{{ item.name }}</span>
-                      <span class="ml-1.5 text-[10px] text-slate-400">
-                        (Stock: {{ formatStockQuantity(item.currentStock, item.unit) }} {{ item.unit }})
-                      </span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-1.5 flex-wrap">
+                        <span class="font-bold text-slate-900 dark:text-white">{{ item.name }}</span>
+                        <span class="text-[10px] text-slate-400">
+                          (Stock: {{ formatStockQuantity(item.currentStock, item.unit) }} {{ item.unit }})
+                        </span>
+                      </div>
+
+                      <!-- Alerta Visual si ya fue utilizado en Fase A -->
+                      <div
+                        v-if="getPreviousUsage(item.rawMaterialId) || (isSugarItem(item) && wasSugarUsedInFaseA)"
+                        class="mt-1 inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200/70 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/40"
+                      >
+                        <AlertCircle class="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <span>
+                          {{
+                            getPreviousUsage(item.rawMaterialId)
+                              ? `Ya descontado en Fase A: ${getPreviousUsage(item.rawMaterialId)?.quantityUsed} ${item.unit} (${formatCurrency(getPreviousUsage(item.rawMaterialId)?.totalCost || 0)})`
+                              : 'Lote ya endulzado en creación (Fase A)'
+                          }}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <!-- Campo de entrada de dosis o cantidad si está seleccionado -->
-                  <div v-if="item.selected" class="flex items-center gap-1.5 shrink-0">
+                  <!-- Campo simple para insumos que NO son Kilogramos (unidades) -->
+                  <div v-if="item.selected && !isKgUnit(item.unit)" class="flex items-center gap-1.5 shrink-0">
                     <div class="relative w-28">
                       <input
                         v-model.number="item.dosage"
                         type="number"
                         min="0"
                         step="any"
-                        :placeholder="isKgUnit(item.unit) ? 'g/L' : 'Cant.'"
+                        placeholder="Cant."
                         class="w-full rounded-lg border border-purple-200 bg-white px-2 py-1 text-xs font-black text-slate-900 focus:border-purple-600 focus:outline-none dark:border-purple-800 dark:bg-slate-900 dark:text-white text-right pr-8"
                       />
                       <span class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] font-bold text-slate-400">
-                        {{ isKgUnit(item.unit) ? 'g/L' : item.unit }}
+                        {{ item.unit }}
                       </span>
                     </div>
                   </div>
+                </div>
+
+                <!-- Panel de Entrada Dual si es insumo en Kilogramos y está seleccionado -->
+                <div v-if="item.selected && isKgUnit(item.unit)" class="space-y-1.5 rounded-lg border border-purple-100 bg-white/80 p-2 dark:border-purple-900/50 dark:bg-slate-900/80">
+                  <div class="flex items-center justify-between gap-2 flex-wrap">
+                    <!-- Selector de Modo de Pesaje -->
+                    <div class="flex items-center rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800">
+                      <button
+                        type="button"
+                        @click="item.entryMode = 'TOTAL_GRAMS'"
+                        class="rounded-md px-2 py-0.5 text-[10px] font-bold transition-all"
+                        :class="item.entryMode === 'TOTAL_GRAMS' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'"
+                      >
+                        Báscula (g totales)
+                      </button>
+                      <button
+                        type="button"
+                        @click="item.entryMode = 'PER_LITER'"
+                        class="rounded-md px-2 py-0.5 text-[10px] font-bold transition-all"
+                        :class="item.entryMode === 'PER_LITER' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'"
+                      >
+                        Dosis (g/L)
+                      </button>
+                    </div>
+
+                    <!-- Input Numérico con Sufijo Dinámico -->
+                    <div class="relative w-36">
+                      <input
+                        v-model.number="item.dosage"
+                        type="number"
+                        min="0"
+                        step="any"
+                        :placeholder="item.entryMode === 'TOTAL_GRAMS' ? 'Ej. 500' : 'Ej. 50'"
+                        class="w-full rounded-lg border border-purple-200 bg-white px-2 py-1 text-xs font-black text-slate-900 focus:border-purple-600 focus:outline-none dark:border-purple-800 dark:bg-slate-900 dark:text-white text-right pr-9"
+                      />
+                      <span class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] font-bold text-slate-400">
+                        {{ item.entryMode === 'TOTAL_GRAMS' ? 'gramos' : 'g/L' }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                    <span v-if="item.entryMode === 'TOTAL_GRAMS' && Number(item.dosage) > 0">
+                      Equivalente: {{ getItemCalc(item).doseEquiv }} g/L de base láctea
+                    </span>
+                    <span v-else-if="item.entryMode === 'PER_LITER' && Number(item.dosage) > 0">
+                      Para {{ finalLiters }} Litros totales
+                    </span>
+                    <span v-else class="italic">
+                      Ingresa el peso exacto registrado en la báscula
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Advertencia si ya fue usado en Fase A -->
+                <div
+                  v-if="item.selected && (getPreviousUsage(item.rawMaterialId) || (isSugarItem(item) && wasSugarUsedInFaseA))"
+                  class="rounded-lg bg-amber-50/90 border border-amber-200/80 p-2 text-[10px] font-semibold text-amber-900 dark:bg-amber-950/40 dark:border-amber-800/40 dark:text-amber-200 leading-tight"
+                >
+                  ⚠️ <strong>Atención:</strong> Este lote ya contiene este insumo desde Fase A. Solo ingresa una cantidad si adicionaste insumo extra para no duplicar costos ni inventario.
                 </div>
 
                 <!-- Desglose de pesaje y costo si está seleccionado -->
@@ -457,7 +589,7 @@ async function handleSubmit() {
                     {{ getItemCalc(item).displayText }}
                   </span>
                   <span class="font-black text-slate-700 dark:text-slate-300">
-                    Costo: {{ formatCurrency(getItemCalc(item).totalCost) }}
+                    Costo adicional: {{ formatCurrency(getItemCalc(item).totalCost) }}
                   </span>
                 </div>
 

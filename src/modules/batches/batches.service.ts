@@ -2283,12 +2283,10 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
       },
     });
 
-    // Actualizar lote madre
+    // Actualizar lote madre (el costo base por litro se mantiene íntegro)
     const updatedPackagedLiters = currentPackaged + totalPackagingLiters;
     const updatedB1L = (batch.bottles1LProduced || 0) + b1L;
     const updatedB2L = (batch.bottles2LProduced || 0) + b2L;
-    const updatedTotalCost = (batch.totalCost || 0) + packagingCost;
-    const updatedCostPerLiter = batch.totalLitersProduced > 0 ? Math.round(updatedTotalCost / batch.totalLitersProduced) : 0;
 
     let updatedStatus = batch.status;
     if (batch.status === 'EN_FERMENTACION') {
@@ -2301,8 +2299,6 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
         bottles1LProduced: updatedB1L,
         bottles2LProduced: updatedB2L,
         packagedLiters: updatedPackagedLiters,
-        totalCost: updatedTotalCost,
-        costPerLiter: updatedCostPerLiter,
         status: updatedStatus,
       },
     });
@@ -2745,15 +2741,15 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       },
     });
 
-    const updatedBatchTotalCost = Math.max(0, (batch.totalCost || 0) + deltaPackagingCost);
-    const updatedBatchCostPerLiter = batch.totalLitersProduced > 0 ? Math.round(updatedBatchTotalCost / batch.totalLitersProduced) : 0;
+    const updatedB1L = Math.max(0, (batch.bottles1LProduced || 0) + (newB1L - oldB1L));
+    const updatedB2L = Math.max(0, (batch.bottles2LProduced || 0) + (newB2L - oldB2L));
 
     await tx.productionBatch.update({
       where: { id: batch.id },
       data: {
         packagedLiters: Math.max(0, newPackagedLiters),
-        totalCost: updatedBatchTotalCost,
-        costPerLiter: updatedBatchCostPerLiter,
+        bottles1LProduced: updatedB1L,
+        bottles2LProduced: updatedB2L,
       },
     });
 
@@ -3239,8 +3235,6 @@ export const deleteBatchPackaging = async (packagingId: number, options?: Delete
     const updatedPackagedLiters = Math.max(0, (batch.packagedLiters || 0) - pkg.totalLiters);
     const updatedB1L = Math.max(0, (batch.bottles1LProduced || 0) - pkg.bottles1L);
     const updatedB2L = Math.max(0, (batch.bottles2LProduced || 0) - pkg.bottles2L);
-    const updatedTotalCost = Math.max(0, (batch.totalCost || 0) - pkg.packagingCost);
-    const updatedCostPerLiter = batch.totalLitersProduced > 0 ? Math.round(updatedTotalCost / batch.totalLitersProduced) : 0;
 
     await tx.productionBatch.update({
       where: { id: batch.id },
@@ -3248,8 +3242,6 @@ export const deleteBatchPackaging = async (packagingId: number, options?: Delete
         packagedLiters: updatedPackagedLiters,
         bottles1LProduced: updatedB1L,
         bottles2LProduced: updatedB2L,
-        totalCost: updatedTotalCost,
-        costPerLiter: updatedCostPerLiter,
       },
     });
 

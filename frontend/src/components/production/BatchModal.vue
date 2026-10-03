@@ -158,8 +158,20 @@ function getItemCalculations(item: DynamicChecklistItem) {
 
 const rawMaterials = ref<InventoryMaterialItem[]>([]);
 const dynamicItems = ref<DynamicChecklistItem[]>([]);
+const milkMaterial = ref<InventoryMaterialItem | null>(null);
 const milkAvgCost = ref<number>(2800);
 const isLoadingMaterials = ref(false);
+
+const currentMilkStock = computed(() => milkMaterial.value?.currentStock ?? 0);
+const isMilkStockInsufficient = computed(() => {
+  if (isEditMode.value) return false;
+  const required = Number(milkUsedLiters.value) || 0;
+  return required > 0 && milkMaterial.value !== null && required > currentMilkStock.value;
+});
+const milkStockDeficit = computed(() => {
+  const required = Number(milkUsedLiters.value) || 0;
+  return Math.max(0, Number((required - currentMilkStock.value).toFixed(2)));
+});
 
 const isSubmitting = ref(false);
 const errorMessage = ref('');
@@ -180,8 +192,11 @@ async function loadInventoryMaterials() {
           m.name.toLowerCase().includes('leche cruda') ||
           m.name.toLowerCase().includes('leche entera')
       );
-      if (milkMat && milkMat.avgCost > 0) {
-        milkAvgCost.value = milkMat.avgCost;
+      if (milkMat) {
+        milkMaterial.value = milkMat;
+        if (milkMat.avgCost > 0) {
+          milkAvgCost.value = milkMat.avgCost;
+        }
       }
 
       // Filtrar materiales candidatos para el checklist (excluir envases, botellas, tapas, etiquetas)
@@ -372,6 +387,11 @@ function handleClose() {
 async function handleSubmit() {
   if (!isFormValid.value || typeof milkUsedLiters.value !== 'number') {
     errorMessage.value = 'Por favor ingresa los litros de leche, horas de fermentación y sabor.';
+    return;
+  }
+
+  if (isMilkStockInsufficient.value) {
+    errorMessage.value = `Stock insuficiente de leche: Solo dispones de ${formatStockQuantity(currentMilkStock.value, 'L')} L en inventario y requieres ${milkUsedLiters.value} L. Registra una compra en inventario o ajusta la cantidad.`;
     return;
   }
 
@@ -567,10 +587,38 @@ async function handleSubmit() {
                   placeholder="50"
                   required
                   class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                  :class="{ '!border-rose-500 focus:!border-rose-600 dark:!border-rose-500': isMilkStockInsufficient }"
                 />
                 <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                   Litros
                 </span>
+              </div>
+
+              <!-- Indicador de Stock Disponible en Bodega -->
+              <div class="mt-1 flex items-center justify-between text-[11px]">
+                <span class="text-slate-500 dark:text-slate-400">
+                  Stock disponible:
+                  <span class="font-bold text-slate-700 dark:text-slate-300">
+                    {{ milkMaterial ? `${formatStockQuantity(currentMilkStock, 'L')} L` : 'Consultando...' }}
+                  </span>
+                </span>
+                <span v-if="milkMaterial && !isMilkStockInsufficient && !isEditMode && Number(milkUsedLiters) > 0" class="text-emerald-600 dark:text-emerald-400 font-semibold">
+                  ✓ Stock suficiente
+                </span>
+              </div>
+
+              <!-- Alerta Dinámica de Stock Insuficiente -->
+              <div
+                v-if="isMilkStockInsufficient"
+                class="mt-1.5 flex items-start gap-1.5 rounded-xl border border-rose-200 bg-rose-50/90 p-2 text-[11px] font-bold text-rose-800 dark:border-rose-800/40 dark:bg-rose-950/40 dark:text-rose-300"
+              >
+                <AlertCircle class="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                <div>
+                  <span>Stock de leche insuficiente.</span>
+                  <span class="block font-medium text-rose-700 dark:text-rose-400">
+                    Disponibles: {{ formatStockQuantity(currentMilkStock, 'L') }} L (faltan {{ milkStockDeficit }} L).
+                  </span>
+                </div>
               </div>
             </div>
 
