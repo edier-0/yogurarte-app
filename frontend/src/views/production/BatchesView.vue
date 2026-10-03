@@ -2,7 +2,6 @@
 import { ref, watch, onMounted } from 'vue';
 import {
   FlaskConical,
-  Milk,
   TrendingUp,
   Boxes,
   Timer,
@@ -310,22 +309,30 @@ watch(activeMainTab, (newTab) => {
         </span>
       </div>
 
-      <!-- Yogur Terminado Disponible -->
+      <!-- Yogur Terminado Disponible (Fase B) -->
       <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-5 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card">
-        <span class="text-xs font-bold uppercase tracking-wider text-natural-500">
-          Yogur Terminado Disponible
-        </span>
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider text-natural-500">
+            Disponible para Ventas (Fase B)
+          </span>
+          <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+            Envasado
+          </span>
+        </div>
         <div class="mt-2 flex items-baseline justify-between">
           <span class="text-2xl font-black text-natural-500 sm:text-3xl">
             {{ productionStore.finishedYogurtLiters }} L
           </span>
           <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-natural-50 text-natural-500 dark:bg-emerald-950/40 dark:text-emerald-400">
-            <Milk class="h-5 w-5 stroke-[1.75]" />
+            <PackageCheck class="h-5 w-5 stroke-[1.75]" />
           </div>
         </div>
-        <span class="mt-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-          Stock listo para empaque y venta
-        </span>
+        <div class="mt-1 flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+          <span>Stock envasado libre para clientes</span>
+          <span v-if="(productionStore.unpackagedBaseLiters || 0) > 0" class="text-purple-600 dark:text-purple-400 font-bold">
+            +{{ productionStore.unpackagedBaseLiters }} L base en tanque
+          </span>
+        </div>
       </div>
 
       <!-- Rendimiento Promedio -->

@@ -128,7 +128,7 @@ export const getBatchesMetrics = async (query: BatchesMetricsQueryInput = {}) =>
   }
 
   // Agregaciones nativas sobre la base de datos completa
-  const [fermentingAgg, producedAgg, activeFinishedBatches] = await Promise.all([
+  const [fermentingAgg, producedAgg, activeFinishedBatches, activePackagings] = await Promise.all([
     prisma.productionBatch.aggregate({
       where: { ...whereClause, status: 'EN_FERMENTACION' },
       _sum: { milkUsedLiters: true },
@@ -145,21 +145,58 @@ export const getBatchesMetrics = async (query: BatchesMetricsQueryInput = {}) =>
       select: {
         id: true,
         totalLitersProduced: true,
-        orderItems: { select: { totalLiters: true } },
+        packagedLiters: true,
+        orderItems: { select: { id: true, orderId: true, totalLiters: true, packagingId: true } },
         orders: { select: { id: true, totalLiters: true } },
-        discharges: { select: { totalLiters: true } },
+        discharges: { select: { id: true, totalLiters: true, packagingId: true } },
+        packagings: { select: { id: true } },
+      },
+    }),
+    prisma.batchPackaging.findMany({
+      where: {
+        batch: {
+          isActive: true,
+          status: { notIn: ['ARCHIVADO'] },
+        },
+      },
+      include: {
+        orderItems: {
+          include: {
+            order: {
+              select: { id: true, deliveryStatus: true },
+            },
+          },
+        },
+        discharges: true,
       },
     }),
   ]);
 
+  // 1. Litros de Fase B disponibles para venta (Stock envasado libre en botellas/formatos)
   let finishedYogurtLiters = 0;
+  for (const pkg of activePackagings) {
+    const computed = computePackagingPresentations(pkg);
+    finishedYogurtLiters += computed.freeLiters;
+  }
+
+  // 2. Soporte retrocompatible para lotes legacy que no tengan fracciones envasadas de Fase B:
   for (const b of activeFinishedBatches) {
-    const soldFromItems = b.orderItems.reduce((sum: number, it: any) => sum + (Number(it.totalLiters) || 0), 0);
-    const legacySold = b.orders
-      .filter((o: any) => !b.orderItems.some((it: any) => it.orderId === o.id))
-      .reduce((sum: number, o: any) => sum + (Number(o.totalLiters) || 0), 0);
-    const discharged = b.discharges.reduce((sum: number, d: any) => sum + (Number(d.totalLiters) || 0), 0);
-    finishedYogurtLiters += Math.max(0, (Number(b.totalLitersProduced) || 0) - (soldFromItems + legacySold) - discharged);
+    if (!b.packagings || b.packagings.length === 0) {
+      const soldFromItems = b.orderItems.reduce((sum, it) => sum + (Number(it.totalLiters) || 0), 0);
+      const legacySold = b.orders
+        .filter((o) => !b.orderItems.some((it) => it.orderId === o.id))
+        .reduce((sum, o) => sum + (Number(o.totalLiters) || 0), 0);
+      const discharged = b.discharges.reduce((sum, d) => sum + (Number(d.totalLiters) || 0), 0);
+      const directAvailable = Math.max(0, (Number(b.totalLitersProduced) || 0) - (Number(b.packagedLiters) || 0) - (soldFromItems + legacySold) - discharged);
+      finishedYogurtLiters += directAvailable;
+    }
+  }
+
+  // 3. Litros de base láctea líquida terminada en Fase A pendientes por envasar (en tanques)
+  let unpackagedBaseLiters = 0;
+  for (const b of activeFinishedBatches) {
+    const remaining = Math.max(0, (Number(b.totalLitersProduced) || 0) - (Number(b.packagedLiters) || 0));
+    unpackagedBaseLiters += remaining;
   }
 
   const fermentingLiters = fermentingAgg._sum.milkUsedLiters || 0;
@@ -175,6 +212,7 @@ export const getBatchesMetrics = async (query: BatchesMetricsQueryInput = {}) =>
   return {
     fermentingLiters,
     finishedYogurtLiters: Math.round(finishedYogurtLiters * 10) / 10,
+    unpackagedBaseLiters: Math.round(unpackagedBaseLiters * 10) / 10,
     averageYield,
     totalBatchesCount,
     totalProducedLiters,

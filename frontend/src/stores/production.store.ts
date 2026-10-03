@@ -394,6 +394,7 @@ export interface UpdateBatchPayload {
 export interface BatchMetricsData {
   fermentingLiters: number;
   finishedYogurtLiters: number;
+  unpackagedBaseLiters?: number;
   averageYield: number;
   totalBatchesCount: number;
   totalProducedLiters: number;
@@ -448,9 +449,22 @@ export const useProductionStore = defineStore('production', () => {
     if (batchMetrics.value && typeof batchMetrics.value.finishedYogurtLiters === 'number') {
       return batchMetrics.value.finishedYogurtLiters;
     }
+    // Fallback reactivo sumando litros libres de fracciones envasadas de Fase B
+    if (packagings.value && packagings.value.length > 0) {
+      return packagings.value.reduce((sum, p) => sum + (Number(p.freeLiters) || 0), 0);
+    }
     return batches.value
       .filter((b) => b.isActive !== false && b.status !== 'EN_FERMENTACION' && b.status !== 'ARCHIVADO')
       .reduce((sum, b) => sum + (Number(b.remainingAvailableLiters) || 0), 0);
+  });
+
+  const unpackagedBaseLiters = computed(() => {
+    if (batchMetrics.value && typeof batchMetrics.value.unpackagedBaseLiters === 'number') {
+      return batchMetrics.value.unpackagedBaseLiters;
+    }
+    return batches.value
+      .filter((b) => b.isActive !== false && b.status !== 'EN_FERMENTACION' && b.status !== 'ARCHIVADO')
+      .reduce((sum, b) => sum + Math.max(0, (Number(b.totalLitersProduced) || 0) - (Number(b.packagedLiters) || 0)), 0);
   });
 
   const averageYield = computed(() => {
@@ -1042,6 +1056,7 @@ export const useProductionStore = defineStore('production', () => {
     debouncedSearch,
     fermentingLiters,
     finishedYogurtLiters,
+    unpackagedBaseLiters,
     averageYield,
     batchMetrics,
     fetchBatchesMetrics,
