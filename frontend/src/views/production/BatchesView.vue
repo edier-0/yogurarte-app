@@ -888,10 +888,14 @@ watch(activeMainTab, (newTab) => {
                 </div>
               </div>
 
-              <div class="mt-1 flex items-center gap-2 text-xs font-bold text-slate-500">
-                <span>Costo Insumos Empaque:</span>
-                <span class="font-extrabold text-slate-900 dark:text-white">
-                  {{ formatCOP(pkg.packagingCost) }}
+              <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-bold text-slate-500">
+                <span>Costo: <strong class="text-slate-900 dark:text-white">{{ formatCOP(pkg.fractionCostPerLiter) }}/L</strong></span>
+                <span v-if="pkg.profitPerLiter" class="inline-flex items-center gap-1 font-black text-emerald-600 dark:text-emerald-400">
+                  <TrendingUp class="h-3.5 w-3.5 stroke-[2.5]" />
+                  <span>Ganancia/L: +{{ formatCOP(pkg.profitPerLiter) }}</span>
+                  <span v-if="pkg.profitMarginPercent" class="rounded-md bg-emerald-100 px-1.5 py-0.2 text-[10px] font-extrabold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                    {{ pkg.profitMarginPercent }}%
+                  </span>
                 </span>
               </div>
             </div>
@@ -914,6 +918,13 @@ watch(activeMainTab, (newTab) => {
                 </span>
                 <span class="text-[10px] font-semibold text-slate-400">
                   • {{ formatCOP(pres.price) }}
+                </span>
+                <span
+                  v-if="pres.profitPerLiter"
+                  class="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                  title="Ganancia neta estimada por litro en esta presentación"
+                >
+                  +{{ formatCOP(pres.profitPerLiter) }}/L
                 </span>
               </div>
             </template>

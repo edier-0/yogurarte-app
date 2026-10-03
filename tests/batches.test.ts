@@ -1251,6 +1251,8 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
       expect(found.freeLiters).toBe(10);
       expect(found.status).toBe('DISPONIBLE');
       expect(found.presentations).toHaveLength(2);
+      expect(found.profitPerLiter).toBeDefined();
+      expect(found.avgSellingPricePerLiter).toBeDefined();
     });
 
     it('obtiene auditoría segregada de la fracción con GET /api/batches/packagings/:id', async () => {
@@ -1264,6 +1266,11 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
       expect(summaryRes.body.volume.totalLiters).toBe(10);
       expect(summaryRes.body.volume.freeLiters).toBe(10);
       expect(summaryRes.body.presentations).toHaveLength(2);
+      expect(summaryRes.body.profitability).toBeDefined();
+      expect(summaryRes.body.profitability.costPerLiter).toBeGreaterThan(0);
+      expect(summaryRes.body.profitability.avgSellingPricePerLiter).toBeGreaterThan(0);
+      expect(summaryRes.body.presentations[0].profitPerLiter).toBeDefined();
+      expect(summaryRes.body.presentations[0].profitMarginPercent).toBeDefined();
     });
 
     it('registra retiro de socio en presentación de la fracción con POST /api/batches/packagings/:id/discharges', async () => {

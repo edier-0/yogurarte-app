@@ -2938,6 +2938,110 @@ export function computePackagingPresentations(pkg: any) {
 }
 
 /**
+ * Helper para calcular la rentabilidad comercial y ganancia por litro
+ * de una fracción envasada y de cada una de sus presentaciones.
+ */
+export function calculatePackagingProfitability(
+  presentations: Array<{
+    containerName: string;
+    capacityLiters: number;
+    quantity: number;
+    sold: number;
+    discharged: number;
+    free: number;
+    price: number;
+    totalLiters: number;
+    soldLiters: number;
+    dischargedLiters: number;
+    freeLiters: number;
+    rawMaterialId?: number | null;
+  }>,
+  totalLiters: number,
+  fractionCostPerLiter: number,
+  totalFractionCost: number,
+  soldLiters: number
+) {
+  let totalProjectedRevenue = 0;
+  let totalSoldRevenue = 0;
+
+  const enrichedPresentations = presentations.map((p) => {
+    const capacity = Number(p.capacityLiters) || 1;
+    const price = Number(p.price) || 0;
+    const quantity = Number(p.quantity) || 0;
+    const sold = Number(p.sold) || 0;
+
+    // Precio equivalente de venta por litro (ej. $12.000 / 1L = $12.000/L; $22.000 / 2L = $11.000/L)
+    const sellingPricePerLiter = capacity > 0 ? Math.round(price / capacity) : price;
+
+    // Ganancia neta por litro en esta presentación
+    const profitPerLiter = sellingPricePerLiter - fractionCostPerLiter;
+
+    // Margen porcentual bruto sobre el precio de venta por litro
+    const profitMarginPercent = sellingPricePerLiter > 0
+      ? Math.round((profitPerLiter / sellingPricePerLiter) * 1000) / 10
+      : 0;
+
+    // Ganancia neta estimada por unidad física
+    const profitPerUnit = Math.round(profitPerLiter * capacity);
+
+    // Ingresos y ganancias totales proyectadas
+    const projectedRevenue = quantity * price;
+    const totalProjectedProfit = quantity * profitPerUnit;
+
+    // Ingresos y ganancias realizadas por ventas efectivas
+    const realizedRevenue = sold * price;
+    const realizedProfit = sold * profitPerUnit;
+
+    totalProjectedRevenue += projectedRevenue;
+    totalSoldRevenue += realizedRevenue;
+
+    return {
+      ...p,
+      sellingPricePerLiter,
+      profitPerLiter,
+      profitMarginPercent,
+      profitPerUnit,
+      projectedRevenue,
+      totalProjectedProfit,
+      realizedRevenue,
+      realizedProfit,
+    };
+  });
+
+  const avgSellingPricePerLiter = totalLiters > 0 ? Math.round(totalProjectedRevenue / totalLiters) : 0;
+  const totalProjectedProfit = totalProjectedRevenue - totalFractionCost;
+  const avgProfitPerLiter = totalLiters > 0
+    ? Math.round(totalProjectedProfit / totalLiters)
+    : (avgSellingPricePerLiter - fractionCostPerLiter);
+  const globalProfitMarginPercent = totalProjectedRevenue > 0
+    ? Math.round((totalProjectedProfit / totalProjectedRevenue) * 1000) / 10
+    : 0;
+
+  const totalSoldCost = Math.round(soldLiters * fractionCostPerLiter);
+  const realizedProfit = totalSoldRevenue - totalSoldCost;
+  const realizedMarginPercent = totalSoldRevenue > 0
+    ? Math.round((realizedProfit / totalSoldRevenue) * 1000) / 10
+    : 0;
+
+  return {
+    presentations: enrichedPresentations,
+    profitability: {
+      costPerLiter: fractionCostPerLiter,
+      totalCost: totalFractionCost,
+      avgSellingPricePerLiter,
+      avgProfitPerLiter,
+      globalProfitMarginPercent,
+      totalProjectedRevenue,
+      totalProjectedProfit,
+      totalSoldRevenue,
+      totalSoldCost,
+      realizedProfit,
+      realizedMarginPercent,
+    },
+  };
+}
+
+/**
  * Listado paginado de fracciones envasadas (Fase B)
  */
 export const getBatchPackagings = async (query: PackagingsQueryInput) => {
@@ -3008,6 +3112,13 @@ export const getBatchPackagings = async (query: PackagingsQueryInput) => {
     const milkBaseCost = Math.round(computed.totalLiters * (pkg.batch?.costPerLiter || 2800));
     const totalFractionCost = milkBaseCost + (pkg.packagingCost || 0);
     const fractionCostPerLiter = computed.totalLiters > 0 ? Math.round(totalFractionCost / computed.totalLiters) : 0;
+    const { presentations, profitability } = calculatePackagingProfitability(
+      computed.presentations,
+      computed.totalLiters,
+      fractionCostPerLiter,
+      totalFractionCost,
+      computed.soldLiters
+    );
 
     return {
       id: pkg.id,
@@ -3018,7 +3129,7 @@ export const getBatchPackagings = async (query: PackagingsQueryInput) => {
       bottles1L: pkg.bottles1L,
       bottles2L: pkg.bottles2L,
       containers: pkg.containers,
-      presentations: computed.presentations,
+      presentations,
       totalLiters: computed.totalLiters,
       soldLiters: computed.soldLiters,
       dischargedLiters: computed.dischargedLiters,
@@ -3030,6 +3141,12 @@ export const getBatchPackagings = async (query: PackagingsQueryInput) => {
       packagingCost: pkg.packagingCost,
       fractionCostPerLiter,
       totalFractionCost,
+      avgSellingPricePerLiter: profitability.avgSellingPricePerLiter,
+      profitPerLiter: profitability.avgProfitPerLiter,
+      profitMarginPercent: profitability.globalProfitMarginPercent,
+      projectedRevenue: profitability.totalProjectedRevenue,
+      totalProjectedProfit: profitability.totalProjectedProfit,
+      realizedProfit: profitability.realizedProfit,
       notes: pkg.notes,
       packagedBy: pkg.packagedBy,
       packagedAt: pkg.packagedAt,
@@ -3108,6 +3225,13 @@ export const getPackagingSummary = async (packagingId: number) => {
   const milkBaseCost = Math.round(computed.totalLiters * (pkg.batch?.costPerLiter || 2800));
   const totalFractionCost = milkBaseCost + (pkg.packagingCost || 0);
   const fractionCostPerLiter = computed.totalLiters > 0 ? Math.round(totalFractionCost / computed.totalLiters) : 0;
+  const { presentations, profitability } = calculatePackagingProfitability(
+    computed.presentations,
+    computed.totalLiters,
+    fractionCostPerLiter,
+    totalFractionCost,
+    computed.soldLiters
+  );
 
   // Agrupar pedidos vinculados únicos
   const linkedOrdersMap = new Map<number, any>();
@@ -3149,7 +3273,7 @@ export const getPackagingSummary = async (packagingId: number) => {
       packagingCost: pkg.packagingCost,
       batch: pkg.batch,
     },
-    presentations: computed.presentations,
+    presentations,
     volume: {
       totalLiters: computed.totalLiters,
       soldLiters: computed.soldLiters,
@@ -3164,6 +3288,7 @@ export const getPackagingSummary = async (packagingId: number) => {
       totalCost: totalFractionCost,
       costPerLiter: fractionCostPerLiter,
     },
+    profitability,
     itemsUsed: pkg.itemsUsed,
     linkedOrders: Array.from(linkedOrdersMap.values()),
     discharges: pkg.discharges,
@@ -3590,6 +3715,17 @@ export const getBatchSummary = async (batchId: number) => {
 
   const enrichedPackagings = batch.packagings.map((p) => {
     const computed = computePackagingPresentations(p);
+    const milkBaseCost = Math.round(computed.totalLiters * (batch.costPerLiter || 2800));
+    const totalFractionCost = milkBaseCost + (p.packagingCost || 0);
+    const fractionCostPerLiter = computed.totalLiters > 0 ? Math.round(totalFractionCost / computed.totalLiters) : 0;
+    const { presentations, profitability } = calculatePackagingProfitability(
+      computed.presentations,
+      computed.totalLiters,
+      fractionCostPerLiter,
+      totalFractionCost,
+      computed.soldLiters
+    );
+
     return {
       ...p,
       totalLiters: computed.totalLiters,
@@ -3598,7 +3734,12 @@ export const getBatchSummary = async (batchId: number) => {
       dischargedLiters: computed.dischargedLiters,
       progressPercentage: computed.progressPercentage,
       status: computed.status,
-      presentations: computed.presentations,
+      presentations,
+      packagingCost: p.packagingCost,
+      fractionCostPerLiter,
+      totalFractionCost,
+      profitPerLiter: profitability.avgProfitPerLiter,
+      profitMarginPercent: profitability.globalProfitMarginPercent,
     };
   });
 

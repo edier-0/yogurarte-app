@@ -23,6 +23,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Multimedia WhatsApp en CRM: unwrapping recursivo (`viewOnce`, `ephemeral`), persistencia Base64 en Postgres para imágenes `<= 500 KB` (inmune a Render), fallback a `jpegThumbnail` para imágenes salientes del móvil, proxy `/uploads` en Vite y visor Lightbox en `CrmView.vue`.
 - Costeo de producción Fase A/B: desacoplado `packagingCost` de `ProductionBatch.totalCost`/`costPerLiter`. El costo base por litro representa estrictamente la base láctea líquida. Cada fracción envasada (`BatchPackaging`) calcula su costo total sumando `(litros * costPerLiter base) + packagingCost`, evitando duplicación de costos.
 - Control de insumos y stock en lotes: en `BatchModal.vue` alerta en tiempo real y bloqueo si la leche requerida supera el stock; en `CompleteFermentationModal.vue` entrada dual (báscula en gramos vs dosis g/L), alertas de insumos ya usados en Fase A y prevención de doble adición de azúcar.
+- Rentabilidad comercial en Fase B: `calculatePackagingProfitability` calcula ganancia neta por litro (`precioVenta/L - costoFracción/L`), margen bruto %, utilidad total proyectada y utilidad realizada de unidades vendidas. Expuesto en tarjetas de Fase B (`BatchesView.vue`) y con KPIs destacados y tabla comparativa en auditoría de fracción (`PackagingSummaryModal.vue`).
 
 ## Aprendizajes y errores a evitar
 - `vue-tsc` corre con `noUnusedLocals: true`: imports no utilizados en `.vue` botan TS6133 y rompen `npm run build` en Render.
@@ -34,4 +35,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Nunca acumular el costo de empaque/botellas dentro del lote madre (`ProductionBatch.totalCost`), de lo contrario se infla el costo por litro base y se duplica en los resúmenes de envasado.
 
 ## Próximos pasos
-- Validar con el usuario el flujo en producción y coordinar la fusión con `develop` y `main`.
+- Coordinar con el usuario la fusión de `feat/phase-b-packaging-profit-per-liter-audit` a `develop` y `main` y despliegue.

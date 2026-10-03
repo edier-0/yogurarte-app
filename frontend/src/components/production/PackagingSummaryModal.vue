@@ -18,6 +18,7 @@ import {
   Link,
   AlertTriangle,
   RefreshCw,
+  TrendingUp,
 } from 'lucide-vue-next';
 import {
   useProductionStore,
@@ -95,6 +96,51 @@ const formatDate = (dateStr?: string | null) => {
     return dateStr;
   }
 };
+
+// Rentabilidad comercial y ganancia por litro (con fallback reactivo)
+const profitability = computed(() => {
+  if (summary.value?.profitability) return summary.value.profitability;
+  if (!summary.value) return null;
+  const costPerL = summary.value.costs?.costPerLiter || 0;
+  const totalCost = summary.value.costs?.totalCost || 0;
+  const totalLiters = summary.value.volume?.totalLiters || 0;
+  const soldLiters = summary.value.volume?.soldLiters || 0;
+
+  let totalProjectedRev = 0;
+  let totalSoldRev = 0;
+
+  for (const p of summary.value.presentations || []) {
+    totalProjectedRev += (p.quantity || 0) * (p.price || 0);
+    totalSoldRev += (p.sold || 0) * (p.price || 0);
+  }
+
+  const avgSellingPricePerLiter = totalLiters > 0 ? Math.round(totalProjectedRev / totalLiters) : 0;
+  const totalProjectedProfit = totalProjectedRev - totalCost;
+  const avgProfitPerLiter = totalLiters > 0 ? Math.round(totalProjectedProfit / totalLiters) : (avgSellingPricePerLiter - costPerL);
+  const globalProfitMarginPercent = totalProjectedRev > 0
+    ? Math.round((totalProjectedProfit / totalProjectedRev) * 1000) / 10
+    : 0;
+
+  const totalSoldCost = Math.round(soldLiters * costPerL);
+  const realizedProfit = totalSoldRev - totalSoldCost;
+  const realizedMarginPercent = totalSoldRev > 0
+    ? Math.round((realizedProfit / totalSoldRev) * 1000) / 10
+    : 0;
+
+  return {
+    costPerLiter: costPerL,
+    totalCost,
+    avgSellingPricePerLiter,
+    avgProfitPerLiter,
+    globalProfitMarginPercent,
+    totalProjectedRevenue: totalProjectedRev,
+    totalProjectedProfit,
+    totalSoldRevenue: totalSoldRev,
+    totalSoldCost,
+    realizedProfit,
+    realizedMarginPercent,
+  };
+});
 
 // Cargar personal
 async function loadStaff() {
@@ -543,28 +589,114 @@ watch(activeTab, async (newTab) => {
               </div>
             </div>
 
+            <!-- TARJETA DESTACADA: RENTABILIDAD COMERCIAL Y GANANCIA POR LITRO -->
+            <div v-if="profitability" class="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent p-4 sm:p-5 shadow-sm dark:border-emerald-800/60 dark:from-emerald-950/30 dark:via-emerald-950/10">
+              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-100 pb-3 dark:border-emerald-900/40">
+                <div class="flex items-center gap-2">
+                  <div class="flex h-7 w-7 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm dark:bg-emerald-500">
+                    <TrendingUp class="h-4 w-4 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h4 class="text-xs font-black uppercase tracking-wider text-emerald-900 dark:text-emerald-200">
+                      Rentabilidad Comercial y Ganancia por Litro
+                    </h4>
+                    <p class="text-[11px] text-emerald-700/80 dark:text-emerald-300/80">
+                      Margen proyectado con base en precios de venta vs. costo total de la fracción ({{ formatCOP(summary.costs.costPerLiter) }}/L)
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
+                    <span>Margen Bruto:</span>
+                    <span class="text-sm font-black">{{ profitability.globalProfitMarginPercent }}%</span>
+                  </span>
+                </div>
+              </div>
+
+              <!-- 4 KPIs Clave de Rentabilidad -->
+              <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <!-- 1. Precio Venta Promedio / L -->
+                <div class="rounded-xl border border-emerald-100 bg-white/80 p-3 shadow-xs dark:border-emerald-900/40 dark:bg-slate-900/60">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Venta Promedio / L</span>
+                  <p class="mt-1 text-lg font-black text-slate-900 dark:text-white sm:text-xl">
+                    {{ formatCOP(profitability.avgSellingPricePerLiter) }}
+                  </p>
+                  <span class="text-[10px] text-slate-500">Ponderado por volumen</span>
+                </div>
+
+                <!-- 2. Ganancia Neta / Litro (KPI PRINCIPAL) -->
+                <div class="rounded-xl border border-emerald-300 bg-emerald-50/90 p-3 shadow-xs dark:border-emerald-700/60 dark:bg-emerald-950/40">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                      Ganancia Neta / Litro
+                    </span>
+                    <span class="rounded-md bg-emerald-600 px-1.5 py-0.2 text-[9px] font-extrabold text-white">
+                      +{{ profitability.globalProfitMarginPercent }}%
+                    </span>
+                  </div>
+                  <p class="mt-1 text-xl font-black text-emerald-700 dark:text-emerald-300 sm:text-2xl">
+                    +{{ formatCOP(profitability.avgProfitPerLiter) }}
+                  </p>
+                  <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                    Utilidad neta por cada litro
+                  </span>
+                </div>
+
+                <!-- 3. Utilidad Total Proyectada -->
+                <div class="rounded-xl border border-emerald-100 bg-white/80 p-3 shadow-xs dark:border-emerald-900/40 dark:bg-slate-900/60">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Utilidad Proyectada</span>
+                  <p class="mt-1 text-lg font-black text-brand-900 dark:text-white sm:text-xl">
+                    +{{ formatCOP(profitability.totalProjectedProfit) }}
+                  </p>
+                  <span class="text-[10px] text-slate-500">
+                    Ingreso total: {{ formatCOP(profitability.totalProjectedRevenue) }}
+                  </span>
+                </div>
+
+                <!-- 4. Utilidad Realizada (Vendido hasta hoy) -->
+                <div class="rounded-xl border border-emerald-100 bg-white/80 p-3 shadow-xs dark:border-emerald-900/40 dark:bg-slate-900/60">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Utilidad Realizada</span>
+                  <p class="mt-1 text-lg font-black text-emerald-600 dark:text-emerald-400 sm:text-xl">
+                    +{{ formatCOP(profitability.realizedProfit) }}
+                  </p>
+                  <span class="text-[10px] text-slate-500">
+                    Cobrado: {{ formatCOP(profitability.totalSoldRevenue) }} ({{ summary.volume.soldLiters }} L)
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <!-- Tabla Dinámica de Presentaciones Envasadas -->
             <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-4 shadow-sm dark:border-surface-dark-border dark:bg-surface-dark-card">
-              <h4 class="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                Presentaciones Envasadas en esta Fracción
-              </h4>
+              <div class="flex items-center justify-between">
+                <h4 class="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Presentaciones Envasadas y Ganancia por Formato
+                </h4>
+                <span class="text-[11px] font-semibold text-slate-400">
+                  Costo Fracción: {{ formatCOP(summary.costs.costPerLiter) }}/L
+                </span>
+              </div>
 
               <div class="mt-3 overflow-x-auto">
-                <table class="w-full text-left text-xs">
+                <table class="w-full text-left text-xs min-w-[720px]">
                   <thead class="border-b border-slate-100 bg-slate-50 text-[10px] font-bold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-900/40">
                     <tr>
-                      <th class="p-2.5">Presentación / Formato</th>
+                      <th class="p-2.5">Presentación</th>
                       <th class="p-2.5 text-center">Producidas</th>
                       <th class="p-2.5 text-center">Vendidas</th>
-                      <th class="p-2.5 text-center">Retiros Socios</th>
+                      <th class="p-2.5 text-center">Retiros</th>
                       <th class="p-2.5 text-center">Libres</th>
                       <th class="p-2.5 text-right">Precio Venta</th>
-                      <th class="p-2.5 text-right">Ingreso Proyectado</th>
+                      <th class="p-2.5 text-right">Precio / Litro</th>
+                      <th class="p-2.5 text-right">Ganancia / Litro</th>
+                      <th class="p-2.5 text-right">Ingreso Proy.</th>
+                      <th class="p-2.5 text-right">Ganancia Proy.</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
                     <tr v-for="(pres, idx) in summary.presentations" :key="idx" class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                      <td class="p-2.5 font-bold text-slate-800 dark:text-white">
+                      <td class="p-2.5 font-bold text-slate-800 dark:text-white whitespace-nowrap">
                         {{ pres.containerName }}
                         <span class="text-[10px] font-normal text-slate-400">({{ pres.capacityLiters }}L)</span>
                       </td>
@@ -580,11 +712,33 @@ watch(activeTab, async (newTab) => {
                       <td class="p-2.5 text-center font-black text-brand-800 dark:text-brand-darkText">
                         {{ pres.free }} und
                       </td>
-                      <td class="p-2.5 text-right font-semibold text-slate-600 dark:text-slate-300">
+                      <td class="p-2.5 text-right font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
                         {{ formatCOP(pres.price) }}
                       </td>
-                      <td class="p-2.5 text-right font-black text-slate-900 dark:text-white">
+                      <td class="p-2.5 text-right font-bold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                        {{ formatCOP(pres.sellingPricePerLiter || (pres.capacityLiters > 0 ? Math.round(pres.price / pres.capacityLiters) : pres.price)) }}/L
+                      </td>
+                      <td class="p-2.5 text-right whitespace-nowrap">
+                        <div class="flex flex-col items-end">
+                          <span
+                            class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-black"
+                            :class="(pres.profitPerLiter ?? ((pres.capacityLiters > 0 ? Math.round(pres.price / pres.capacityLiters) : pres.price) - summary.costs.costPerLiter)) >= 0
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'"
+                          >
+                            {{ (pres.profitPerLiter ?? ((pres.capacityLiters > 0 ? Math.round(pres.price / pres.capacityLiters) : pres.price) - summary.costs.costPerLiter)) >= 0 ? '+' : '' }}{{ formatCOP(pres.profitPerLiter ?? ((pres.capacityLiters > 0 ? Math.round(pres.price / pres.capacityLiters) : pres.price) - summary.costs.costPerLiter)) }}/L
+                          </span>
+                          <span class="mt-0.5 text-[10px] font-semibold text-slate-400">
+                            {{ pres.profitMarginPercent ?? (pres.price > 0 ? Math.round((((pres.capacityLiters > 0 ? Math.round(pres.price / pres.capacityLiters) : pres.price) - summary.costs.costPerLiter) / (pres.capacityLiters > 0 ? Math.round(pres.price / pres.capacityLiters) : pres.price)) * 1000) / 10 : 0) }}% margen
+                            <span v-if="pres.profitPerUnit">({{ pres.profitPerUnit >= 0 ? '+' : '' }}{{ formatCOP(pres.profitPerUnit) }}/u)</span>
+                          </span>
+                        </div>
+                      </td>
+                      <td class="p-2.5 text-right font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                         {{ formatCOP(pres.quantity * pres.price) }}
+                      </td>
+                      <td class="p-2.5 text-right font-black text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                        +{{ formatCOP(pres.totalProjectedProfit ?? (pres.quantity * Math.round(((pres.capacityLiters > 0 ? Math.round(pres.price / pres.capacityLiters) : pres.price) - summary.costs.costPerLiter) * pres.capacityLiters))) }}
                       </td>
                     </tr>
                   </tbody>

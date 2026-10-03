@@ -35,8 +35,18 @@ export interface PackagingPresentationItem {
   price: number;
   totalLiters: number;
   soldLiters: number;
+  dischargedLiters?: number;
   freeLiters: number;
   rawMaterialId?: number | null;
+  // Rentabilidad comercial y ganancia por litro
+  sellingPricePerLiter?: number;
+  profitPerLiter?: number;
+  profitMarginPercent?: number;
+  profitPerUnit?: number;
+  projectedRevenue?: number;
+  totalProjectedProfit?: number;
+  realizedRevenue?: number;
+  realizedProfit?: number;
 }
 
 export interface BatchPackagingCardItem {
@@ -60,12 +70,33 @@ export interface BatchPackagingCardItem {
   packagingCost: number;
   fractionCostPerLiter: number;
   totalFractionCost: number;
+  // Rentabilidad y proyección
+  avgSellingPricePerLiter?: number;
+  profitPerLiter?: number;
+  profitMarginPercent?: number;
+  projectedRevenue?: number;
+  totalProjectedProfit?: number;
+  realizedProfit?: number;
   notes?: string | null;
   packagedBy?: string;
   packagedAt: string;
   batch?: any;
   itemsUsed?: BatchPackagingExtraItem[];
   linkedOrdersCount?: number;
+}
+
+export interface PackagingProfitabilityData {
+  costPerLiter: number;
+  totalCost: number;
+  avgSellingPricePerLiter: number;
+  avgProfitPerLiter: number;
+  globalProfitMarginPercent: number;
+  totalProjectedRevenue: number;
+  totalProjectedProfit: number;
+  totalSoldRevenue: number;
+  totalSoldCost: number;
+  realizedProfit: number;
+  realizedMarginPercent: number;
 }
 
 export interface PackagingSummaryData {
@@ -95,6 +126,7 @@ export interface PackagingSummaryData {
     totalCost: number;
     costPerLiter: number;
   };
+  profitability?: PackagingProfitabilityData;
   itemsUsed: BatchPackagingExtraItem[];
   linkedOrders: Array<{
     id: number;
