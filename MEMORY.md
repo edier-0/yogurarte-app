@@ -25,6 +25,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Control de insumos y stock en lotes: en `BatchModal.vue` alerta en tiempo real y bloqueo si la leche requerida supera el stock; en `CompleteFermentationModal.vue` entrada dual (báscula en gramos vs dosis g/L), alertas de insumos ya usados en Fase A y prevención de doble adición de azúcar.
 - Rentabilidad comercial en Fase B: `calculatePackagingProfitability` calcula ganancia neta por litro (`precioVenta/L - costoFracción/L`), margen bruto %, utilidad total proyectada y utilidad realizada de unidades vendidas. Expuesto en tarjetas de Fase B (`BatchesView.vue`) y con KPIs destacados y tabla comparativa en auditoría de fracción (`PackagingSummaryModal.vue`).
 - KPI de lote "Disponible para Ventas": calcula los litros libres envasados directamente desde las fracciones activas de Fase B (`BatchPackaging.freeLiters`), evitando calcularlos desde el lote madre (que causaba desfase con doble deducción de pedidos e ignoraba el stock real en botellas). Añadido `unpackagedBaseLiters` para reflejar saldo líquido en tanque aún no envasado.
+- Tesorería y traslados de fondos: en `finance.service.ts` se desacopló el arqueo real acumulado (`cashInHand`, `digitalBank`, `cashBalance`) de los flujos del período. Los saldos de tesorería siempre reflejan el efectivo físico acumulado real sin ser reseteados a $0 por filtros de fecha ('today'/'week'). En `TransferModal.vue` se agregó prop `availableCash`, indicador en tiempo real de saldo físico, botón de uso rápido y watcher de recarga para evitar bloqueos por saldos no sincronizados. Corregido signo de `TRASLADO_BANCO_A_EFECTIVO` en backend.
 
 ## Aprendizajes y errores a evitar
 - `vue-tsc` corre con `noUnusedLocals: true`: imports no utilizados en `.vue` botan TS6133 y rompen `npm run build` en Render.
@@ -34,6 +35,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Baileys falla la descarga de buffer en fotos enviadas desde la app móvil si no sincroniza llaves; usar `jpegThumbnail` en Base64 evita imágenes en blanco.
 - Sin proxy `/uploads` en Vite, las imágenes locales del CRM retornan 404 en desarrollo (:5173).
 - Nunca acumular el costo de empaque/botellas dentro del lote madre (`ProductionBatch.totalCost`), de lo contrario se infla el costo por litro base y se duplica en los resúmenes de envasado.
+- Los saldos de balance/caja (`cashInHand`, `digitalBank`) son stocks acumulados históricos, no flujos de período; nunca deben filtrarse por la fecha del período en análisis o de lo contrario el disponible en caja desaparecerá si las ventas ocurrieron días antes.
 
 ## Próximos pasos
-- Coordinar con el usuario la fusión de `feat/phase-b-packaging-profit-per-liter-audit` a `develop` y `main` y despliegue.
+- Coordinar con el usuario la fusión de `fix/cash-transfer-physical-balance-validation` a `develop` y `main` y despliegue.
