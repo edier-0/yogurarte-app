@@ -811,6 +811,7 @@ async function confirmDelete(mov: any) {
     <!-- Modales Auxiliares -->
     <TransferModal
       v-model:open="isTransferModalOpen"
+      :available-cash="financeStore.cashInHand"
       @transferred="financeStore.fetchFinanceData"
     />
 

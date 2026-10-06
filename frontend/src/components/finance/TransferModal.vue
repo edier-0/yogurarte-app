@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import {
   DialogRoot,
   DialogPortal,
@@ -18,9 +18,15 @@ import {
 } from 'lucide-vue-next';
 import { useFinanceStore, getTodayDateBogota } from '@/stores/finance.store';
 
-defineProps<{
-  open: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    availableCash?: number;
+  }>(),
+  {
+    availableCash: undefined,
+  }
+);
 
 const emit = defineEmits<{
   (e: 'update:open', val: boolean): void;
@@ -38,6 +44,28 @@ const movementDate = ref<string>(getTodayDateBogota());
 const notes = ref<string>('');
 const isSubmitting = ref<boolean>(false);
 const errorMessage = ref<string>('');
+
+// Saldo de efectivo físico disponible (prioriza prop del contexto activo o el valor de financeStore)
+const effectiveCashInHand = computed(() => {
+  if (props.availableCash !== undefined && !isNaN(props.availableCash)) {
+    return Number(props.availableCash);
+  }
+  return Number(financeStore.cashInHand) || 0;
+});
+
+// Al abrir el modal, sincronizar saldo de caja si no se suministró prop o está en 0
+watch(
+  () => props.open,
+  async (isOpen) => {
+    if (isOpen) {
+      errorMessage.value = '';
+      if (props.availableCash === undefined || financeStore.cashInHand === 0) {
+        await financeStore.fetchFinanceData();
+      }
+    }
+  },
+  { immediate: true }
+);
 
 // Ajustar concepto por defecto al cambiar la dirección
 function onTypeChange(type: 'TRASLADO_EFECTIVO_A_BANCO' | 'TRASLADO_BANCO_A_EFECTIVO') {
@@ -73,8 +101,8 @@ async function handleSubmit() {
   }
 
   // Validación de fondos en efectivo para consignaciones
-  if (transferType.value === 'TRASLADO_EFECTIVO_A_BANCO' && amount.value > financeStore.cashInHand) {
-    errorMessage.value = `El monto supera el efectivo físico disponible (${formatCurrency(financeStore.cashInHand)}).`;
+  if (transferType.value === 'TRASLADO_EFECTIVO_A_BANCO' && amount.value > effectiveCashInHand.value) {
+    errorMessage.value = `El monto supera el efectivo físico disponible (${formatCurrency(effectiveCashInHand.value)}).`;
     return;
   }
 
@@ -200,9 +228,17 @@ async function handleSubmit() {
           <!-- Monto y Fecha -->
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Monto a Trasladar ($ COP) *
-              </label>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Monto a Trasladar ($ COP) *
+                </label>
+                <span
+                  v-if="transferType === 'TRASLADO_EFECTIVO_A_BANCO'"
+                  class="text-[11px] font-bold text-slate-500 dark:text-slate-400"
+                >
+                  Disponible: <strong class="text-amber-600 dark:text-amber-400">{{ formatCurrency(effectiveCashInHand) }}</strong>
+                </span>
+              </div>
               <div class="relative">
                 <span class="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-400">$</span>
                 <input
@@ -215,6 +251,14 @@ async function handleSubmit() {
                   class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-8 pr-3 text-sm font-extrabold text-slate-900 placeholder-slate-400 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
                 />
               </div>
+              <button
+                v-if="transferType === 'TRASLADO_EFECTIVO_A_BANCO' && effectiveCashInHand > 0"
+                type="button"
+                @click="amount = effectiveCashInHand"
+                class="mt-1 text-[11px] font-extrabold text-dairy-600 hover:underline dark:text-dairy-400"
+              >
+                Usar todo el efectivo disponible
+              </button>
             </div>
 
             <div>

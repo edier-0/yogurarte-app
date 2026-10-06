@@ -946,6 +946,13 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
   const startOfCurrentMonth = new Date(Date.UTC(curYear, curMonthNum - 1, 1, 0, 0, 0));
   const endOfCurrentMonth = new Date(Date.UTC(curYear, curMonthNum, 0, 23, 59, 59, 999));
 
+  const isPeriodFiltered = !!(
+    activeFilterDate ||
+    customDateRange ||
+    month ||
+    (period && period !== 'all')
+  );
+
   // Consultar entidades en paralelo para alto rendimiento con proyecciones select
   const [
     orders,
@@ -958,6 +965,11 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     periodBatches,
     allActiveBatches,
     batchDischarges,
+    allTimeCashMovements,
+    allTimeOrders,
+    allTimeExpenses,
+    allTimePurchases,
+    allTimeStaffPayments,
   ] = await Promise.all([
     prisma.order.findMany({
       where: orderWhere,
@@ -1176,6 +1188,38 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
       },
       orderBy: { dischargeDate: 'desc' },
     }),
+    isPeriodFiltered
+      ? prisma.cashMovement.findMany({
+          select: { type: true, amount: true, paymentMethod: true },
+        })
+      : Promise.resolve(null),
+    isPeriodFiltered
+      ? prisma.order.findMany({
+          where: { deliveryStatus: { not: 'CANCELLED' } },
+          select: {
+            paidAmount: true,
+            paymentMethod: true,
+            payments: {
+              select: { amount: true, paymentMethod: true },
+            },
+          },
+        })
+      : Promise.resolve(null),
+    isPeriodFiltered
+      ? prisma.expense.findMany({
+          select: { amount: true, paymentMethod: true, category: true, expenseDate: true },
+        })
+      : Promise.resolve(null),
+    isPeriodFiltered
+      ? prisma.purchase.findMany({
+          select: { totalCost: true, paymentMethod: true, purchaseDate: true },
+        })
+      : Promise.resolve(null),
+    isPeriodFiltered
+      ? prisma.staffPayment.findMany({
+          select: { netAmount: true, paymentMethod: true, paymentType: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   const lowStockMaterials = rawMaterials.filter((m) => m.currentStock <= m.minStockAlert);
@@ -1284,14 +1328,12 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
 
   const isCash = (m?: string | null) => !m || m.toUpperCase().trim() === 'EFECTIVO';
 
-  let cashInHand = 0;
-  let digitalBank = 0;
+  // 1. Flujos de caja por canal DEL PERÍODO SELECCIONADO
   let totalInflowCash = 0;
   let totalInflowBank = 0;
   let totalOutflowCash = 0;
   let totalOutflowBank = 0;
 
-  // 1. Movimientos de Caja
   for (const m of cashMovements) {
     if (
       m.type === 'BASE_INICIAL' ||
@@ -1301,67 +1343,48 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
       m.type === 'INGRESO'
     ) {
       if (isCash(m.paymentMethod)) {
-        cashInHand += m.amount;
         totalInflowCash += m.amount;
       } else {
-        digitalBank += m.amount;
         totalInflowBank += m.amount;
       }
     } else if (m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE' || m.type === 'EGRESO') {
       if (isCash(m.paymentMethod)) {
-        cashInHand -= m.amount;
         totalOutflowCash += m.amount;
       } else {
-        digitalBank -= m.amount;
         totalOutflowBank += m.amount;
       }
-    } else if (m.type === 'TRASLADO_EFECTIVO_A_BANCO') {
-      cashInHand -= m.amount;
-      digitalBank += m.amount;
-    } else if (m.type === 'TRASLADO_BANCO_A_EFECTIVO') {
-      cashInHand -= m.amount;
-      digitalBank -= m.amount;
     }
   }
 
-  // 2. Pedidos Cobrados (Ventas)
   for (const o of orders) {
     if (o.payments && o.payments.length > 0) {
       for (const p of o.payments) {
         if (p.amount > 0) {
           if (isCash(p.paymentMethod)) {
-            cashInHand += p.amount;
             totalInflowCash += p.amount;
           } else {
-            digitalBank += p.amount;
             totalInflowBank += p.amount;
           }
         }
       }
     } else if (o.paidAmount > 0) {
       if (isCash(o.paymentMethod)) {
-        cashInHand += o.paidAmount;
         totalInflowCash += o.paidAmount;
       } else {
-        digitalBank += o.paidAmount;
         totalInflowBank += o.paidAmount;
       }
     }
   }
 
-  // 3. Gastos y Compras de Insumos (Evitar doble descuento: expenses ya contiene los egresos de compras)
   for (const e of expenses) {
     if (isCash(e.paymentMethod)) {
-      cashInHand -= e.amount;
       totalOutflowCash += e.amount;
     } else {
-      digitalBank -= e.amount;
       totalOutflowBank += e.amount;
     }
   }
 
-  // Compras de insumos en tabla Purchase que no tengan egreso registrado en Expense (evitar omisiones)
-  const unexpensedPurchases = purchases.filter((p) => {
+  const periodUnexpensedPurchases = purchases.filter((p) => {
     const pDate = p.purchaseDate ? new Date(p.purchaseDate).toISOString().split('T')[0] : '';
     return !expenses.some((e) => {
       const eDate = e.expenseDate ? new Date(e.expenseDate).toISOString().split('T')[0] : '';
@@ -1373,27 +1396,119 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     });
   });
 
-  for (const p of unexpensedPurchases) {
+  for (const p of periodUnexpensedPurchases) {
     if (isCash(p.paymentMethod)) {
-      cashInHand -= p.totalCost;
       totalOutflowCash += p.totalCost;
     } else {
-      digitalBank -= p.totalCost;
       totalOutflowBank += p.totalCost;
     }
   }
 
-  // 5. Nómina y Retiros
   for (const sp of staffPayments) {
     if (sp.paymentMethod === 'ESPECIE_PRODUCTO' || sp.paymentMethod === 'ESPECIE') {
       continue;
     }
     if (isCash(sp.paymentMethod)) {
-      cashInHand -= sp.netAmount;
       totalOutflowCash += sp.netAmount;
     } else {
-      digitalBank -= sp.netAmount;
       totalOutflowBank += sp.netAmount;
+    }
+  }
+
+  // 2. SALDOS REALES ACUMULADOS EN CAJA Y BANCOS (Arqueo real histórico disponible en tiempo real)
+  const treasuryCashMovements = (allTimeCashMovements as typeof cashMovements | null) || cashMovements;
+  const treasuryOrders = (allTimeOrders as typeof orders | null) || orders;
+  const treasuryExpenses = (allTimeExpenses as typeof expenses | null) || expenses;
+  const treasuryPurchases = (allTimePurchases as typeof purchases | null) || purchases;
+  const treasuryStaffPayments = (allTimeStaffPayments as typeof staffPayments | null) || staffPayments;
+
+  let cashInHand = 0;
+  let digitalBank = 0;
+
+  for (const m of treasuryCashMovements) {
+    if (
+      m.type === 'BASE_INICIAL' ||
+      m.type === 'APORTE_SOCIO' ||
+      m.type === 'AJUSTE_CAJA' ||
+      m.type === 'AJUSTE_SOBRANTE' ||
+      m.type === 'INGRESO'
+    ) {
+      if (isCash(m.paymentMethod)) {
+        cashInHand += m.amount;
+      } else {
+        digitalBank += m.amount;
+      }
+    } else if (m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE' || m.type === 'EGRESO') {
+      if (isCash(m.paymentMethod)) {
+        cashInHand -= m.amount;
+      } else {
+        digitalBank -= m.amount;
+      }
+    } else if (m.type === 'TRASLADO_EFECTIVO_A_BANCO') {
+      cashInHand -= m.amount;
+      digitalBank += m.amount;
+    } else if (m.type === 'TRASLADO_BANCO_A_EFECTIVO') {
+      cashInHand += m.amount;
+      digitalBank -= m.amount;
+    }
+  }
+
+  for (const o of treasuryOrders) {
+    if (o.payments && o.payments.length > 0) {
+      for (const p of o.payments) {
+        if (p.amount > 0) {
+          if (isCash(p.paymentMethod)) {
+            cashInHand += p.amount;
+          } else {
+            digitalBank += p.amount;
+          }
+        }
+      }
+    } else if (o.paidAmount > 0) {
+      if (isCash(o.paymentMethod)) {
+        cashInHand += o.paidAmount;
+      } else {
+        digitalBank += o.paidAmount;
+      }
+    }
+  }
+
+  for (const e of treasuryExpenses) {
+    if (isCash(e.paymentMethod)) {
+      cashInHand -= e.amount;
+    } else {
+      digitalBank -= e.amount;
+    }
+  }
+
+  const allUnexpensedPurchases = treasuryPurchases.filter((p) => {
+    const pDate = p.purchaseDate ? new Date(p.purchaseDate).toISOString().split('T')[0] : '';
+    return !treasuryExpenses.some((e) => {
+      const eDate = e.expenseDate ? new Date(e.expenseDate).toISOString().split('T')[0] : '';
+      return (
+        (e.category === 'INSUMOS_EXTRA' || e.category === 'MATERIA_PRIMA') &&
+        Math.abs(e.amount - p.totalCost) < 1 &&
+        (!pDate || !eDate || pDate === eDate)
+      );
+    });
+  });
+
+  for (const p of allUnexpensedPurchases) {
+    if (isCash(p.paymentMethod)) {
+      cashInHand -= p.totalCost;
+    } else {
+      digitalBank -= p.totalCost;
+    }
+  }
+
+  for (const sp of treasuryStaffPayments) {
+    if (sp.paymentMethod === 'ESPECIE_PRODUCTO' || sp.paymentMethod === 'ESPECIE') {
+      continue;
+    }
+    if (isCash(sp.paymentMethod)) {
+      cashInHand -= sp.netAmount;
+    } else {
+      digitalBank -= sp.netAmount;
     }
   }
 
@@ -1821,7 +1936,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
               isPurchase: isRawMaterial,
             };
           }),
-          ...unexpensedPurchases.map((p) => ({
+          ...periodUnexpensedPurchases.map((p) => ({
             id: `purch_${p.id}`,
             rawId: p.id,
             purchaseId: p.id,

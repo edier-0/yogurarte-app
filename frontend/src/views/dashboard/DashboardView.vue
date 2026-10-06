@@ -826,6 +826,7 @@ onMounted(() => {
     <TransferModal
       v-if="isTransferModalOpen"
       :open="isTransferModalOpen"
+      :available-cash="dashboardData.kpis?.cashInHand"
       @update:open="isTransferModalOpen = $event"
       @transferred="loadDashboard"
     />

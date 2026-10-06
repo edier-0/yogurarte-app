@@ -138,4 +138,50 @@ describe('Finance and Dashboard Endpoints', () => {
       .delete(`/api/credits/${testCreditId}`)
       .set('Authorization', `Bearer ${adminToken}`);
   });
+
+  it('GET /api/dashboard/summary debe mantener cashInHand real acumulado aún con filtro period=today y reflejar traslados', async () => {
+    // 1. Obtener balance actual con period=all y period=today
+    const resAll = await request(app)
+      .get('/api/dashboard/summary?period=all')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const resToday = await request(app)
+      .get('/api/dashboard/summary?period=today')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(resAll.status).toBe(200);
+    expect(resToday.status).toBe(200);
+    // El saldo físico en caja acumulado debe coincidir sin ser reseteado a 0 por el filtro diario
+    expect(resToday.body.kpis.cashInHand).toBe(resAll.body.kpis.cashInHand);
+    expect(resToday.body.kpis.digitalBank).toBe(resAll.body.kpis.digitalBank);
+    expect(resToday.body.kpis.cashBalance).toBe(resAll.body.kpis.cashBalance);
+
+    // 2. Registrar un traslado temporal y verificar ajuste en caja y bancos
+    const transferRes = await request(app)
+      .post('/api/cash-movements')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        type: 'TRASLADO_EFECTIVO_A_BANCO',
+        amount: 5000,
+        concept: 'Prueba de consignación de efectivo',
+        paymentMethod: 'NEQUI',
+        notes: 'Test vitest traslado',
+      });
+
+    expect(transferRes.status).toBe(201);
+    const createdTransferId = transferRes.body.id;
+
+    const resAfterTransfer = await request(app)
+      .get('/api/dashboard/summary?period=today')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(resAfterTransfer.status).toBe(200);
+    expect(resAfterTransfer.body.kpis.cashInHand).toBe(resToday.body.kpis.cashInHand - 5000);
+    expect(resAfterTransfer.body.kpis.digitalBank).toBe(resToday.body.kpis.digitalBank + 5000);
+
+    // Limpiar movimiento de prueba
+    await request(app)
+      .delete(`/api/cash-movements/${createdTransferId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+  });
 });
