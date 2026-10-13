@@ -24,4 +24,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Nunca silenciar errores en Axios con `err.message` genérico; extraer siempre `err?.response?.data?.error || err?.response?.data?.message` para feedback claro al usuario.
 
 ## Próximos pasos
-- Realizar despliegue a producción o sincronizar push con los remotos si se requiere (`git push origin develop` y `git push origin main`).
+- Monitorear el despliegue automático en Render (CI/CD activo en GitHub). Continuar con las siguientes prioridades operativas de YogurArte.
