@@ -45,6 +45,7 @@ import RecurringTab from '@/components/operations/crm/RecurringTab.vue';
 import MergeChatModal from '@/components/operations/crm/MergeChatModal.vue';
 import ClientChatInfo from '@/components/operations/crm/ClientChatInfo.vue';
 import RecurringEditModal from '@/components/operations/crm/RecurringEditModal.vue';
+import { resolveContactInfo, openWhatsAppExternal } from '@/utils/whatsapp';
 
 export interface ChatMessageItem {
   id: number;
@@ -265,17 +266,37 @@ const filteredConversations = computed(() => {
   });
 });
 
+// Información resuelta del contacto seleccionado (@usuario o teléfono)
+const selectedContactInfo = computed(() => {
+  if (!selectedConversation.value) return null;
+  return resolveContactInfo(selectedConversation.value, selectedConversation.value.customer);
+});
+
+// Abrir chat en la aplicación externa de WhatsApp (Web o App)
+function handleOpenExternalWhatsApp(messageOverride?: string) {
+  if (!selectedConversation.value) return;
+  const text = messageOverride !== undefined ? messageOverride : messageInput.value;
+  const contact =
+    selectedContactInfo.value?.identifier ||
+    selectedConversation.value.customer?.phone ||
+    selectedConversation.value.phoneNumber ||
+    selectedConversation.value.remoteJid;
+
+  openWhatsAppExternal(contact, text);
+}
+
 // Enviar mensaje de texto
 async function handleSendMessage() {
   if (!messageInput.value.trim() || !selectedConversation.value || isSending.value) return;
 
   const textToSend = messageInput.value.trim();
   const conv = selectedConversation.value;
+  const contactInfo = selectedContactInfo.value;
   isSending.value = true;
 
   try {
     const res = await http.post<any>('/crm/send', {
-      recipient: conv.remoteJid,
+      recipient: conv.remoteJid || contactInfo?.identifier || conv.phoneNumber,
       text: textToSend,
       customerId: conv.customerId || undefined,
     });
@@ -296,7 +317,23 @@ async function handleSendMessage() {
       scrollToBottom(true);
     }
   } catch (err: any) {
-    toast.error('Error al enviar mensaje', { description: err?.message });
+    const errorDetail =
+      err?.response?.data?.error ||
+      err?.response?.data?.message ||
+      err?.message ||
+      'No se pudo enviar el mensaje por el CRM';
+
+    console.error('Error al enviar mensaje CRM:', errorDetail);
+
+    // Toast explicativo con botón de acción directa para abrir en WhatsApp oficial
+    toast.error('No se pudo enviar por el CRM', {
+      description: errorDetail,
+      action: {
+        label: 'Abrir en WhatsApp',
+        onClick: () => handleOpenExternalWhatsApp(textToSend),
+      },
+      duration: 10000,
+    });
   } finally {
     isSending.value = false;
   }
@@ -904,16 +941,26 @@ onUnmounted(() => {
               <div class="min-w-0">
                 <h3 class="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
                   <span>{{ selectedConversation.customer?.fullName || selectedConversation.contactName || selectedConversation.phoneNumber }}</span>
+                  <span
+                    v-if="selectedContactInfo?.isUsername"
+                    class="inline-flex items-center gap-1 rounded-md bg-purple-50 px-1.5 py-0.5 text-[9px] font-black text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800 shrink-0"
+                    title="Contacto registrado como usuario de WhatsApp"
+                  >
+                    @usuario WA
+                  </span>
                 </h3>
 
                 <div class="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                  <a
-                    :href="`tel:${selectedConversation.customer?.phone || selectedConversation.phoneNumber}`"
-                    class="font-bold hover:text-brand-800 dark:hover:text-brand-darkText inline-flex items-center gap-1"
+                  <button
+                    type="button"
+                    @click="handleOpenExternalWhatsApp()"
+                    class="font-bold hover:text-brand-800 dark:hover:text-brand-darkText inline-flex items-center gap-1 text-left"
+                    :title="selectedContactInfo?.isUsername ? 'Abrir en WhatsApp oficial por @usuario' : 'Abrir chat en WhatsApp'"
                   >
-                    <PhoneCall class="h-3 w-3 stroke-[2]" />
-                    <span>{{ selectedConversation.customer?.phone || selectedConversation.phoneNumber }}</span>
-                  </a>
+                    <PhoneCall v-if="!selectedContactInfo?.isUsername" class="h-3 w-3 stroke-[2]" />
+                    <ExternalLink v-else class="h-3 w-3 stroke-[2] text-purple-500" />
+                    <span>{{ selectedConversation.customer?.phone || selectedConversation.phoneNumber || selectedContactInfo?.displayLabel }}</span>
+                  </button>
 
                   <span v-if="selectedConversation.customer?.address" class="hidden sm:inline-flex items-center gap-1 truncate max-w-[140px] xl:max-w-[200px]">
                     <MapPin class="h-3 w-3 stroke-[2] text-slate-400 shrink-0" />
@@ -925,6 +972,18 @@ onUnmounted(() => {
 
             <!-- Botonera del Header del Chat -->
             <div class="flex items-center gap-1.5 shrink-0">
+              <!-- Botón Abrir en WhatsApp Externo (Web/App) -->
+              <button
+                type="button"
+                @click="handleOpenExternalWhatsApp()"
+                class="inline-flex items-center gap-1 rounded-xl border border-emerald-300/80 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition-colors shadow-xs"
+                :title="selectedContactInfo?.isUsername ? 'Abrir en WhatsApp oficial (@usuario)' : 'Abrir en la aplicación o Web de WhatsApp'"
+              >
+                <ExternalLink class="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 stroke-[2]" />
+                <span class="hidden sm:inline text-[11px]">Abrir WhatsApp</span>
+                <span class="sm:hidden text-[11px]">WA</span>
+              </button>
+
               <!-- Botón Info Cliente en móvil/tablet -->
               <button
                 type="button"
@@ -1124,12 +1183,22 @@ onUnmounted(() => {
                 class="flex-1 rounded-xl border border-surface-light-border bg-surface-light-canvas px-4 py-2 text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               />
 
+              <!-- Botón Abrir en WhatsApp Oficial (Directo) -->
+              <button
+                type="button"
+                @click="handleOpenExternalWhatsApp()"
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-300/80 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition-colors shadow-xs"
+                :title="selectedContactInfo?.isUsername ? 'Abrir chat con @usuario en WhatsApp oficial' : 'Abrir este chat o mensaje directamente en WhatsApp oficial'"
+              >
+                <ExternalLink class="h-4 w-4 stroke-[2]" />
+              </button>
+
               <!-- Botón de Envío -->
               <button
                 type="submit"
                 :disabled="!messageInput.trim() || isSending"
                 class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-hero-gradient text-white shadow-card transition-transform active:scale-95 disabled:opacity-50"
-                title="Enviar mensaje"
+                title="Enviar mensaje por el CRM"
               >
                 <Send class="h-4 w-4 stroke-[2]" :class="{ 'animate-pulse': isSending }" />
               </button>

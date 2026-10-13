@@ -24,6 +24,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from 'reka-ui';
+import { resolveContactInfo, openWhatsAppExternal } from '@/utils/whatsapp';
 
 export interface ClientChatInfoProps {
   conversation: any;
@@ -43,6 +44,15 @@ const emit = defineEmits<{
 const isUnlinkModalOpen = ref(false);
 
 const customer = computed(() => props.conversation?.customer || null);
+
+const contactInfo = computed(() => {
+  return resolveContactInfo(props.conversation, customer.value);
+});
+
+function handleOpenExternalWhatsApp() {
+  const contact = contactInfo.value.identifier;
+  openWhatsAppExternal(contact);
+}
 
 const loyalty = computed(() => {
   const c = customer.value;
@@ -200,8 +210,14 @@ function handleConfirmUnlink() {
         </div>
 
         <div>
-          <h4 class="text-xs font-black text-slate-900 dark:text-white">
-            {{ customer?.fullName || conversation?.contactName || 'Contacto de WhatsApp' }}
+          <h4 class="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+            <span>{{ customer?.fullName || conversation?.contactName || 'Contacto de WhatsApp' }}</span>
+            <span
+              v-if="contactInfo.isUsername"
+              class="inline-flex items-center gap-1 rounded-md bg-purple-50 px-1.5 py-0.5 text-[9px] font-black text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800"
+            >
+              @usuario WA
+            </span>
           </h4>
           <p class="text-[11px] font-mono text-slate-400">
             {{ conversation?.remoteJid }}
@@ -211,12 +227,15 @@ function handleConfirmUnlink() {
         <div class="space-y-1.5 pt-1 text-xs text-slate-600 dark:text-slate-300">
           <div class="flex items-center gap-2">
             <Phone class="h-3.5 w-3.5 text-slate-400 shrink-0" />
-            <a
-              :href="`tel:${customer?.phone || conversation?.phoneNumber}`"
-              class="font-bold hover:text-brand-800 dark:hover:text-brand-darkText"
+            <button
+              type="button"
+              @click="handleOpenExternalWhatsApp"
+              class="font-bold hover:text-brand-800 dark:hover:text-brand-darkText inline-flex items-center gap-1 text-left"
+              title="Abrir en WhatsApp"
             >
-              {{ customer?.phone || conversation?.phoneNumber }}
-            </a>
+              <span>{{ customer?.phone || conversation?.phoneNumber || contactInfo.displayLabel }}</span>
+              <ExternalLink class="h-3 w-3 text-slate-400" />
+            </button>
           </div>
 
           <div v-if="customer?.address" class="flex items-start gap-2">
@@ -240,6 +259,21 @@ function handleConfirmUnlink() {
         </span>
 
         <div class="grid grid-cols-1 gap-2">
+          <!-- Botón Abrir en WhatsApp Oficial -->
+          <button
+            type="button"
+            @click="handleOpenExternalWhatsApp"
+            class="w-full inline-flex items-center justify-between rounded-xl border border-emerald-300/80 bg-emerald-50/70 px-3.5 py-2.5 text-xs font-extrabold text-emerald-800 hover:bg-emerald-100/80 dark:border-emerald-800/80 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40 transition-colors shadow-xs"
+          >
+            <div class="flex items-center gap-2">
+              <ExternalLink class="h-4 w-4 text-emerald-600 dark:text-emerald-400 stroke-[2]" />
+              <span>Abrir en WhatsApp Oficial</span>
+            </div>
+            <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+              {{ contactInfo.isUsername ? 'Por @usuario' : 'Por Teléfono' }}
+            </span>
+          </button>
+
           <!-- Botón Programar Frecuente -->
           <button
             type="button"

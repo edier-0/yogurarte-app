@@ -315,8 +315,15 @@ export async function resolveRecipientJid(recipient: string, customerId?: number
     return `${cleanPhone}@s.whatsapp.net`;
   }
 
+  const isUsernameCandidate = trimmed.startsWith('@') || (cleanUsername.length > 0 && isNaN(Number(cleanUsername)));
+  if (isUsernameCandidate) {
+    throw new BadRequestError(
+      `El contacto "${recipient}" está registrado como nombre de usuario (@${cleanUsername}) sin número telefónico ni chat previo en el servidor. WhatsApp requiere iniciar la conversación externamente a través de WhatsApp oficial (Web o App).`
+    );
+  }
+
   throw new BadRequestError(
-    `No se pudo resolver un JID de WhatsApp válido para "${recipient}". Verifique la conversación en el CRM o el número del cliente.`
+    `No se pudo resolver un destinatario de WhatsApp válido para "${recipient}". Verifique el número telefónico del cliente o ábralo directamente en la aplicación de WhatsApp.`
   );
 }
 
@@ -329,12 +336,19 @@ export async function sendMessage(data: SendCrmMessageInput) {
 
   const jid = await resolveRecipientJid(recipient, data.customerId ? Number(data.customerId) : undefined);
 
-  return whatsappService.sendMessage(
-    jid,
-    data.text || '',
-    data.contactName || undefined,
-    data.customerId ? Number(data.customerId) : undefined
-  );
+  try {
+    return await whatsappService.sendMessage(
+      jid,
+      data.text || '',
+      data.contactName || undefined,
+      data.customerId ? Number(data.customerId) : undefined
+    );
+  } catch (err: any) {
+    const errMessage = err?.message || 'Error desconocido';
+    throw new BadRequestError(
+      `No se pudo enviar el mensaje por el CRM: ${errMessage}. Puedes abrir el chat directamente en WhatsApp oficial.`
+    );
+  }
 }
 
 export async function markAsRead(conversationId: number) {

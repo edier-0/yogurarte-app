@@ -5,6 +5,8 @@ import { getSocket } from '@/api/socket';
 import { toast } from 'vue-sonner';
 import { isTokenExpired } from '@/utils/jwt';
 
+import { buildWhatsAppUrl, isWhatsAppUsername } from '@/utils/whatsapp';
+
 export type WhatsAppSessionStatus = 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED';
 
 export interface SmartWhatsAppOptions {
@@ -107,10 +109,11 @@ export const useCrmStore = defineStore('crm', () => {
   async function sendSmartWhatsApp(
     options: SmartWhatsAppOptions
   ): Promise<{ success: boolean; method: 'INTERNAL' | 'EXTERNAL' }> {
-    const rawPhone = (options.phone || '').trim();
-    const cleanDigits = rawPhone.replace(/\D/g, '');
+    const rawContact = (options.phone || options.contactName || '').trim();
+    const cleanDigits = rawContact.replace(/\D/g, '');
     const phoneWithCountry = cleanDigits.length === 10 ? `57${cleanDigits}` : cleanDigits;
     const textMessage = options.text.trim();
+    let internalErrorMessage: string | null = null;
 
     // Asegurar que tenemos el estado más reciente si no se ha consultado
     if (status.value === 'DISCONNECTED' && !isLoadingStatus.value) {
@@ -121,11 +124,11 @@ export const useCrmStore = defineStore('crm', () => {
     if (isWhatsAppConnected.value) {
       isSendingMessage.value = true;
       try {
-        const recipient = rawPhone.startsWith('@')
-          ? rawPhone
+        const recipient = isWhatsAppUsername(rawContact)
+          ? rawContact
           : phoneWithCountry
           ? `${phoneWithCountry}@s.whatsapp.net`
-          : rawPhone;
+          : rawContact;
 
         await http.post('/crm/send', {
           recipient,
@@ -134,34 +137,41 @@ export const useCrmStore = defineStore('crm', () => {
           contactName: options.contactName || undefined,
         });
 
-        const targetLabel = options.contactName || rawPhone;
+        const targetLabel = options.contactName || rawContact;
         toast.success(`Mensaje enviado por WhatsApp (Baileys) a ${targetLabel}`, {
           description: textMessage.length > 80 ? `${textMessage.slice(0, 80)}...` : textMessage,
         });
         return { success: true, method: 'INTERNAL' };
       } catch (err: any) {
-        console.warn('Fallo el envío por Baileys interno, intentando fallback externo...', err);
-        // Si falló el envío interno por desconexión repentina, continuar a fallback
+        internalErrorMessage =
+          err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          'No se pudo enviar internamente';
+        console.warn('Fallo el envío por Baileys interno, intentando fallback externo...', internalErrorMessage);
       } finally {
         isSendingMessage.value = false;
       }
     }
 
-    // Escenario B: Sesión Interna Desconectada (Fallback a wa.me)
-    const fallbackUrl =
-      options.fallbackUrl ||
-      (phoneWithCountry
-        ? `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(textMessage)}`
-        : null);
+    // Escenario B: Sesión Interna Desconectada o Fallo Interno -> Fallback a WhatsApp Web / App
+    const targetForUrl = rawContact || options.phone || options.contactName || '';
+    const fallbackUrl = options.fallbackUrl || buildWhatsAppUrl(targetForUrl, textMessage);
 
     if (fallbackUrl) {
-      window.open(fallbackUrl, '_blank');
-      toast.info('Sesión interna desconectada: abriendo WhatsApp...', {
-        description: `Destinatario: ${options.contactName || rawPhone}`,
-      });
+      window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+      if (internalErrorMessage) {
+        toast.info('Abriendo en la aplicación de WhatsApp', {
+          description: `${internalErrorMessage}. Se abrió WhatsApp oficial con tu mensaje.`,
+        });
+      } else {
+        toast.info('Sesión interna desconectada: abriendo WhatsApp...', {
+          description: `Destinatario: ${options.contactName || rawContact || 'Cliente'}`,
+        });
+      }
       return { success: true, method: 'EXTERNAL' };
     } else {
-      toast.error('No se pudo enviar el mensaje: falta un número de teléfono válido');
+      toast.error('No se pudo enviar el mensaje: falta un contacto válido (número o @usuario)');
       return { success: false, method: 'EXTERNAL' };
     }
   }
