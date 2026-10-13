@@ -49,7 +49,9 @@ export const useCrmStore = defineStore('crm', () => {
     fallbackUrl: null,
   });
 
-  const isWhatsAppConnected = computed(() => status.value === 'CONNECTED');
+  const isWhatsAppConnected = computed(
+    () => status.value === 'CONNECTED' || (!!connectedPhoneNumber.value && status.value !== 'DISCONNECTED')
+  );
 
   async function fetchStatus(): Promise<WhatsAppSessionStatus> {
     const rawToken =
@@ -71,7 +73,11 @@ export const useCrmStore = defineStore('crm', () => {
         phoneNumber?: string;
       }>('/crm/status');
       if (res) {
-        status.value = res.status || 'DISCONNECTED';
+        if (res.phoneNumber && res.status !== 'DISCONNECTED') {
+          status.value = 'CONNECTED';
+        } else {
+          status.value = res.status || 'DISCONNECTED';
+        }
         qrCodeDataUrl.value = res.qr || null;
         connectedPhoneNumber.value = res.phoneNumber || null;
       }
@@ -90,7 +96,11 @@ export const useCrmStore = defineStore('crm', () => {
       const socket = getSocket();
       socket.on('whatsapp:status', (data: any) => {
         if (data) {
-          status.value = data.status || 'DISCONNECTED';
+          if (data.phoneNumber && data.status !== 'DISCONNECTED') {
+            status.value = 'CONNECTED';
+          } else {
+            status.value = data.status || 'DISCONNECTED';
+          }
           qrCodeDataUrl.value = data.qr || null;
           connectedPhoneNumber.value = data.phoneNumber || null;
         }

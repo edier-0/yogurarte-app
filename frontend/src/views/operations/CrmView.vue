@@ -100,6 +100,7 @@ const crmStore = useCrmStore();
 const whatsappStatus = computed(() => crmStore.status);
 const qrCodeDataUrl = computed(() => crmStore.qrCodeDataUrl);
 const connectedPhoneNumber = computed(() => crmStore.connectedPhoneNumber);
+const isSessionActive = computed(() => crmStore.isWhatsAppConnected);
 
 // Conversaciones y mensajes
 const conversations = ref<ChatConversationItem[]>([]);
@@ -446,12 +447,41 @@ async function handleUnlinkChat(conv: any) {
   }
 }
 
+let statusReconcileInterval: any = null;
+
+function checkAndStartReconciliation() {
+  if (statusReconcileInterval) {
+    clearInterval(statusReconcileInterval);
+    statusReconcileInterval = null;
+  }
+  let attempts = 0;
+  statusReconcileInterval = setInterval(async () => {
+    attempts++;
+    if (crmStore.isWhatsAppConnected || crmStore.status === 'CONNECTED' || attempts >= 5) {
+      if (statusReconcileInterval) {
+        clearInterval(statusReconcileInterval);
+        statusReconcileInterval = null;
+      }
+      return;
+    }
+    await fetchStatus();
+  }, 4000);
+}
+
 // Manejadores de WebSockets
 function onStatusUpdate(data: any) {
   if (data) {
-    crmStore.status = data.status || 'DISCONNECTED';
+    if (data.phoneNumber && data.status !== 'DISCONNECTED') {
+      crmStore.status = 'CONNECTED';
+    } else {
+      crmStore.status = data.status || 'DISCONNECTED';
+    }
     crmStore.qrCodeDataUrl = data.qr || null;
     crmStore.connectedPhoneNumber = data.phoneNumber || null;
+    if (crmStore.status === 'CONNECTED' && statusReconcileInterval) {
+      clearInterval(statusReconcileInterval);
+      statusReconcileInterval = null;
+    }
   }
 }
 
@@ -633,8 +663,11 @@ function onMediaUpdated(payload: any) {
   }
 }
 
-onMounted(() => {
-  fetchStatus();
+onMounted(async () => {
+  await fetchStatus();
+  if (crmStore.status === 'CONNECTING' && !crmStore.qrCodeDataUrl) {
+    checkAndStartReconciliation();
+  }
   fetchConversations();
   if (productionStore.flavors.length === 0) {
     productionStore.fetchFlavors();
@@ -652,6 +685,10 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  if (statusReconcileInterval) {
+    clearInterval(statusReconcileInterval);
+    statusReconcileInterval = null;
+  }
   const socket = getSocket();
   socket.off('whatsapp:status', onStatusUpdate);
   socket.off('whatsapp:message', onNewMessage);
@@ -683,7 +720,7 @@ onUnmounted(() => {
         <div
           class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black shadow-xs"
           :class="
-            whatsappStatus === 'CONNECTED'
+            isSessionActive
               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
               : whatsappStatus === 'CONNECTING'
               ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
@@ -693,14 +730,14 @@ onUnmounted(() => {
           <span
             class="h-2 w-2 rounded-full"
             :class="
-              whatsappStatus === 'CONNECTED'
+              isSessionActive
                 ? 'bg-emerald-500 animate-pulse'
                 : whatsappStatus === 'CONNECTING'
                 ? 'bg-amber-500 animate-ping'
                 : 'bg-rose-500'
             "
           />
-          <span v-if="whatsappStatus === 'CONNECTED'">
+          <span v-if="isSessionActive">
             Conectado {{ connectedPhoneNumber ? `(+${connectedPhoneNumber})` : '' }}
           </span>
           <span v-else-if="whatsappStatus === 'CONNECTING'">

@@ -69,4 +69,21 @@ describe('WhatsApp URL Utility & Username Handling', () => {
     expect(res.body.error).toContain('nombre de usuario');
     expect(res.body.error).toContain('WhatsApp oficial');
   });
+
+  it('whatsappService.getStatus debe auto-reconciliar el estado a CONNECTED si existe un usuario autenticado en el socket', async () => {
+    const { default: whatsappService } = await import('../src/services/whatsapp.service.js');
+    (whatsappService as any).sock = {
+      user: { id: '573001234567:1@s.whatsapp.net', name: 'YogurArte' },
+    };
+    (whatsappService as any).status = 'CONNECTING';
+
+    const status = whatsappService.getStatus();
+    expect(status.status).toBe('CONNECTED');
+    expect(status.phoneNumber).toBe('573001234567');
+    expect(status.user).toEqual({ id: '573001234567:1@s.whatsapp.net', name: 'YogurArte' });
+
+    // Restaurar estado
+    (whatsappService as any).sock = null;
+    (whatsappService as any).status = 'DISCONNECTED';
+  });
 });

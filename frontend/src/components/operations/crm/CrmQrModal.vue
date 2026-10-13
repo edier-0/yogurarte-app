@@ -98,7 +98,7 @@ async function handleLogout() {
 
         <div class="mt-5 space-y-4 text-center">
           <!-- Estado Conectado -->
-          <div v-if="status === 'CONNECTED'" class="space-y-3 py-4">
+          <div v-if="status === 'CONNECTED' || (!!phoneNumber && status !== 'DISCONNECTED')" class="space-y-3 py-4">
             <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
               <CheckCircle2 class="h-8 w-8 stroke-[2.5]" />
             </div>

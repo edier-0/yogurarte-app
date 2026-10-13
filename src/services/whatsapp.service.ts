@@ -76,6 +76,14 @@ class WhatsAppService {
   }
 
   public getStatus() {
+    if (this.sock?.user?.id && this.status !== 'CONNECTED') {
+      console.log(`🔄 Reconciliando estado de WhatsApp a CONNECTED en getStatus() (Usuario: ${this.sock.user.id})`);
+      this.status = 'CONNECTED';
+      this.qrCodeDataUrl = null;
+      this.isInitializing = false;
+      this.broadcastStatus();
+    }
+
     if (!this.sock && !this.isInitializing && this.status === 'DISCONNECTED') {
       this.init().catch((err) => console.error('Error auto-init WhatsApp:', err));
     }
@@ -83,7 +91,7 @@ class WhatsAppService {
       status: this.status,
       qr: this.qrCodeDataUrl,
       user: this.sock?.user || null,
-      phoneNumber: this.sock?.user?.id ? this.sock.user.id.split(':')[0] : null,
+      phoneNumber: this.sock?.user?.id ? normalizeColombianJid(this.sock.user.id.split(':')[0]) : null,
     };
   }
 
@@ -121,10 +129,30 @@ class WhatsAppService {
         browser: Browsers.ubuntu('Chrome'),
       });
 
-      this.sock.ev.on('creds.update', saveCreds);
+      this.sock.ev.on('creds.update', async () => {
+        await saveCreds();
+        if (this.sock?.user?.id && this.status !== 'CONNECTED') {
+          console.log(`🔄 Reconciliando estado de WhatsApp a CONNECTED por creds.update (Usuario: ${this.sock.user.id})`);
+          this.status = 'CONNECTED';
+          this.qrCodeDataUrl = null;
+          this.isInitializing = false;
+          this.broadcastStatus();
+        }
+      });
 
       this.sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
+        const receivedPendingNotifications = (update as any).receivedPendingNotifications;
+        const isNewLogin = (update as any).isNewLogin;
+
+        // Auto-reconciliación: Si Baileys ya tiene el usuario autenticado y no está cerrado el socket
+        if (this.sock?.user?.id && connection !== 'close' && this.status !== 'CONNECTED') {
+          console.log(`🔄 Reconciliando estado de WhatsApp a CONNECTED en connection.update (Usuario: ${this.sock.user.id})`);
+          this.status = 'CONNECTED';
+          this.qrCodeDataUrl = null;
+          this.isInitializing = false;
+          this.broadcastStatus();
+        }
 
         if (qr) {
           try {
@@ -181,7 +209,7 @@ class WhatsAppService {
               }, delay);
             }
           }
-        } else if (connection === 'open') {
+        } else if (connection === 'open' || (this.sock?.user?.id && (receivedPendingNotifications || isNewLogin))) {
           console.log(`✅ ¡WhatsApp de YogurArte conectado exitosamente! Usuario: ${this.sock?.user?.id}`);
           this.status = 'CONNECTED';
           this.qrCodeDataUrl = null;
@@ -204,6 +232,15 @@ class WhatsAppService {
 
       this.sock.ev.on('messages.upsert', async (m) => {
         try {
+          // Auto-reconciliación proactiva: Si Baileys está recibiendo o sincronizando mensajes,
+          // significa que la conexión de socket está activa y autenticada.
+          if (this.sock?.user?.id && this.status !== 'CONNECTED') {
+            console.log(`🔄 Reconciliando estado de WhatsApp a CONNECTED por flujo de mensajes upsert (Usuario: ${this.sock.user.id})`);
+            this.status = 'CONNECTED';
+            this.qrCodeDataUrl = null;
+            this.isInitializing = false;
+            this.broadcastStatus();
+          }
           // Procesar mensajes tanto 'notify' (entrantes) como 'append' (enviados desde el teléfono WhatsApp Business)
           for (const msg of m.messages) {
             await this.processIncomingMessage(msg);
@@ -696,7 +733,16 @@ class WhatsAppService {
    * Envía un mensaje saliente a través de WhatsApp
    */
   public async sendMessage(remoteJid: string, text: string, optionalName?: string, optionalCustomerId?: number) {
-    if (!this.sock || this.status !== 'CONNECTED') {
+    // Auto-reconciliación antes de enviar: Si el socket y el usuario existen, asegurar que el estado sea CONNECTED
+    if (this.sock?.user?.id && this.status !== 'CONNECTED') {
+      console.log(`🔄 Reconciliando estado antes de enviar mensaje a CONNECTED (Usuario: ${this.sock.user.id})`);
+      this.status = 'CONNECTED';
+      this.qrCodeDataUrl = null;
+      this.isInitializing = false;
+      this.broadcastStatus();
+    }
+
+    if (!this.sock || (!this.sock.user && this.status !== 'CONNECTED')) {
       throw new Error('WhatsApp no está conectado actualmente. Por favor escanea el código QR.');
     }
 
