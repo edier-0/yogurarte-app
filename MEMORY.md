@@ -24,4 +24,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Nunca silenciar errores en Axios con `err.message` genérico; extraer siempre `err?.response?.data?.error || err?.response?.data?.message` para feedback claro al usuario.
 
 ## Próximos pasos
-- Coordinar con el usuario la fusión de `fix/crm-whatsapp-username-and-external-fallback` a `develop` y `main`.
+- Realizar despliegue a producción o sincronizar push con los remotos si se requiere (`git push origin develop` y `git push origin main`).
