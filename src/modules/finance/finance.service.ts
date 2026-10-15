@@ -235,7 +235,26 @@ export const getExpenses = async (query: ExpensesQueryInput) => {
   const whereClause: any = {};
 
   if (category && typeof category === 'string' && category !== 'ALL') {
-    whereClause.category = category;
+    const catUpper = category.toUpperCase().trim();
+    if (catUpper === 'SERVICIOS_PUBLICOS' || catUpper === 'SERVICES' || catUpper === 'SERVICIOS') {
+      whereClause.category = {
+        in: ['SERVICIOS_PUBLICOS', 'SERVICIOS', 'MANTENIMIENTO', 'INFRAESTRUCTURA', 'LUZ', 'AGUA', 'PLANTA'],
+      };
+    } else if (catUpper === 'INSUMOS_EXTRA' || catUpper === 'RAW_MATERIALS' || catUpper === 'MATERIA_PRIMA') {
+      whereClause.category = {
+        in: ['INSUMOS_EXTRA', 'MATERIA_PRIMA', 'MATERIAS_PRIMAS', 'INSUMO', 'COMPRA_INSUMO'],
+      };
+    } else if (catUpper === 'COMBUSTIBLE' || catUpper === 'FUEL' || catUpper === 'GASOLINA') {
+      whereClause.category = {
+        in: ['COMBUSTIBLE', 'GASOLINA', 'FLETE', 'DOMICILIO', 'LOGISTICA_Y_TRANSPORTE'],
+      };
+    } else if (catUpper === 'OPERATIVO' || catUpper === 'OPERATIVE') {
+      whereClause.category = {
+        in: ['OPERATIVO', 'OPERATIVOS', 'OTRO', 'VARIOS', 'EMPAQUES'],
+      };
+    } else {
+      whereClause.category = category;
+    }
   }
 
   if (search && typeof search === 'string' && search.trim() !== '') {

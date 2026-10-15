@@ -22,6 +22,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Pencil,
+  Wrench,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
@@ -242,16 +243,47 @@ function isFuelCategory(cat: string): boolean {
   return c.includes('COMBUSTIBLE') || c.includes('GASOLINA') || c.includes('DOMICILIO') || c.includes('FLETE');
 }
 
+function isMaintenanceCategory(cat: string): boolean {
+  const c = (cat || '').toUpperCase();
+  return c.includes('MANTENIMIENTO') || c.includes('INFRAESTRUCTURA') || c.includes('PLANTA');
+}
+
 function isServicesCategory(cat: string): boolean {
   const c = (cat || '').toUpperCase();
   return (
     c.includes('SERVICIO') ||
-    c.includes('MANTENIMIENTO') ||
-    c.includes('INFRAESTRUCTURA') ||
     c.includes('LUZ') ||
     c.includes('AGUA') ||
-    c.includes('PLANTA')
+    c.includes('INTERNET') ||
+    c.includes('GAS')
   );
+}
+
+function getCategoryDisplayLabel(category: string): string {
+  if (!category) return 'Gasto General';
+  const c = category.toUpperCase();
+  if (c === 'INSUMOS_EXTRA' || c === 'MATERIA_PRIMA') return 'Materia Prima';
+  if (c === 'COMBUSTIBLE' || c === 'GASOLINA' || c === 'DOMICILIO') return 'Combustible / Flete';
+  if (c === 'SERVICIOS_PUBLICOS' || c === 'SERVICIOS') return 'Servicios Públicos';
+  if (c === 'MANTENIMIENTO' || c === 'INFRAESTRUCTURA') return 'Mantenimiento';
+  if (c === 'OPERATIVO' || c === 'OPERATIVOS' || c === 'EMPAQUES') return 'Insumos Operativos';
+  if (c === 'OTRO' || c === 'VARIOS') return 'Varios / Otros';
+  return category.replace(/_/g, ' ');
+}
+
+function getActiveCategoryForNewExpense(): string {
+  switch (activeChip.value) {
+    case 'RAW_MATERIALS':
+      return 'INSUMOS_EXTRA';
+    case 'FUEL':
+      return 'COMBUSTIBLE';
+    case 'SERVICES':
+      return 'SERVICIOS_PUBLICOS';
+    case 'OPERATIVE':
+      return 'OPERATIVO';
+    default:
+      return 'OPERATIVO';
+  }
 }
 
 // Gastos renderizados (paginados a 10 por el servidor)
@@ -520,6 +552,8 @@ async function deleteCredit(id: number) {
                     ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400'
                     : isFuelCategory(expense.category)
                     ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'
+                    : isMaintenanceCategory(expense.category)
+                    ? 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400'
                     : isServicesCategory(expense.category)
                     ? 'bg-dairy-50 text-dairy-500 dark:bg-blue-950/40 dark:text-blue-400'
                     : 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400'
@@ -527,6 +561,7 @@ async function deleteCredit(id: number) {
               >
                 <ShoppingBag v-if="isRawMaterialsCategory(expense.category)" class="h-5 w-5 stroke-[1.75]" />
                 <Fuel v-else-if="isFuelCategory(expense.category)" class="h-5 w-5 stroke-[1.75]" />
+                <Wrench v-else-if="isMaintenanceCategory(expense.category)" class="h-5 w-5 stroke-[1.75]" />
                 <Zap v-else-if="isServicesCategory(expense.category)" class="h-5 w-5 stroke-[1.75]" />
                 <Boxes v-else class="h-5 w-5 stroke-[1.75]" />
               </div>
@@ -544,12 +579,14 @@ async function deleteCredit(id: number) {
                         ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                         : isFuelCategory(expense.category)
                         ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                        : isMaintenanceCategory(expense.category)
+                        ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300'
                         : isServicesCategory(expense.category)
                         ? 'bg-dairy-100 text-dairy-800 dark:bg-blue-900/40 dark:text-blue-300'
                         : 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300'
                     "
                   >
-                    {{ expense.category }}
+                    {{ getCategoryDisplayLabel(expense.category) }}
                   </span>
                 </div>
 
@@ -791,6 +828,7 @@ async function deleteCredit(id: number) {
     <!-- Modal de Registro de Gasto / Cuotas -->
     <ExpenseModal
       v-model:open="isExpenseModalOpen"
+      :initial-category="getActiveCategoryForNewExpense()"
       @saved="loadData"
     />
 

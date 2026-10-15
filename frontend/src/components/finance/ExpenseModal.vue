@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import {
   DialogRoot,
   DialogPortal,
@@ -14,19 +14,27 @@ import {
   X,
   AlertCircle,
   Plus,
+  ShoppingBag,
   Fuel,
   Zap,
   Wrench,
   Boxes,
   HelpCircle,
+  Check,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import { getTodayDateBogota } from '@/stores/finance.store';
 
-defineProps<{
-  open: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    initialCategory?: string;
+  }>(),
+  {
+    initialCategory: 'COMBUSTIBLE',
+  }
+);
 
 const emit = defineEmits<{
   (e: 'update:open', val: boolean): void;
@@ -36,7 +44,8 @@ const emit = defineEmits<{
 // Datos del formulario
 const description = ref('');
 const amount = ref<number | ''>('');
-const category = ref('COMBUSTIBLE');
+const category = ref(props.initialCategory || 'COMBUSTIBLE');
+const supplier = ref('');
 const paymentMethod = ref('EFECTIVO');
 const expenseDate = ref(getTodayDateBogota());
 const registeredBy = ref('Edier');
@@ -52,14 +61,75 @@ const initialPayment = ref<number | ''>(0);
 const isSubmitting = ref(false);
 const errorMessage = ref('');
 
-// Categorías oficiales
+// Categorías oficiales alineadas directamente con los filtros de la vista
 const categories = [
-  { id: 'COMBUSTIBLE', label: 'Domicilio y Gasolina', icon: Fuel },
-  { id: 'SERVICIOS', label: 'Servicios Públicos (Luz / Agua)', icon: Zap },
-  { id: 'MANTENIMIENTO', label: 'Mantenimiento & Infraestructura', icon: Wrench },
-  { id: 'OPERATIVO', label: 'Insumos Operativos', icon: Boxes },
-  { id: 'OTRO', label: 'Varios y Otros', icon: HelpCircle },
+  {
+    id: 'INSUMOS_EXTRA',
+    label: 'Materia Prima / Insumos',
+    shortDesc: 'Frutas, leche, azúcar, fermentos, envases...',
+    icon: ShoppingBag,
+    iconColor: 'text-emerald-600 dark:text-emerald-400',
+    selectedStyle: 'border-emerald-600 bg-emerald-50/90 text-emerald-950 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-100 ring-2 ring-emerald-500/20 shadow-xs',
+    unselectedStyle: 'border-surface-light-border bg-surface-light-canvas text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20',
+  },
+  {
+    id: 'COMBUSTIBLE',
+    label: 'Domicilio y Gasolina',
+    shortDesc: 'Gasolina moto, fletes, carreras de reparto...',
+    icon: Fuel,
+    iconColor: 'text-amber-600 dark:text-amber-400',
+    selectedStyle: 'border-amber-500 bg-amber-50/90 text-amber-950 dark:border-amber-500 dark:bg-amber-950/60 dark:text-amber-100 ring-2 ring-amber-500/20 shadow-xs',
+    unselectedStyle: 'border-surface-light-border bg-surface-light-canvas text-slate-700 hover:border-amber-300 hover:bg-amber-50/40 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:border-amber-800 dark:hover:bg-amber-950/20',
+  },
+  {
+    id: 'SERVICIOS_PUBLICOS',
+    label: 'Servicios Públicos',
+    shortDesc: 'Luz/Energía (refrigeración), Agua, Gas...',
+    icon: Zap,
+    iconColor: 'text-sky-600 dark:text-sky-400',
+    selectedStyle: 'border-sky-500 bg-sky-50/90 text-sky-950 dark:border-sky-500 dark:bg-sky-950/60 dark:text-sky-100 ring-2 ring-sky-500/20 shadow-xs',
+    unselectedStyle: 'border-surface-light-border bg-surface-light-canvas text-slate-700 hover:border-sky-300 hover:bg-sky-50/40 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:border-sky-800 dark:hover:bg-sky-950/20',
+  },
+  {
+    id: 'MANTENIMIENTO',
+    label: 'Mantenimiento & Planta',
+    shortDesc: 'Reparación de congeladores, planta, local...',
+    icon: Wrench,
+    iconColor: 'text-indigo-600 dark:text-indigo-400',
+    selectedStyle: 'border-indigo-500 bg-indigo-50/90 text-indigo-950 dark:border-indigo-500 dark:bg-indigo-950/60 dark:text-indigo-100 ring-2 ring-indigo-500/20 shadow-xs',
+    unselectedStyle: 'border-surface-light-border bg-surface-light-canvas text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/40 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/20',
+  },
+  {
+    id: 'OPERATIVO',
+    label: 'Insumos Operativos',
+    shortDesc: 'Bolsas, cucharas, aseo, elementos de empaque...',
+    icon: Boxes,
+    iconColor: 'text-purple-600 dark:text-purple-400',
+    selectedStyle: 'border-purple-600 bg-purple-50/90 text-purple-950 dark:border-purple-500 dark:bg-purple-950/60 dark:text-purple-100 ring-2 ring-purple-500/20 shadow-xs',
+    unselectedStyle: 'border-surface-light-border bg-surface-light-canvas text-slate-700 hover:border-purple-300 hover:bg-purple-50/40 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:border-purple-800 dark:hover:bg-purple-950/20',
+  },
+  {
+    id: 'OTRO',
+    label: 'Varios y Otros',
+    shortDesc: 'Papelería, publicidad, gastos imprevistos...',
+    icon: HelpCircle,
+    iconColor: 'text-slate-600 dark:text-slate-400',
+    selectedStyle: 'border-slate-600 bg-slate-100 text-slate-900 dark:border-slate-400 dark:bg-slate-800 dark:text-slate-100 ring-2 ring-slate-400/20 shadow-xs',
+    unselectedStyle: 'border-surface-light-border bg-surface-light-canvas text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300 dark:hover:border-slate-700',
+  },
 ];
+
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      if (props.initialCategory) {
+        category.value = props.initialCategory;
+      }
+      errorMessage.value = '';
+    }
+  }
+);
 
 const calculatedInstallment = computed(() => {
   if (frequency.value === 'FLEXIBLE') return 0;
@@ -132,6 +202,7 @@ async function handleSubmit() {
         category: category.value,
         paymentMethod: paymentMethod.value,
         expenseDate: expenseDate.value,
+        supplier: supplier.value.trim() || null,
         notes: notes.value.trim() || null,
         registeredBy: registeredBy.value || 'Edier',
       });
@@ -144,6 +215,7 @@ async function handleSubmit() {
     // Resetear formulario
     description.value = '';
     amount.value = '';
+    supplier.value = '';
     notes.value = '';
     creditor.value = '';
     initialPayment.value = 0;
@@ -220,7 +292,49 @@ async function handleSubmit() {
             </label>
           </div>
 
-          <!-- Concepto y Monto -->
+          <!-- 1. Selección Visual de Tipo / Categoría de Gasto -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-extrabold text-slate-800 dark:text-slate-200">
+                Tipo / Categoría de Gasto *
+              </label>
+              <span class="text-[11px] font-semibold text-slate-400">
+                Selecciona uno para clasificarlo
+              </span>
+            </div>
+
+            <!-- Grid de Tarjetas Interactivas de Categoría -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <button
+                v-for="cat in categories"
+                :key="cat.id"
+                type="button"
+                @click="category = cat.id"
+                class="group relative flex flex-col items-start p-2.5 rounded-2xl border text-left transition-all active:scale-[0.98]"
+                :class="category === cat.id ? cat.selectedStyle : cat.unselectedStyle"
+              >
+                <div class="flex w-full items-center justify-between mb-1">
+                  <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-white/80 dark:bg-black/20 shadow-2xs">
+                    <component :is="cat.icon" class="h-4 w-4 stroke-[2]" :class="cat.iconColor" />
+                  </div>
+                  <span
+                    v-if="category === cat.id"
+                    class="flex h-4 w-4 items-center justify-center rounded-full bg-brand-800 dark:bg-brand-500 text-white text-[10px]"
+                  >
+                    <Check class="h-2.5 w-2.5 stroke-[3]" />
+                  </span>
+                </div>
+                <span class="text-xs font-black leading-tight line-clamp-1">
+                  {{ cat.label }}
+                </span>
+                <span class="text-[10px] leading-tight font-medium opacity-75 line-clamp-1 mt-0.5">
+                  {{ cat.shortDesc }}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Concepto y Proveedor -->
           <div>
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
               Concepto / Descripción del Gasto *
@@ -228,12 +342,25 @@ async function handleSubmit() {
             <input
               v-model="description"
               type="text"
-              placeholder="Ej: Gasolina ruta domicilios, Recibo de Luz, etc."
+              placeholder="Ej: Gasolina ruta domicilios, Recibo de Luz, Envases 1L..."
               required
               class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
             />
           </div>
 
+          <div>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Proveedor / Establecimiento <span class="font-normal text-slate-400">(Opcional)</span>
+            </label>
+            <input
+              v-model="supplier"
+              type="text"
+              placeholder="Ej: Gasolinera Terpel, Air-e, Don Pedro, Plastiquímica..."
+              class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+            />
+          </div>
+
+          <!-- Monto y Medio de Pago -->
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -255,15 +382,14 @@ async function handleSubmit() {
 
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Categoría Oficial
+                {{ isCredit ? 'Canal de Cuota Inicial' : 'Medio de Pago' }}
               </label>
               <select
-                v-model="category"
+                v-model="paymentMethod"
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               >
-                <option v-for="cat in categories" :key="cat.id" :value="cat.id">
-                  {{ cat.label }}
-                </option>
+                <option value="EFECTIVO">Efectivo (Caja Menor)</option>
+                <option value="NEQUI">Nequi / Bancolombia (Transferencia)</option>
               </select>
             </div>
           </div>
@@ -349,21 +475,8 @@ async function handleSubmit() {
             </div>
           </div>
 
-          <!-- Medio de Pago y Fecha -->
+          <!-- Fecha del Gasto y Registrado por -->
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                {{ isCredit ? 'Canal de Cuota Inicial' : 'Medio de Pago' }}
-              </label>
-              <select
-                v-model="paymentMethod"
-                class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-              >
-                <option value="EFECTIVO">Efectivo (Caja Menor)</option>
-                <option value="NEQUI">Nequi / Bancolombia (Transferencia)</option>
-              </select>
-            </div>
-
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Fecha del Gasto
@@ -375,10 +488,7 @@ async function handleSubmit() {
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               />
             </div>
-          </div>
 
-          <!-- Responsable y Notas -->
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Registrado por
@@ -390,18 +500,19 @@ async function handleSubmit() {
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               />
             </div>
+          </div>
 
-            <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Notas / N° Comprobante
-              </label>
-              <input
-                v-model="notes"
-                type="text"
-                placeholder="Factura #1234, ticket..."
-                class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-              />
-            </div>
+          <!-- Notas / N° Comprobante -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Notas / N° Comprobante <span class="font-normal text-slate-400">(Opcional)</span>
+            </label>
+            <input
+              v-model="notes"
+              type="text"
+              placeholder="Factura #1234, ticket, observaciones..."
+              class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+            />
           </div>
 
           <!-- Error Alert -->
