@@ -87,6 +87,7 @@ const staffToEdit = ref<StaffMemberItem | null>(null);
 
 const isPaymentModalOpen = ref(false);
 const preselectedStaffId = ref<number | null>(null);
+const paymentToEdit = ref<StaffPaymentItem | null>(null);
 
 const isNequiModalOpen = ref(false);
 
@@ -246,8 +247,41 @@ function openEditStaffModal(member: StaffMemberItem) {
 }
 
 function openPaymentForMember(staffId: number) {
+  paymentToEdit.value = null;
   preselectedStaffId.value = staffId;
   isPaymentModalOpen.value = true;
+}
+
+function openCreatePayment() {
+  paymentToEdit.value = null;
+  preselectedStaffId.value = null;
+  isPaymentModalOpen.value = true;
+}
+
+function openEditPayment(payment: StaffPaymentItem) {
+  paymentToEdit.value = payment;
+  preselectedStaffId.value = payment.staffId;
+  isPaymentModalOpen.value = true;
+}
+
+async function handleDeletePayment(payment: StaffPaymentItem) {
+  const accepted = await confirm({
+    title: `¿Eliminar liquidación de ${formatCurrency(payment.netAmount)}?`,
+    message: `Esta acción eliminará el registro de pago a "${payment.staff?.fullName || 'Colaborador'}" y revertirá el egreso en el control de caja.`,
+    confirmText: 'Sí, Eliminar',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+  });
+
+  if (!accepted) return;
+
+  try {
+    await http.delete(`/staff/payments/${payment.id}`);
+    toast.success('Liquidación eliminada correctamente');
+    await fetchPayments();
+  } catch (err: any) {
+    toast.error(err?.response?.data?.message || err?.message || 'Error al eliminar la liquidación');
+  }
 }
 
 const crmStore = useCrmStore();
@@ -327,7 +361,7 @@ async function handleDeleteUser(user: UserItem) {
 
         <button
           type="button"
-          @click="isPaymentModalOpen = true"
+          @click="openCreatePayment"
           class="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-xs font-extrabold text-emerald-800 shadow-sm transition-transform active:scale-95 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
         >
           <Receipt class="h-4 w-4 stroke-[2]" />
@@ -705,15 +739,36 @@ async function handleDeleteUser(user: UserItem) {
                 </span>
               </div>
 
-              <button
-                type="button"
-                @click="handleSharePaymentWhatsApp(p.id)"
-                class="inline-flex items-center gap-1 rounded-xl border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
-                title="Compartir comprobante por WhatsApp"
-              >
-                <MessageCircle class="h-3.5 w-3.5 stroke-[2]" />
-                <span class="hidden sm:inline">Recibo</span>
-              </button>
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  @click="openEditPayment(p)"
+                  class="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  title="Editar liquidación o pago"
+                >
+                  <Edit3 class="h-3.5 w-3.5 stroke-[2]" />
+                  <span class="hidden sm:inline">Editar</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="handleSharePaymentWhatsApp(p.id)"
+                  class="inline-flex items-center gap-1 rounded-xl border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60 transition-colors"
+                  title="Compartir comprobante por WhatsApp"
+                >
+                  <MessageCircle class="h-3.5 w-3.5 stroke-[2]" />
+                  <span class="hidden sm:inline">Recibo</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="handleDeletePayment(p)"
+                  class="rounded-xl border border-rose-200 bg-rose-50 p-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60 transition-colors"
+                  title="Eliminar liquidación"
+                >
+                  <Trash2 class="h-3.5 w-3.5 stroke-[2]" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -873,6 +928,7 @@ async function handleDeleteUser(user: UserItem) {
       v-model:open="isPaymentModalOpen"
       :staff-list="staffList"
       :preselected-staff-id="preselectedStaffId"
+      :payment-to-edit="paymentToEdit"
       @saved="refreshAll"
     />
 

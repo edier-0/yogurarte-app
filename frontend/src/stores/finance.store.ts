@@ -71,6 +71,8 @@ export interface UnifiedMovement {
   isOrderPayment?: boolean;
   isPurchase?: boolean;
   purchaseId?: number;
+  isStaffPayment?: boolean;
+  staffPaymentId?: number;
   supplier?: string | null;
   type?: string;
   movementType?: string;
@@ -347,22 +349,34 @@ export const useFinanceStore = defineStore('finance', () => {
 
         const purchaseId = o.purchaseId || (String(o.id).startsWith('purch_') ? Number(o.rawId) : undefined);
 
+        const isPayrollItem =
+          !!o.isStaffPayment ||
+          String(o.id).startsWith('pay_') ||
+          String(o.id).startsWith('draw_') ||
+          o.category === 'NOMINA' ||
+          o.category === 'RETIRO_SOCIO' ||
+          (o.categoryLabel && (o.categoryLabel.includes('Nómina') || o.categoryLabel.includes('Retiro')));
+
+        const staffPaymentId = isPayrollItem ? Number(o.rawId) : undefined;
+
         unified.push({
           id: o.id || `outflow_${Math.random()}`,
           rawId: o.rawId || o.id,
           purchaseId,
           isPurchase: isPurchaseItem,
+          isStaffPayment: isPayrollItem,
+          staffPaymentId,
           supplier: o.supplier || null,
           date: o.date || o.expenseDate || o.purchaseDate || o.movementDate || new Date().toISOString(),
           createdAt: o.createdAt,
           flowType: 'OUTFLOW',
           tabCategory: isAdj || isBaseWithdrawal ? 'BASE' : 'EXPENSES',
-          concept: o.concept || o.description || o.name || (isPurchaseItem ? 'Compra de Insumo' : 'Gasto Operativo'),
+          concept: o.concept || o.description || o.name || (isPurchaseItem ? 'Compra de Insumo' : isPayrollItem ? 'Pago de Nómina' : 'Gasto Operativo'),
           description: o.description || o.concept || o.name || '',
           amount: Number(o.amount) || 0,
           displayAmount: -Math.abs(Number(o.amount) || 0),
           paymentMethod: o.paymentMethod || 'EFECTIVO',
-          categoryLabel: o.categoryLabel || o.category || (isPurchaseItem ? '🥛 Compra Insumo' : 'Gasto'),
+          categoryLabel: o.categoryLabel || o.category || (isPurchaseItem ? '🥛 Compra Insumo' : isPayrollItem ? '👥 Nómina' : 'Gasto'),
           notes: o.notes || null,
           registeredBy: o.registeredBy || 'Edier',
           isCashMovement: !!o.isCashMovement,
@@ -540,6 +554,22 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  // Eliminar un pago de nómina o liquidación
+  async function deleteStaffPayment(id: number) {
+    isLoading.value = true;
+    try {
+      await http.delete(`/staff/payments/${id}`);
+      toast.success('Pago de Nómina Eliminado', {
+        description: 'La liquidación fue eliminada y el saldo de caja restaurado.',
+      });
+      await fetchFinanceData();
+    } catch {
+      // Manejado por interceptor
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   // Actualizar monto o método de pago de un cobro/abono de pedido
   async function updateOrderPayment(
     orderId: number,
@@ -609,6 +639,7 @@ export const useFinanceStore = defineStore('finance', () => {
     deleteMovement,
     deleteExpense,
     deletePurchase,
+    deleteStaffPayment,
     updateOrderPayment,
     deleteOrderPayment,
   };

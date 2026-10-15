@@ -16,6 +16,8 @@ import {
   X,
   AlertCircle,
   Plus,
+  Pencil,
+  Check,
   User,
   Calendar,
 } from 'lucide-vue-next';
@@ -24,10 +26,33 @@ import { toast } from 'vue-sonner';
 import { getTodayDateBogota } from '@/stores/finance.store';
 import type { StaffMemberItem } from './StaffModal.vue';
 
+export interface StaffPaymentItemData {
+  id: number;
+  staffId: number;
+  paymentType: string;
+  amount: number;
+  deductions: number;
+  netAmount: number;
+  paymentMethod: string;
+  paymentDate: string;
+  notes?: string | null;
+  registeredBy?: string;
+  calculationDetails?: string | null;
+  staff?: {
+    id: number;
+    fullName: string;
+    phone?: string | null;
+    role?: string | null;
+    type: string;
+    bankInfo?: string | null;
+  };
+}
+
 const props = defineProps<{
   open: boolean;
   staffList: StaffMemberItem[];
   preselectedStaffId?: number | null;
+  paymentToEdit?: StaffPaymentItemData | null;
 }>();
 
 const emit = defineEmits<{
@@ -49,22 +74,37 @@ const errorMessage = ref('');
 
 // Sincronizar selección al abrir modal
 watch(
-  () => [props.open, props.preselectedStaffId],
-  ([isOpen, preselected]) => {
+  () => [props.open, props.preselectedStaffId, props.paymentToEdit],
+  ([isOpen, preselected, payment]) => {
     if (isOpen) {
       errorMessage.value = '';
-      notes.value = '';
-      deductions.value = 0;
-      paymentDate.value = getTodayDateBogota();
+      if (payment) {
+        selectedStaffId.value = (payment as StaffPaymentItemData).staffId;
+        paymentType.value = (payment as StaffPaymentItemData).paymentType || 'JORNAL';
+        amount.value = Number((payment as StaffPaymentItemData).amount) || 0;
+        deductions.value = Number((payment as StaffPaymentItemData).deductions) || 0;
+        const rawMethod = ((payment as StaffPaymentItemData).paymentMethod || 'EFECTIVO').toUpperCase().trim();
+        paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI_BANCOLOMBIA';
+        paymentDate.value = (payment as StaffPaymentItemData).paymentDate
+          ? String((payment as StaffPaymentItemData).paymentDate).slice(0, 10)
+          : getTodayDateBogota();
+        notes.value = (payment as StaffPaymentItemData).notes || '';
+        registeredBy.value = (payment as StaffPaymentItemData).registeredBy || 'Edier';
+      } else {
+        notes.value = '';
+        deductions.value = 0;
+        paymentDate.value = getTodayDateBogota();
+        registeredBy.value = 'Edier';
 
-      if (preselected) {
-        selectedStaffId.value = preselected as number;
-      } else if (props.staffList.length > 0 && !selectedStaffId.value) {
-        selectedStaffId.value = props.staffList[0].id;
+        if (preselected) {
+          selectedStaffId.value = preselected as number;
+        } else if (props.staffList.length > 0 && !selectedStaffId.value) {
+          selectedStaffId.value = props.staffList[0].id;
+        }
+
+        // Sugerir monto y concepto según integrante seleccionado
+        syncSuggestedPayment();
       }
-
-      // Sugerir monto y concepto según integrante seleccionado
-      syncSuggestedPayment();
     }
   },
   { immediate: true }
@@ -130,26 +170,45 @@ async function handleSubmit() {
   errorMessage.value = '';
 
   try {
-    await http.post('/staff/payments', {
-      staffId: selectedStaffId.value,
-      paymentType: paymentType.value,
-      amount: Number(amount.value),
-      deductions: Number(deductions.value) || 0,
-      netAmount: netAmount.value,
-      paymentMethod: paymentMethod.value,
-      paymentDate: paymentDate.value,
-      notes: notes.value.trim() || null,
-      registeredBy: registeredBy.value || 'Edier',
-    });
+    if (props.paymentToEdit) {
+      await http.put(`/staff/payments/${props.paymentToEdit.id}`, {
+        staffId: selectedStaffId.value,
+        paymentType: paymentType.value,
+        amount: Number(amount.value),
+        deductions: Number(deductions.value) || 0,
+        netAmount: netAmount.value,
+        paymentMethod: paymentMethod.value,
+        paymentDate: paymentDate.value,
+        notes: notes.value.trim() || null,
+        registeredBy: registeredBy.value || 'Edier',
+      });
 
-    toast.success('¡Liquidación Asentada!', {
-      description: `Pago de ${formatCurrency(netAmount.value)} a ${currentMember.value.fullName} registrado en ${paymentMethod.value}.`,
-    });
+      toast.success('¡Liquidación Actualizada!', {
+        description: `Pago de ${formatCurrency(netAmount.value)} actualizado satisfactoriamente.`,
+      });
+    } else {
+      await http.post('/staff/payments', {
+        staffId: selectedStaffId.value,
+        paymentType: paymentType.value,
+        amount: Number(amount.value),
+        deductions: Number(deductions.value) || 0,
+        netAmount: netAmount.value,
+        paymentMethod: paymentMethod.value,
+        paymentDate: paymentDate.value,
+        notes: notes.value.trim() || null,
+        registeredBy: registeredBy.value || 'Edier',
+      });
+
+      toast.success('¡Liquidación Asentada!', {
+        description: `Pago de ${formatCurrency(netAmount.value)} a ${currentMember.value.fullName} registrado en ${paymentMethod.value}.`,
+      });
+    }
 
     emit('saved');
     handleClose();
   } catch (err: any) {
-    errorMessage.value = err?.message || 'Error al liquidar el pago';
+    errorMessage.value =
+      err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Error al procesar la liquidación';
   } finally {
     isSubmitting.value = false;
   }
@@ -166,15 +225,19 @@ async function handleSubmit() {
       >
         <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
           <div class="flex items-center gap-2.5">
-            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-              <Receipt class="h-5 w-5 stroke-[2.2]" />
+            <div
+              class="flex h-10 w-10 items-center justify-center rounded-xl"
+              :class="paymentToEdit ? 'bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-400' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'"
+            >
+              <Pencil v-if="paymentToEdit" class="h-5 w-5 stroke-[2.2]" />
+              <Receipt v-else class="h-5 w-5 stroke-[2.2]" />
             </div>
             <div>
               <DialogTitle class="text-base font-extrabold text-slate-900 dark:text-white sm:text-lg">
-                Registrar Pago / Liquidación
+                {{ paymentToEdit ? 'Editar Pago / Liquidación' : 'Registrar Pago / Liquidación' }}
               </DialogTitle>
               <DialogDescription class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Liquidación de jornales, nómina y retiros de socios
+                {{ paymentToEdit ? 'Modifica los valores o detalles de la liquidación del colaborador' : 'Liquidación de jornales, nómina y retiros de socios' }}
               </DialogDescription>
             </div>
           </div>
@@ -362,8 +425,9 @@ async function handleSubmit() {
               :disabled="!isFormValid || isSubmitting"
               class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-5 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95 disabled:opacity-50"
             >
-              <Plus class="h-4 w-4 stroke-[2.5]" />
-              <span>{{ isSubmitting ? 'Asentando...' : 'Asentar Liquidación' }}</span>
+              <Check v-if="paymentToEdit" class="h-4 w-4 stroke-[2.5]" />
+              <Plus v-else class="h-4 w-4 stroke-[2.5]" />
+              <span>{{ isSubmitting ? (paymentToEdit ? 'Guardando...' : 'Asentando...') : (paymentToEdit ? 'Guardar Cambios' : 'Asentar Liquidación') }}</span>
             </button>
           </div>
         </form>

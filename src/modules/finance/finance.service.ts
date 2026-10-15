@@ -367,15 +367,81 @@ export const createExpense = async (data: CreateExpenseInput) => {
  * Actualizar un gasto existente (Edición integral de monto, categoría, descripción, método de pago, fecha, proveedor y notas)
  */
 export const updateExpense = async (id: number, data: UpdateExpenseInput) => {
-  const existing = await prisma.expense.findUnique({
-    where: { id },
-  });
+  const {
+    isStaffPayment,
+    category,
+    description,
+    amount,
+    expenseDate,
+    date,
+    paymentMethod,
+    supplier,
+    notes,
+    registeredBy,
+  } = data as any;
+
+  const isTargetingStaff =
+    isStaffPayment === true ||
+    category === 'NOMINA' ||
+    category === 'RETIRO_SOCIO' ||
+    (typeof category === 'string' && (category.includes('Nómina') || category.includes('Retiro')));
+
+  const existing = isTargetingStaff
+    ? null
+    : await prisma.expense.findUnique({
+        where: { id },
+      });
 
   if (!existing) {
+    // Si no se encuentra en Expense, verificar si el ID corresponde a un pago de nómina o retiro (StaffPayment)
+    const existingStaffPayment = await prisma.staffPayment.findUnique({
+      where: { id },
+      include: { staff: true },
+    });
+
+    if (existingStaffPayment) {
+      const rawDate = date || expenseDate;
+      const parsedExpenseDate = rawDate ? parseColombiaDate(rawDate) : existingStaffPayment.paymentDate;
+
+      let parsedAmount = existingStaffPayment.netAmount;
+      if (amount !== undefined) {
+        parsedAmount = Number(amount);
+        if (isNaN(parsedAmount) || parsedAmount <= 0) {
+          throw new BadRequestError('Monto válido es requerido');
+        }
+      }
+
+      const currentDeductions = existingStaffPayment.deductions || 0;
+      const newGrossAmount = parsedAmount + currentDeductions;
+
+      const updatedPayment = await prisma.staffPayment.update({
+        where: { id },
+        data: {
+          netAmount: parsedAmount,
+          amount: newGrossAmount,
+          paymentDate: parsedExpenseDate,
+          paymentMethod: paymentMethod !== undefined ? paymentMethod.trim() : existingStaffPayment.paymentMethod,
+          notes: notes !== undefined ? (notes ? notes.trim() : null) : existingStaffPayment.notes,
+          calculationDetails: description !== undefined ? description.trim() : existingStaffPayment.calculationDetails,
+        },
+        include: { staff: true },
+      });
+
+      return {
+        id: updatedPayment.id,
+        category: updatedPayment.paymentType,
+        description: `${updatedPayment.staff?.fullName || 'Personal'} - ${updatedPayment.calculationDetails || 'Pago'}`,
+        amount: updatedPayment.netAmount,
+        expenseDate: updatedPayment.paymentDate,
+        paymentMethod: updatedPayment.paymentMethod,
+        notes: updatedPayment.notes,
+        registeredBy: updatedPayment.registeredBy,
+        isStaffPayment: true,
+      };
+    }
+
     throw new NotFoundError('Gasto no encontrado');
   }
-
-  const { category, description, amount, expenseDate, date, paymentMethod, supplier, notes, registeredBy } = data as any;
 
   let parsedAmount = existing.amount;
   if (amount !== undefined) {
@@ -491,6 +557,18 @@ export const deleteExpense = async (id: number) => {
       });
 
       return { message: 'Compra de insumo eliminada, stock revertido y caja actualizada correctamente' };
+    }
+
+    // 2. Si no se encuentra en Purchase, verificar si corresponde a un pago de nómina o retiro (StaffPayment)
+    const existingStaffPayment = await prisma.staffPayment.findUnique({
+      where: { id },
+    });
+
+    if (existingStaffPayment) {
+      await prisma.staffPayment.delete({
+        where: { id },
+      });
+      return { message: 'Pago de nómina eliminado correctamente y caja actualizada' };
     }
 
     throw new NotFoundError('Gasto no encontrado');

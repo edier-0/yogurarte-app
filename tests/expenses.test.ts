@@ -99,4 +99,88 @@ describe('Expenses Management & Full Edit', () => {
     });
     expect(dbCheck).toBeNull();
   });
+
+  it('PUT /api/expenses/:id debe permitir editar un pago de nómina (StaffPayment) sin lanzar "Gasto no encontrado"', async () => {
+    // 1. Crear integrante y pago de nómina de prueba
+    const staff = await prisma.staffMember.create({
+      data: {
+        fullName: 'Operario Nómina Test',
+        role: 'PRODUCCION',
+        type: 'EMPLEADO',
+        paymentScheme: 'JORNAL',
+        defaultRate: 50000,
+      },
+    });
+
+    const payment = await prisma.staffPayment.create({
+      data: {
+        staffId: staff.id,
+        paymentType: 'JORNAL',
+        amount: 50000,
+        deductions: 0,
+        netAmount: 50000,
+        paymentMethod: 'EFECTIVO',
+        notes: 'Jornal inicial prueba',
+      },
+    });
+
+    // 2. Intentar editar a través del endpoint de gastos (como lo hace el modal de egresos de caja)
+    const res = await request(app)
+      .put(`/api/expenses/${payment.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        amount: 60000,
+        category: 'NOMINA',
+        paymentMethod: 'NEQUI',
+        notes: 'Jornal actualizado con bono',
+        description: 'Jornal corregido lote 1',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('id', payment.id);
+    expect(res.body.amount).toBe(60000);
+    expect(res.body.paymentMethod).toBe('NEQUI');
+
+    // Comprobar que en BD se actualizó el StaffPayment
+    const dbPayment = await prisma.staffPayment.findUnique({
+      where: { id: payment.id },
+    });
+    expect(dbPayment?.netAmount).toBe(60000);
+    expect(dbPayment?.amount).toBe(60000);
+    expect(dbPayment?.paymentMethod).toBe('NEQUI');
+    expect(dbPayment?.notes).toBe('Jornal actualizado con bono');
+
+    // 3. Probar actualización directa mediante PUT /api/staff/payments/:id
+    const resStaff = await request(app)
+      .put(`/api/staff/payments/${payment.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        amount: 65000,
+        deductions: 5000,
+        netAmount: 60000,
+        paymentMethod: 'EFECTIVO',
+        notes: 'Actualizado desde apartado nómina',
+      });
+
+    expect(resStaff.status).toBe(200);
+    expect(resStaff.body.amount).toBe(65000);
+    expect(resStaff.body.deductions).toBe(5000);
+    expect(resStaff.body.netAmount).toBe(60000);
+
+    // 4. Probar eliminación mediante DELETE /api/staff/payments/:id
+    const resDel = await request(app)
+      .delete(`/api/staff/payments/${payment.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(resDel.status).toBe(200);
+    expect(resDel.body.message).toContain('eliminado correctamente');
+
+    const checkDeleted = await prisma.staffPayment.findUnique({
+      where: { id: payment.id },
+    });
+    expect(checkDeleted).toBeNull();
+
+    // Limpieza
+    await prisma.staffMember.delete({ where: { id: staff.id } });
+  });
 });

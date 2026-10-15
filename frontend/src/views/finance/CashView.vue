@@ -132,9 +132,18 @@ function openEditMovement(mov: any) {
 }
 
 function openEditExpense(mov: any) {
+  const isPayroll =
+    !!mov.isStaffPayment ||
+    String(mov.id).startsWith('pay_') ||
+    String(mov.id).startsWith('draw_') ||
+    mov.category === 'NOMINA' ||
+    mov.category === 'RETIRO_SOCIO' ||
+    mov.categoryLabel?.includes('Nómina') ||
+    mov.categoryLabel?.includes('Retiro');
+
   selectedExpenseToEdit.value = {
-    id: mov.rawId,
-    category: mov.categoryLabel || mov.type || 'OPERATIVO',
+    id: mov.rawId || mov.id,
+    category: mov.category || mov.categoryLabel || mov.type || (isPayroll ? 'NOMINA' : 'OPERATIVO'),
     description: mov.description || mov.concept || '',
     amount: Math.abs(Number(mov.amount) || 0),
     expenseDate: mov.date ? String(mov.date).slice(0, 10) : getTodayDateBogota(),
@@ -142,6 +151,8 @@ function openEditExpense(mov: any) {
     supplier: mov.supplier || null,
     notes: mov.notes || '',
     registeredBy: mov.registeredBy || 'Edier',
+    isStaffPayment: isPayroll,
+    staffPaymentId: isPayroll ? Number(mov.rawId || mov.id) : undefined,
   };
   isExpenseFormModalOpen.value = true;
 }
@@ -188,6 +199,25 @@ async function confirmDelete(mov: any) {
       } else {
         financeStore.deleteExpense(mov.rawId || mov.id);
       }
+    }
+  } else if (
+    mov.isStaffPayment ||
+    String(mov.id).startsWith('pay_') ||
+    String(mov.id).startsWith('draw_') ||
+    mov.category === 'NOMINA' ||
+    mov.category === 'RETIRO_SOCIO' ||
+    mov.categoryLabel?.includes('Nómina') ||
+    mov.categoryLabel?.includes('Retiro')
+  ) {
+    const ok = await confirm({
+      title: 'Eliminar Pago de Nómina',
+      message: '¿Deseas eliminar este pago o liquidación de nómina? Se recalculará automáticamente el saldo de caja.',
+      confirmText: 'Eliminar Pago',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+    });
+    if (ok) {
+      financeStore.deleteStaffPayment(mov.rawId || mov.id);
     }
   } else if (mov.tabCategory === 'EXPENSES') {
     const ok = await confirm({

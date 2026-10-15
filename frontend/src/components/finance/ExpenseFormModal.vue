@@ -27,6 +27,8 @@ export interface ExpenseItemData {
   supplier?: string | null;
   notes?: string | null;
   registeredBy?: string | null;
+  isStaffPayment?: boolean;
+  staffPaymentId?: number;
 }
 
 const props = defineProps<{
@@ -49,7 +51,7 @@ const notes = ref<string>('');
 const isSubmitting = ref<boolean>(false);
 const errorMessage = ref<string>('');
 
-const categories = [
+const defaultCategories = [
   { id: 'INSUMOS_EXTRA', label: 'Materia Prima / Insumos' },
   { id: 'COMBUSTIBLE', label: 'Domicilio y Gasolina' },
   { id: 'SERVICIOS_PUBLICOS', label: 'Servicios Públicos (Luz / Agua)' },
@@ -57,6 +59,24 @@ const categories = [
   { id: 'OPERATIVO', label: 'Insumos Operativos / Empaques' },
   { id: 'OTRO', label: 'Varios y Otros' },
 ];
+
+const categories = computed(() => {
+  const isPayroll =
+    props.expense?.isStaffPayment ||
+    props.expense?.category === 'NOMINA' ||
+    props.expense?.category === 'RETIRO_SOCIO' ||
+    props.expense?.category?.includes('Nómina') ||
+    props.expense?.category?.includes('Retiro');
+
+  if (isPayroll) {
+    return [
+      { id: 'NOMINA', label: '👥 Pago de Nómina / Colaborador' },
+      { id: 'RETIRO_SOCIO', label: '💼 Retiro de Utilidades / Socio' },
+      ...defaultCategories,
+    ];
+  }
+  return defaultCategories;
+});
 
 watch(
   () => [props.open, props.expense],
@@ -120,26 +140,52 @@ async function handleSubmit() {
   errorMessage.value = '';
 
   try {
-    const payload = {
-      category: category.value,
-      description: description.value.trim(),
-      amount: amount.value,
-      expenseDate: expenseDate.value,
-      paymentMethod: paymentMethod.value,
-      supplier: supplier.value.trim() || null,
-      notes: notes.value.trim() || null,
-    };
+    const isStaff =
+      !!props.expense.isStaffPayment ||
+      !!props.expense.staffPaymentId ||
+      props.expense.category === 'NOMINA' ||
+      props.expense.category === 'RETIRO_SOCIO' ||
+      props.expense.category?.includes('Nómina') ||
+      props.expense.category?.includes('Retiro') ||
+      category.value === 'NOMINA' ||
+      category.value === 'RETIRO_SOCIO';
 
-    await http.put(`/expenses/${props.expense.id}`, payload);
+    if (isStaff) {
+      const paymentId = props.expense.staffPaymentId || props.expense.id;
+      await http.put(`/staff/payments/${paymentId}`, {
+        amount: amount.value,
+        paymentDate: expenseDate.value,
+        paymentMethod: paymentMethod.value,
+        notes: notes.value.trim() || null,
+        calculationDetails: description.value.trim() || null,
+      });
 
-    toast.success('¡Gasto Actualizado!', {
-      description: 'El gasto fue modificado satisfactoriamente.',
-    });
+      toast.success('¡Pago de Nómina Actualizado!', {
+        description: 'La liquidación fue modificada satisfactoriamente.',
+      });
+    } else {
+      const payload = {
+        category: category.value,
+        description: description.value.trim(),
+        amount: amount.value,
+        expenseDate: expenseDate.value,
+        paymentMethod: paymentMethod.value,
+        supplier: supplier.value.trim() || null,
+        notes: notes.value.trim() || null,
+      };
+
+      await http.put(`/expenses/${props.expense.id}`, payload);
+
+      toast.success('¡Gasto Actualizado!', {
+        description: 'El gasto fue modificado satisfactoriamente.',
+      });
+    }
 
     emit('saved');
     handleClose();
   } catch (err: any) {
-    errorMessage.value = err?.message || 'Error al actualizar el gasto';
+    errorMessage.value =
+      err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Error al actualizar el registro';
   } finally {
     isSubmitting.value = false;
   }

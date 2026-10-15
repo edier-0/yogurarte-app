@@ -17,13 +17,14 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Fallback externo y usernames en CRM WhatsApp: Baileys requiere JID numérico o LID. Se implementó utilidad universal `buildWhatsAppUrl`, acción rápida y toasts interactivos "Abrir en WhatsApp".
 - Auto-reconciliación de sesión Baileys: en Baileys v7 tras reconnect en Neon, `sock.user` se autentica y procesa `messages.upsert` sin requerir evento estricto `connection: open`. Se reconcilia a `CONNECTED` en `getStatus()`, `creds.update`, `messages.upsert` y `sendMessage()`. En frontend, `isWhatsAppConnected` valida `connectedPhoneNumber` y efectúa reconciliación ligera si está en `CONNECTING` sin QR.
 - Categorización visual de gastos: selector de 6 categorías oficiales en cuadrícula interactiva con iconos en `ExpenseModal.vue` e `initialCategory` sincronizada con los chips de `ExpensesView.vue`. Backend agrupa sinónimos con `{ in: [...] }` para retrocompatibilidad con BD.
+- Edición de nómina en egresos y personal: `StaffPayment` en egresos de caja enruta a `PUT /api/staff/payments/:id` y `DELETE /api/staff/payments/:id` para evitar error 404 'Gasto no encontrado'. `updateExpense` y `deleteExpense` integran fallback a `StaffPayment`. `StaffView.vue` cuenta con edición y eliminación directa en el historial de liquidaciones vía `StaffPaymentModal.vue`.
 
 ## Aprendizajes y errores a evitar
 - `vue-tsc` corre con `noUnusedLocals: true`: imports no utilizados en `.vue` botan TS6133 y rompen `npm run build` en Render.
 - PowerShell bloquea `npx` directo y rompe comillas con paréntesis `(crm)` → usar comillas estándar o `cmd.exe /c`.
 - Los saldos de balance/caja (`cashInHand`, `digitalBank`) son acumulados históricos, nunca deben filtrarse por la fecha del período.
 - Baileys puede recibir y sincronizar `messages.upsert` mientras la variable en memoria quedó en `CONNECTING`; nunca bloquear `sendMessage()` si `sock.user` existe.
-- En filtros de gastos, no consultar categorías desfasadas (ej. `SERVICES` vs `SERVICIOS_PUBLICOS`); unificar enums y agrupar en Prisma con `{ in: [...] }`.
+- `Expense` y `StaffPayment` tienen IDs autoincrementales independientes: en egresos de caja, diferenciar siempre `isStaffPayment` para no colisionar con la tabla `Expense`.
 
 ## Próximos pasos
 - Validar en producción Render y continuar con las siguientes prioridades operativas de YogurArte.
