@@ -111,7 +111,12 @@ export async function usePrismaAuthState(sessionId: string = 'main'): Promise<{
       }
 
       try {
-        await Promise.all(upsertPromises);
+        // Ejecutar en lotes de 10 para proteger el pool de conexiones de Neon PostgreSQL
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < upsertPromises.length; i += BATCH_SIZE) {
+          const batch = upsertPromises.slice(i, i + BATCH_SIZE);
+          await Promise.all(batch);
+        }
       } catch (err) {
         console.error('Error guardando llaves de autenticación en DB:', err);
       }

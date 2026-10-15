@@ -86,4 +86,19 @@ describe('WhatsApp URL Utility & Username Handling', () => {
     (whatsappService as any).sock = null;
     (whatsappService as any).status = 'DISCONNECTED';
   });
+
+  it('whatsappService.getStatus debe ser una consulta pura (sin efectos secundarios ni disparar auto-init en DISCONNECTED)', async () => {
+    const { default: whatsappService } = await import('../src/services/whatsapp.service.js');
+    (whatsappService as any).sock = null;
+    (whatsappService as any).status = 'DISCONNECTED';
+    (whatsappService as any).isInitializing = false;
+
+    const status = whatsappService.getStatus();
+    expect(status.status).toBe('DISCONNECTED');
+    expect(status.user).toBeNull();
+    expect(status.phoneNumber).toBeNull();
+    // Debe permanecer en DISCONNECTED sin mutar a CONNECTING
+    expect((whatsappService as any).isInitializing).toBe(false);
+  });
 });
+

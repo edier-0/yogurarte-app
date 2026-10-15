@@ -6,7 +6,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - API canónica en `src/modules/` montada desde `src/app.ts`. Carpetas `src/controllers|routes|schemas` son restos; no son la fuente de verdad.
 - Contexto de agentes listo: `AGENTS.md`, `MEMORY.md`, `.cursor/rules/` (español).
 - CRUD de usuarios del sistema operativo en frontend y backend.
-- CRM WhatsApp: resuelta desincronización de estado `CONNECTING` en Baileys v7 con auto-reconciliación proactiva y desbloqueo de envío de mensajes en backend y frontend.
+- CRM WhatsApp: resuelta desincronización de estado `CONNECTING` en Baileys v7 con auto-reconciliación proactiva y desbloqueo de envío de mensajes en backend y frontend. Eliminado bucle infinito de inicialización y blindada la sesión ante deploys en Render.
 
 ## Decisiones (y por qué)
 - Módulos (`routes` + controller delgado + service + Zod) para aislar dominio y no inflar controladores legacy.
@@ -15,7 +15,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Costeo de producción Fase A/B: desacoplado `packagingCost` de `ProductionBatch.totalCost`/`costPerLiter` base. Rentabilidad comercial calculada por fracción en Fase B.
 - KPI "Disponible para Ventas": calcula litros desde stock libre envasado en Fase B (`BatchPackaging.freeLiters`).
 - Fallback externo y usernames en CRM WhatsApp: Baileys requiere JID numérico o LID. Se implementó utilidad universal `buildWhatsAppUrl`, acción rápida y toasts interactivos "Abrir en WhatsApp".
-- Auto-reconciliación de sesión Baileys: en Baileys v7 tras reconnect en Neon, `sock.user` se autentica y procesa `messages.upsert` sin requerir evento estricto `connection: open`. Se reconcilia a `CONNECTED` en `getStatus()`, `creds.update`, `messages.upsert` y `sendMessage()`. En frontend, `isWhatsAppConnected` valida `connectedPhoneNumber` y efectúa reconciliación ligera si está en `CONNECTING` sin QR.
+- Resiliencia de conexión Baileys: `getStatus()` desacoplado de `init()` (consulta pura sin side-effects). `cleanupSocket()` limpia listeners previos para evitar sockets fantasma. Solo el código 401 (`loggedOut`) purga credenciales; el código 440 (`connectionReplaced`) detiene la reconexión sin borrar la BD (vital para zero-downtime rolling deploys en Render) y el 515 (`restartRequired`) reconecta en 1s. Guardado de llaves en Neon PostgreSQL por lotes de 10 para evitar sobrecarga del connection pool.
 - Categorización visual de gastos: selector de 6 categorías oficiales en cuadrícula interactiva con iconos en `ExpenseModal.vue` e `initialCategory` sincronizada con los chips de `ExpensesView.vue`. Backend agrupa sinónimos con `{ in: [...] }` para retrocompatibilidad con BD.
 - Edición de nómina en egresos y personal: `StaffPayment` en egresos de caja enruta a `PUT /api/staff/payments/:id` y `DELETE /api/staff/payments/:id` para evitar error 404 'Gasto no encontrado'. `updateExpense` y `deleteExpense` integran fallback a `StaffPayment`. `StaffView.vue` cuenta con edición y eliminación directa en el historial de liquidaciones vía `StaffPaymentModal.vue`.
 
@@ -23,8 +23,10 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - `vue-tsc` corre con `noUnusedLocals: true`: imports no utilizados en `.vue` botan TS6133 y rompen `npm run build` en Render.
 - PowerShell bloquea `npx` directo y rompe comillas con paréntesis `(crm)` → usar comillas estándar o `cmd.exe /c`.
 - Los saldos de balance/caja (`cashInHand`, `digitalBank`) son acumulados históricos, nunca deben filtrarse por la fecha del período.
-- Baileys puede recibir y sincronizar `messages.upsert` mientras la variable en memoria quedó en `CONNECTING`; nunca bloquear `sendMessage()` si `sock.user` existe.
+- Baileys nunca debe auto-iniciarse en consultas `GET /status` ni dentro de `broadcastStatus()` para evitar loops recursivos inmediatos.
+- Código 440 (`connectionReplaced`) nunca debe borrar credenciales de la BD: en Render un contenedor nuevo hace que el anterior reciba 440; si el anterior purga la BD, destruye la sesión del nuevo contenedor.
 - `Expense` y `StaffPayment` tienen IDs autoincrementales independientes: en egresos de caja, diferenciar siempre `isStaffPayment` para no colisionar con la tabla `Expense`.
 
 ## Próximos pasos
 - Validar en producción Render y continuar con las siguientes prioridades operativas de YogurArte.
+
