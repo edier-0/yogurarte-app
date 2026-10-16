@@ -29,6 +29,8 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Build backend y Prisma: "build:backend" debe ejecutar prisma generate antes de tsc y contar con "postinstall": "prisma generate" para despliegues en la nube.
 - Cliente HTTP en frontend: Axios ya incluye baseURL '/api'; nunca invocar endpoints con '/api/...' para evitar rutas duplicadas como '/api/api/staff'.
 - Auditoría de dependencias: se blindan dependencias transitivas mediante bloque 'overrides' en package.json para parches de seguridad (proxy-addr, compression, sharp, source-map-js).
+- Compatibilidad API clientes: GET /api/customers sin paginate=true retorna array plano para retrocompatibilidad con tests y clientes externos; con paginate=true incluye metrics y pagination.
+- Sincronización automática de BD: script start incluye 'npx prisma db push --skip-generate' para que Render sincronice el schema en Neon en cada despliegue.
 
 ## Próximos pasos
 - Diseñar e implementar el libro flexible de recetas de yogures y mermeladas para estandarizar sabores y rendimiento.

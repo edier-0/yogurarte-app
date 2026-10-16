@@ -401,11 +401,7 @@ export const getCustomers = async (query: CustomersQueryInput) => {
     };
   }
 
-  return {
-    data: filteredCustomers,
-    items: filteredCustomers,
-    metrics: globalMetrics,
-  };
+  return filteredCustomers;
 };
 
 /**
