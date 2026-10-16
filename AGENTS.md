@@ -63,6 +63,16 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
   3. Crear commit atómico con mensaje convencional y descriptivo.
   4. Dejar la rama preparada para posterior fusión con `develop` y `main`.
 
+## Memoria
+- Al empezar, lee `MEMORY.md` para conocer el estado del proyecto y las decisiones
+tomadas.
+- Al terminar una tarea, actualízalo: estado actual, decisiones importantes (con su
+porqué) y errores a evitar.
+- Mantenlo breve (máximo ~50 líneas): resume o elimina lo que ya no aporte.
+- Si algo se convierte en una regla permanente, propón moverlo a `AGENTS.md` en lugar de
+dejarlo en la memoria.
+- No guardes nunca datos sensibles (claves, tokens, datos personales).
+
 ## Límites
 - ✅ Siempre: actualizar `MEMORY.md` al terminar cada tarea.
 - ✅ Siempre: seguir `src/modules/` + `app.ts`; typecheck/pruebas del dominio tocado; no commitear `.env` ni secretos.
