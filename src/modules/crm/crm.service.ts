@@ -1244,6 +1244,13 @@ export async function getQuickReplies() {
           'Estimado/a {{cliente}}, te informamos que tienes un saldo pendiente de {{total}} de tu pedido anterior en YogurArte. Puedes transferir a nuestra cuenta Nequi 3024581882 y enviarnos el comprobante por aqui. Muchas gracias.',
       },
       {
+        shortcut: '/gracias_pago',
+        title: 'Agradecer Pago Recibido',
+        category: 'PAGOS',
+        content:
+          '¡Hola {{cliente}}! 🥛✨ Confirmamos con éxito el recibo de tu pago por valor de {{total}}. Muchísimas gracias por tu preferencia y por apoyar nuestro yogur artesanal. ¡Que lo disfrutes al máximo! 🙌🐄',
+      },
+      {
         shortcut: '/fidelizacion',
         title: 'Programa 10+1 Yogur Gratis',
         category: 'VENTAS',
@@ -1259,6 +1266,24 @@ export async function getQuickReplies() {
     replies = await prisma.crmQuickReply.findMany({
       orderBy: { id: 'asc' },
     });
+  } else {
+    // Si la tabla ya existe pero aún no tiene la plantilla /gracias_pago, agregarla
+    const hasThanksPayment = replies.some((r) => r.shortcut === '/gracias_pago');
+    if (!hasThanksPayment) {
+      await prisma.crmQuickReply.create({
+        data: {
+          shortcut: '/gracias_pago',
+          title: 'Agradecer Pago Recibido',
+          category: 'PAGOS',
+          content:
+            '¡Hola {{cliente}}! 🥛✨ Confirmamos con éxito el recibo de tu pago por valor de {{total}}. Muchísimas gracias por tu preferencia y por apoyar nuestro yogur artesanal. ¡Que lo disfrutes al máximo! 🙌🐄',
+        },
+      }).catch(() => {});
+
+      replies = await prisma.crmQuickReply.findMany({
+        orderBy: { id: 'asc' },
+      });
+    }
   }
 
   return replies;

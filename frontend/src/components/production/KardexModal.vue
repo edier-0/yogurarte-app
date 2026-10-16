@@ -158,17 +158,17 @@ function handleClose() {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity" />
 
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7 max-h-[90vh] overflow-y-auto"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-surface-light-border bg-surface-light-card shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card"
       >
-        <!-- Encabezado del Modal -->
-        <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Encabezado Fijo del Modal -->
+        <div class="flex shrink-0 items-center justify-between border-b border-surface-light-border p-5 sm:p-6 dark:border-surface-dark-border">
           <div class="flex items-center gap-3">
             <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-50 text-brand-800 dark:bg-purple-950/40 dark:text-purple-300">
               <ArrowUpDown class="h-6 w-6 stroke-[2]" />
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <DialogTitle class="text-lg font-black text-slate-900 dark:text-white sm:text-xl">
+                <DialogTitle class="text-base sm:text-lg font-black text-slate-900 dark:text-white">
                   Kardex y Trazabilidad de Almacén
                 </DialogTitle>
                 <span
@@ -193,11 +193,13 @@ function handleClose() {
           </button>
         </div>
 
-        <!-- Banner de Stock Actual del Insumo -->
-        <div
-          v-if="materialInfo"
-          class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-surface-light-border bg-surface-light-canvas p-4 dark:border-surface-dark-border dark:bg-surface-dark-canvas"
-        >
+        <!-- Cuerpo Scrollable Interno -->
+        <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain touch-pan-y">
+          <!-- Banner de Stock Actual del Insumo -->
+          <div
+            v-if="materialInfo"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-surface-light-border bg-surface-light-canvas p-4 dark:border-surface-dark-border dark:bg-surface-dark-canvas"
+          >
           <div class="flex items-center gap-2.5">
             <Package class="h-5 w-5 text-brand-800 dark:text-brand-darkText" />
             <div>
@@ -324,8 +326,10 @@ function handleClose() {
             </div>
           </div>
         </div>
+      </div>
 
-        <div class="mt-6 flex justify-end border-t border-surface-light-border pt-4 dark:border-surface-dark-border">
+        <!-- Pie Fijo del Modal -->
+        <div class="flex shrink-0 justify-end border-t border-surface-light-border p-4 dark:border-surface-dark-border">
           <button
             type="button"
             @click="handleClose"

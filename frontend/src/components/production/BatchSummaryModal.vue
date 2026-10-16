@@ -162,17 +162,17 @@ async function handleUnlinkOrder(order: any) {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity" />
 
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-4xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7 max-h-[92vh] overflow-y-auto"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-surface-light-border bg-surface-light-card shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card"
       >
-        <!-- Cabecera del Modal -->
-        <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Cabecera Fija del Modal -->
+        <div class="flex shrink-0 items-center justify-between border-b border-surface-light-border p-5 sm:p-6 dark:border-surface-dark-border">
           <div class="flex items-center gap-3">
             <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-50 text-brand-800 dark:bg-purple-950/40 dark:text-purple-300">
               <FileText class="h-6 w-6 stroke-[2]" />
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <DialogTitle class="text-lg font-black text-slate-900 dark:text-white sm:text-xl">
+                <DialogTitle class="text-base sm:text-lg font-black text-slate-900 dark:text-white">
                   Auditoría y Resumen de Lote
                 </DialogTitle>
                 <span
@@ -197,13 +197,15 @@ async function handleUnlinkOrder(order: any) {
           </button>
         </div>
 
-        <!-- Indicador de Carga -->
-        <div v-if="isLoading" class="py-16 text-center">
-          <div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-brand-800 border-t-transparent dark:border-brand-400 dark:border-t-transparent"></div>
-          <p class="mt-3 text-xs font-bold text-slate-500">Cargando balance y auditoría del lote...</p>
-        </div>
+        <!-- Cuerpo Scrollable Interno -->
+        <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 overscroll-contain touch-pan-y">
+          <!-- Indicador de Carga -->
+          <div v-if="isLoading" class="py-16 text-center">
+            <div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-brand-800 border-t-transparent dark:border-brand-400 dark:border-t-transparent"></div>
+            <p class="mt-3 text-xs font-bold text-slate-500">Cargando balance y auditoría del lote...</p>
+          </div>
 
-        <div v-else-if="summary" class="mt-5 space-y-6">
+          <div v-else-if="summary" class="space-y-6">
           <!-- Tarjeta de Metadatos del Lote -->
           <div class="rounded-2xl border border-surface-light-border bg-slate-50/70 p-4 dark:border-surface-dark-border dark:bg-surface-dark-canvas">
             <div class="flex flex-wrap items-center justify-between gap-3">
@@ -802,16 +804,18 @@ async function handleUnlinkOrder(order: any) {
             </div>
           </div>
 
-          <!-- Pie del Modal -->
-          <div class="flex items-center justify-end border-t border-surface-light-border pt-4 dark:border-surface-dark-border">
-            <button
-              type="button"
-              @click="handleClose"
-              class="rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-black text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
-            >
-              Cerrar Resumen
-            </button>
           </div>
+        </div>
+
+        <!-- Pie Fijo del Modal -->
+        <div class="flex shrink-0 items-center justify-end border-t border-surface-light-border p-4 dark:border-surface-dark-border">
+          <button
+            type="button"
+            @click="handleClose"
+            class="rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-black text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+          >
+            Cerrar Resumen
+          </button>
         </div>
       </DialogContent>
     </DialogPortal>

@@ -232,12 +232,9 @@ export const getCustomers = async (query: CustomersQueryInput) => {
   const pageNum = Math.max(1, Number(query.page) || 1);
   const limitNum = isPaginated
     ? Math.min(100, Math.max(1, Number(query.limit) || 12))
-    : (query.limit ? Math.min(1000, Number(query.limit)) : undefined);
+    : (query.limit ? Math.min(1000, Number(query.limit)) : 1000);
 
-  const totalItems = await prisma.customer.count({ where: whereClause });
-  const totalPages = isPaginated && limitNum ? Math.ceil(totalItems / limitNum) : 1;
-
-  const customers = await prisma.customer.findMany({
+  const allCustomers = await prisma.customer.findMany({
     where: whereClause,
     include: {
       orders: {
@@ -265,11 +262,9 @@ export const getCustomers = async (query: CustomersQueryInput) => {
       },
     },
     orderBy: { fullName: 'asc' },
-    skip: isPaginated && limitNum ? (pageNum - 1) * limitNum : undefined,
-    take: isPaginated ? limitNum : (query.limit ? Number(query.limit) : undefined),
   });
 
-  const customersWithStats = customers.map((c) => {
+  const customersWithStats = allCustomers.map((c) => {
     const totalOrders = c.orders.length;
     const totalLiters = c.orders.reduce((acc, o) => acc + o.totalLiters, 0);
     const totalSpent = c.orders.reduce((acc, o) => acc + o.totalAmount, 0);
@@ -292,7 +287,8 @@ export const getCustomers = async (query: CustomersQueryInput) => {
       0
     );
 
-    const inProcessOrders = c.orders.filter((o) => o.deliveryStatus !== 'DELIVERED');
+    // Excluir estrictamente pedidos cancelados de los encargos en proceso
+    const inProcessOrders = c.orders.filter((o) => o.deliveryStatus !== 'DELIVERED' && o.deliveryStatus !== 'CANCELLED');
     const inProcessPendingAmount = inProcessOrders.reduce(
       (acc, o) => acc + (o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - o.paidAmount)),
       0
@@ -333,6 +329,37 @@ export const getCustomers = async (query: CustomersQueryInput) => {
     };
   });
 
+  // Métricas globales calculadas sobre la TOTALIDAD de clientes activos del sistema
+  const totalCustomers = customersWithStats.length;
+  const totalDeliveredDebt = customersWithStats.reduce((sum, c) => sum + (c.deliveredPendingDebt || 0), 0);
+  const totalInProcessPending = customersWithStats.reduce((sum, c) => sum + (c.inProcessPendingAmount || 0), 0);
+  const debtCount = customersWithStats.filter((c) => c.deliveredPendingDebt > 0 || c.totalPendingAmount > 0).length;
+  const ordersCount = customersWithStats.filter((c) => c.inProcessOrdersCount > 0).length;
+  const upToDateCount = customersWithStats.filter(
+    (c) => (c.deliveredPendingDebt || 0) <= 0 && (c.totalPendingAmount || 0) <= 0 && c.inProcessOrdersCount <= 0
+  ).length;
+
+  const globalMetrics = {
+    totalCustomers,
+    totalDeliveredDebt,
+    totalInProcessPending,
+    debtCount,
+    ordersCount,
+    upToDateCount,
+  };
+
+  // Filtrar por chip a nivel global si se solicitó
+  let filteredCustomers = customersWithStats;
+  if (query.chip === 'DEBT') {
+    filteredCustomers = customersWithStats.filter((c) => c.deliveredPendingDebt > 0 || c.totalPendingAmount > 0);
+  } else if (query.chip === 'ORDERS') {
+    filteredCustomers = customersWithStats.filter((c) => c.inProcessOrdersCount > 0);
+  } else if (query.chip === 'UP_TO_DATE') {
+    filteredCustomers = customersWithStats.filter(
+      (c) => (c.deliveredPendingDebt || 0) <= 0 && (c.totalPendingAmount || 0) <= 0 && c.inProcessOrdersCount <= 0
+    );
+  }
+
   // Ordenar jerárquicamente por prioridad de cobro y atención
   const getCustomerRank = (c: any): number => {
     if (c.deliveredPendingDebt > 0) return 1;
@@ -341,7 +368,7 @@ export const getCustomers = async (query: CustomersQueryInput) => {
     return 4;
   };
 
-  customersWithStats.sort((a, b) => {
+  filteredCustomers.sort((a, b) => {
     const rankA = getCustomerRank(a);
     const rankB = getCustomerRank(b);
     if (rankA !== rankB) return rankA - rankB;
@@ -352,13 +379,20 @@ export const getCustomers = async (query: CustomersQueryInput) => {
     return a.fullName.localeCompare(b.fullName);
   });
 
+  const totalFilteredItems = filteredCustomers.length;
+  const totalPages = isPaginated ? Math.ceil(totalFilteredItems / limitNum) || 1 : 1;
+  const pageData = isPaginated
+    ? filteredCustomers.slice((pageNum - 1) * limitNum, pageNum * limitNum)
+    : filteredCustomers;
+
   if (isPaginated) {
     return {
-      data: customersWithStats,
-      items: customersWithStats,
+      data: pageData,
+      items: pageData,
+      metrics: globalMetrics,
       pagination: {
-        total: totalItems,
-        totalItems,
+        total: totalFilteredItems,
+        totalItems: totalFilteredItems,
         totalPages,
         page: pageNum,
         currentPage: pageNum,
@@ -367,7 +401,11 @@ export const getCustomers = async (query: CustomersQueryInput) => {
     };
   }
 
-  return customersWithStats;
+  return {
+    data: filteredCustomers,
+    items: filteredCustomers,
+    metrics: globalMetrics,
+  };
 };
 
 /**
@@ -507,11 +545,11 @@ export const getCustomerWhatsAppLink = async (id: number) => {
   }
 
   const deliveredOrders = customer.orders.filter((o) => o.deliveryStatus === 'DELIVERED');
-  const deliveredPendingDebt = deliveredOrders.reduce((sum, o) => sum + o.pendingAmount, 0);
+  const deliveredPendingDebt = deliveredOrders.reduce((sum, o) => sum + (o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - o.paidAmount)), 0);
 
-  const inProcessOrders = customer.orders.filter((o) => o.deliveryStatus !== 'DELIVERED');
-  const inProcessPendingAmount = inProcessOrders.reduce((sum, o) => sum + o.pendingAmount, 0);
-  const inProcessPaidOrders = inProcessOrders.filter((o) => o.paymentStatus === 'PAID' || o.pendingAmount <= 0);
+  const inProcessOrders = customer.orders.filter((o) => o.deliveryStatus !== 'DELIVERED' && o.deliveryStatus !== 'CANCELLED');
+  const inProcessPendingAmount = inProcessOrders.reduce((sum, o) => sum + (o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - o.paidAmount)), 0);
+  const inProcessPaidOrders = inProcessOrders.filter((o) => o.paymentStatus === 'PAID' || (o.totalAmount - o.paidAmount <= 0));
 
   const rawPhone = (customer.phone || '').trim();
   if (!rawPhone) {
@@ -522,13 +560,13 @@ export const getCustomerWhatsAppLink = async (id: number) => {
 
   let msg = '';
   if (deliveredPendingDebt > 0) {
-    msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos cordialmente de *YogurArte*.\n\nEsperamos que estés disfrutando de nuestros deliciosos yogures artesanales 100% naturales.\n\nTe recordamos con mucho aprecio que presentas un saldo pendiente de *${formatCOPStr(deliveredPendingDebt)}* de tu pedido entregado.\n\nSi ya realizaste la transferencia, por favor compártenos el comprobante por este medio. ¡Muchísimas gracias por tu preferencia y apoyo continuo! 🙌🐄`;
-  } else if (inProcessPaidOrders.length > 0) {
-    msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos con mucho cariño de parte del equipo de *YogurArte*.\n\n🎉 ¡Confirmamos que recibimos con éxito el pago de tu pedido! Muchísimas gracias por tu compra y confianza en nuestro producto 100% natural. 🥣🍓\n\nTu pedido está en preparación y te avisaremos en cuanto vaya en camino para la entrega. 🛵💨 ¡Que tengas un día maravilloso! 🙌🐄✨`;
+    msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos con mucho cariño de *YogurArte*.\n\nEsperamos que estés disfrutando mucho tus yogures artesanales.\n\nTe recordamos amablemente que tienes un saldo pendiente de *${formatCOPStr(deliveredPendingDebt)}* de tu entrega anterior.\n\nPuedes transferir a nuestra cuenta Nequi/Bancolombia al *3024581882* y compartirnos tu comprobante por aquí. ¡Muchísimas gracias por tu apoyo continuo a nuestro emprendimiento artesanal! 🙌🐄`;
+  } else if (inProcessPaidOrders.length > 0 && inProcessPendingAmount <= 0) {
+    msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\n🎉 Te confirmamos que tu encargo ya se encuentra 100% pago y lo tenemos en proceso de preparación fresca. 🥣🍓\n\nTe avisaremos en cuanto nuestro domiciliario vaya en camino hacia tu dirección. 🛵💨 ¡Muchas gracias por tu confianza! 🙌✨`;
   } else if (inProcessPendingAmount > 0) {
-    msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos de *YogurArte*.\n\nTu pedido de yogur artesanal 100% natural está siendo preparado con todo el cuidado. Te avisaremos apenas esté listo para entrega. ¡Gracias por tu encargo! 🥣🍓`;
+    msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos de *YogurArte*.\n\nTu encargo de yogur artesanal 100% natural está siendo preparado fresco con todo el cuidado. 🥣🍓\n\nTe recordamos que el saldo total es de *${formatCOPStr(inProcessPendingAmount)}* para cancelar contra entrega (en efectivo o transferencia al recibir). Te avisaremos apenas vaya en ruta. ¡Gracias por tu preferencia! 🛵💨`;
   } else {
-    msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos de *YogurArte*.\n\n¿Te gustaría ordenar más de nuestros deliciosos yogures artesanales 100% naturales? Estamos atentos a tus pedidos. 🍓🍑🍇`;
+    msg = `¡Hola ${customer.fullName}! 🥛✨ Te saludamos con aprecio desde *YogurArte*.\n\n¿Cómo has estado? Pasamos a saludarte y recordarte si se te antoja un delicioso yogur artesanal fresco para estos días. ¡Tenemos sabores deliciosos listos para ti! Cuéntanos si deseas apartar el tuyo. 🍓🍑🍇`;
   }
 
   const whatsappUrl = buildWhatsAppUrl(rawPhone, msg);

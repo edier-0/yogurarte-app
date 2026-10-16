@@ -64,6 +64,15 @@ export interface CustomerFormData {
   notes?: string;
 }
 
+export interface CustomerGlobalMetrics {
+  totalCustomers: number;
+  totalDeliveredDebt: number;
+  totalInProcessPending: number;
+  debtCount: number;
+  ordersCount: number;
+  upToDateCount: number;
+}
+
 export const useDirectoryStore = defineStore('directory', () => {
   const customers = ref<CustomerItem[]>([]);
   const isLoading = ref<boolean>(false);
@@ -74,64 +83,38 @@ export const useDirectoryStore = defineStore('directory', () => {
   const searchQuery = ref<string>('');
   const debouncedSearch = refDebounced(searchQuery, 300);
 
-  // Conteos por chip
-  const chipCounts = computed(() => {
-    const all = customers.value.length;
-    const debt = customers.value.filter(
-      (c) => (c.deliveredPendingDebt > 0 || c.totalPendingAmount > 0)
-    ).length;
-    const orders = customers.value.filter(
-      (c) => c.inProcessOrdersCount > 0
-    ).length;
-    const upToDate = customers.value.filter(
-      (c) => (c.deliveredPendingDebt || 0) <= 0 && (c.totalPendingAmount || 0) <= 0
-    ).length;
-
-    return { all, debt, orders, upToDate };
+  // Métricas globales reales recibidas del backend
+  const globalMetrics = ref<CustomerGlobalMetrics>({
+    totalCustomers: 0,
+    totalDeliveredDebt: 0,
+    totalInProcessPending: 0,
+    debtCount: 0,
+    ordersCount: 0,
+    upToDateCount: 0,
   });
 
-  // Métricas superiores computadas
+  // Conteos globales por chip
+  const chipCounts = computed(() => {
+    return {
+      all: globalMetrics.value.totalCustomers || customers.value.length,
+      debt: globalMetrics.value.debtCount,
+      orders: globalMetrics.value.ordersCount,
+      upToDate: globalMetrics.value.upToDateCount,
+    };
+  });
+
+  // Métricas superiores computadas globales
   const totalDebtAmount = computed(() => {
-    return customers.value.reduce((sum, c) => sum + (Number(c.deliveredPendingDebt) || 0), 0);
+    return globalMetrics.value.totalDeliveredDebt;
   });
 
   const totalInProcessDebt = computed(() => {
-    return customers.value.reduce((sum, c) => sum + (Number(c.inProcessPendingAmount) || 0), 0);
+    return globalMetrics.value.totalInProcessPending;
   });
 
   // Clientes filtrados reactivamente
   const filteredCustomers = computed(() => {
-    let list = customers.value;
-
-    // 1. Filtrar por chip
-    if (activeChip.value === 'DEBT') {
-      list = list.filter((c) => (c.deliveredPendingDebt > 0 || c.totalPendingAmount > 0));
-    } else if (activeChip.value === 'ORDERS') {
-      list = list.filter((c) => c.inProcessOrdersCount > 0);
-    } else if (activeChip.value === 'UP_TO_DATE') {
-      list = list.filter((c) => (c.deliveredPendingDebt || 0) <= 0 && (c.totalPendingAmount || 0) <= 0);
-    }
-
-    // 2. Filtrar por buscador
-    const q = debouncedSearch.value.trim().toLowerCase();
-    if (q) {
-      list = list.filter((c) => {
-        const name = (c.fullName || '').toLowerCase();
-        const phone = (c.phone || '').toLowerCase();
-        const addr = (c.address || '').toLowerCase();
-        const neigh = (c.neighborhood || '').toLowerCase();
-        const notes = (c.notes || '').toLowerCase();
-        return (
-          name.includes(q) ||
-          phone.includes(q) ||
-          addr.includes(q) ||
-          neigh.includes(q) ||
-          notes.includes(q)
-        );
-      });
-    }
-
-    return list;
+    return customers.value;
   });
 
   // Paginación estricta a 12 registros por página
@@ -140,7 +123,7 @@ export const useDirectoryStore = defineStore('directory', () => {
   const totalCustomers = ref<number>(0);
   const pageSize = ref<number>(12);
 
-  // Cargar clientes desde /api/clients (paginado a 12)
+  // Cargar clientes desde /api/clients (paginado a 12 con soporte de métricas globales)
   async function fetchCustomers(page = 1) {
     isLoading.value = true;
     error.value = null;
@@ -153,6 +136,9 @@ export const useDirectoryStore = defineStore('directory', () => {
       if (debouncedSearch.value && debouncedSearch.value.trim() !== '') {
         params.search = debouncedSearch.value.trim();
       }
+      if (activeChip.value && activeChip.value !== 'ALL') {
+        params.chip = activeChip.value;
+      }
 
       const res = await http.get<any>('/clients', { params });
       if (res) {
@@ -162,6 +148,17 @@ export const useDirectoryStore = defineStore('directory', () => {
           customers.value = res.items;
         } else if (Array.isArray(res)) {
           customers.value = res;
+        }
+
+        if (res.metrics) {
+          globalMetrics.value = {
+            totalCustomers: Number(res.metrics.totalCustomers) || 0,
+            totalDeliveredDebt: Number(res.metrics.totalDeliveredDebt) || 0,
+            totalInProcessPending: Number(res.metrics.totalInProcessPending) || 0,
+            debtCount: Number(res.metrics.debtCount) || 0,
+            ordersCount: Number(res.metrics.ordersCount) || 0,
+            upToDateCount: Number(res.metrics.upToDateCount) || 0,
+          };
         }
 
         if (res.pagination) {
@@ -181,8 +178,8 @@ export const useDirectoryStore = defineStore('directory', () => {
     }
   }
 
-  // Búsqueda en vivo reactiva reinicia a página 1
-  watch(debouncedSearch, () => {
+  // Búsqueda en vivo reactiva y cambio de chip reinician a página 1
+  watch([debouncedSearch, activeChip], () => {
     currentPage.value = 1;
     fetchCustomers(1);
   });

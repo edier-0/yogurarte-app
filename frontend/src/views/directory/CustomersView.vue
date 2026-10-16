@@ -116,12 +116,34 @@ function handleSmartWhatsApp(customer: CustomerItem) {
     return;
   }
 
+  const name = customer.fullName ? customer.fullName.trim() : 'Cliente';
+  const deliveredDebt = Number(customer.deliveredPendingDebt) || 0;
+  const inProcessPending = Number(customer.inProcessPendingAmount) || 0;
+  const inProcessPaidCount = Number(customer.inProcessPaidCount) || 0;
+
+  let generatedText = '';
+  let title = `Mensaje a ${name}`;
+
+  if (deliveredDebt > 0) {
+    title = `Recordatorio de Deuda: ${name}`;
+    generatedText = `¡Hola ${name}! 🥛✨ Te saludamos con mucho cariño desde *YogurArte*.\n\nEsperamos que estés disfrutando mucho tus yogures artesanales.\n\nTe recordamos amablemente que presentas un saldo pendiente de *${formatCurrency(deliveredDebt)}* de tu entrega anterior.\n\nPuedes transferir a nuestra cuenta Nequi/Bancolombia al *3024581882* y compartirnos tu comprobante por este medio. ¡Muchísimas gracias por tu apoyo continuo a nuestro emprendimiento artesanal! 🙌🐄`;
+  } else if (inProcessPaidCount > 0 && inProcessPending <= 0) {
+    title = `Aviso de Encargo Pago: ${name}`;
+    generatedText = `¡Hola ${name}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\n🎉 Te confirmamos que tu encargo ya se encuentra 100% pago y lo tenemos en proceso de preparación fresca. 🥣🍓\n\nTe avisaremos en cuanto nuestro domiciliario vaya en camino hacia tu dirección. 🛵💨 ¡Muchas gracias por tu confianza! 🙌✨`;
+  } else if (inProcessPending > 0) {
+    title = `Aviso de Encargo por Cobrar: ${name}`;
+    generatedText = `¡Hola ${name}! 🥛✨ Te saludamos desde *YogurArte*.\n\nTu encargo de yogur artesanal 100% natural está siendo preparado fresco con todo el cuidado. 🥣🍓\n\nTe recordamos que el valor total es de *${formatCurrency(inProcessPending)}* para cancelar contra entrega (en efectivo o transferencia al recibir). Te avisaremos apenas vaya en ruta. ¡Gracias por tu encargo! 🛵💨`;
+  } else {
+    title = `Saludo y Antojo: ${name}`;
+    generatedText = `¡Hola ${name}! 🥛✨ Te saludamos con aprecio desde *YogurArte*.\n\n¿Cómo has estado? Pasamos a saludarte y recordarte si se te antoja un delicioso yogur artesanal fresco para estos días. ¡Tenemos sabores deliciosos listos para ti! Cuéntanos si deseas apartar el tuyo. 🍓🍑🍇`;
+  }
+
   crmStore.openMessagePreview({
     phone: customer.phone,
-    text: `Hola ${customer.fullName}, te saludamos de YogurArte. ¿En qué podemos colaborarte hoy?`,
+    text: generatedText,
     contactName: customer.fullName,
     customerId: customer.id,
-    title: `Mensaje a ${customer.fullName}`,
+    title,
   });
 }
 </script>
@@ -174,7 +196,7 @@ function handleSmartWhatsApp(customer: CustomerItem) {
         </div>
         <div class="mt-2">
           <span class="text-2xl font-black text-slate-900 dark:text-white">
-            {{ directoryStore.customers.length }}
+            {{ directoryStore.chipCounts.all }}
           </span>
           <p class="mt-0.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
             Contactos activos registrados en YogurArte
@@ -209,9 +231,14 @@ function handleSmartWhatsApp(customer: CustomerItem) {
           </div>
         </div>
         <div class="mt-2">
-          <span class="text-2xl font-black text-amber-600 dark:text-amber-400">
-            {{ directoryStore.chipCounts.orders }}
-          </span>
+          <div class="flex items-baseline gap-2">
+            <span class="text-2xl font-black text-amber-600 dark:text-amber-400">
+              {{ directoryStore.chipCounts.orders }}
+            </span>
+            <span v-if="directoryStore.totalInProcessDebt > 0" class="text-xs font-black text-slate-500 dark:text-slate-400">
+              ({{ formatCurrency(directoryStore.totalInProcessDebt) }})
+            </span>
+          </div>
           <p class="mt-0.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
             Clientes con pedidos pendientes de entrega
           </p>

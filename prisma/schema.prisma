@@ -420,6 +420,7 @@ model StaffMember {
   updatedAt     DateTime       @default(now()) @updatedAt
   payments        StaffPayment[]
   batchDischarges BatchDischarge[]
+  cashMovements   CashMovement[]
 
   @@index([role])
   @@index([type])
@@ -459,6 +460,8 @@ model CashMovement {
   paymentMethod String   @default("EFECTIVO") // EFECTIVO, NEQUI, BANCOLOMBIA, TRANSFERENCIA
   registeredBy  String?  @default("Edier")
   notes         String?
+  staffMemberId Int?
+  staffMember   StaffMember? @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @default(now()) @updatedAt
 
@@ -466,6 +469,7 @@ model CashMovement {
   @@index([type])
   @@index([paymentMethod])
   @@index([movementDate, type])
+  @@index([staffMemberId])
 }
 
 model CreditObligation {

@@ -18,6 +18,7 @@ import {
   Pencil,
 } from 'lucide-vue-next';
 import { useFinanceStore, getTodayDateBogota } from '@/stores/finance.store';
+import { http } from '@/api/client';
 
 export type MovementMode = 'BASE' | 'ADJUST' | 'WITHDRAW' | 'EDIT';
 
@@ -41,14 +42,33 @@ const paymentMethod = ref<string>('EFECTIVO');
 const concept = ref<string>('');
 const movementDate = ref<string>(getTodayDateBogota());
 const notes = ref<string>('');
+const selectedPartnerId = ref<number | ''>('');
+const partnersList = ref<Array<{ id: number; fullName: string; role: string; type: string }>>([]);
+const isLoadingPartners = ref<boolean>(false);
 const isSubmitting = ref<boolean>(false);
 const errorMessage = ref<string>('');
+
+async function fetchPartners() {
+  if (partnersList.value.length > 0) return;
+  isLoadingPartners.value = true;
+  try {
+    const res = await http.get('/api/staff');
+    const allStaff = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
+    partnersList.value = allStaff.filter((s: any) => s.type === 'SOCIO' || s.role === 'SOCIO');
+  } catch (err) {
+    console.error('Error al cargar socios:', err);
+  } finally {
+    isLoadingPartners.value = false;
+  }
+}
 
 // Sincronizar defaults según el modo o datos a editar
 watch(
   () => [props.open, props.mode, props.movementToEdit],
   () => {
     if (!props.open) return;
+
+    fetchPartners();
 
     if (props.mode === 'EDIT' && props.movementToEdit) {
       const m = props.movementToEdit;
@@ -59,12 +79,14 @@ watch(
       movementDate.value = rawDate ? String(rawDate).slice(0, 10) : getTodayDateBogota();
       notes.value = m.notes || '';
       movementType.value = m.type || m.movementType || (m.flowType === 'OUTFLOW' ? 'EGRESO' : 'INGRESO');
+      selectedPartnerId.value = m.staffMemberId || m.staffMember?.id || '';
     } else if (props.mode === 'BASE') {
       movementType.value = 'BASE_INICIAL';
       concept.value = 'Base inicial de caja menor';
       paymentMethod.value = 'EFECTIVO';
       amount.value = '';
       notes.value = '';
+      selectedPartnerId.value = '';
       movementDate.value = getTodayDateBogota();
     } else if (props.mode === 'WITHDRAW') {
       movementType.value = 'RETIRO_BASE';
@@ -72,6 +94,7 @@ watch(
       paymentMethod.value = 'EFECTIVO';
       amount.value = '';
       notes.value = '';
+      selectedPartnerId.value = '';
       movementDate.value = getTodayDateBogota();
     } else if (props.mode === 'ADJUST') {
       movementType.value = 'AJUSTE_CAJA';
@@ -79,28 +102,60 @@ watch(
       paymentMethod.value = 'EFECTIVO';
       amount.value = '';
       notes.value = '';
+      selectedPartnerId.value = '';
       movementDate.value = getTodayDateBogota();
     }
   },
   { immediate: true }
 );
 
+// Ajustar concepto al cambiar de tipo
+watch(movementType, (newType) => {
+  if (props.mode === 'EDIT') return;
+  if (newType === 'APORTE_SOCIO') {
+    if (!concept.value || concept.value === 'Base inicial de caja menor') {
+      concept.value = 'Aporte extraordinario de socio';
+    }
+  } else if (newType === 'BASE_INICIAL') {
+    if (!concept.value || concept.value === 'Aporte extraordinario de socio') {
+      concept.value = 'Base inicial de caja menor';
+    }
+  } else if (newType === 'DEVOLUCION_APORTE') {
+    if (!concept.value || concept.value === 'Retiro de base de caja menor') {
+      concept.value = 'Devolución de aporte a socio';
+    }
+  } else if (newType === 'RETIRO_BASE') {
+    if (!concept.value || concept.value === 'Devolución de aporte a socio') {
+      concept.value = 'Retiro de base de caja menor';
+    }
+  }
+});
+
 const modalTitle = computed(() => {
   if (props.mode === 'EDIT') return 'Editar Movimiento de Caja';
   if (props.mode === 'BASE') return 'Base / Aporte a Caja';
-  if (props.mode === 'WITHDRAW') return 'Retiro de Base de Caja';
+  if (props.mode === 'WITHDRAW') return 'Retiro / Devolución de Aporte';
   return 'Ajustar / Cuadrar Caja';
 });
 
 const modalDescription = computed(() => {
   if (props.mode === 'EDIT') return 'Corrige monto, medio de pago, fecha, tipo o notas del movimiento';
   if (props.mode === 'BASE') return 'Inyección de dinero físico o aporte de socios para operar';
-  if (props.mode === 'WITHDRAW') return 'Salida de dinero de la base o fondos asignados';
+  if (props.mode === 'WITHDRAW') return 'Salida de dinero de la base o devolución de aporte a socio';
   return 'Conciliación de diferencias por 4x1000, comisiones o descuadre físico';
 });
 
+const requiresPartner = computed(() => {
+  return movementType.value === 'APORTE_SOCIO' || movementType.value === 'DEVOLUCION_APORTE';
+});
+
 const isFormValid = computed(() => {
-  return typeof amount.value === 'number' && amount.value > 0 && concept.value.trim().length > 0;
+  const basic = typeof amount.value === 'number' && amount.value > 0 && concept.value.trim().length > 0;
+  if (!basic) return false;
+  if (requiresPartner.value && !selectedPartnerId.value) {
+    return false;
+  }
+  return true;
 });
 
 function handleClose() {
@@ -110,6 +165,10 @@ function handleClose() {
 
 async function handleSubmit() {
   if (!isFormValid.value || typeof amount.value !== 'number') {
+    if (requiresPartner.value && !selectedPartnerId.value) {
+      errorMessage.value = 'Por favor selecciona el socio correspondiente para este movimiento.';
+      return;
+    }
     errorMessage.value = 'Por favor ingresa un monto válido mayor a 0 y un concepto.';
     return;
   }
@@ -118,6 +177,8 @@ async function handleSubmit() {
   errorMessage.value = '';
 
   try {
+    const payloadStaffId = requiresPartner.value && selectedPartnerId.value ? Number(selectedPartnerId.value) : null;
+
     if (props.mode === 'EDIT' && props.movementToEdit) {
       const targetId = props.movementToEdit.rawId || props.movementToEdit.id;
       await financeStore.updateCashMovement(targetId, {
@@ -129,6 +190,7 @@ async function handleSubmit() {
         movementDate: movementDate.value,
         date: movementDate.value,
         notes: notes.value.trim() || null,
+        staffMemberId: payloadStaffId,
       });
     } else {
       await financeStore.createCashMovement({
@@ -138,11 +200,13 @@ async function handleSubmit() {
         paymentMethod: paymentMethod.value,
         movementDate: movementDate.value,
         notes: notes.value.trim() || null,
+        staffMemberId: payloadStaffId,
       });
     }
 
     amount.value = '';
     notes.value = '';
+    selectedPartnerId.value = '';
     emit('saved');
     handleClose();
   } catch (err: any) {
@@ -217,6 +281,7 @@ async function handleSubmit() {
               <option value="BASE_INICIAL">Base Inicial de Caja (+)</option>
               <option value="APORTE_SOCIO">Aporte de Socio (+)</option>
               <option value="RETIRO_BASE">Retiro de Base (-)</option>
+              <option value="DEVOLUCION_APORTE">Devolución de Aporte a Socio (-)</option>
               <option value="AJUSTE_CAJA">Ajuste General de Cuadre</option>
               <option value="AJUSTE_SOBRANTE">Sobrante de Caja (+)</option>
               <option value="AJUSTE_FALTANTE">Faltante de Caja / 4x1000 (-)</option>
@@ -225,7 +290,7 @@ async function handleSubmit() {
             </select>
           </div>
 
-          <!-- Selector de Subtipo según Modo -->
+          <!-- Selector de Subtipo según Modo BASE -->
           <div v-else-if="mode === 'BASE'">
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
               Tipo de Inyección *
@@ -236,6 +301,20 @@ async function handleSubmit() {
             >
               <option value="BASE_INICIAL">Base Inicial de Caja</option>
               <option value="APORTE_SOCIO">Aporte Extraordinario de Socio</option>
+            </select>
+          </div>
+
+          <!-- Selector de Subtipo según Modo WITHDRAW -->
+          <div v-else-if="mode === 'WITHDRAW'">
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Tipo de Egreso *
+            </label>
+            <select
+              v-model="movementType"
+              class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+            >
+              <option value="RETIRO_BASE">Retiro de Base de Caja</option>
+              <option value="DEVOLUCION_APORTE">Devolución / Reintegro de Aporte a Socio</option>
             </select>
           </div>
 
@@ -251,6 +330,30 @@ async function handleSubmit() {
               <option value="AJUSTE_SOBRANTE">Sobrante de Caja (Ingreso a favor)</option>
               <option value="AJUSTE_FALTANTE">Faltante de Caja (Egreso / Pérdida / 4x1000)</option>
             </select>
+          </div>
+
+          <!-- Selector de Socio si es Aporte o Devolución -->
+          <div v-if="requiresPartner" class="rounded-2xl border border-brand-200 bg-brand-50/50 p-3.5 dark:border-brand-900/50 dark:bg-brand-950/20">
+            <label class="block text-xs font-extrabold text-brand-900 dark:text-brand-300 mb-1.5">
+              {{ movementType === 'APORTE_SOCIO' ? 'Socio que realiza el aporte *' : 'Socio al que se le reintegra el aporte *' }}
+            </label>
+            <div v-if="isLoadingPartners" class="text-xs font-semibold text-slate-500">
+              Cargando lista de socios...
+            </div>
+            <select
+              v-else
+              v-model="selectedPartnerId"
+              required
+              class="w-full rounded-xl border border-brand-300 bg-surface-light-card px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-brand-800 dark:bg-surface-dark-card dark:text-white"
+            >
+              <option value="" disabled>Selecciona el socio correspondiente...</option>
+              <option v-for="partner in partnersList" :key="partner.id" :value="partner.id">
+                {{ partner.fullName }} ({{ partner.role || 'Socio' }})
+              </option>
+            </select>
+            <p class="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              {{ movementType === 'APORTE_SOCIO' ? 'Quedará registrado en la trazabilidad de aportes de capital.' : 'Se asentará como devolución formal del aporte de capital.' }}
+            </p>
           </div>
 
           <!-- Monto y Medio de Pago -->

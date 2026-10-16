@@ -686,6 +686,12 @@ async function confirmDelete(mov: any) {
                 >
                   {{ mov.categoryLabel || mov.tabCategory }}
                 </span>
+                <span
+                  v-if="mov.staffMember"
+                  class="rounded-full bg-purple-50 px-2 py-0.5 text-[9px] font-extrabold text-purple-700 dark:bg-purple-950/40 dark:text-purple-300"
+                >
+                  💼 {{ mov.staffMember.fullName }}
+                </span>
               </div>
 
               <!-- Fila Detallada de Información de Pedido -->

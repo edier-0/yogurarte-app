@@ -8,6 +8,7 @@ export const cashMovementTypeEnum = z.enum([
   'BASE_INICIAL',
   'APORTE_SOCIO',
   'RETIRO_BASE',
+  'DEVOLUCION_APORTE',
   'AJUSTE_CAJA',
   'AJUSTE_SOBRANTE',
   'AJUSTE_FALTANTE',
@@ -27,6 +28,7 @@ export const createCashMovementSchema = z.object({
   paymentMethod: z.string().optional().default('EFECTIVO'),
   notes: z.string().optional().nullable(),
   registeredBy: z.string().optional(),
+  staffMemberId: z.coerce.number().int().positive().optional().nullable(),
 }).refine(data => (data.concept && data.concept.trim().length > 0) || (data.description && data.description.trim().length > 0), {
   message: 'El concepto o descripción es obligatorio',
   path: ['concept'],
@@ -42,6 +44,7 @@ export const updateCashMovementSchema = z.object({
   paymentMethod: z.string().optional(),
   notes: z.string().optional().nullable(),
   registeredBy: z.string().optional(),
+  staffMemberId: z.coerce.number().int().positive().optional().nullable(),
 });
 
 export const cashMovementsQuerySchema = z.object({

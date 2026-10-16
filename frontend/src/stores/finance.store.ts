@@ -76,6 +76,13 @@ export interface UnifiedMovement {
   supplier?: string | null;
   type?: string;
   movementType?: string;
+  staffMemberId?: number | null;
+  staffMember?: {
+    id: number;
+    fullName: string;
+    role?: string;
+    type?: string;
+  } | null;
 }
 
 export interface TransferPayload {
@@ -93,6 +100,7 @@ export interface CashMovementPayload {
     | 'BASE_INICIAL'
     | 'APORTE_SOCIO'
     | 'RETIRO_BASE'
+    | 'DEVOLUCION_APORTE'
     | 'AJUSTE_CAJA'
     | 'AJUSTE_SOBRANTE'
     | 'AJUSTE_FALTANTE'
@@ -109,6 +117,7 @@ export interface CashMovementPayload {
   date?: string;
   notes?: string | null;
   registeredBy?: string;
+  staffMemberId?: number | null;
 }
 
 export const useFinanceStore = defineStore('finance', () => {
@@ -328,6 +337,8 @@ export const useFinanceStore = defineStore('finance', () => {
           isOrderPayment: isOrderPay,
           type: i.type || i.movementType || i.rawMovement?.type,
           movementType: i.movementType || i.type,
+          staffMemberId: i.staffMemberId || i.rawMovement?.staffMemberId,
+          staffMember: i.staffMember || i.rawMovement?.staffMember,
         });
       });
 
@@ -339,7 +350,11 @@ export const useFinanceStore = defineStore('finance', () => {
           o.movementType === 'AJUSTE_FALTANTE' ||
           (o.categoryLabel && o.categoryLabel.includes('Ajuste'));
 
-        const isBaseWithdrawal = o.category === 'RETIRO_BASE' || o.movementType === 'RETIRO_BASE';
+        const isBaseWithdrawal =
+          o.category === 'RETIRO_BASE' ||
+          o.movementType === 'RETIRO_BASE' ||
+          o.category === 'DEVOLUCION_APORTE' ||
+          o.movementType === 'DEVOLUCION_APORTE';
 
         const isPurchaseItem =
           !!o.isPurchase ||
@@ -382,6 +397,8 @@ export const useFinanceStore = defineStore('finance', () => {
           isCashMovement: !!o.isCashMovement,
           type: o.type || o.movementType || o.category || o.rawMovement?.type,
           movementType: o.movementType || o.type,
+          staffMemberId: o.staffMemberId || o.rawMovement?.staffMemberId,
+          staffMember: o.staffMember || o.rawMovement?.staffMember,
         });
       });
 

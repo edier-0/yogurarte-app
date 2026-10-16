@@ -60,6 +60,16 @@ export const getCashMovements = async (query: CashMovementsQueryInput) => {
 
   const allMatchingMovements = await prisma.cashMovement.findMany({
     where: whereClause,
+    include: {
+      staffMember: {
+        select: {
+          id: true,
+          fullName: true,
+          role: true,
+          type: true,
+        },
+      },
+    },
     orderBy: { movementDate: 'desc' },
   });
 
@@ -75,7 +85,13 @@ export const getCashMovements = async (query: CashMovementsQueryInput) => {
     .reduce((sum, m) => sum + m.amount, 0);
 
   const totalWithdrawals = allMatchingMovements
-    .filter((m) => m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE' || m.type === 'EGRESO')
+    .filter(
+      (m) =>
+        m.type === 'RETIRO_BASE' ||
+        m.type === 'DEVOLUCION_APORTE' ||
+        m.type === 'AJUSTE_FALTANTE' ||
+        m.type === 'EGRESO'
+    )
     .reduce((sum, m) => sum + m.amount, 0);
 
   const netCashMovement = totalInjections - totalWithdrawals;
@@ -112,7 +128,7 @@ export const getCashMovements = async (query: CashMovementsQueryInput) => {
  * Registrar un movimiento de caja (Base inicial, aportes, retiros, traslados, ingresos/egresos)
  */
 export const createCashMovement = async (data: CreateCashMovementInput) => {
-  const { type, amount, movementDate, date, concept, description, paymentMethod, notes, registeredBy } = data as any;
+  const { type, amount, movementDate, date, concept, description, paymentMethod, notes, registeredBy, staffMemberId } = data as any;
 
   const parsedAmount = Number(amount);
   const textConcept = (concept || description || '').trim();
@@ -124,6 +140,7 @@ export const createCashMovement = async (data: CreateCashMovementInput) => {
     'BASE_INICIAL',
     'APORTE_SOCIO',
     'RETIRO_BASE',
+    'DEVOLUCION_APORTE',
     'AJUSTE_CAJA',
     'AJUSTE_SOBRANTE',
     'AJUSTE_FALTANTE',
@@ -135,6 +152,7 @@ export const createCashMovement = async (data: CreateCashMovementInput) => {
   const movementType = validTypes.includes(type) ? type : 'BASE_INICIAL';
   const rawDate = date || movementDate;
   const parsedMovementDate = parseColombiaDate(rawDate);
+  const parsedStaffMemberId = staffMemberId ? Number(staffMemberId) : null;
 
   return prisma.cashMovement.create({
     data: {
@@ -145,6 +163,17 @@ export const createCashMovement = async (data: CreateCashMovementInput) => {
       movementDate: parsedMovementDate,
       notes: notes ? notes.trim() : null,
       registeredBy: registeredBy || 'Edier',
+      staffMemberId: parsedStaffMemberId,
+    },
+    include: {
+      staffMember: {
+        select: {
+          id: true,
+          fullName: true,
+          role: true,
+          type: true,
+        },
+      },
     },
   });
 };
@@ -161,7 +190,7 @@ export const updateCashMovement = async (id: number, data: UpdateCashMovementInp
     throw new NotFoundError('Movimiento de caja no encontrado');
   }
 
-  const { type, amount, movementDate, date, concept, description, paymentMethod, notes, registeredBy } = data as any;
+  const { type, amount, movementDate, date, concept, description, paymentMethod, notes, registeredBy, staffMemberId } = data as any;
 
   let parsedAmount = existing.amount;
   if (amount !== undefined) {
@@ -175,6 +204,7 @@ export const updateCashMovement = async (id: number, data: UpdateCashMovementInp
     'BASE_INICIAL',
     'APORTE_SOCIO',
     'RETIRO_BASE',
+    'DEVOLUCION_APORTE',
     'AJUSTE_CAJA',
     'AJUSTE_SOBRANTE',
     'AJUSTE_FALTANTE',
@@ -188,6 +218,7 @@ export const updateCashMovement = async (id: number, data: UpdateCashMovementInp
   const conceptToUse = description !== undefined ? description.trim() : concept !== undefined ? concept.trim() : existing.concept;
   const rawDate = date || movementDate;
   const parsedDate = rawDate ? parseColombiaDate(rawDate) : existing.movementDate;
+  const parsedStaffMemberId = staffMemberId !== undefined ? (staffMemberId ? Number(staffMemberId) : null) : existing.staffMemberId;
 
   return prisma.cashMovement.update({
     where: { id },
@@ -199,6 +230,17 @@ export const updateCashMovement = async (id: number, data: UpdateCashMovementInp
       movementDate: parsedDate,
       notes: notes !== undefined ? (notes ? notes.trim() : null) : existing.notes,
       registeredBy: registeredBy !== undefined ? (registeredBy ? registeredBy.trim() : null) : existing.registeredBy,
+      staffMemberId: parsedStaffMemberId,
+    },
+    include: {
+      staffMember: {
+        select: {
+          id: true,
+          fullName: true,
+          role: true,
+          type: true,
+        },
+      },
     },
   });
 };
@@ -1200,6 +1242,14 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
         paymentMethod: true,
         notes: true,
         registeredBy: true,
+        staffMember: {
+          select: {
+            id: true,
+            fullName: true,
+            role: true,
+            type: true,
+          },
+        },
       },
       orderBy: { movementDate: 'desc' },
     }),
@@ -1375,7 +1425,13 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     .reduce((sum, m) => sum + m.amount, 0);
 
   const totalWithdrawals = cashMovements
-    .filter((m) => m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE' || m.type === 'EGRESO')
+    .filter(
+      (m) =>
+        m.type === 'RETIRO_BASE' ||
+        m.type === 'DEVOLUCION_APORTE' ||
+        m.type === 'AJUSTE_FALTANTE' ||
+        m.type === 'EGRESO'
+    )
     .reduce((sum, m) => sum + m.amount, 0);
 
   const netCashInjections = totalInjections - totalWithdrawals;
@@ -1444,7 +1500,12 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
       } else {
         totalInflowBank += m.amount;
       }
-    } else if (m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE' || m.type === 'EGRESO') {
+    } else if (
+      m.type === 'RETIRO_BASE' ||
+      m.type === 'DEVOLUCION_APORTE' ||
+      m.type === 'AJUSTE_FALTANTE' ||
+      m.type === 'EGRESO'
+    ) {
       if (isCash(m.paymentMethod)) {
         totalOutflowCash += m.amount;
       } else {
@@ -1535,7 +1596,12 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
       } else {
         digitalBank += m.amount;
       }
-    } else if (m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE' || m.type === 'EGRESO') {
+    } else if (
+      m.type === 'RETIRO_BASE' ||
+      m.type === 'DEVOLUCION_APORTE' ||
+      m.type === 'AJUSTE_FALTANTE' ||
+      m.type === 'EGRESO'
+    ) {
       if (isCash(m.paymentMethod)) {
         cashInHand -= m.amount;
       } else {
@@ -1863,7 +1929,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
                   : '💼 APORTE-BOLSILLO',
               date: m.movementDate,
               createdAt: m.createdAt,
-              customerName: m.registeredBy || 'Edier',
+              customerName: m.staffMember ? m.staffMember.fullName : (m.registeredBy || 'Edier'),
               customerPhone: '',
               amount: m.amount,
               totalAmount: m.amount,
@@ -2075,7 +2141,13 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
             notes: p.notes,
           })),
           ...cashMovements
-            .filter((m) => m.type === 'RETIRO_BASE' || m.type === 'AJUSTE_FALTANTE' || m.type === 'EGRESO')
+            .filter(
+              (m) =>
+                m.type === 'RETIRO_BASE' ||
+                m.type === 'DEVOLUCION_APORTE' ||
+                m.type === 'AJUSTE_FALTANTE' ||
+                m.type === 'EGRESO'
+            )
             .map((m) => ({
               id: `cash_ret_${m.id}`,
               rawId: m.id,
@@ -2085,10 +2157,14 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
               categoryLabel:
                 m.type === 'AJUSTE_FALTANTE'
                   ? '⚖️ Ajuste Faltante / 4x1000 (-)'
+                  : m.type === 'DEVOLUCION_APORTE'
+                  ? '🔄 Devolución Aporte Socio'
                   : m.type === 'EGRESO'
                   ? '📤 Egreso de Caja'
                   : '🏦 Retiro de Base',
-              description: `${m.concept} (${m.registeredBy || 'Edier'})`,
+              description: m.staffMember
+                ? `${m.concept} (${m.staffMember.fullName})`
+                : `${m.concept} (${m.registeredBy || 'Edier'})`,
               amount: m.amount,
               notes: m.notes,
               paymentMethod: m.paymentMethod || 'EFECTIVO',

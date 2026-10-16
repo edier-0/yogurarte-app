@@ -43,10 +43,10 @@ const formatCurrency = (val: number) => {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity" />
 
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7 max-h-[90vh] overflow-y-auto"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-surface-light-border bg-surface-light-card shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card"
       >
-        <!-- Encabezado del Modal -->
-        <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Encabezado Fijo del Modal -->
+        <div class="flex shrink-0 items-center justify-between border-b border-surface-light-border p-5 sm:p-6 dark:border-surface-dark-border">
           <div class="flex items-center gap-2.5">
             <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-natural-50 text-natural-500 dark:bg-emerald-950/40 dark:text-emerald-400">
               <ShieldCheck class="h-5 w-5 stroke-[2]" />
@@ -70,8 +70,10 @@ const formatCurrency = (val: number) => {
           </button>
         </div>
 
-        <!-- Banner de Saldo Real Consolidado -->
-        <div class="mt-5 rounded-2xl bg-surface-light-canvas p-5 dark:bg-surface-dark-canvas border border-surface-light-border dark:border-surface-dark-border">
+        <!-- Cuerpo Scrollable Interno -->
+        <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain touch-pan-y">
+          <!-- Banner de Saldo Real Consolidado -->
+          <div class="rounded-2xl bg-surface-light-canvas p-5 dark:bg-surface-dark-canvas border border-surface-light-border dark:border-surface-dark-border">
           <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -205,7 +207,10 @@ const formatCurrency = (val: number) => {
           </p>
         </div>
 
-        <div class="mt-5 flex justify-end">
+        </div>
+
+        <!-- Pie Fijo del Modal -->
+        <div class="flex shrink-0 justify-end border-t border-surface-light-border p-4 dark:border-surface-dark-border">
           <button
             type="button"
             @click="emit('update:open', false)"

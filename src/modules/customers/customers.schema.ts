@@ -51,6 +51,7 @@ export const customersQuerySchema = z.object({
   includeInactive: z.string().optional(),
   batchId: z.string().optional(),
   lite: z.string().optional(),
+  chip: z.enum(['ALL', 'DEBT', 'ORDERS', 'UP_TO_DATE']).optional(),
   page: z.coerce.number().optional(),
   limit: z.coerce.number().optional(),
   paginate: z.enum(['true', 'false']).optional(),
