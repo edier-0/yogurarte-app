@@ -472,7 +472,7 @@ const formatCurrency = (val: number) => {
 
         <form @submit.prevent="handleSubmit" novalidate class="flex flex-1 flex-col min-h-0 overflow-hidden">
           <!-- Cuerpo Scrollable -->
-          <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 overscroll-contain touch-pan-y">
+          <div class="flex-1 overflow-y-auto overflow-x-hidden p-5 sm:p-6 space-y-6 overscroll-contain touch-pan-y">
             <!-- 1. Sección Cliente -->
           <div class="rounded-2xl bg-surface-light-canvas p-4 dark:bg-surface-dark-canvas space-y-4">
             <div class="flex items-center justify-between">
@@ -814,20 +814,20 @@ const formatCurrency = (val: number) => {
           </div>
 
           <!-- 4. Modalidad y Programación de Entrega -->
-          <div class="rounded-2xl bg-surface-light-canvas p-4 dark:bg-surface-dark-canvas space-y-4">
+          <div class="rounded-2xl bg-surface-light-canvas p-4 dark:bg-surface-dark-canvas space-y-4 min-w-0 max-w-full overflow-hidden">
             <span class="text-xs font-extrabold uppercase tracking-wide text-brand-800 dark:text-brand-darkText">
               4. Modalidad y Programación de Entrega
             </span>
 
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 min-w-0">
               <!-- Estado del Pedido -->
-              <div>
+              <div class="min-w-0 w-full">
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
                   Estado del Pedido *
                 </label>
                 <select
                   v-model="deliveryStatus"
-                  class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-bold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
+                  class="w-full min-w-0 rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-bold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
                 >
                   <option value="PENDING">Por Entregar</option>
                   <option value="PREPARING">En Preparación</option>
@@ -839,11 +839,11 @@ const formatCurrency = (val: number) => {
               </div>
 
               <!-- Tipo de Entrega -->
-              <div>
+              <div class="min-w-0 w-full">
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Tipo de Entrega</label>
                 <select
                   v-model="deliveryType"
-                  class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-semibold dark:border-slate-700 dark:bg-surface-dark-card"
+                  class="w-full min-w-0 rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-semibold dark:border-slate-700 dark:bg-surface-dark-card"
                 >
                   <option value="PROPIO">Entrega Propia (Socios)</option>
                   <option value="DOMICILIARIO">Domiciliario</option>
@@ -852,34 +852,34 @@ const formatCurrency = (val: number) => {
               </div>
 
               <!-- Fecha Estimada de Entrega -->
-              <div>
+              <div class="min-w-0 w-full">
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
                   Fecha Estimada de Entrega
                 </label>
-                <div class="relative">
-                  <Calendar class="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <div class="relative w-full min-w-0">
+                  <Calendar class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                   <input
                     type="date"
                     v-model="deliveryDate"
-                    class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 pl-9 pr-3 text-xs font-semibold text-slate-800 focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-100"
+                    class="block w-full min-w-0 max-w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 pl-9 pr-2.5 text-xs font-semibold text-slate-800 focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-slate-100 [color-scheme:light] dark:[color-scheme:dark] [&::-webkit-date-and-time-value]:text-left"
                   />
                 </div>
               </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div v-if="deliveryType === 'DOMICILIARIO'">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 min-w-0">
+              <div v-if="deliveryType === 'DOMICILIARIO'" class="min-w-0 w-full">
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Repartidor Asignado</label>
                 <select
                   v-model="deliveryDriverId"
-                  class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-semibold dark:border-slate-700 dark:bg-surface-dark-card"
+                  class="w-full min-w-0 rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-semibold dark:border-slate-700 dark:bg-surface-dark-card"
                 >
                   <option :value="null">Sin asignar aún</option>
                   <option v-for="d in store.drivers" :key="d.id" :value="d.id">{{ d.fullName }}</option>
                 </select>
               </div>
 
-              <div>
+              <div class="min-w-0 w-full">
                 <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Flete de Domicilio ($)</label>
                 <input
                   type="number"
@@ -887,7 +887,7 @@ const formatCurrency = (val: number) => {
                   min="0"
                   v-model.number="deliveryFee"
                   placeholder="0"
-                  class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-semibold dark:border-slate-700 dark:bg-surface-dark-card"
+                  class="w-full min-w-0 rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-semibold dark:border-slate-700 dark:bg-surface-dark-card"
                 />
               </div>
             </div>
