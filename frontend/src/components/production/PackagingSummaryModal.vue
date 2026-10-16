@@ -108,19 +108,27 @@ const profitability = computed(() => {
 
   let totalProjectedRev = 0;
   let totalSoldRev = 0;
+  let nominalSoldRev = 0;
 
   for (const p of summary.value.presentations || []) {
     totalProjectedRev += (p.quantity || 0) * (p.price || 0);
-    totalSoldRev += (p.sold || 0) * (p.price || 0);
+    const nominalRev = (p.sold || 0) * (p.price || 0);
+    nominalSoldRev += nominalRev;
+    const actualRev = (p as any).actualRevenue !== undefined && (p as any).actualRevenue > 0
+      ? (p as any).actualRevenue
+      : nominalRev;
+    totalSoldRev += actualRev;
   }
 
   const avgSellingPricePerLiter = totalLiters > 0 ? Math.round(totalProjectedRev / totalLiters) : 0;
+  const actualAvgSellingPricePerLiter = soldLiters > 0 ? Math.round(totalSoldRev / soldLiters) : avgSellingPricePerLiter;
   const totalProjectedProfit = totalProjectedRev - totalCost;
   const avgProfitPerLiter = totalLiters > 0 ? Math.round(totalProjectedProfit / totalLiters) : (avgSellingPricePerLiter - costPerL);
   const globalProfitMarginPercent = totalProjectedRev > 0
     ? Math.round((totalProjectedProfit / totalProjectedRev) * 1000) / 10
     : 0;
 
+  const totalDiscountsGiven = Math.max(0, nominalSoldRev - totalSoldRev);
   const totalSoldCost = Math.round(soldLiters * costPerL);
   const realizedProfit = totalSoldRev - totalSoldCost;
   const realizedMarginPercent = totalSoldRev > 0
@@ -131,11 +139,13 @@ const profitability = computed(() => {
     costPerLiter: costPerL,
     totalCost,
     avgSellingPricePerLiter,
+    actualAvgSellingPricePerLiter,
     avgProfitPerLiter,
     globalProfitMarginPercent,
     totalProjectedRevenue: totalProjectedRev,
     totalProjectedProfit,
     totalSoldRevenue: totalSoldRev,
+    totalDiscountsGiven,
     totalSoldCost,
     realizedProfit,
     realizedMarginPercent,
@@ -607,6 +617,12 @@ watch(activeTab, async (newTab) => {
                 </div>
 
                 <div class="flex items-center gap-2">
+                  <span
+                    v-if="profitability.totalDiscountsGiven && profitability.totalDiscountsGiven > 0"
+                    class="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
+                  >
+                    Descuentos: -{{ formatCOP(profitability.totalDiscountsGiven) }}
+                  </span>
                   <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
                     <span>Margen Bruto:</span>
                     <span class="text-sm font-black">{{ profitability.globalProfitMarginPercent }}%</span>
@@ -620,9 +636,9 @@ watch(activeTab, async (newTab) => {
                 <div class="rounded-xl border border-emerald-100 bg-white/80 p-3 shadow-xs dark:border-emerald-900/40 dark:bg-slate-900/60">
                   <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Venta Promedio / L</span>
                   <p class="mt-1 text-lg font-black text-slate-900 dark:text-white sm:text-xl">
-                    {{ formatCOP(profitability.avgSellingPricePerLiter) }}
+                    {{ formatCOP(profitability.actualAvgSellingPricePerLiter || profitability.avgSellingPricePerLiter) }}
                   </p>
-                  <span class="text-[10px] text-slate-500">Ponderado por volumen</span>
+                  <span class="text-[10px] text-slate-500">Real ponderado</span>
                 </div>
 
                 <!-- 2. Ganancia Neta / Litro (KPI PRINCIPAL) -->
@@ -661,7 +677,13 @@ watch(activeTab, async (newTab) => {
                     +{{ formatCOP(profitability.realizedProfit) }}
                   </p>
                   <span class="text-[10px] text-slate-500">
-                    Cobrado: {{ formatCOP(profitability.totalSoldRevenue) }} ({{ summary.volume.soldLiters }} L)
+                    Facturado: {{ formatCOP(profitability.totalSoldRevenue) }} ({{ summary.volume.soldLiters }} L)
+                  </span>
+                  <span
+                    v-if="profitability.totalDiscountsGiven && profitability.totalDiscountsGiven > 0"
+                    class="block text-[9px] font-semibold text-amber-600 dark:text-amber-400"
+                  >
+                    Desc. aplicados: -{{ formatCOP(profitability.totalDiscountsGiven) }}
                   </span>
                 </div>
               </div>

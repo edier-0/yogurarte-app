@@ -927,6 +927,21 @@ export const createOrder = async (data: CreateOrderInput) => {
       }).catch((e) => console.warn('Aviso: No se pudo incrementar loyaltyRedeemedCount:', e.message));
     }
 
+    if (order.deliveryStatus === 'DELIVERED' || order.deliveryStatus === 'IN_ROUTE') {
+      await autoLinkOrderItemsToAvailableBatches(tx, order.id);
+      return await tx.order.findUnique({
+        where: { id: order.id },
+        include: {
+          customer: true,
+          items: true,
+          batch: true,
+          payments: {
+            orderBy: { paymentDate: 'asc' },
+          },
+        },
+      });
+    }
+
     return order;
   });
 };
@@ -1366,6 +1381,22 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
       await syncBatchStatusBidirectional(tx, bId);
     }
 
+    const isDeliveredOrInRoute = (updatedOrder.deliveryStatus === 'DELIVERED' || updatedOrder.deliveryStatus === 'IN_ROUTE');
+    if (isDeliveredOrInRoute) {
+      await autoLinkOrderItemsToAvailableBatches(tx, id);
+      return await tx.order.findUnique({
+        where: { id },
+        include: {
+          customer: true,
+          items: true,
+          batch: true,
+          payments: {
+            orderBy: { paymentDate: 'asc' },
+          },
+        },
+      });
+    }
+
     return updatedOrder;
   });
 };
@@ -1405,6 +1436,118 @@ export const assignDriver = async (id: number, data: AssignDriverInput) => {
       },
     },
   });
+};
+
+/**
+ * Blindaje de inventario: Vincula ítems huérfanos (sin lote/fracción) de un pedido a las fracciones envasadas
+ * (Fase B) o lotes madre (Fase A) disponibles que tengan saldo libre del sabor correspondiente.
+ * Se ejecuta automáticamente al entregar (DELIVERED) o despachar (IN_ROUTE) un pedido.
+ */
+export const autoLinkOrderItemsToAvailableBatches = async (tx: any, orderId: number) => {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+
+  if (!order || !order.items || order.items.length === 0) return;
+
+  const affectedBatchIds = new Set<number>();
+  let finalOrderBatchId = order.batchId;
+
+  for (const item of order.items) {
+    // Si ya tiene lote y fracción asignados, respetarlo
+    if (item.packagingId && item.batchId) continue;
+
+    const itemFlavor = (item.flavor || 'Natural').trim();
+
+    // 1. Prioridad: Buscar fracción envasada (Fase B) activa con stock libre del mismo sabor (FIFO)
+    const candidatePkgs = await tx.batchPackaging.findMany({
+      where: {
+        flavor: { equals: itemFlavor, mode: 'insensitive' },
+        batch: {
+          isActive: true,
+          status: { not: 'ARCHIVADO' },
+        },
+      },
+      include: {
+        batch: true,
+        orderItems: { where: { order: { deliveryStatus: { not: 'CANCELLED' } } } },
+        discharges: true,
+      },
+      orderBy: { packagedAt: 'asc' },
+    });
+
+    let linked = false;
+    for (const pkg of candidatePkgs) {
+      const computed = computePackagingPresentations(pkg);
+      if (computed.freeLiters >= 0.05) {
+        await tx.orderItem.update({
+          where: { id: item.id },
+          data: {
+            packagingId: pkg.id,
+            batchId: pkg.batchId,
+          },
+        });
+        if (!finalOrderBatchId) {
+          finalOrderBatchId = pkg.batchId;
+        }
+        affectedBatchIds.add(pkg.batchId);
+        linked = true;
+        break;
+      }
+    }
+
+    // 2. Si no hay fracción envasada con saldo libre, buscar lote madre base (Fase A) con saldo disponible
+    if (!linked && !item.batchId) {
+      const candidateBatches = await tx.productionBatch.findMany({
+        where: {
+          flavor: { equals: itemFlavor, mode: 'insensitive' },
+          isActive: true,
+          status: { in: ['COMPLETADO', 'DISPONIBLE'] },
+        },
+        include: {
+          orders: { where: { deliveryStatus: { not: 'CANCELLED' } }, select: { id: true, totalLiters: true } },
+          orderItems: { where: { order: { deliveryStatus: { not: 'CANCELLED' } } }, select: { id: true, orderId: true, totalLiters: true } },
+          discharges: { select: { totalLiters: true } },
+        },
+        orderBy: { preparationDate: 'asc' },
+      });
+
+      for (const b of candidateBatches) {
+        const soldFromItems = b.orderItems.reduce((sum: number, it: any) => sum + it.totalLiters, 0);
+        const legacySold = b.orders
+          .filter((o: any) => !b.orderItems.some((it: any) => it.orderId === o.id))
+          .reduce((sum: number, o: any) => sum + o.totalLiters, 0);
+        const totalSold = soldFromItems + legacySold;
+        const totalDischarged = (b.discharges || []).reduce((sum: number, d: any) => sum + d.totalLiters, 0);
+        const available = Math.max(0, b.totalLitersProduced - totalSold - totalDischarged);
+
+        if (available >= 0.05) {
+          await tx.orderItem.update({
+            where: { id: item.id },
+            data: { batchId: b.id },
+          });
+          if (!finalOrderBatchId) {
+            finalOrderBatchId = b.id;
+          }
+          affectedBatchIds.add(b.id);
+          linked = true;
+          break;
+        }
+      }
+    }
+  }
+
+  if (finalOrderBatchId !== order.batchId) {
+    await tx.order.update({
+      where: { id: orderId },
+      data: { batchId: finalOrderBatchId },
+    });
+  }
+
+  for (const bId of affectedBatchIds) {
+    await syncBatchStatusBidirectional(tx, bId);
+  }
 };
 
 /**
@@ -1511,6 +1654,22 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
       for (const bId of affectedBatchIds) {
         await syncBatchStatusBidirectional(tx, bId);
       }
+    }
+
+    const isDeliveringOrInRoute = deliveryStatus === 'DELIVERED' || deliveryStatus === 'IN_ROUTE';
+    if (isDeliveringOrInRoute) {
+      await autoLinkOrderItemsToAvailableBatches(tx, id);
+      return await tx.order.findUnique({
+        where: { id },
+        include: {
+          customer: true,
+          items: true,
+          batch: true,
+          payments: {
+            orderBy: { paymentDate: 'asc' },
+          },
+        },
+      });
     }
 
     return updated;

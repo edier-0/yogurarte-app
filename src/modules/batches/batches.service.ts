@@ -1598,7 +1598,7 @@ export const deactivateBatch = async (id: number, data: DeactivateBatchInput) =>
 export const getPendingOrdersByFlavor = async (flavor?: string) => {
   const allUnassigned = await prisma.order.findMany({
     where: {
-      deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
+      deliveryStatus: { not: 'CANCELLED' },
       OR: [
         { batchId: null, items: { none: {} } },
         { items: { some: { batchId: null } } },
@@ -2930,6 +2930,21 @@ export function computePackagingPresentations(pkg: any) {
     });
     const sold = matchingOrderItems.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
 
+    // Calcular ingreso real obtenido teniendo en cuenta descuentos de comanda y precios unitarios especiales
+    const actualRevenue = matchingOrderItems.reduce((sum: number, it: any) => {
+      const orderDiscount = Number(it.order?.discount) || 0;
+      const orderItems = it.order?.items || [];
+      const orderItemsSubtotal = orderItems.reduce((s: number, x: any) => s + (Number(x.totalPrice) || 0), 0);
+      const itemBasePrice = it.totalPrice !== undefined && it.totalPrice !== null ? Number(it.totalPrice) : (it.quantity * p.price);
+
+      let netItemRevenue = itemBasePrice;
+      if (orderDiscount > 0 && orderItemsSubtotal > 0) {
+        const itemRatio = itemBasePrice / orderItemsSubtotal;
+        netItemRevenue = Math.max(0, itemBasePrice - (orderDiscount * itemRatio));
+      }
+      return sum + netItemRevenue;
+    }, 0);
+
     // Determinar unidades retiradas / dadas de baja
     const matchingDischarges = discharges.filter((d: any) => {
       const sizeMatch = d.bottleSize?.toLowerCase().trim() === p.containerName?.toLowerCase().trim();
@@ -2954,6 +2969,7 @@ export function computePackagingPresentations(pkg: any) {
       dischargedLiters: Math.round(discharged * p.capacityLiters * 100) / 100,
       freeLiters: Math.round(free * p.capacityLiters * 100) / 100,
       rawMaterialId: p.rawMaterialId,
+      actualRevenue: Math.round(actualRevenue),
     };
   });
 
@@ -3026,9 +3042,12 @@ export function calculatePackagingProfitability(
     const projectedRevenue = quantity * price;
     const totalProjectedProfit = quantity * profitPerUnit;
 
-    // Ingresos y ganancias realizadas por ventas efectivas
-    const realizedRevenue = sold * price;
-    const realizedProfit = sold * profitPerUnit;
+    // Ingresos y ganancias realizadas por ventas efectivas (utiliza ingresos reales si hay pedidos con descuento)
+    const realizedRevenue = (p as any).actualRevenue !== undefined && (p as any).actualRevenue > 0
+      ? (p as any).actualRevenue
+      : (sold * price);
+    const realizedCost = sold * (fractionCostPerLiter * capacity);
+    const realizedProfit = realizedRevenue - realizedCost;
 
     totalProjectedRevenue += projectedRevenue;
     totalSoldRevenue += realizedRevenue;
@@ -3055,11 +3074,14 @@ export function calculatePackagingProfitability(
     ? Math.round((totalProjectedProfit / totalProjectedRevenue) * 1000) / 10
     : 0;
 
+  const nominalSoldRevenue = enrichedPresentations.reduce((sum, p) => sum + (p.sold * p.price), 0);
+  const totalDiscountsGiven = Math.max(0, nominalSoldRevenue - totalSoldRevenue);
   const totalSoldCost = Math.round(soldLiters * fractionCostPerLiter);
   const realizedProfit = totalSoldRevenue - totalSoldCost;
   const realizedMarginPercent = totalSoldRevenue > 0
     ? Math.round((realizedProfit / totalSoldRevenue) * 1000) / 10
     : 0;
+  const actualAvgSellingPricePerLiter = soldLiters > 0 ? Math.round(totalSoldRevenue / soldLiters) : avgSellingPricePerLiter;
 
   return {
     presentations: enrichedPresentations,
@@ -3067,11 +3089,13 @@ export function calculatePackagingProfitability(
       costPerLiter: fractionCostPerLiter,
       totalCost: totalFractionCost,
       avgSellingPricePerLiter,
+      actualAvgSellingPricePerLiter,
       avgProfitPerLiter,
       globalProfitMarginPercent,
       totalProjectedRevenue,
       totalProjectedProfit,
       totalSoldRevenue,
+      totalDiscountsGiven,
       totalSoldCost,
       realizedProfit,
       realizedMarginPercent,
@@ -3781,6 +3805,28 @@ export const getBatchSummary = async (batchId: number) => {
     };
   });
 
+  const linkedOrdersList = batch.orders;
+  const totalRevenueFromOrders = linkedOrdersList.reduce((sum: number, o: any) => {
+    const deliveryFee = Number(o.deliveryFee) || 0;
+    const netOrderAmount = Math.max(0, (Number(o.totalAmount) || 0) - deliveryFee);
+    return sum + netOrderAmount;
+  }, 0);
+
+  const totalDiscountsOnOrders = linkedOrdersList.reduce((sum: number, o: any) => {
+    return sum + (Number(o.discount) || 0);
+  }, 0);
+
+  const totalPaidOnOrders = linkedOrdersList.reduce((sum: number, o: any) => {
+    return sum + (Number(o.paidAmount) || 0);
+  }, 0);
+
+  const totalPendingOnOrders = linkedOrdersList.reduce((sum: number, o: any) => {
+    return sum + (Number(o.pendingAmount) || 0);
+  }, 0);
+
+  const projectedRevenueTotal =
+    totalBottles1LProduced * (batch.price1L || 12000) + totalBottles2LProduced * (batch.price2L || 24000);
+
   return {
     batch: {
       id: batch.id,
@@ -3802,6 +3848,22 @@ export const getBatchSummary = async (batchId: number) => {
       yieldPercentage: batch.yieldPercentage,
       totalCost: batch.totalCost,
       costPerLiter: batch.costPerLiter,
+    },
+    financialBalance: {
+      totalCost: batch.totalCost,
+      costPerLiter: batch.costPerLiter,
+      totalProjectedRevenue: projectedRevenueTotal,
+      totalSalesAmount: totalRevenueFromOrders,
+      totalDiscountsGiven: totalDiscountsOnOrders,
+      totalPaidAmount: totalPaidOnOrders,
+      totalPendingAmount: totalPendingOnOrders,
+      netRealizedProfit: totalRevenueFromOrders - batch.totalCost,
+      avgSellingPricePerLiter:
+        totalSoldLiters > 0 ? Math.round(totalRevenueFromOrders / totalSoldLiters) : batch.price1L || 12000,
+      profitMarginPercent:
+        totalRevenueFromOrders > 0
+          ? Math.round(((totalRevenueFromOrders - batch.totalCost) / totalRevenueFromOrders) * 1000) / 10
+          : 0,
     },
     bottlesBreakdown: {
       total1L: totalBottles1LProduced,

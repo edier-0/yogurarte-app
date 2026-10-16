@@ -112,11 +112,13 @@ const activePackagings = computed(() => {
 // Helper de selección de lote envasado (Fase B) vs pre-venta
 function getItemSelectionKey(item: OrderItem): string {
   if (item.packagingId) {
-    const exists = activePackagings.value.some((p) => p.id === item.packagingId);
-    if (exists) return `pkg_${item.packagingId}`;
+    return `pkg_${item.packagingId}`;
   }
   if (item.batchId) {
-    const matched = activePackagings.value.find((p) => p.batchId === item.batchId);
+    const source = productionStore.packagings.length > 0
+      ? productionStore.packagings
+      : productionStore.availablePackagings;
+    const matched = source.find((p) => p.batchId === item.batchId);
     if (matched) {
       item.packagingId = matched.id;
       return `pkg_${matched.id}`;
@@ -125,21 +127,40 @@ function getItemSelectionKey(item: OrderItem): string {
   return `presale_${item.flavor}`;
 }
 
+function getAssignedPackagingLabel(item: OrderItem): string {
+  if (item.packagingId) {
+    const source = productionStore.packagings.length > 0
+      ? productionStore.packagings
+      : productionStore.availablePackagings;
+    const pkg = source.find((p) => p.id === item.packagingId);
+    if (pkg) {
+      return `${pkg.flavor} — ${pkg.packagingCode || `Lote #${pkg.id}`} (Asignado a este pedido)`;
+    }
+    return `${item.flavor} — Lote #${item.packagingId} (Asignado a este pedido)`;
+  }
+  if (item.batchId) {
+    return `${item.flavor} — Lote #${item.batchId} (Asignado a este pedido)`;
+  }
+  return `${item.flavor} (Asignado al pedido)`;
+}
+
 function setItemSelectionKey(item: OrderItem, key: string) {
   if (key.startsWith('pkg_')) {
     const pId = Number(key.replace('pkg_', ''));
-    const source = productionStore.availablePackagings.length > 0
-      ? productionStore.availablePackagings
-      : productionStore.packagings;
+    const source = productionStore.packagings.length > 0
+      ? productionStore.packagings
+      : productionStore.availablePackagings;
     const pkg = source.find((x) => x.id === pId);
     item.packagingId = pId;
     if (pkg) {
       item.batchId = pkg.batchId;
       item.flavor = pkg.flavor;
-      if (item.bottleSize === '2L' && pkg.price2L) {
-        item.unitPrice = pkg.price2L;
-      } else if (item.bottleSize === '1L' && pkg.price1L) {
-        item.unitPrice = pkg.price1L;
+      if (!isCustomUnitPrice(item)) {
+        if (item.bottleSize === '2L' && pkg.price2L) {
+          item.unitPrice = pkg.price2L;
+        } else if (item.bottleSize === '1L' && pkg.price1L) {
+          item.unitPrice = pkg.price1L;
+        }
       }
       onItemChange(item);
     }
@@ -397,14 +418,17 @@ const handleSubmit = async () => {
       notes: notes.value.trim() || undefined,
       items: items.value.map((it) => {
         const key = getItemSelectionKey(it);
-        const isPresale = key.startsWith('presale_');
+        const isPresale = key.startsWith('presale_') && !it.packagingId && !it.batchId;
+        const validPackagingId = typeof it.packagingId === 'number' && !isNaN(it.packagingId) && it.packagingId > 0
+          ? it.packagingId
+          : null;
+        const validBatchId = typeof it.batchId === 'number' && !isNaN(it.batchId) && it.batchId > 0
+          ? it.batchId
+          : null;
+
         return {
-          batchId: !isPresale && typeof it.batchId === 'number' && !isNaN(it.batchId) && it.batchId > 0
-            ? it.batchId
-            : null,
-          packagingId: !isPresale && typeof it.packagingId === 'number' && !isNaN(it.packagingId) && it.packagingId > 0
-            ? it.packagingId
-            : null,
+          batchId: !isPresale ? validBatchId : null,
+          packagingId: !isPresale ? validPackagingId : null,
           bottleSize: it.bottleSize || '1L',
           flavor: it.flavor || 'Natural',
           quantity: Math.max(1, Number(it.quantity) || 1),
@@ -622,10 +646,10 @@ const formatCurrency = (val: number) => {
                       </option>
                     </optgroup>
 
-                    <!-- Opción preservada si el sabor asignado es personalizado -->
+                    <!-- Opción preservada si el lote asignado ya no está en activePackagings -->
                     <optgroup v-if="isCustomOptionNeeded(item)" label="Asignación Actual">
                       <option :value="getItemSelectionKey(item)">
-                        {{ item.flavor }} (Asignado al pedido)
+                        {{ getAssignedPackagingLabel(item) }}
                       </option>
                     </optgroup>
                   </select>

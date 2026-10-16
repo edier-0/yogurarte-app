@@ -47,6 +47,7 @@ export interface PackagingPresentationItem {
   totalProjectedProfit?: number;
   realizedRevenue?: number;
   realizedProfit?: number;
+  actualRevenue?: number;
 }
 
 export interface BatchPackagingCardItem {
@@ -89,11 +90,13 @@ export interface PackagingProfitabilityData {
   costPerLiter: number;
   totalCost: number;
   avgSellingPricePerLiter: number;
+  actualAvgSellingPricePerLiter?: number;
   avgProfitPerLiter: number;
   globalProfitMarginPercent: number;
   totalProjectedRevenue: number;
   totalProjectedProfit: number;
   totalSoldRevenue: number;
+  totalDiscountsGiven?: number;
   totalSoldCost: number;
   realizedProfit: number;
   realizedMarginPercent: number;
@@ -268,6 +271,18 @@ export interface BatchSummaryData {
     yieldPercentage: number;
     totalCost: number;
     costPerLiter: number;
+  };
+  financialBalance?: {
+    totalCost: number;
+    costPerLiter: number;
+    totalProjectedRevenue: number;
+    totalSalesAmount: number;
+    totalDiscountsGiven: number;
+    totalPaidAmount: number;
+    totalPendingAmount: number;
+    netRealizedProfit: number;
+    avgSellingPricePerLiter: number;
+    profitMarginPercent: number;
   };
   bottlesBreakdown: {
     total1L: number;

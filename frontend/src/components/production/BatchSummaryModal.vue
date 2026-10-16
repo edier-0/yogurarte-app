@@ -362,6 +362,72 @@ async function handleUnlinkOrder(order: any) {
                 </div>
               </div>
             </div>
+
+            <!-- Balance Financiero y Ventas Reales (considerando pedidos con descuentos) -->
+            <div
+              v-if="summary.financialBalance"
+              class="rounded-2xl border border-surface-light-border bg-surface-light-card p-4 dark:border-surface-dark-border dark:bg-surface-dark-card space-y-3"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-extrabold uppercase tracking-wide text-brand-800 dark:text-brand-darkText">
+                  Balance Financiero y Ventas Reales del Lote
+                </span>
+                <span
+                  v-if="summary.financialBalance.totalDiscountsGiven > 0"
+                  class="rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50"
+                >
+                  Descuentos aplicados: -{{ formatCOP(summary.financialBalance.totalDiscountsGiven) }}
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div class="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <span class="text-[10px] font-bold uppercase text-slate-400">Total Facturado</span>
+                  <p class="mt-1 text-lg font-black text-slate-900 dark:text-white">
+                    {{ formatCOP(summary.financialBalance.totalSalesAmount) }}
+                  </p>
+                  <span class="text-[9px] text-slate-500">
+                    Proyectado: {{ formatCOP(summary.financialBalance.totalProjectedRevenue) }}
+                  </span>
+                </div>
+
+                <div class="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <span class="text-[10px] font-bold uppercase text-slate-400">Ganancia Real</span>
+                  <p
+                    class="mt-1 text-lg font-black"
+                    :class="summary.financialBalance.netRealizedProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
+                  >
+                    {{ formatCOP(summary.financialBalance.netRealizedProfit) }}
+                  </p>
+                  <span class="text-[9px] font-bold" :class="summary.financialBalance.netRealizedProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
+                    Margen: {{ summary.financialBalance.profitMarginPercent }}%
+                  </span>
+                </div>
+
+                <div class="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <span class="text-[10px] font-bold uppercase text-slate-400">Recaudado / En Caja</span>
+                  <p class="mt-1 text-lg font-black text-emerald-600 dark:text-emerald-400">
+                    {{ formatCOP(summary.financialBalance.totalPaidAmount) }}
+                  </p>
+                  <span class="text-[9px] text-slate-500">
+                    Cobrado efectivamente
+                  </span>
+                </div>
+
+                <div class="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <span class="text-[10px] font-bold uppercase text-slate-400">Por Cobrar / Deuda</span>
+                  <p
+                    class="mt-1 text-lg font-black"
+                    :class="summary.financialBalance.totalPendingAmount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500'"
+                  >
+                    {{ formatCOP(summary.financialBalance.totalPendingAmount) }}
+                  </p>
+                  <span class="text-[9px] text-slate-500">
+                    Pendiente de pago
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- PESTAÑA 2: FRACCIONES ENVASADAS -->
@@ -492,6 +558,35 @@ async function handleUnlinkOrder(order: any) {
             </div>
 
             <div v-else class="space-y-3">
+              <!-- Banner Financiero de Pedidos Vinculados -->
+              <div
+                v-if="summary.financialBalance"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-surface-light-border bg-slate-50/80 p-3.5 text-xs dark:border-surface-dark-border dark:bg-surface-dark-card"
+              >
+                <div class="flex flex-wrap items-center gap-4">
+                  <span class="text-slate-600 dark:text-slate-400"><strong>Total Pedidos:</strong> {{ summary.linkedOrders.length }}</span>
+                  <span class="text-slate-900 dark:text-white">
+                    <strong>Facturado Real:</strong>
+                    <span class="font-black text-brand-800 dark:text-brand-darkText ml-1">{{ formatCOP(summary.financialBalance.totalSalesAmount) }}</span>
+                  </span>
+                  <span
+                    v-if="summary.financialBalance.totalDiscountsGiven > 0"
+                    class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                  >
+                    Descuentos: -{{ formatCOP(summary.financialBalance.totalDiscountsGiven) }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-3 text-xs font-bold">
+                  <span class="text-emerald-600 dark:text-emerald-400">Cobrado: {{ formatCOP(summary.financialBalance.totalPaidAmount) }}</span>
+                  <span
+                    v-if="summary.financialBalance.totalPendingAmount > 0"
+                    class="text-amber-600 dark:text-amber-400"
+                  >
+                    Por Cobrar: {{ formatCOP(summary.financialBalance.totalPendingAmount) }}
+                  </span>
+                </div>
+              </div>
+
               <div class="overflow-x-auto rounded-2xl border border-surface-light-border dark:border-surface-dark-border">
                 <table class="w-full text-left text-xs">
                   <thead class="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:bg-slate-800 dark:text-slate-400">
