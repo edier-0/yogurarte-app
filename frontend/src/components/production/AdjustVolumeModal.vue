@@ -127,10 +127,10 @@ async function handleSubmit() {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity" />
 
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7 max-h-[92vh] overflow-y-auto"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-surface-light-border bg-surface-light-card shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card"
       >
-        <!-- Cabecera del Diálogo -->
-        <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Cabecera del Diálogo Fija -->
+        <div class="flex shrink-0 items-center justify-between border-b border-surface-light-border p-5 dark:border-surface-dark-border sm:p-6">
           <div class="flex items-center gap-2.5">
             <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400">
               <Scale class="h-5 w-5 stroke-[2]" />
@@ -154,7 +154,9 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <form v-if="batch" @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
+        <form v-if="batch" @submit.prevent="handleSubmit" novalidate class="flex flex-1 flex-col min-h-0 overflow-hidden">
+          <!-- Cuerpo Scrollable -->
+          <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain touch-pan-y">
           <!-- Resumen de Estado Actual del Lote -->
           <div class="rounded-2xl border border-surface-light-border bg-slate-50/70 p-3.5 dark:border-surface-dark-border dark:bg-surface-dark-canvas">
             <div class="flex flex-wrap items-center justify-between gap-2">
@@ -306,8 +308,10 @@ async function handleSubmit() {
             <span>{{ errorMessage }}</span>
           </div>
 
-          <!-- Acciones del Modal -->
-          <div class="flex items-center justify-end gap-2.5 border-t border-surface-light-border pt-4 dark:border-surface-dark-border">
+          </div>
+
+          <!-- Acciones del Modal Fijas en el Fondo -->
+          <div class="flex shrink-0 items-center justify-end gap-2.5 border-t border-surface-light-border bg-surface-light-card p-4 sm:p-6 dark:border-surface-dark-border dark:bg-surface-dark-card">
             <button
               type="button"
               @click="handleClose"

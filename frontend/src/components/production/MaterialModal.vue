@@ -294,10 +294,10 @@ async function handleSave() {
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm transition-opacity" />
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[95vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-surface-light-border bg-surface-light-card shadow-2xl transition-all dark:border-surface-dark-border dark:bg-surface-dark-card"
       >
-        <!-- Header -->
-        <div class="flex items-start justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Header Fijo -->
+        <div class="flex shrink-0 items-start justify-between border-b border-surface-light-border p-5 dark:border-surface-dark-border sm:p-6">
           <div class="flex items-center gap-3">
             <div
               class="flex h-11 w-11 items-center justify-center rounded-2xl shadow-sm"
@@ -329,60 +329,61 @@ async function handleSave() {
           </button>
         </div>
 
-        <!-- Selector de Tipo: Simple vs Compuesto -->
-        <div class="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-surface-light-canvas p-1.5 dark:bg-surface-dark-canvas">
-          <button
-            type="button"
-            @click="setCompoundMode(false)"
-            class="flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-extrabold transition-all"
-            :class="
-              !isCompound
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-surface-dark-card dark:text-white'
-                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-            "
-          >
-            <Boxes class="h-4 w-4 stroke-[2]" />
-            <span>Insumo Simple (Compras)</span>
-          </button>
-
-          <button
-            type="button"
-            @click="setCompoundMode(true)"
-            class="flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-extrabold transition-all"
-            :class="
-              isCompound
-                ? 'bg-brand-800 text-white shadow-sm dark:bg-brand-600'
-                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-            "
-          >
-            <ChefHat class="h-4 w-4 stroke-[2]" />
-            <span>Insumo Compuesto (Receta)</span>
-          </button>
-        </div>
-
-        <!-- Banner informativo según tipo -->
-        <div
-          class="mt-4 flex items-start gap-2.5 rounded-2xl border p-3.5 text-xs"
-          :class="
-            isCompound
-              ? 'border-amber-200 bg-amber-50/60 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200'
-              : 'border-slate-200 bg-slate-50/80 text-slate-700 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300'
-          "
-        >
-          <Sparkles class="mt-0.5 h-4 w-4 shrink-0 stroke-[2]" :class="isCompound ? 'text-amber-600' : 'text-slate-500'" />
-          <p class="leading-relaxed">
-            <template v-if="isCompound">
-              <strong>Insumo Compuesto:</strong> Se elabora en planta a partir de otros insumos (ej. Mermelada = Fruta + Azúcar).
-              Su costo se calcula automáticamente según el PMP de los ingredientes y <strong>no genera egresos de caja al fabricarse</strong>.
-            </template>
-            <template v-else>
-              <strong>Insumo Simple:</strong> Materia prima directa adquirida a proveedores externos (ej. Leche cruda, azúcar, botellas, etiquetas).
-            </template>
-          </p>
-        </div>
-
         <!-- Formulario -->
-        <form @submit.prevent="handleSave" novalidate class="mt-5 space-y-4">
+        <form @submit.prevent="handleSave" novalidate class="flex flex-1 flex-col min-h-0 overflow-hidden">
+          <!-- Cuerpo Scrollable -->
+          <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain touch-pan-y">
+            <!-- Selector de Tipo: Simple vs Compuesto -->
+            <div class="grid grid-cols-2 gap-2 rounded-2xl bg-surface-light-canvas p-1.5 dark:bg-surface-dark-canvas">
+              <button
+                type="button"
+                @click="setCompoundMode(false)"
+                class="flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-extrabold transition-all"
+                :class="
+                  !isCompound
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-surface-dark-card dark:text-white'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                "
+              >
+                <Boxes class="h-4 w-4 stroke-[2]" />
+                <span>Insumo Simple (Compras)</span>
+              </button>
+
+              <button
+                type="button"
+                @click="setCompoundMode(true)"
+                class="flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-extrabold transition-all"
+                :class="
+                  isCompound
+                    ? 'bg-brand-800 text-white shadow-sm dark:bg-brand-600'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                "
+              >
+                <ChefHat class="h-4 w-4 stroke-[2]" />
+                <span>Insumo Compuesto (Receta)</span>
+              </button>
+            </div>
+
+            <!-- Banner informativo según tipo -->
+            <div
+              class="flex items-start gap-2.5 rounded-2xl border p-3.5 text-xs"
+              :class="
+                isCompound
+                  ? 'border-amber-200 bg-amber-50/60 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200'
+                  : 'border-slate-200 bg-slate-50/80 text-slate-700 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300'
+              "
+            >
+              <Sparkles class="mt-0.5 h-4 w-4 shrink-0 stroke-[2]" :class="isCompound ? 'text-amber-600' : 'text-slate-500'" />
+              <p class="leading-relaxed">
+                <template v-if="isCompound">
+                  <strong>Insumo Compuesto:</strong> Se elabora en planta a partir de otros insumos (ej. Mermelada = Fruta + Azúcar).
+                  Su costo se calcula automáticamente según el PMP de los ingredientes y <strong>no genera egresos de caja al fabricarse</strong>.
+                </template>
+                <template v-else>
+                  <strong>Insumo Simple:</strong> Materia prima directa adquirida a proveedores externos (ej. Leche cruda, azúcar, botellas, etiquetas).
+                </template>
+              </p>
+            </div>
           <!-- Alerta de Error -->
           <div
             v-if="errorMessage"
@@ -608,8 +609,10 @@ async function handleSave() {
             </div>
           </div>
 
-          <!-- Botones de Acción -->
-          <div class="flex items-center justify-between gap-2 pt-3">
+          </div>
+
+          <!-- Botones de Acción Fijos en el Fondo -->
+          <div class="flex shrink-0 items-center justify-between gap-2 border-t border-surface-light-border bg-surface-light-card p-4 sm:p-6 dark:border-surface-dark-border dark:bg-surface-dark-card">
             <div>
               <button
                 v-if="props.materialToEdit?.id"

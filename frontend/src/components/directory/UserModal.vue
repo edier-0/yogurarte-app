@@ -184,10 +184,10 @@ async function handleSubmit() {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs transition-opacity" />
 
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7 max-h-[92vh] overflow-y-auto [scrollbar-width:thin]"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-surface-light-border bg-surface-light-card shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card"
       >
-        <!-- Cabecera -->
-        <div class="flex items-start justify-between gap-3 border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Cabecera Fija -->
+        <div class="flex shrink-0 items-start justify-between gap-3 border-b border-surface-light-border p-5 dark:border-surface-dark-border sm:p-6">
           <div class="flex items-center gap-3">
             <div
               class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white shadow-xs"
@@ -216,7 +216,9 @@ async function handleSubmit() {
         </div>
 
         <!-- Formulario -->
-        <form @submit.prevent="handleSubmit" class="mt-5 space-y-4">
+        <form @submit.prevent="handleSubmit" novalidate class="flex flex-1 flex-col min-h-0 overflow-hidden">
+          <!-- Cuerpo Scrollable -->
+          <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain touch-pan-y">
           <!-- Nombre Completo y Usuario -->
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
@@ -417,8 +419,10 @@ async function handleSubmit() {
             <span>{{ errorMessage }}</span>
           </div>
 
-          <!-- Botones de Acción -->
-          <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-surface-light-border dark:border-surface-dark-border">
+          </div>
+
+          <!-- Botones de Acción Fijos en el Fondo -->
+          <div class="flex shrink-0 items-center justify-end gap-2.5 border-t border-surface-light-border bg-surface-light-card p-4 sm:p-6 dark:border-surface-dark-border dark:bg-surface-dark-card">
             <button
               type="button"
               @click="handleClose"

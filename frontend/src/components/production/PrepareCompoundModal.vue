@@ -194,10 +194,10 @@ async function handlePrepare() {
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm transition-opacity" />
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[95vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-surface-light-border bg-surface-light-card shadow-2xl transition-all dark:border-surface-dark-border dark:bg-surface-dark-card"
       >
-        <!-- Header -->
-        <div class="flex items-start justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Header Fijo -->
+        <div class="flex shrink-0 items-start justify-between border-b border-surface-light-border p-5 dark:border-surface-dark-border sm:p-6">
           <div class="flex items-center gap-3">
             <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-800 shadow-sm dark:bg-amber-950/60 dark:text-amber-300">
               <ChefHat class="h-6 w-6 stroke-[2]" />
@@ -221,16 +221,17 @@ async function handlePrepare() {
           </button>
         </div>
 
-        <!-- Alerta Regla Contable Estricta -->
-        <div class="mt-4 flex items-start gap-2.5 rounded-2xl border border-natural-200 bg-natural-50/70 p-3.5 text-xs text-natural-900 dark:border-natural-900/40 dark:bg-natural-950/20 dark:text-natural-200">
-          <Info class="mt-0.5 h-4 w-4 shrink-0 text-natural-600 stroke-[2]" />
-          <p class="leading-relaxed">
-            <strong>Regla Contable Estricta:</strong> La preparación interna transforma stock existente sin generar egresos en Caja Menor ni nuevos Gastos. En Fase B, el yogur envasado absorbe este costo de forma transparente.
-          </p>
-        </div>
-
         <!-- Formulario -->
-        <form @submit.prevent="handlePrepare" novalidate class="mt-5 space-y-4">
+        <form @submit.prevent="handlePrepare" novalidate class="flex flex-1 flex-col min-h-0 overflow-hidden">
+          <!-- Cuerpo Scrollable -->
+          <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain touch-pan-y">
+            <!-- Alerta Regla Contable Estricta -->
+            <div class="flex items-start gap-2.5 rounded-2xl border border-natural-200 bg-natural-50/70 p-3.5 text-xs text-natural-900 dark:border-natural-900/40 dark:bg-natural-950/20 dark:text-natural-200">
+              <Info class="mt-0.5 h-4 w-4 shrink-0 text-natural-600 stroke-[2]" />
+              <p class="leading-relaxed">
+                <strong>Regla Contable Estricta:</strong> La preparación interna transforma stock existente sin generar egresos en Caja Menor ni nuevos Gastos. En Fase B, el yogur envasado absorbe este costo de forma transparente.
+              </p>
+            </div>
           <!-- Alerta de Error -->
           <div
             v-if="errorMessage"
@@ -370,8 +371,10 @@ async function handlePrepare() {
             </div>
           </div>
 
-          <!-- Botones de Acción -->
-          <div class="flex items-center justify-end gap-2 pt-3">
+          </div>
+
+          <!-- Botones de Acción Fijos en el Fondo -->
+          <div class="flex shrink-0 items-center justify-end gap-2 border-t border-surface-light-border bg-surface-light-card p-4 sm:p-6 dark:border-surface-dark-border dark:bg-surface-dark-card">
             <button
               type="button"
               @click="emit('update:open', false)"

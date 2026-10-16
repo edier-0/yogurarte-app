@@ -444,16 +444,16 @@ const formatCurrency = (val: number) => {
         class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity"
       />
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-elevated focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-8 max-h-[92vh] overflow-y-auto"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-3xl border border-surface-light-border bg-surface-light-card shadow-elevated focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card overflow-hidden"
       >
-        <!-- Modal Header -->
-        <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Modal Header (Fijo) -->
+        <div class="flex shrink-0 items-center justify-between border-b border-surface-light-border p-5 sm:p-6 dark:border-surface-dark-border">
           <div class="flex items-center gap-2.5">
             <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-hero-gradient text-white shadow-card">
               <ShoppingBag class="h-5 w-5" />
             </div>
             <div>
-              <DialogTitle class="text-lg font-extrabold text-slate-900 dark:text-white">
+              <DialogTitle class="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
                 {{ isEditing ? 'Editar Pedido' : 'Nuevo Pedido Artesanal' }}
               </DialogTitle>
               <DialogDescription class="text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -470,8 +470,10 @@ const formatCurrency = (val: number) => {
           </DialogClose>
         </div>
 
-        <form @submit.prevent="handleSubmit" novalidate class="mt-6 space-y-6">
-          <!-- 1. Sección Cliente -->
+        <form @submit.prevent="handleSubmit" novalidate class="flex flex-1 flex-col min-h-0 overflow-hidden">
+          <!-- Cuerpo Scrollable -->
+          <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 overscroll-contain touch-pan-y">
+            <!-- 1. Sección Cliente -->
           <div class="rounded-2xl bg-surface-light-canvas p-4 dark:bg-surface-dark-canvas space-y-4">
             <div class="flex items-center justify-between">
               <span class="text-xs font-extrabold uppercase tracking-wide text-brand-800 dark:text-brand-darkText">
@@ -1003,8 +1005,10 @@ const formatCurrency = (val: number) => {
             ></textarea>
           </div>
 
-          <!-- Botones de Acción -->
-          <div class="flex items-center justify-end gap-3 border-t border-surface-light-border pt-4 dark:border-surface-dark-border">
+          </div>
+
+          <!-- Botones de Acción (Fijo) -->
+          <div class="flex shrink-0 items-center justify-end gap-3 border-t border-surface-light-border p-4 sm:p-6 bg-surface-light-card dark:bg-surface-dark-card dark:border-surface-dark-border">
             <button
               type="button"
               @click="handleClose"

@@ -127,17 +127,17 @@ function handleClose() {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity" />
 
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7 max-h-[90vh] overflow-y-auto"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-3xl border border-surface-light-border bg-surface-light-card shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card overflow-hidden"
       >
-        <!-- Encabezado del Modal -->
-        <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Encabezado del Modal (Fijo) -->
+        <div class="flex shrink-0 items-center justify-between border-b border-surface-light-border p-5 sm:p-6 dark:border-surface-dark-border">
           <div class="flex items-center gap-3">
             <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-50 text-brand-800 dark:bg-purple-950/40 dark:text-purple-300">
               <ShoppingBag class="h-6 w-6 stroke-[2]" />
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <DialogTitle class="text-lg font-black text-slate-900 dark:text-white sm:text-xl">
+                <DialogTitle class="text-base sm:text-lg font-black text-slate-900 dark:text-white">
                   Detalle y Auditoría de Pedido
                 </DialogTitle>
                 <span
@@ -161,6 +161,9 @@ function handleClose() {
             <X class="h-5 w-5" />
           </button>
         </div>
+
+        <!-- Cuerpo Scrollable -->
+        <div class="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-6 overscroll-contain touch-pan-y">
 
         <div v-if="isLoading" class="py-12 text-center text-xs text-slate-400">
           Cargando auditoría del pedido...
@@ -350,11 +353,14 @@ function handleClose() {
           </div>
         </div>
 
-        <div class="mt-6 flex justify-end border-t border-surface-light-border pt-4 dark:border-surface-dark-border">
+        </div>
+
+        <!-- Footer de Acciones (Fijo) -->
+        <div class="flex shrink-0 justify-end border-t border-surface-light-border p-4 sm:p-6 bg-surface-light-card dark:bg-surface-dark-card dark:border-surface-dark-border">
           <button
             type="button"
             @click="handleClose"
-            class="rounded-xl bg-brand-800 px-5 py-2.5 text-xs font-extrabold text-white transition-transform active:scale-95 dark:bg-brand-500"
+            class="rounded-xl bg-brand-800 px-5 py-2.5 text-xs font-extrabold text-white transition-transform active:scale-95 dark:bg-brand-500 hover:bg-brand-900"
           >
             Cerrar
           </button>

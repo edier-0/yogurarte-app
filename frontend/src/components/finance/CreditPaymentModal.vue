@@ -144,10 +144,10 @@ async function handleSubmit() {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity" />
 
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[95%] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-surface-light-border bg-surface-light-card shadow-2xl transition-all focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card"
       >
-        <!-- Header del Modal -->
-        <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Header del Modal Fijo -->
+        <div class="flex shrink-0 items-center justify-between border-b border-surface-light-border p-5 dark:border-surface-dark-border sm:p-6">
           <div class="flex items-center gap-3">
             <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-hero-gradient text-white shadow-card">
               <Receipt class="h-5 w-5 stroke-[2]" />
@@ -173,37 +173,38 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <!-- Tarjeta de Resumen Financiero -->
-        <div
-          v-if="credit"
-          class="mt-5 rounded-2xl border border-rose-200/80 bg-rose-50/50 p-4 dark:border-rose-900/40 dark:bg-rose-950/20"
-        >
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <span class="block text-[11px] font-extrabold uppercase tracking-wider text-rose-700/80 dark:text-rose-400">
-                Saldo Pendiente
-              </span>
-              <span class="text-xl font-black text-rose-600 dark:text-rose-400 sm:text-2xl">
-                {{ formatCurrency(credit.remainingBalance) }}
-              </span>
-            </div>
-            <div>
-              <span class="block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Total Financiado
-              </span>
-              <span class="text-lg font-extrabold text-slate-800 dark:text-slate-200 sm:text-xl">
-                {{ formatCurrency(credit.totalAmount) }}
-              </span>
-            </div>
-          </div>
-          <div class="mt-2.5 flex items-center justify-between border-t border-rose-200/60 pt-2 text-[11px] font-bold text-slate-600 dark:border-rose-900/30 dark:text-slate-400">
-            <span>Acreedor: <strong class="text-slate-900 dark:text-white">{{ credit.creditor }}</strong></span>
-            <span>Abonos previos: <strong>{{ credit.paidInstallments }}</strong></span>
-          </div>
-        </div>
-
         <!-- Formulario de Abono -->
-        <form @submit.prevent="handleSubmit" novalidate class="mt-5 space-y-4">
+        <form @submit.prevent="handleSubmit" novalidate class="flex flex-1 flex-col min-h-0 overflow-hidden">
+          <!-- Cuerpo Scrollable -->
+          <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain touch-pan-y">
+            <!-- Tarjeta de Resumen Financiero -->
+            <div
+              v-if="credit"
+              class="rounded-2xl border border-rose-200/80 bg-rose-50/50 p-4 dark:border-rose-900/40 dark:bg-rose-950/20"
+            >
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <span class="block text-[11px] font-extrabold uppercase tracking-wider text-rose-700/80 dark:text-rose-400">
+                    Saldo Pendiente
+                  </span>
+                  <span class="text-xl font-black text-rose-600 dark:text-rose-400 sm:text-2xl">
+                    {{ formatCurrency(credit.remainingBalance) }}
+                  </span>
+                </div>
+                <div>
+                  <span class="block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Total Financiado
+                  </span>
+                  <span class="text-lg font-extrabold text-slate-800 dark:text-slate-200 sm:text-xl">
+                    {{ formatCurrency(credit.totalAmount) }}
+                  </span>
+                </div>
+              </div>
+              <div class="mt-2.5 flex items-center justify-between border-t border-rose-200/60 pt-2 text-[11px] font-bold text-slate-600 dark:border-rose-900/30 dark:text-slate-400">
+                <span>Acreedor: <strong class="text-slate-900 dark:text-white">{{ credit.creditor }}</strong></span>
+                <span>Abonos previos: <strong>{{ credit.paidInstallments }}</strong></span>
+              </div>
+            </div>
           <!-- Monto a Abonar -->
           <div>
             <div class="flex items-center justify-between mb-1">
@@ -297,8 +298,10 @@ async function handleSubmit() {
             <span>{{ errorMessage }}</span>
           </div>
 
-          <!-- Botones de Acción -->
-          <div class="flex items-center justify-end gap-3 pt-3">
+          </div>
+
+          <!-- Botones de Acción Fijos en el Fondo -->
+          <div class="flex shrink-0 items-center justify-end gap-3 border-t border-surface-light-border bg-surface-light-card p-4 sm:p-6 dark:border-surface-dark-border dark:bg-surface-dark-card">
             <button
               type="button"
               @click="handleClose"

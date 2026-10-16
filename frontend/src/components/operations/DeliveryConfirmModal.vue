@@ -199,10 +199,10 @@ const handleConfirm = async () => {
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity" />
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 max-h-[92vh] overflow-y-auto rounded-3xl border border-surface-light-border bg-surface-light-card p-6 shadow-elevated focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card sm:p-7"
+        class="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-3xl border border-surface-light-border bg-surface-light-card shadow-elevated focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card overflow-hidden"
       >
-        <!-- Modal Header -->
-        <div class="flex items-center justify-between border-b border-surface-light-border pb-4 dark:border-surface-dark-border">
+        <!-- Modal Header (Fijo) -->
+        <div class="flex shrink-0 items-center justify-between border-b border-surface-light-border p-5 sm:p-6 dark:border-surface-dark-border">
           <div class="flex items-center gap-3">
             <div
               class="flex h-10 w-10 items-center justify-center rounded-2xl text-white shadow-card transition-colors"
@@ -229,7 +229,9 @@ const handleConfirm = async () => {
           </DialogClose>
         </div>
 
-        <div v-if="order" class="mt-4 space-y-4">
+        <div v-if="order" class="flex flex-1 flex-col min-h-0 overflow-hidden">
+          <!-- Cuerpo Scrollable -->
+          <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain touch-pan-y">
           <!-- Tarjeta de Información del Cliente y Dirección -->
           <div class="rounded-2xl border border-slate-200/80 bg-surface-light-canvas p-3.5 dark:border-slate-800 dark:bg-surface-dark-canvas">
             <div class="flex items-start justify-between gap-3">
@@ -528,8 +530,10 @@ const handleConfirm = async () => {
             />
           </div>
 
-          <!-- Botones de Acción del Modal -->
-          <div class="flex items-center justify-end gap-3 pt-2">
+          </div>
+
+          <!-- Botones de Acción del Modal (Fijo) -->
+          <div class="flex shrink-0 items-center justify-end gap-3 border-t border-surface-light-border p-4 sm:p-6 bg-surface-light-card dark:bg-surface-dark-card dark:border-surface-dark-border">
             <button
               type="button"
               @click="handleClose"
