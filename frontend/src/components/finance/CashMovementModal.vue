@@ -52,8 +52,8 @@ async function fetchPartners() {
   if (partnersList.value.length > 0) return;
   isLoadingPartners.value = true;
   try {
-    const res = await http.get('/api/staff');
-    const allStaff = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
+    const res = await http.get('/staff');
+    const allStaff = Array.isArray(res) ? res : Array.isArray((res as any)?.data) ? (res as any).data : [];
     partnersList.value = allStaff.filter((s: any) => s.type === 'SOCIO' || s.role === 'SOCIO');
   } catch (err) {
     console.error('Error al cargar socios:', err);

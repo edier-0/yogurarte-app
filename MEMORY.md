@@ -27,6 +27,8 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Pre-venta en pedidos: no catalogar como pre-venta cuando el lote ya fue seleccionado aunque sus litros libres sean 0 (porque el propio pedido los está consumiendo).
 - npm ci en Docker/CI: npm 10.8 en Node 20 falla con bug de Arborist ("Cannot read properties of null (edgesOut)"). Resuelto actualizando a npm@11 en Dockerfile y GitHub Actions.
 - Build backend y Prisma: "build:backend" debe ejecutar prisma generate antes de tsc y contar con "postinstall": "prisma generate" para despliegues en la nube.
+- Cliente HTTP en frontend: Axios ya incluye baseURL '/api'; nunca invocar endpoints con '/api/...' para evitar rutas duplicadas como '/api/api/staff'.
+- Auditoría de dependencias: se blindan dependencias transitivas mediante bloque 'overrides' en package.json para parches de seguridad (proxy-addr, compression, sharp, source-map-js).
 
 ## Próximos pasos
 - Diseñar e implementar el libro flexible de recetas de yogures y mermeladas para estandarizar sabores y rendimiento.
