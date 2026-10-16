@@ -3,8 +3,8 @@
 # ==============================================================================
 FROM node:20-alpine AS builder
 
-# Instalar dependencias necesarias para compilar Prisma en Alpine
-RUN apk add --no-cache openssl libc6-compat
+# Instalar dependencias necesarias para compilar Prisma en Alpine y actualizar npm a v11
+RUN apk add --no-cache openssl libc6-compat && npm install -g npm@11
 
 WORKDIR /app
 
@@ -36,8 +36,8 @@ RUN npx tsc
 # ==============================================================================
 FROM node:20-alpine AS runner
 
-# Instalar utilidades de runtime seguras (dumb-init para gestión PID 1)
-RUN apk add --no-cache openssl libc6-compat dumb-init dos2unix
+# Instalar utilidades de runtime seguras (dumb-init para gestión PID 1) y actualizar npm a v11
+RUN apk add --no-cache openssl libc6-compat dumb-init dos2unix && npm install -g npm@11
 
 WORKDIR /app
 
