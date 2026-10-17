@@ -1474,6 +1474,139 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
       // Limpiar pedido de prueba
       await prisma.order.delete({ where: { id: order.id } });
     });
+
+    it('Auditoría de Fracción: getPackagingSummary calcula totalPaidAmount, totalPendingAmount y totalSoldRevenue con descuentos y pagos', async () => {
+      // 1. Crear lote madre
+      const batchRes = await request(app)
+        .post('/api/batches')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          batchCode: `LOTE-AUDIT-${Date.now()}`,
+          milkUsedLiters: 20,
+          flavor: 'Fresa',
+          status: 'DISPONIBLE',
+        });
+      expect(batchRes.status).toBe(201);
+      const auditBatchId = batchRes.body.id;
+
+      // 2. Envasar fracción Fase B (4 botellas de 1L)
+      const pkgRes = await request(app)
+        .post(`/api/batches/${auditBatchId}/packaging`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          flavor: 'Fresa',
+          bottles1L: 4,
+          bottles2L: 0,
+          price1L: 12000,
+        });
+      expect(pkgRes.status).toBe(201);
+      const pkgId = pkgRes.body.packaging.id;
+
+      // 3. Crear Pedido 1: 2 botellas de 1L ($24.000), con descuento de $4.000 (neto $20.000), 100% PAGADO
+      const order1 = await prisma.order.create({
+        data: {
+          orderNumber: `ORD-AUDIT1-${Date.now()}`,
+          customerId: testCustomerId,
+          batchId: auditBatchId,
+          totalLiters: 2,
+          quantityBottles: 2,
+          bottleSize: '1L',
+          flavor: 'Fresa',
+          discount: 4000,
+          totalAmount: 20000,
+          paidAmount: 20000,
+          pendingAmount: 0,
+          paymentStatus: 'PAID',
+          deliveryStatus: 'DELIVERED',
+          items: {
+            create: [
+              {
+                batchId: auditBatchId,
+                packagingId: pkgId,
+                flavor: 'Fresa',
+                bottleSize: '1L',
+                quantity: 2,
+                totalLiters: 2,
+                unitPrice: 12000,
+                totalPrice: 24000,
+              },
+            ],
+          },
+        },
+        include: { items: true },
+      });
+
+      // 4. Crear Pedido 2: 2 botellas de 1L ($24.000), sin descuento, pago parcial de $10.000 (saldo $14.000)
+      const order2 = await prisma.order.create({
+        data: {
+          orderNumber: `ORD-AUDIT2-${Date.now()}`,
+          customerId: testCustomerId,
+          batchId: auditBatchId,
+          totalLiters: 2,
+          quantityBottles: 2,
+          bottleSize: '1L',
+          flavor: 'Fresa',
+          discount: 0,
+          totalAmount: 24000,
+          paidAmount: 10000,
+          pendingAmount: 14000,
+          paymentStatus: 'PARTIAL',
+          deliveryStatus: 'DELIVERED',
+          items: {
+            create: [
+              {
+                batchId: auditBatchId,
+                packagingId: pkgId,
+                flavor: 'Fresa',
+                bottleSize: '1L',
+                quantity: 2,
+                totalLiters: 2,
+                unitPrice: 12000,
+                totalPrice: 24000,
+              },
+            ],
+          },
+        },
+        include: { items: true },
+      });
+
+      // 5. Consultar resumen de auditoría de la fracción
+      const sumRes = await request(app)
+        .get(`/api/batches/packagings/${pkgId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(sumRes.status).toBe(200);
+      const { profitability, linkedOrders } = sumRes.body;
+
+      // 6. Validar métricas de recaudos y cartera
+      // Meta a recaudar (neto con descuentos aplicados) = $20.000 + $24.000 = $44.000
+      expect(profitability.totalSoldRevenue).toBe(44000);
+      // Recaudado en caja = $20.000 + $10.000 = $30.000
+      expect(profitability.totalPaidAmount).toBe(30000);
+      // Deuda en la calle = $44.000 - $30.000 = $14.000
+      expect(profitability.totalPendingAmount).toBe(14000);
+      // Consistencia matemática
+      expect(profitability.totalPaidAmount + profitability.totalPendingAmount).toBe(profitability.totalSoldRevenue);
+
+      // 7. Validar presencia de campos en linkedOrders
+      expect(linkedOrders.length).toBe(2);
+      const o1 = linkedOrders.find((o: any) => o.id === order1.id);
+      expect(o1.paidAmount).toBe(20000);
+      expect(o1.pendingAmount).toBe(0);
+      expect(o1.discount).toBe(4000);
+
+      const o2 = linkedOrders.find((o: any) => o.id === order2.id);
+      expect(o2.paidAmount).toBe(10000);
+      expect(o2.pendingAmount).toBe(14000);
+      expect(o2.discount).toBe(0);
+
+      // Limpiar pedidos y lote creados en este test
+      await prisma.orderItem.deleteMany({ where: { packagingId: pkgId } });
+      await prisma.order.deleteMany({ where: { id: { in: [order1.id, order2.id] } } });
+      await prisma.batchPackagingItem.deleteMany({ where: { packagingId: pkgId } });
+      await prisma.batchPackaging.delete({ where: { id: pkgId } });
+      await prisma.productionBatch.delete({ where: { id: auditBatchId } });
+    });
   });
 });
 
