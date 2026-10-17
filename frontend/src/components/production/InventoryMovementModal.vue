@@ -14,6 +14,8 @@ import {
   X,
   AlertCircle,
   Plus,
+  Pencil,
+  Check,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
@@ -33,6 +35,7 @@ const props = defineProps<{
   open: boolean;
   materials: MaterialOption[];
   preselectedMaterialId?: number | null;
+  movementToEdit?: any | null;
 }>();
 
 const emit = defineEmits<{
@@ -50,18 +53,34 @@ const adjustmentDate = ref(getTodayDateBogota());
 const isSubmitting = ref(false);
 const errorMessage = ref('');
 
-// Sincronizar selección de insumo
+const isEditing = computed(() => !!props.movementToEdit);
+
+// Sincronizar selección de insumo y datos de edición
 watch(
-  () => [props.open, props.preselectedMaterialId],
-  ([isOpen, preselected]) => {
+  () => [props.open, props.movementToEdit, props.preselectedMaterialId],
+  ([isOpen, toEdit, preselected]) => {
     if (isOpen) {
       errorMessage.value = '';
-      quantity.value = '';
-      reason.value = '';
-      if (preselected) {
-        selectedMaterialId.value = preselected as number;
-      } else if (props.materials.length > 0 && !selectedMaterialId.value) {
-        selectedMaterialId.value = props.materials[0].id;
+      if (toEdit) {
+        selectedMaterialId.value = toEdit.rawMaterialId;
+        const delta = Number(toEdit.deltaQuantity ?? 0);
+        movementType.value = delta >= 0 ? 'ENTRADA' : 'SALIDA';
+        quantity.value = Math.abs(delta);
+        reason.value = toEdit.reason || '';
+        registeredBy.value = toEdit.registeredBy || 'Edier';
+        const dateStr = toEdit.adjustmentDate || toEdit.createdAt;
+        adjustmentDate.value = dateStr ? String(dateStr).split('T')[0] : getTodayDateBogota();
+      } else {
+        quantity.value = '';
+        reason.value = '';
+        movementType.value = 'ENTRADA';
+        registeredBy.value = 'Edier';
+        adjustmentDate.value = getTodayDateBogota();
+        if (preselected) {
+          selectedMaterialId.value = preselected as number;
+        } else if (props.materials.length > 0 && !selectedMaterialId.value) {
+          selectedMaterialId.value = props.materials[0].id;
+        }
       }
     }
   },
@@ -72,10 +91,24 @@ const currentMaterial = computed(() => {
   return props.materials.find((m) => m.id === selectedMaterialId.value);
 });
 
+// Diferencia neta respecto a la variación original del movimiento
+const netStockDifference = computed(() => {
+  const qty = typeof quantity.value === 'number' ? quantity.value : 0;
+  const newDelta = movementType.value === 'ENTRADA' ? qty : -qty;
+  if (isEditing.value && props.movementToEdit) {
+    const oldDelta = Number(props.movementToEdit.deltaQuantity || 0);
+    return Math.round((newDelta - oldDelta) * 1000) / 1000;
+  }
+  return newDelta;
+});
+
 // Cálculo del nuevo stock resultante
 const calculatedNewStock = computed(() => {
   if (!currentMaterial.value) return 0;
   const curr = currentMaterial.value.currentStock || 0;
+  if (isEditing.value && props.movementToEdit) {
+    return Math.max(0, Math.round((curr + netStockDifference.value) * 1000) / 1000);
+  }
   const qty = typeof quantity.value === 'number' ? quantity.value : 0;
   if (movementType.value === 'ENTRADA') {
     return Math.round((curr + qty) * 1000) / 1000;
@@ -108,25 +141,39 @@ async function handleSubmit() {
   errorMessage.value = '';
 
   try {
-    const typeLabel = movementType.value === 'ENTRADA' ? 'COMPRA_REPOSICION' : 'MERMA_CONSUMO';
+    if (isEditing.value && props.movementToEdit) {
+      const res: any = await http.put(`/inventory/adjustments/${props.movementToEdit.id}`, {
+        quantity: quantity.value,
+        movementType: movementType.value,
+        reason: reason.value.trim(),
+        registeredBy: registeredBy.value || 'Edier',
+        adjustmentDate: adjustmentDate.value,
+      });
 
-    await http.post('/inventory/adjustments', {
-      rawMaterialId: selectedMaterialId.value,
-      newStock: calculatedNewStock.value,
-      type: typeLabel,
-      reason: reason.value.trim(),
-      registeredBy: registeredBy.value || 'Edier',
-      adjustmentDate: adjustmentDate.value,
-    });
+      toast.success('¡Movimiento de Kardex Actualizado!', {
+        description: `${currentMaterial.value.name}: stock recalculado en ${res?.newCurrentStock ?? calculatedNewStock.value} ${currentMaterial.value.unit}.`,
+      });
+    } else {
+      const typeLabel = movementType.value === 'ENTRADA' ? 'COMPRA_REPOSICION' : 'MERMA_CONSUMO';
 
-    toast.success('¡Movimiento Registrado en Kardex!', {
-      description: `${currentMaterial.value.name}: ${movementType.value === 'ENTRADA' ? '+' : '-'}${quantity.value} ${currentMaterial.value.unit}. Nuevo stock: ${calculatedNewStock.value} ${currentMaterial.value.unit}.`,
-    });
+      await http.post('/inventory/adjustments', {
+        rawMaterialId: selectedMaterialId.value,
+        newStock: calculatedNewStock.value,
+        type: typeLabel,
+        reason: reason.value.trim(),
+        registeredBy: registeredBy.value || 'Edier',
+        adjustmentDate: adjustmentDate.value,
+      });
+
+      toast.success('¡Movimiento Registrado en Kardex!', {
+        description: `${currentMaterial.value.name}: ${movementType.value === 'ENTRADA' ? '+' : '-'}${quantity.value} ${currentMaterial.value.unit}. Nuevo stock: ${calculatedNewStock.value} ${currentMaterial.value.unit}.`,
+      });
+    }
 
     emit('saved');
     handleClose();
   } catch (err: any) {
-    errorMessage.value = err?.message || 'Error al asentar el movimiento en el Kardex';
+    errorMessage.value = err?.message || 'Error al procesar el movimiento en el Kardex';
   } finally {
     isSubmitting.value = false;
   }
@@ -147,20 +194,27 @@ async function handleSubmit() {
             <div
               class="flex h-10 w-10 items-center justify-center rounded-xl"
               :class="
-                movementType === 'ENTRADA'
+                isEditing
+                  ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'
+                  : movementType === 'ENTRADA'
                   ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400'
                   : 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400'
               "
             >
-              <ArrowUpRight v-if="movementType === 'ENTRADA'" class="h-5 w-5 stroke-[2.5]" />
+              <Pencil v-if="isEditing" class="h-5 w-5 stroke-[2.5]" />
+              <ArrowUpRight v-else-if="movementType === 'ENTRADA'" class="h-5 w-5 stroke-[2.5]" />
               <ArrowDownLeft v-else class="h-5 w-5 stroke-[2.5]" />
             </div>
             <div>
               <DialogTitle class="text-base font-extrabold text-slate-900 dark:text-white sm:text-lg">
-                Movimiento de Kardex
+                {{ isEditing ? 'Editar Movimiento de Kardex' : 'Movimiento de Kardex' }}
               </DialogTitle>
               <DialogDescription class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Ajuste atómico de entrada o salida con trazabilidad de almacén
+                {{
+                  isEditing
+                    ? 'Modifica la cantidad, tipo o motivo. El stock se recalculará automáticamente.'
+                    : 'Ajuste atómico de entrada o salida con trazabilidad de almacén'
+                }}
               </DialogDescription>
             </div>
           </div>
@@ -177,146 +231,158 @@ async function handleSubmit() {
         <form @submit.prevent="handleSubmit" novalidate class="flex flex-1 flex-col min-h-0 overflow-hidden">
           <!-- Cuerpo Scrollable -->
           <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain touch-pan-y">
-          <!-- Tipo de Movimiento (Entrada vs Salida) -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-              Tipo de Movimiento *
-            </label>
-            <div class="grid grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                @click="movementType = 'ENTRADA'"
-                class="flex items-center justify-center gap-2 rounded-2xl border p-3 text-xs font-extrabold transition-all"
-                :class="
-                  movementType === 'ENTRADA'
-                    ? 'border-emerald-600 bg-emerald-50 text-emerald-700 shadow-sm dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300'
-                    : 'border-surface-light-border bg-surface-light-canvas text-slate-600 hover:border-slate-300 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400'
-                "
-              >
-                <ArrowUpRight class="h-4 w-4 stroke-[2.5]" />
-                <span>Entrada (Compra / Reposición)</span>
-              </button>
-
-              <button
-                type="button"
-                @click="movementType = 'SALIDA'"
-                class="flex items-center justify-center gap-2 rounded-2xl border p-3 text-xs font-extrabold transition-all"
-                :class="
-                  movementType === 'SALIDA'
-                    ? 'border-rose-600 bg-rose-50 text-rose-700 shadow-sm dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
-                    : 'border-surface-light-border bg-surface-light-canvas text-slate-600 hover:border-slate-300 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400'
-                "
-              >
-                <ArrowDownLeft class="h-4 w-4 stroke-[2.5]" />
-                <span>Salida (Merma / Consumo)</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Selección del Insumo -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-              Insumo / Materia Prima *
-            </label>
-            <select
-              v-model="selectedMaterialId"
-              required
-              class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-            >
-              <option v-for="mat in materials" :key="mat.id" :value="mat.id">
-                {{ mat.name }} (Stock: {{ formatStockQuantity(mat.currentStock, mat.unit) }} {{ mat.unit }})
-              </option>
-            </select>
-          </div>
-
-          <!-- Cantidad y Stock Resultante -->
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <!-- Tipo de Movimiento (Entrada vs Salida) -->
             <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Cantidad a {{ movementType === 'ENTRADA' ? 'Ingresar' : 'Descontar' }} *
+              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Tipo de Movimiento *
               </label>
-              <div class="relative">
-                <input
-                  v-model.number="quantity"
-                  type="number"
-                  min="0"
-                  step="any"
-                  placeholder="10"
-                  required
-                  class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-3.5 pr-14 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-                />
-                <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                  {{ currentMaterial?.unit || 'Und' }}
-                </span>
+              <div class="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  @click="movementType = 'ENTRADA'"
+                  class="flex items-center justify-center gap-2 rounded-2xl border p-3 text-xs font-extrabold transition-all"
+                  :class="
+                    movementType === 'ENTRADA'
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700 shadow-sm dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300'
+                      : 'border-surface-light-border bg-surface-light-canvas text-slate-600 hover:border-slate-300 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400'
+                  "
+                >
+                  <ArrowUpRight class="h-4 w-4 stroke-[2.5]" />
+                  <span>Entrada (Compra / Reposición)</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="movementType = 'SALIDA'"
+                  class="flex items-center justify-center gap-2 rounded-2xl border p-3 text-xs font-extrabold transition-all"
+                  :class="
+                    movementType === 'SALIDA'
+                      ? 'border-rose-600 bg-rose-50 text-rose-700 shadow-sm dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
+                      : 'border-surface-light-border bg-surface-light-canvas text-slate-600 hover:border-slate-300 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400'
+                  "
+                >
+                  <ArrowDownLeft class="h-4 w-4 stroke-[2.5]" />
+                  <span>Salida (Merma / Consumo)</span>
+                </button>
               </div>
             </div>
 
-            <!-- Preview del Stock -->
-            <div class="rounded-xl border border-surface-light-border bg-surface-light-canvas p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas">
-              <span class="block text-[10px] font-extrabold uppercase text-slate-400">
-                Stock Resultante en Kardex
-              </span>
-              <div class="mt-1 flex items-baseline gap-2">
-                <span class="text-sm font-bold text-slate-400 line-through">
-                  {{ formatStockQuantity(currentMaterial?.currentStock || 0, currentMaterial?.unit || 'und') }}
-                </span>
-                <span class="text-base font-black text-slate-900 dark:text-white">
-                  ➔ {{ formatStockQuantity(calculatedNewStock, currentMaterial?.unit || 'und') }} {{ currentMaterial?.unit || '' }}
+            <!-- Selección del Insumo -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Insumo / Materia Prima *
+                </label>
+                <span v-if="isEditing" class="text-[10px] font-semibold text-slate-400 italic">
+                  (Insumo original fijo)
                 </span>
               </div>
+              <select
+                v-model="selectedMaterialId"
+                :disabled="isEditing"
+                required
+                class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none disabled:opacity-75 disabled:cursor-not-allowed dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+              >
+                <option v-for="mat in materials" :key="mat.id" :value="mat.id">
+                  {{ mat.name }} (Stock: {{ formatStockQuantity(mat.currentStock, mat.unit) }} {{ mat.unit }})
+                </option>
+              </select>
             </div>
-          </div>
 
-          <!-- Motivo / Justificación -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-              Motivo / Justificación *
-            </label>
-            <input
-              v-model="reason"
-              type="text"
-              placeholder="Ej: Reposición proveedor, merma por tapa defectuosa..."
-              required
-              class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-            />
-          </div>
+            <!-- Cantidad y Stock Resultante -->
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Cantidad a {{ movementType === 'ENTRADA' ? 'Ingresar' : 'Descontar' }} *
+                </label>
+                <div class="relative">
+                  <input
+                    v-model.number="quantity"
+                    type="number"
+                    min="0"
+                    step="any"
+                    placeholder="10"
+                    required
+                    class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-3.5 pr-14 text-sm font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                  />
+                  <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                    {{ currentMaterial?.unit || 'Und' }}
+                  </span>
+                </div>
+              </div>
 
-          <!-- Responsable y Fecha -->
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <!-- Preview del Stock -->
+              <div class="rounded-xl border border-surface-light-border bg-surface-light-canvas p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas">
+                <span class="block text-[10px] font-extrabold uppercase text-slate-400">
+                  {{ isEditing ? 'Recálculo de Stock en Kardex' : 'Stock Resultante en Kardex' }}
+                </span>
+                <div class="mt-1 flex items-baseline gap-2">
+                  <span class="text-sm font-bold text-slate-400 line-through">
+                    {{ formatStockQuantity(currentMaterial?.currentStock || 0, currentMaterial?.unit || 'und') }}
+                  </span>
+                  <span
+                    v-if="isEditing && netStockDifference !== 0"
+                    class="rounded-md px-1.5 py-0.5 text-[10px] font-black"
+                    :class="netStockDifference >= 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'"
+                  >
+                    {{ netStockDifference >= 0 ? '+' : '' }}{{ netStockDifference }}
+                  </span>
+                  <span class="text-base font-black text-slate-900 dark:text-white">
+                    ➔ {{ formatStockQuantity(calculatedNewStock, currentMaterial?.unit || 'und') }} {{ currentMaterial?.unit || '' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Motivo / Justificación -->
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Responsable
+                Motivo / Justificación *
               </label>
               <input
-                v-model="registeredBy"
+                v-model="reason"
                 type="text"
-                placeholder="Edier"
+                placeholder="Ej: Reposición proveedor, merma por tapa defectuosa..."
+                required
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               />
             </div>
 
-            <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Fecha del Movimiento
-              </label>
-              <input
-                v-model="adjustmentDate"
-                type="date"
-                required
-                class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-              />
+            <!-- Responsable y Fecha -->
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Responsable
+                </label>
+                <input
+                  v-model="registeredBy"
+                  type="text"
+                  placeholder="Edier"
+                  class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Fecha del Movimiento
+                </label>
+                <input
+                  v-model="adjustmentDate"
+                  type="date"
+                  required
+                  class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+                />
+              </div>
             </div>
-          </div>
 
-          <!-- Error Alert -->
-          <div
-            v-if="errorMessage"
-            class="flex items-center gap-2 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"
-          >
-            <AlertCircle class="h-4 w-4 shrink-0" />
-            <span>{{ errorMessage }}</span>
-          </div>
-
+            <!-- Error Alert -->
+            <div
+              v-if="errorMessage"
+              class="flex items-center gap-2 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"
+            >
+              <AlertCircle class="h-4 w-4 shrink-0" />
+              <span>{{ errorMessage }}</span>
+            </div>
           </div>
 
           <!-- Botones de Acción Fijos en el Fondo -->
@@ -331,10 +397,14 @@ async function handleSubmit() {
             <button
               type="submit"
               :disabled="!isFormValid || isSubmitting"
-              class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-5 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95 disabled:opacity-50"
+              class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95 disabled:opacity-50"
+              :class="isEditing ? 'bg-amber-600 hover:bg-amber-700' : 'bg-hero-gradient'"
             >
-              <Plus class="h-4 w-4 stroke-[2.5]" />
-              <span>{{ isSubmitting ? 'Asentando...' : 'Asentar en Kardex' }}</span>
+              <Check v-if="isEditing" class="h-4 w-4 stroke-[2.5]" />
+              <Plus v-else class="h-4 w-4 stroke-[2.5]" />
+              <span>
+                {{ isSubmitting ? (isEditing ? 'Guardando...' : 'Asentando...') : (isEditing ? 'Guardar Cambios' : 'Asentar en Kardex') }}
+              </span>
             </button>
           </div>
         </form>

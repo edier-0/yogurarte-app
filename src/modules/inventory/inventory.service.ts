@@ -6,6 +6,7 @@ import {
 } from '../../shared/errors/appError.js';
 import {
   AdjustStockInput,
+  UpdateAdjustmentInput,
   AdjustmentsQueryInput,
   InventoryMovementsQueryInput,
   CreateMaterialInput,
@@ -944,8 +945,105 @@ export const deleteAdjustment = async (id: number) => {
   });
 
   return {
-    message: 'Ajuste eliminado y stock restaurado exitosamente',
+    message: 'Movimiento de Kardex eliminado y stock restablecido exitosamente',
     restoredStock,
     materialId: adjustment.rawMaterialId,
   };
+};
+
+/**
+ * Actualizar movimiento de Kardex existente y recalcular el stock de forma atómica ($transaction)
+ */
+export const updateAdjustment = async (id: number, data: UpdateAdjustmentInput) => {
+  const currentAdjustment = await prisma.inventoryAdjustment.findUnique({
+    where: { id },
+    include: { rawMaterial: true },
+  });
+
+  if (!currentAdjustment) {
+    throw new NotFoundError('Movimiento de Kardex no encontrado');
+  }
+
+  const {
+    quantity,
+    movementType,
+    newStock,
+    deltaQuantity,
+    type,
+    reason,
+    registeredBy,
+    adjustmentDate,
+  } = data;
+
+  let targetDelta: number | undefined;
+
+  if (movementType && quantity !== undefined) {
+    const absQty = Math.abs(Number(quantity));
+    targetDelta = movementType === 'ENTRADA' ? absQty : -absQty;
+  } else if (quantity !== undefined) {
+    const isPositive = currentAdjustment.deltaQuantity >= 0;
+    const absQty = Math.abs(Number(quantity));
+    targetDelta = isPositive ? absQty : -absQty;
+  } else if (deltaQuantity !== undefined) {
+    targetDelta = Number(deltaQuantity);
+  } else if (newStock !== undefined) {
+    targetDelta = Number(newStock) - currentAdjustment.previousStock;
+  }
+
+  const newDelta = targetDelta !== undefined
+    ? Math.round(targetDelta * 1000) / 1000
+    : currentAdjustment.deltaQuantity;
+
+  const stockDifference = Math.round((newDelta - currentAdjustment.deltaQuantity) * 1000) / 1000;
+  const newCurrentStock = Math.max(
+    0,
+    Math.round((currentAdjustment.rawMaterial.currentStock + stockDifference) * 1000) / 1000
+  );
+
+  const newStockValue = Math.round((currentAdjustment.previousStock + newDelta) * 1000) / 1000;
+  const unitCost = currentAdjustment.unitCost || currentAdjustment.rawMaterial.avgCost || 0;
+  const totalCostImpact = Math.round(newDelta * unitCost);
+
+  let newType = currentAdjustment.type;
+  if (type) {
+    newType = String(type).trim();
+  } else if (movementType === 'ENTRADA') {
+    newType = 'COMPRA_REPOSICION';
+  } else if (movementType === 'SALIDA') {
+    newType = 'MERMA_CONSUMO';
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    if (stockDifference !== 0) {
+      await tx.rawMaterial.update({
+        where: { id: currentAdjustment.rawMaterialId },
+        data: {
+          currentStock: newCurrentStock,
+        },
+      });
+    }
+
+    const updatedAdjustment = await tx.inventoryAdjustment.update({
+      where: { id },
+      data: {
+        deltaQuantity: newDelta,
+        newStock: newStockValue,
+        totalCostImpact,
+        type: newType,
+        reason: reason !== undefined ? (reason ? String(reason).trim() : null) : currentAdjustment.reason,
+        registeredBy: registeredBy !== undefined ? String(registeredBy).trim() : currentAdjustment.registeredBy,
+        adjustmentDate: adjustmentDate ? parseColombiaDate(adjustmentDate) : currentAdjustment.adjustmentDate,
+      },
+      include: {
+        rawMaterial: true,
+      },
+    });
+
+    return {
+      message: 'Movimiento de Kardex actualizado y stock ajustado exitosamente',
+      adjustment: updatedAdjustment,
+      newCurrentStock,
+      materialId: currentAdjustment.rawMaterialId,
+    };
+  });
 };
