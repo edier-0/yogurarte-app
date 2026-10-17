@@ -125,6 +125,90 @@ export const getCashMovements = async (query: CashMovementsQueryInput) => {
 };
 
 /**
+ * Obtener balances de capital acumulado: base de caja y aportes por cada socio
+ */
+export const getCapitalBalances = async () => {
+  // 1. Balance de Base de Caja (inyecciones vs retiros)
+  const baseMovements = await prisma.cashMovement.findMany({
+    where: {
+      type: { in: ['BASE_INICIAL', 'RETIRO_BASE'] },
+    },
+    select: {
+      type: true,
+      amount: true,
+    },
+  });
+
+  const baseTotalInjected = baseMovements
+    .filter((m) => m.type === 'BASE_INICIAL')
+    .reduce((sum, m) => sum + m.amount, 0);
+
+  const baseTotalWithdrawn = baseMovements
+    .filter((m) => m.type === 'RETIRO_BASE')
+    .reduce((sum, m) => sum + m.amount, 0);
+
+  const baseAvailable = Math.max(0, baseTotalInjected - baseTotalWithdrawn);
+
+  // 2. Balance de Aportes de Socios (aportes vs devoluciones)
+  const partnerMovements = await prisma.cashMovement.findMany({
+    where: {
+      type: { in: ['APORTE_SOCIO', 'DEVOLUCION_APORTE'] },
+      staffMemberId: { not: null },
+    },
+    select: {
+      type: true,
+      amount: true,
+      staffMemberId: true,
+    },
+  });
+
+  const partners = await prisma.staffMember.findMany({
+    where: {
+      OR: [{ type: 'SOCIO' }, { role: { contains: 'SOCIO', mode: 'insensitive' } }],
+    },
+    select: {
+      id: true,
+      fullName: true,
+      role: true,
+      type: true,
+      isActive: true,
+    },
+    orderBy: { fullName: 'asc' },
+  });
+
+  const partnerBalances = partners.map((partner) => {
+    const movs = partnerMovements.filter((m) => m.staffMemberId === partner.id);
+    const totalContributed = movs
+      .filter((m) => m.type === 'APORTE_SOCIO')
+      .reduce((sum, m) => sum + m.amount, 0);
+    const totalReturned = movs
+      .filter((m) => m.type === 'DEVOLUCION_APORTE')
+      .reduce((sum, m) => sum + m.amount, 0);
+    const available = Math.max(0, totalContributed - totalReturned);
+
+    return {
+      partnerId: partner.id,
+      fullName: partner.fullName,
+      role: partner.role,
+      type: partner.type,
+      isActive: partner.isActive,
+      totalContributed,
+      totalReturned,
+      available,
+    };
+  });
+
+  return {
+    base: {
+      totalInjected: baseTotalInjected,
+      totalWithdrawn: baseTotalWithdrawn,
+      available: baseAvailable,
+    },
+    partners: partnerBalances,
+  };
+};
+
+/**
  * Registrar un movimiento de caja (Base inicial, aportes, retiros, traslados, ingresos/egresos)
  */
 export const createCashMovement = async (data: CreateCashMovementInput) => {
@@ -153,6 +237,63 @@ export const createCashMovement = async (data: CreateCashMovementInput) => {
   const rawDate = date || movementDate;
   const parsedMovementDate = parseColombiaDate(rawDate);
   const parsedStaffMemberId = staffMemberId ? Number(staffMemberId) : null;
+
+  // Validación de tope en Devolución de Aporte a Socio
+  if (movementType === 'DEVOLUCION_APORTE') {
+    if (!parsedStaffMemberId) {
+      throw new BadRequestError('Debes seleccionar el socio al que se le reintegra el aporte');
+    }
+
+    const partnerMovs = await prisma.cashMovement.findMany({
+      where: {
+        staffMemberId: parsedStaffMemberId,
+        type: { in: ['APORTE_SOCIO', 'DEVOLUCION_APORTE'] },
+      },
+      select: { type: true, amount: true },
+    });
+
+    const totalContributed = partnerMovs
+      .filter((m) => m.type === 'APORTE_SOCIO')
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const totalReturned = partnerMovs
+      .filter((m) => m.type === 'DEVOLUCION_APORTE')
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const availableContributed = Math.max(0, totalContributed - totalReturned);
+
+    if (parsedAmount > availableContributed) {
+      throw new BadRequestError(
+        `El monto a devolver ($${parsedAmount.toLocaleString('es-CO')}) no puede ser mayor al aporte disponible del socio ($${availableContributed.toLocaleString('es-CO')})`
+      );
+    }
+  }
+
+  // Validación de tope en Retiro de Base de Caja
+  if (movementType === 'RETIRO_BASE') {
+    const baseMovs = await prisma.cashMovement.findMany({
+      where: {
+        type: { in: ['BASE_INICIAL', 'RETIRO_BASE'] },
+      },
+      select: { type: true, amount: true },
+    });
+
+    const totalInjected = baseMovs
+      .filter((m) => m.type === 'BASE_INICIAL')
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const totalWithdrawn = baseMovs
+      .filter((m) => m.type === 'RETIRO_BASE')
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const availableBase = Math.max(0, totalInjected - totalWithdrawn);
+
+    if (parsedAmount > availableBase) {
+      throw new BadRequestError(
+        `El monto a retirar ($${parsedAmount.toLocaleString('es-CO')}) no puede ser mayor a la base disponible en caja ($${availableBase.toLocaleString('es-CO')})`
+      );
+    }
+  }
 
   return prisma.cashMovement.create({
     data: {
@@ -219,6 +360,65 @@ export const updateCashMovement = async (id: number, data: UpdateCashMovementInp
   const rawDate = date || movementDate;
   const parsedDate = rawDate ? parseColombiaDate(rawDate) : existing.movementDate;
   const parsedStaffMemberId = staffMemberId !== undefined ? (staffMemberId ? Number(staffMemberId) : null) : existing.staffMemberId;
+
+  // Validación de tope en Devolución de Aporte a Socio (excluyendo el movimiento actual)
+  if (movementType === 'DEVOLUCION_APORTE') {
+    if (!parsedStaffMemberId) {
+      throw new BadRequestError('Debes seleccionar el socio al que se le reintegra el aporte');
+    }
+
+    const partnerMovs = await prisma.cashMovement.findMany({
+      where: {
+        staffMemberId: parsedStaffMemberId,
+        type: { in: ['APORTE_SOCIO', 'DEVOLUCION_APORTE'] },
+        id: { not: id },
+      },
+      select: { type: true, amount: true },
+    });
+
+    const totalContributed = partnerMovs
+      .filter((m) => m.type === 'APORTE_SOCIO')
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const totalReturned = partnerMovs
+      .filter((m) => m.type === 'DEVOLUCION_APORTE')
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const availableContributed = Math.max(0, totalContributed - totalReturned);
+
+    if (parsedAmount > availableContributed) {
+      throw new BadRequestError(
+        `El monto a devolver ($${parsedAmount.toLocaleString('es-CO')}) no puede ser mayor al aporte disponible del socio ($${availableContributed.toLocaleString('es-CO')})`
+      );
+    }
+  }
+
+  // Validación de tope en Retiro de Base de Caja (excluyendo el movimiento actual)
+  if (movementType === 'RETIRO_BASE') {
+    const baseMovs = await prisma.cashMovement.findMany({
+      where: {
+        type: { in: ['BASE_INICIAL', 'RETIRO_BASE'] },
+        id: { not: id },
+      },
+      select: { type: true, amount: true },
+    });
+
+    const totalInjected = baseMovs
+      .filter((m) => m.type === 'BASE_INICIAL')
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const totalWithdrawn = baseMovs
+      .filter((m) => m.type === 'RETIRO_BASE')
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const availableBase = Math.max(0, totalInjected - totalWithdrawn);
+
+    if (parsedAmount > availableBase) {
+      throw new BadRequestError(
+        `El monto a retirar ($${parsedAmount.toLocaleString('es-CO')}) no puede ser mayor a la base disponible en caja ($${availableBase.toLocaleString('es-CO')})`
+      );
+    }
+  }
 
   return prisma.cashMovement.update({
     where: { id },

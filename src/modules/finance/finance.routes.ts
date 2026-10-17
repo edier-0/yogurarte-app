@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getCashMovements,
+  getCapitalBalances,
   createCashMovement,
   updateCashMovement,
   deleteCashMovement,
@@ -40,6 +41,8 @@ import { idParamSchema } from '../../schemas/common.schema.js';
 export const cashMovementsRouter = Router();
 
 cashMovementsRouter.get('/', validateQuery(cashMovementsQuerySchema), getCashMovements);
+cashMovementsRouter.get('/capital-balances', getCapitalBalances);
+cashMovementsRouter.get('/balances', getCapitalBalances);
 cashMovementsRouter.post('/', validateBody(createCashMovementSchema), createCashMovement);
 cashMovementsRouter.put('/:id', validateParams(idParamSchema), validateBody(updateCashMovementSchema), updateCashMovement);
 cashMovementsRouter.delete('/:id', validateParams(idParamSchema), deleteCashMovement);
