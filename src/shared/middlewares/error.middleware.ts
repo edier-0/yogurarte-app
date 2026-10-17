@@ -27,6 +27,7 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       error: err.message,
+      message: err.message,
       code: err.code,
       ...(err.details !== undefined ? { details: err.details } : {}),
     });

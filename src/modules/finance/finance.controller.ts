@@ -19,6 +19,15 @@ export const getCashMovements = async (req: Request, res: Response, next: NextFu
   }
 };
 
+export const getCapitalBalances = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const balances = await financeService.getCapitalBalances();
+    res.json(balances);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createCashMovement = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const movement = await financeService.createCashMovement(req.body);
