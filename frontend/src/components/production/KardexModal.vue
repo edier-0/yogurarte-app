@@ -15,8 +15,12 @@ import {
   ChevronLeft,
   ChevronRight,
   RotateCw,
+  Edit3,
+  Trash2,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
+import { useConfirm } from '@/composables/useConfirm';
+import { toast } from 'vue-sonner';
 
 export interface KardexMovement {
   id: number;
@@ -60,7 +64,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:open', val: boolean): void;
+  (e: 'editMovement', movement: KardexMovement): void;
+  (e: 'stockChanged'): void;
 }>();
+
+const { confirm } = useConfirm();
 
 const movements = ref<KardexMovement[]>([]);
 const materialInfo = ref<any | null>(null);
@@ -132,6 +140,35 @@ async function fetchKardex(page = 1) {
   }
 }
 
+async function deleteKardexMovement(m: KardexMovement) {
+  const matName = materialInfo.value?.name || props.materialName || 'Insumo';
+  const currentStock = materialInfo.value?.currentStock ?? m.newStock;
+  const restoredStock = Math.max(0, Math.round((currentStock - m.deltaQuantity) * 1000) / 1000);
+  const unit = m.unit || materialInfo.value?.unit || '';
+
+  const ok = await confirm({
+    title: '¿Eliminar movimiento de Kardex?',
+    message: `¿Estás seguro de eliminar este movimiento (${m.deltaQuantity >= 0 ? '+' : ''}${formatQuantity(m.deltaQuantity, unit)} ${unit})? El stock de ${matName} se restablecerá de ${formatQuantity(currentStock, unit)} ${unit} a ${formatQuantity(restoredStock, unit)} ${unit}.`,
+    confirmText: 'Sí, eliminar y restablecer stock',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+  });
+  if (!ok) return;
+
+  try {
+    await http.delete(`/inventory/adjustments/${m.id}`);
+    toast.success('Movimiento de Kardex eliminado y stock restablecido exitosamente');
+    await fetchKardex(currentPage.value);
+    emit('stockChanged');
+  } catch (err: any) {
+    toast.error(err?.message || 'Error al eliminar el movimiento de Kardex');
+  }
+}
+
+function handleEditMovement(m: KardexMovement) {
+  emit('editMovement', m);
+}
+
 watch(
   () => [props.open, props.rawMaterialId],
   async ([isOpen, id]) => {
@@ -150,6 +187,11 @@ watch(
 function handleClose() {
   emit('update:open', false);
 }
+
+defineExpose({
+  fetchKardex,
+  reload: () => fetchKardex(currentPage.value),
+});
 </script>
 
 <template>
@@ -200,133 +242,154 @@ function handleClose() {
             v-if="materialInfo"
             class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-surface-light-border bg-surface-light-canvas p-4 dark:border-surface-dark-border dark:bg-surface-dark-canvas"
           >
-          <div class="flex items-center gap-2.5">
-            <Package class="h-5 w-5 text-brand-800 dark:text-brand-darkText" />
-            <div>
-              <span class="text-xs font-black text-slate-900 dark:text-white">{{ materialInfo.name }}</span>
-              <p class="text-[10px] text-slate-400">
-                Unidad: {{ materialInfo.unit }} · Costo Promedio: {{ formatCurrency(materialInfo.avgCost) }}/{{ materialInfo.unit }}
+            <div class="flex items-center gap-2.5">
+              <Package class="h-5 w-5 text-brand-800 dark:text-brand-darkText" />
+              <div>
+                <span class="text-xs font-black text-slate-900 dark:text-white">{{ materialInfo.name }}</span>
+                <p class="text-[10px] text-slate-400">
+                  Unidad: {{ materialInfo.unit }} · Costo Promedio: {{ formatCurrency(materialInfo.avgCost) }}/{{ materialInfo.unit }}
+                </p>
+              </div>
+            </div>
+
+            <div class="text-right">
+              <span class="text-[10px] font-bold uppercase text-slate-400">Stock Actual Físico</span>
+              <p class="text-lg font-black text-brand-800 dark:text-brand-darkText">
+                {{ formatQuantity(materialInfo.currentStock, materialInfo.unit) }} {{ materialInfo.unit }}
               </p>
             </div>
           </div>
 
-          <div class="text-right">
-            <span class="text-[10px] font-bold uppercase text-slate-400">Stock Actual Físico</span>
-            <p class="text-lg font-black text-brand-800 dark:text-brand-darkText">
-              {{ formatQuantity(materialInfo.currentStock, materialInfo.unit) }} {{ materialInfo.unit }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Indicador de Carga -->
-        <div v-if="isLoading" class="py-12 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
-          <RotateCw class="h-5 w-5 animate-spin text-brand-800" />
-          <span>Cargando movimientos de Kardex...</span>
-        </div>
-
-        <!-- Estado Vacío -->
-        <div
-          v-else-if="movements.length === 0"
-          class="mt-5 rounded-2xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-400 dark:border-slate-700"
-        >
-          No hay movimientos de Kardex registrados para este insumo.
-        </div>
-
-        <!-- Tabla de Movimientos de Kardex -->
-        <div v-else class="mt-5 space-y-3">
-          <div class="overflow-x-auto rounded-2xl border border-surface-light-border dark:border-surface-dark-border">
-            <table class="w-full text-left text-xs">
-              <thead class="bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                <tr>
-                  <th class="px-3.5 py-2.5">Fecha</th>
-                  <th class="px-3.5 py-2.5">Tipo / Motivo</th>
-                  <th class="px-3.5 py-2.5">Responsable</th>
-                  <th class="px-3.5 py-2.5 text-right">Variación</th>
-                  <th class="px-3.5 py-2.5 text-right">Saldo Resultante</th>
-                  <th class="px-3.5 py-2.5 text-right">Impacto $</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-surface-light-card dark:bg-surface-dark-card font-medium text-slate-700 dark:text-slate-300">
-                <tr v-for="m in movements" :key="m.id">
-                  <td class="px-3.5 py-2.5 whitespace-nowrap text-slate-600 dark:text-slate-300">
-                    {{ formatDate(m.adjustmentDate) }}
-                  </td>
-                  <td class="px-3.5 py-2.5">
-                    <div class="flex flex-col gap-0.5">
-                      <span
-                        class="rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase w-fit"
-                        :class="
-                          m.deltaQuantity >= 0
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                        "
-                      >
-                        {{ m.type }}
-                      </span>
-                      <span v-if="m.reason" class="text-[11px] text-slate-500 italic">
-                        {{ m.reason }}
-                      </span>
-                    </div>
-                  </td>
-                  <td class="px-3.5 py-2.5 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                    {{ m.registeredBy || 'Edier' }}
-                  </td>
-                  <td
-                    class="px-3.5 py-2.5 text-right font-black whitespace-nowrap"
-                    :class="m.deltaQuantity >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
-                  >
-                    {{ m.deltaQuantity >= 0 ? '+' : '' }}{{ formatQuantity(m.deltaQuantity, m.unit) }} {{ m.unit }}
-                  </td>
-                  <td class="px-3.5 py-2.5 text-right font-extrabold whitespace-nowrap text-slate-800 dark:text-white">
-                    {{ formatQuantity(m.newStock, m.unit) }} {{ m.unit }}
-                  </td>
-                  <td class="px-3.5 py-2.5 text-right font-black whitespace-nowrap">
-                    <span :class="m.totalCostImpact >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
-                      {{ formatCurrency(m.totalCostImpact) }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <!-- Indicador de Carga -->
+          <div v-if="isLoading" class="py-12 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
+            <RotateCw class="h-5 w-5 animate-spin text-brand-800" />
+            <span>Cargando movimientos de Kardex...</span>
           </div>
 
-          <!-- Barra de Paginación Estricta a 10 Registros -->
+          <!-- Estado Vacío -->
           <div
-            v-if="totalPages > 1 || totalMovements > 0"
-            class="flex items-center justify-between border-t border-surface-light-border px-1 pt-3 dark:border-surface-dark-border text-xs text-slate-500"
+            v-else-if="movements.length === 0"
+            class="mt-5 rounded-2xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-400 dark:border-slate-700"
           >
-            <span>
-              Página {{ currentPage }} de {{ totalPages }} ({{ totalMovements }} movimientos en total)
-            </span>
+            No hay movimientos de Kardex registrados para este insumo.
+          </div>
 
-            <div class="flex items-center gap-1.5">
-              <button
-                type="button"
-                @click="fetchKardex(currentPage - 1)"
-                :disabled="currentPage <= 1 || isLoading"
-                class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border px-3 py-1.5 font-bold hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:hover:bg-slate-800 dark:text-slate-300"
-              >
-                <ChevronLeft class="h-3.5 w-3.5" />
-                <span>Anterior</span>
-              </button>
+          <!-- Tabla de Movimientos de Kardex -->
+          <div v-else class="mt-5 space-y-3">
+            <div class="overflow-x-auto rounded-2xl border border-surface-light-border dark:border-surface-dark-border">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                  <tr>
+                    <th class="px-3.5 py-2.5">Fecha</th>
+                    <th class="px-3.5 py-2.5">Tipo / Motivo</th>
+                    <th class="px-3.5 py-2.5">Responsable</th>
+                    <th class="px-3.5 py-2.5 text-right">Variación</th>
+                    <th class="px-3.5 py-2.5 text-right">Saldo Resultante</th>
+                    <th class="px-3.5 py-2.5 text-right">Impacto $</th>
+                    <th class="px-3.5 py-2.5 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-surface-light-card dark:bg-surface-dark-card font-medium text-slate-700 dark:text-slate-300">
+                  <tr v-for="m in movements" :key="m.id">
+                    <td class="px-3.5 py-2.5 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                      {{ formatDate(m.adjustmentDate) }}
+                    </td>
+                    <td class="px-3.5 py-2.5">
+                      <div class="flex flex-col gap-0.5">
+                        <span
+                          class="rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase w-fit"
+                          :class="
+                            m.deltaQuantity >= 0
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                          "
+                        >
+                          {{ m.type }}
+                        </span>
+                        <span v-if="m.reason" class="text-[11px] text-slate-500 italic">
+                          {{ m.reason }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="px-3.5 py-2.5 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {{ m.registeredBy || 'Edier' }}
+                    </td>
+                    <td
+                      class="px-3.5 py-2.5 text-right font-black whitespace-nowrap"
+                      :class="m.deltaQuantity >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
+                    >
+                      {{ m.deltaQuantity >= 0 ? '+' : '' }}{{ formatQuantity(m.deltaQuantity, m.unit) }} {{ m.unit }}
+                    </td>
+                    <td class="px-3.5 py-2.5 text-right font-extrabold whitespace-nowrap text-slate-800 dark:text-white">
+                      {{ formatQuantity(m.newStock, m.unit) }} {{ m.unit }}
+                    </td>
+                    <td class="px-3.5 py-2.5 text-right font-black whitespace-nowrap">
+                      <span :class="m.totalCostImpact >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
+                        {{ formatCurrency(m.totalCostImpact) }}
+                      </span>
+                    </td>
+                    <td class="px-3.5 py-2.5 text-right whitespace-nowrap">
+                      <div class="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          @click="handleEditMovement(m)"
+                          title="Editar movimiento y recalcular stock"
+                          class="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-brand-800 dark:hover:bg-slate-800 dark:hover:text-purple-300"
+                        >
+                          <Edit3 class="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          @click="deleteKardexMovement(m)"
+                          title="Eliminar movimiento y restablecer stock"
+                          class="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                        >
+                          <Trash2 class="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-              <span class="px-2 font-black text-slate-700 dark:text-slate-200">
-                {{ currentPage }} / {{ totalPages }}
+            <!-- Barra de Paginación Estricta a 10 Registros -->
+            <div
+              v-if="totalPages > 1 || totalMovements > 0"
+              class="flex items-center justify-between border-t border-surface-light-border px-1 pt-3 dark:border-surface-dark-border text-xs text-slate-500"
+            >
+              <span>
+                Página {{ currentPage }} de {{ totalPages }} ({{ totalMovements }} movimientos en total)
               </span>
 
-              <button
-                type="button"
-                @click="fetchKardex(currentPage + 1)"
-                :disabled="currentPage >= totalPages || isLoading"
-                class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border px-3 py-1.5 font-bold hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:hover:bg-slate-800 dark:text-slate-300"
-              >
-                <span>Siguiente</span>
-                <ChevronRight class="h-3.5 w-3.5" />
-              </button>
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  @click="fetchKardex(currentPage - 1)"
+                  :disabled="currentPage <= 1 || isLoading"
+                  class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border px-3 py-1.5 font-bold hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:hover:bg-slate-800 dark:text-slate-300"
+                >
+                  <ChevronLeft class="h-3.5 w-3.5" />
+                  <span>Anterior</span>
+                </button>
+
+                <span class="px-2 font-black text-slate-700 dark:text-slate-200">
+                  {{ currentPage }} / {{ totalPages }}
+                </span>
+
+                <button
+                  type="button"
+                  @click="fetchKardex(currentPage + 1)"
+                  :disabled="currentPage >= totalPages || isLoading"
+                  class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border px-3 py-1.5 font-bold hover:bg-slate-50 disabled:opacity-40 dark:border-surface-dark-border dark:hover:bg-slate-800 dark:text-slate-300"
+                >
+                  <span>Siguiente</span>
+                  <ChevronRight class="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
         <!-- Pie Fijo del Modal -->
         <div class="flex shrink-0 justify-end border-t border-surface-light-border p-4 dark:border-surface-dark-border">

@@ -38,6 +38,7 @@ import {
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
+import { useConfirm } from '@/composables/useConfirm';
 import { formatStockQuantity } from '@/utils/formatters';
 import InventoryMovementModal from '@/components/production/InventoryMovementModal.vue';
 import PurchaseStockModal from '@/components/production/PurchaseStockModal.vue';
@@ -349,14 +350,54 @@ function openPurchaseModal(materialId?: number) {
   isPurchaseModalOpen.value = true;
 }
 
-// Apertura del modal de Kardex
+const movementToEdit = ref<any | null>(null);
+const kardexModalRef = ref<any>(null);
+const { confirm } = useConfirm();
+
+// Apertura del modal de Kardex (Creación)
 function openMovementModal(materialId?: number) {
+  movementToEdit.value = null;
   preselectedMaterialId.value = materialId || null;
   isMovementModalOpen.value = true;
 }
 
-function handleMovementSaved() {
-  refreshAll();
+// Apertura del modal de Kardex (Edición)
+function openEditMovementModal(adj: any) {
+  movementToEdit.value = adj;
+  preselectedMaterialId.value = adj.rawMaterialId;
+  isMovementModalOpen.value = true;
+}
+
+// Eliminación de movimiento de Kardex y restablecimiento de stock
+async function handleDeleteMovement(adj: AdjustmentItem) {
+  const matName = adj.rawMaterial?.name || 'Insumo';
+  const currentStock = materials.value.find((m) => m.id === adj.rawMaterialId)?.currentStock ?? adj.newStock;
+  const restoredStock = Math.max(0, Math.round((currentStock - adj.deltaQuantity) * 1000) / 1000);
+  const unit = adj.unit || '';
+
+  const ok = await confirm({
+    title: '¿Eliminar movimiento de Kardex?',
+    message: `¿Estás seguro de eliminar este movimiento (${adj.deltaQuantity >= 0 ? '+' : ''}${formatStockQuantity(adj.deltaQuantity, unit)} ${unit})? El stock de ${matName} se restablecerá de ${formatStockQuantity(currentStock, unit)} ${unit} a ${formatStockQuantity(restoredStock, unit)} ${unit}.`,
+    confirmText: 'Sí, eliminar y restablecer stock',
+    cancelText: 'Cancelar',
+    variant: 'danger',
+  });
+  if (!ok) return;
+
+  try {
+    await http.delete(`/inventory/adjustments/${adj.id}`);
+    toast.success('Movimiento de Kardex eliminado y stock restablecido exitosamente');
+    await handleMovementSaved();
+  } catch (err: any) {
+    toast.error(err?.message || 'Error al eliminar el movimiento de Kardex');
+  }
+}
+
+async function handleMovementSaved() {
+  await refreshAll();
+  if (isKardexModalOpen.value && kardexModalRef.value) {
+    kardexModalRef.value.reload();
+  }
 }
 
 // Lista de insumos compuestos activos para el modal de preparación
@@ -1025,9 +1066,9 @@ async function reactivateMaterial(mat: MaterialItem) {
               </div>
             </div>
 
-            <!-- Detalle Derecho de Stock y Variación -->
-            <div class="flex items-center justify-between border-t border-surface-light-border pt-2 sm:border-0 sm:pt-0 sm:text-right dark:border-surface-dark-border">
-              <div>
+            <!-- Detalle Derecho de Stock, Variación y Acciones -->
+            <div class="flex items-center justify-between gap-4 border-t border-surface-light-border pt-2 sm:border-0 sm:pt-0 dark:border-surface-dark-border">
+              <div class="sm:text-right">
                 <span
                   class="block text-base font-black"
                   :class="adj.deltaQuantity >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
@@ -1037,6 +1078,26 @@ async function reactivateMaterial(mat: MaterialItem) {
                 <span class="block text-[11px] font-bold text-slate-400">
                   {{ formatStockQuantity(adj.previousStock, adj.unit) }} ➔ {{ formatStockQuantity(adj.newStock, adj.unit) }} {{ adj.unit }}
                 </span>
+              </div>
+
+              <!-- Botones de Acción (Editar / Eliminar) -->
+              <div class="flex items-center gap-1.5 shrink-0 pl-2 sm:border-l sm:border-slate-200 dark:sm:border-slate-800">
+                <button
+                  type="button"
+                  @click="openEditMovementModal(adj)"
+                  title="Editar movimiento y recalcular stock"
+                  class="rounded-xl border border-surface-light-border bg-surface-light-card p-2 text-slate-500 shadow-sm transition-all hover:border-brand-800 hover:bg-brand-50 hover:text-brand-800 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-400 dark:hover:border-purple-400 dark:hover:bg-purple-950/40 dark:hover:text-purple-300"
+                >
+                  <Edit3 class="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  @click="handleDeleteMovement(adj)"
+                  title="Eliminar movimiento y restablecer stock"
+                  class="rounded-xl border border-surface-light-border bg-surface-light-card p-2 text-slate-500 shadow-sm transition-all hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-slate-400 dark:hover:border-rose-800 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </button>
               </div>
             </div>
           </div>
@@ -1099,14 +1160,18 @@ async function reactivateMaterial(mat: MaterialItem) {
       v-model:open="isMovementModalOpen"
       :materials="materialOptions"
       :preselected-material-id="preselectedMaterialId"
+      :movement-to-edit="movementToEdit"
       @saved="handleMovementSaved"
     />
 
     <!-- Modal de Kardex Específico Paginado a 10 (/api/inventory/movements) -->
     <KardexModal
+      ref="kardexModalRef"
       v-model:open="isKardexModalOpen"
       :raw-material-id="kardexMaterialId"
       :material-name="kardexMaterialName"
+      @stock-changed="refreshAll"
+      @edit-movement="openEditMovementModal"
     />
 
     <!-- Modal de Compra / Entrada de Stock -->

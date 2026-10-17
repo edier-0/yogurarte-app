@@ -11,6 +11,7 @@ import {
   adjustStock,
   getAdjustmentsHistory,
   getInventoryMovements,
+  updateAdjustment,
   deleteAdjustment,
   getPurchasesHistory,
 } from './inventory.controller.js';
@@ -25,6 +26,7 @@ import {
   prepareCompoundSchema,
   materialsQuerySchema,
   adjustStockSchema,
+  updateAdjustmentSchema,
   adjustmentsQuerySchema,
   inventoryMovementsQuerySchema,
   createPurchaseSchema,
@@ -49,8 +51,11 @@ router.put('/materials/:id/adjust', validateParams(idParamSchema), validateBody(
 // 2. AJUSTES DE INVENTARIO Y KARDEX
 // ==========================================
 router.get('/movements', validateQuery(inventoryMovementsQuerySchema), getInventoryMovements);
+router.put('/movements/:id', validateParams(idParamSchema), validateBody(updateAdjustmentSchema), updateAdjustment);
+router.delete('/movements/:id', validateParams(idParamSchema), deleteAdjustment);
 router.get('/adjustments', validateQuery(adjustmentsQuerySchema), getAdjustmentsHistory);
 router.post('/adjustments', validateBody(adjustStockSchema), adjustStock);
+router.put('/adjustments/:id', validateParams(idParamSchema), validateBody(updateAdjustmentSchema), updateAdjustment);
 router.delete('/adjustments/:id', validateParams(idParamSchema), deleteAdjustment);
 
 // ==========================================
