@@ -109,6 +109,7 @@ const profitability = computed(() => {
   let totalProjectedRev = 0;
   let totalSoldRev = 0;
   let nominalSoldRev = 0;
+  let totalPaidRev = 0;
 
   for (const p of summary.value.presentations || []) {
     totalProjectedRev += (p.quantity || 0) * (p.price || 0);
@@ -118,6 +119,7 @@ const profitability = computed(() => {
       ? (p as any).actualRevenue
       : nominalRev;
     totalSoldRev += actualRev;
+    totalPaidRev += (p as any).paidRevenue !== undefined ? (p as any).paidRevenue : 0;
   }
 
   const avgSellingPricePerLiter = totalLiters > 0 ? Math.round(totalProjectedRev / totalLiters) : 0;
@@ -135,6 +137,9 @@ const profitability = computed(() => {
     ? Math.round((realizedProfit / totalSoldRev) * 1000) / 10
     : 0;
 
+  const totalPaidAmount = Math.min(totalSoldRev, Math.round(totalPaidRev));
+  const totalPendingAmount = Math.max(0, totalSoldRev - totalPaidAmount);
+
   return {
     costPerLiter: costPerL,
     totalCost,
@@ -145,6 +150,8 @@ const profitability = computed(() => {
     totalProjectedRevenue: totalProjectedRev,
     totalProjectedProfit,
     totalSoldRevenue: totalSoldRev,
+    totalPaidAmount,
+    totalPendingAmount,
     totalDiscountsGiven,
     totalSoldCost,
     realizedProfit,
@@ -634,13 +641,34 @@ watch(activeTab, async (newTab) => {
 
               <!-- 4 KPIs Clave de Rentabilidad -->
               <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <!-- 1. Precio Venta Promedio / L -->
-                <div class="rounded-xl border border-emerald-100 bg-white/80 p-3 shadow-xs dark:border-emerald-900/40 dark:bg-slate-900/60">
-                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Venta Promedio / L</span>
-                  <p class="mt-1 text-lg font-black text-slate-900 dark:text-white sm:text-xl">
-                    {{ formatCOP(profitability.actualAvgSellingPricePerLiter || profitability.avgSellingPricePerLiter) }}
+                <!-- 1. Recaudo en Caja & Cartera (Reemplaza Venta Promedio / L) -->
+                <div class="rounded-xl border border-emerald-200 bg-white/90 p-3 shadow-xs dark:border-emerald-800/50 dark:bg-slate-900/70">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Recaudado en Caja
+                    </span>
+                    <span
+                      class="rounded-md px-1.5 py-0.5 text-[9px] font-black"
+                      :class="profitability.totalSoldRevenue > 0 && (profitability.totalPaidAmount || 0) >= profitability.totalSoldRevenue
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'"
+                    >
+                      {{ profitability.totalSoldRevenue > 0 ? Math.round(((profitability.totalPaidAmount || 0) / profitability.totalSoldRevenue) * 100) : 0 }}% cobrado
+                    </span>
+                  </div>
+                  <p class="mt-1 text-lg font-black text-emerald-700 dark:text-emerald-300 sm:text-xl">
+                    {{ formatCOP(profitability.totalPaidAmount || 0) }}
                   </p>
-                  <span class="text-[10px] text-slate-500">Real ponderado</span>
+                  <div class="mt-1 flex flex-col gap-0.5 text-[10px]">
+                    <div class="flex items-center justify-between font-semibold text-amber-600 dark:text-amber-400">
+                      <span>Deuda en calle:</span>
+                      <span>{{ formatCOP(profitability.totalPendingAmount || 0) }}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-slate-500 dark:text-slate-400">
+                      <span>Meta a recaudar:</span>
+                      <span class="font-bold text-slate-700 dark:text-slate-300">{{ formatCOP(profitability.totalSoldRevenue) }}</span>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- 2. Ganancia Neta / Litro (KPI PRINCIPAL) -->
@@ -828,12 +856,28 @@ watch(activeTab, async (newTab) => {
                     >
                       {{ order.deliveryStatus }}
                     </span>
+                    <span
+                      class="rounded-full px-2 py-0.5 text-[9px] font-black uppercase"
+                      :class="order.paymentStatus === 'PAID'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                        : order.paymentStatus === 'PARTIAL'
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'"
+                    >
+                      {{ order.paymentStatus === 'PAID' ? 'PAGADO' : order.paymentStatus === 'PARTIAL' ? 'PARCIAL' : 'PENDIENTE' }}
+                    </span>
                   </div>
 
                   <div class="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] text-slate-500">
                     <span>Fecha: {{ formatDate(order.orderDate) }}</span>
                     <span>•</span>
                     <span>Total: {{ formatCOP(order.totalAmount) }}</span>
+                    <span v-if="order.paidAmount !== undefined" class="font-medium text-emerald-600 dark:text-emerald-400">
+                      • Cobrado: {{ formatCOP(order.paidAmount) }}
+                    </span>
+                    <span v-if="order.pendingAmount && order.pendingAmount > 0" class="font-medium text-amber-600 dark:text-amber-400">
+                      • Saldo: {{ formatCOP(order.pendingAmount) }}
+                    </span>
                     <span>•</span>
                     <span class="font-semibold text-purple-700 dark:text-purple-300">
                       {{ order.items.map((it: any) => `${it.quantity}x ${it.bottleSize}`).join(', ') }}
