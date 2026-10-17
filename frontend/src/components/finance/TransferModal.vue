@@ -39,7 +39,7 @@ const transferType = ref<'TRASLADO_EFECTIVO_A_BANCO' | 'TRASLADO_BANCO_A_EFECTIV
   'TRASLADO_EFECTIVO_A_BANCO'
 );
 const amount = ref<number | ''>('');
-const concept = ref<string>('Consignación de ventas en efectivo a cuenta digital');
+const concept = ref<string>('Consignación de ventas en efectivo a Nequi');
 const movementDate = ref<string>(getTodayDateBogota());
 const notes = ref<string>('');
 const isSubmitting = ref<boolean>(false);
@@ -71,9 +71,9 @@ watch(
 function onTypeChange(type: 'TRASLADO_EFECTIVO_A_BANCO' | 'TRASLADO_BANCO_A_EFECTIVO') {
   transferType.value = type;
   if (type === 'TRASLADO_EFECTIVO_A_BANCO') {
-    concept.value = 'Consignación de ventas en efectivo a cuenta digital / Nequi';
+    concept.value = 'Consignación de ventas en efectivo a Nequi';
   } else {
-    concept.value = 'Retiro de cajero a efectivo para caja menor';
+    concept.value = 'Retiro de Nequi a efectivo para caja menor';
   }
 }
 
@@ -191,11 +191,11 @@ async function handleSubmit() {
                   <ArrowLeftRight class="h-3.5 w-3.5 text-slate-400" />
                   <div class="flex items-center gap-1.5 text-xs font-black text-dairy-500 dark:text-blue-400">
                     <Smartphone class="h-4 w-4" />
-                    <span>Bancos</span>
+                    <span>Nequi</span>
                   </div>
                 </div>
                 <span class="mt-2 text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                  Consignación de ventas a Nequi / Bancolombia
+                  Consignación de ventas a Nequi
                 </span>
               </button>
 
@@ -213,7 +213,7 @@ async function handleSubmit() {
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-1.5 text-xs font-black text-dairy-500 dark:text-blue-400">
                     <Smartphone class="h-4 w-4" />
-                    <span>Bancos</span>
+                    <span>Nequi</span>
                   </div>
                   <ArrowLeftRight class="h-3.5 w-3.5 text-slate-400" />
                   <div class="flex items-center gap-1.5 text-xs font-black text-amber-600 dark:text-amber-400">

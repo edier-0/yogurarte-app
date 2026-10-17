@@ -388,10 +388,8 @@ async function handleSubmit() {
                 v-model="paymentMethod"
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-card px-3.5 py-2 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-white"
               >
-                <option value="EFECTIVO">Efectivo</option>
-                <option value="TRANSFERENCIA">Transferencia Bancaria</option>
+                <option value="EFECTIVO">Efectivo (Caja Menor)</option>
                 <option value="NEQUI">Nequi</option>
-                <option value="BANCOLOMBIA">Bancolombia</option>
               </select>
             </div>
           </div>

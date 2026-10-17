@@ -464,9 +464,9 @@ export const useFinanceStore = defineStore('finance', () => {
         concept:
           payload.concept ||
           (type === 'TRASLADO_EFECTIVO_A_BANCO'
-            ? 'Consignación de efectivo a cuenta digital / Nequi'
-            : 'Retiro de banco a efectivo'),
-        paymentMethod: type === 'TRASLADO_EFECTIVO_A_BANCO' ? 'NEQUI_BANCOLOMBIA' : 'EFECTIVO',
+            ? 'Consignación de efectivo a Nequi'
+            : 'Retiro de Nequi a efectivo'),
+        paymentMethod: type === 'TRASLADO_EFECTIVO_A_BANCO' ? 'NEQUI' : 'EFECTIVO',
         movementDate: payload.movementDate || getTodayDateBogota(),
         notes: payload.notes || null,
       };

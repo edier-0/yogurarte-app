@@ -38,6 +38,7 @@ import StaffModal, { type StaffMemberItem } from '@/components/directory/StaffMo
 import StaffPaymentModal from '@/components/directory/StaffPaymentModal.vue';
 import NequiConfigModal from '@/components/directory/NequiConfigModal.vue';
 import UserModal, { type UserItem } from '@/components/directory/UserModal.vue';
+import { formatPaymentMethod } from '@/types/payment';
 
 interface StaffPaymentItem {
   id: number;
@@ -719,7 +720,7 @@ async function handleDeleteUser(user: UserItem) {
                     {{ formatDate(p.paymentDate) }}
                   </span>
                   <span class="font-bold text-slate-600 dark:text-slate-300">
-                    Medio: {{ p.paymentMethod }}
+                    Medio: {{ formatPaymentMethod(p.paymentMethod) }}
                   </span>
                   <span v-if="p.notes" class="font-medium text-slate-600 dark:text-slate-300">
                     Detalle: {{ p.notes }}

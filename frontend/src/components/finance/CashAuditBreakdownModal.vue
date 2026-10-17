@@ -138,7 +138,7 @@ const formatCurrency = (val: number) => {
                   <span class="font-bold text-amber-600">{{ formatCurrency(financeStore.kpis.totalInflowCash) }}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span>En Bancos / Digital:</span>
+                  <span>En Nequi:</span>
                   <span class="font-bold text-dairy-500">{{ formatCurrency(financeStore.kpis.totalInflowBank) }}</span>
                 </div>
               </div>
@@ -188,7 +188,7 @@ const formatCurrency = (val: number) => {
                   <span class="font-bold text-amber-600">-{{ formatCurrency(financeStore.kpis.totalOutflowCash) }}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span>En Bancos / Digital:</span>
+                  <span>En Nequi:</span>
                   <span class="font-bold text-dairy-500">-{{ formatCurrency(financeStore.kpis.totalOutflowBank) }}</span>
                 </div>
               </div>
@@ -203,7 +203,7 @@ const formatCurrency = (val: number) => {
             <span>Traslados entre Cuentas (Consignaciones y Retiros)</span>
           </div>
           <p class="mt-1.5 text-xs text-slate-600 dark:text-slate-300">
-            Los traslados transfieren valor entre el monedero de <strong>Efectivo</strong> y las cuentas digitales <strong>(Bancolombia / Nequi)</strong>. Mantienen el balance global inalterado mientras actualizan con exactitud la disponibilidad física en caja menor.
+            Los traslados transfieren valor entre el monedero de <strong>Efectivo</strong> y la cuenta de <strong>Nequi</strong>. Mantienen el balance global inalterado mientras actualizan con exactitud la disponibilidad física en caja menor.
           </p>
         </div>
 

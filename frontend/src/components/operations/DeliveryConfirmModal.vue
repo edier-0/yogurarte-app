@@ -407,11 +407,8 @@ const handleConfirm = async () => {
                   v-model="paymentMethod"
                   class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2.5 px-3 text-xs font-bold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
                 >
-                  <option value="EFECTIVO">Efectivo Caja Menor</option>
+                  <option value="EFECTIVO">Efectivo (Caja Menor)</option>
                   <option value="NEQUI">Nequi</option>
-                  <option value="BANCOLOMBIA">Bancolombia</option>
-                  <option value="DAVIPLATA">Daviplata</option>
-                  <option value="TRANSFERENCIA">Transferencia Bancaria</option>
                 </select>
               </div>
             </div>
@@ -468,11 +465,8 @@ const handleConfirm = async () => {
                   v-model="paymentMethod"
                   class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2.5 px-3 text-xs font-bold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-card dark:text-white"
                 >
-                  <option value="EFECTIVO">Efectivo Caja Menor</option>
+                  <option value="EFECTIVO">Efectivo (Caja Menor)</option>
                   <option value="NEQUI">Nequi</option>
-                  <option value="BANCOLOMBIA">Bancolombia</option>
-                  <option value="DAVIPLATA">Daviplata</option>
-                  <option value="TRANSFERENCIA">Transferencia Bancaria</option>
                 </select>
               </div>
             </div>
