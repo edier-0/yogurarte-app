@@ -8,9 +8,11 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Modales móviles: arquitectura de 3 capas fijas (`header` shrink-0, cuerpo `flex-1 overflow-y-auto`, `footer` shrink-0) en todos los modales del sistema, incluyendo auditorías (`BatchSummaryModal`, `PackagingSummaryModal`, `KardexModal`, `CashAuditBreakdownModal`).
 - Lotes y Descuentos: corregido bug de conversión a pre-venta con descuentos; auto-vínculo blindado y balances financieros proporcionales.
 - Caja y Socios: registro de socios aportantes en `APORTE_SOCIO`, soporte de egreso `DEVOLUCION_APORTE` vinculado a `StaffMember` (rol `SOCIO`) y control interactivo de saldos de capital.
+- Kardex y Stock: edición y eliminación de movimientos de almacén tanto en la pestaña general como en el modal específico por insumo, con recálculo atómico y restablecimiento del stock en BD.
 - Directorio de Clientes & CRM: métricas globales reales (deuda en la calle y encargos en proceso sin sesgo de paginación), mensajería inteligente por estado y plantilla rápida `/gracias_pago`.
 
 ## Decisiones (y por qué)
+- Restablecimiento de stock en Kardex: al eliminar un movimiento se revierte `currentStock = currentStock - deltaQuantity`; al editarlo se aplica la diferencia neta `newDelta - oldDelta`, garantizando stock exacto sin distorsionar el costo promedio histórico.
 - Validación de topes en aportes y base: `DEVOLUCION_APORTE` no puede exceder el aporte neto disponible del socio (`APORTE_SOCIO - DEVOLUCION_APORTE`) ni `RETIRO_BASE` la base neta disponible. El modal proyecta el descuento en tiempo real y bloquea montos excedentes.
 - Kardex y Donaciones: ajustes de stock de materias primas sobrantes/regaladas no recalculan costo promedio unitario a cero para evitar distorsionar el costo real de producción de yogures.
 - Aportes y Devoluciones a Socios: `CashMovement.staffMemberId` traza el socio en aportes de capital y en `DEVOLUCION_APORTE` (egreso no operativo que reduce caja sin inflar gastos del negocio).
