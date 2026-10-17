@@ -16,6 +16,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Deuda calculada, no columna: evita saldos desfasados respecto a pagos. Excluye pedidos `CANCELLED` tanto en deuda como en encargos.
 - Métricas globales de clientes: computadas a nivel de BD para que los KPIs ("Deuda en la calle", "Encargos") no dependan de la página actual de 12 clientes.
 - Mensajería contextual: 4 estados de cliente (Deuda pendiente, Encargo 100% pago, Encargo por cobrar, Saludo/Antojo de yogur) con previsualización editable en CRM antes del envío.
+- Canales de pago unificados: solo Efectivo (Caja Menor) y Nequi en toda la interfaz; registros legacy se mapean a Nequi sin romper arqueos históricos.
 - Caja por canal (efectivo vs Nequi/banco): refleja arqueos físicos reales. Tesorería acumulada nunca se filtra por fecha.
 - Fallback externo WhatsApp: `buildWhatsAppUrl` universal para lidiar con números y LIDs de Baileys.
 
