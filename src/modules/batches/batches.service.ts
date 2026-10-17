@@ -2930,11 +2930,15 @@ export function computePackagingPresentations(pkg: any) {
     });
     const sold = matchingOrderItems.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
 
-    // Calcular ingreso real obtenido teniendo en cuenta descuentos de comanda y precios unitarios especiales
-    const actualRevenue = matchingOrderItems.reduce((sum: number, it: any) => {
+    // Calcular ingreso real obtenido teniendo en cuenta descuentos de comanda y precios unitarios especiales,
+    // y prorratear los pagos en caja y cartera pendiente atribuibles a esta presentación de la fracción
+    let actualRevenue = 0;
+    let paidRevenue = 0;
+
+    for (const it of matchingOrderItems) {
       const orderDiscount = Number(it.order?.discount) || 0;
-      const orderItems = it.order?.items || [];
-      const orderItemsSubtotal = orderItems.reduce((s: number, x: any) => s + (Number(x.totalPrice) || 0), 0);
+      const orderItemsList = it.order?.items || [];
+      const orderItemsSubtotal = orderItemsList.reduce((s: number, x: any) => s + (Number(x.totalPrice) || 0), 0);
       const itemBasePrice = it.totalPrice !== undefined && it.totalPrice !== null ? Number(it.totalPrice) : (it.quantity * p.price);
 
       let netItemRevenue = itemBasePrice;
@@ -2942,8 +2946,22 @@ export function computePackagingPresentations(pkg: any) {
         const itemRatio = itemBasePrice / orderItemsSubtotal;
         netItemRevenue = Math.max(0, itemBasePrice - (orderDiscount * itemRatio));
       }
-      return sum + netItemRevenue;
-    }, 0);
+      actualRevenue += netItemRevenue;
+
+      // Cálculo de cobro realizado vs deuda en la calle de este ítem
+      const orderTotal = Number(it.order?.totalAmount) || 0;
+      const orderPaid = Number(it.order?.paidAmount) || 0;
+      let itemPaid = 0;
+      if (it.order?.paymentStatus === 'PAID') {
+        itemPaid = netItemRevenue;
+      } else if (orderTotal > 0 && orderPaid > 0) {
+        const paidRatio = Math.min(1, Math.max(0, orderPaid / orderTotal));
+        itemPaid = Math.round(netItemRevenue * paidRatio);
+      }
+      paidRevenue += itemPaid;
+    }
+
+    const pendingRevenue = Math.max(0, Math.round(actualRevenue - paidRevenue));
 
     // Determinar unidades retiradas / dadas de baja
     const matchingDischarges = discharges.filter((d: any) => {
@@ -2970,6 +2988,8 @@ export function computePackagingPresentations(pkg: any) {
       freeLiters: Math.round(free * p.capacityLiters * 100) / 100,
       rawMaterialId: p.rawMaterialId,
       actualRevenue: Math.round(actualRevenue),
+      paidRevenue: Math.round(paidRevenue),
+      pendingRevenue,
     };
   });
 
@@ -3017,6 +3037,7 @@ export function calculatePackagingProfitability(
 ) {
   let totalProjectedRevenue = 0;
   let totalSoldRevenue = 0;
+  let totalPaidAmount = 0;
 
   const enrichedPresentations = presentations.map((p) => {
     const capacity = Number(p.capacityLiters) || 1;
@@ -3049,8 +3070,11 @@ export function calculatePackagingProfitability(
     const realizedCost = sold * (fractionCostPerLiter * capacity);
     const realizedProfit = realizedRevenue - realizedCost;
 
+    const presentationPaid = (p as any).paidRevenue !== undefined ? (p as any).paidRevenue : 0;
+
     totalProjectedRevenue += projectedRevenue;
     totalSoldRevenue += realizedRevenue;
+    totalPaidAmount += presentationPaid;
 
     return {
       ...p,
@@ -3083,6 +3107,10 @@ export function calculatePackagingProfitability(
     : 0;
   const actualAvgSellingPricePerLiter = soldLiters > 0 ? Math.round(totalSoldRevenue / soldLiters) : avgSellingPricePerLiter;
 
+  // Cartera y recaudos: la meta a recaudar es el total neto vendido (con descuentos aplicados)
+  totalPaidAmount = Math.min(totalSoldRevenue, Math.round(totalPaidAmount));
+  const totalPendingAmount = Math.max(0, totalSoldRevenue - totalPaidAmount);
+
   return {
     presentations: enrichedPresentations,
     profitability: {
@@ -3095,6 +3123,8 @@ export function calculatePackagingProfitability(
       totalProjectedRevenue,
       totalProjectedProfit,
       totalSoldRevenue,
+      totalPaidAmount,
+      totalPendingAmount,
       totalDiscountsGiven,
       totalSoldCost,
       realizedProfit,
@@ -3152,6 +3182,7 @@ export const getBatchPackagings = async (query: PackagingsQueryInput) => {
             order: {
               include: {
                 customer: { select: { id: true, fullName: true, phone: true } },
+                items: true,
               },
             },
           },
@@ -3266,6 +3297,7 @@ export const getPackagingSummary = async (packagingId: number) => {
           order: {
             include: {
               customer: { select: { id: true, fullName: true, phone: true } },
+              items: true,
             },
           },
         },
@@ -3308,6 +3340,9 @@ export const getPackagingSummary = async (packagingId: number) => {
           deliveryStatus: it.order.deliveryStatus,
           paymentStatus: it.order.paymentStatus,
           totalAmount: it.order.totalAmount,
+          paidAmount: it.order.paidAmount ?? 0,
+          pendingAmount: it.order.pendingAmount ?? 0,
+          discount: it.order.discount ?? 0,
           items: [],
         });
       }

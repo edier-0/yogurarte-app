@@ -48,6 +48,8 @@ export interface PackagingPresentationItem {
   realizedRevenue?: number;
   realizedProfit?: number;
   actualRevenue?: number;
+  paidRevenue?: number;
+  pendingRevenue?: number;
 }
 
 export interface BatchPackagingCardItem {
@@ -96,6 +98,8 @@ export interface PackagingProfitabilityData {
   totalProjectedRevenue: number;
   totalProjectedProfit: number;
   totalSoldRevenue: number;
+  totalPaidAmount?: number;
+  totalPendingAmount?: number;
   totalDiscountsGiven?: number;
   totalSoldCost: number;
   realizedProfit: number;
@@ -139,6 +143,9 @@ export interface PackagingSummaryData {
     deliveryStatus: string;
     paymentStatus: string;
     totalAmount: number;
+    paidAmount?: number;
+    pendingAmount?: number;
+    discount?: number;
     items: any[];
   }>;
   discharges: any[];
