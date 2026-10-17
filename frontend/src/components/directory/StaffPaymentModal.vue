@@ -64,7 +64,7 @@ const selectedStaffId = ref<number | null>(null);
 const paymentType = ref<string>('JORNAL');
 const amount = ref<number | ''>('');
 const deductions = ref<number | ''>(0);
-const paymentMethod = ref<'EFECTIVO' | 'NEQUI_BANCOLOMBIA'>('EFECTIVO');
+const paymentMethod = ref<'EFECTIVO' | 'NEQUI'>('EFECTIVO');
 const paymentDate = ref(getTodayDateBogota());
 const notes = ref('');
 const registeredBy = ref('Edier');
@@ -84,7 +84,7 @@ watch(
         amount.value = Number((payment as StaffPaymentItemData).amount) || 0;
         deductions.value = Number((payment as StaffPaymentItemData).deductions) || 0;
         const rawMethod = ((payment as StaffPaymentItemData).paymentMethod || 'EFECTIVO').toUpperCase().trim();
-        paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI_BANCOLOMBIA';
+        paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI';
         paymentDate.value = (payment as StaffPaymentItemData).paymentDate
           ? String((payment as StaffPaymentItemData).paymentDate).slice(0, 10)
           : getTodayDateBogota();
@@ -361,16 +361,16 @@ async function handleSubmit() {
 
               <button
                 type="button"
-                @click="paymentMethod = 'NEQUI_BANCOLOMBIA'"
+                @click="paymentMethod = 'NEQUI'"
                 class="flex items-center justify-center gap-2 rounded-2xl border p-3 text-xs font-extrabold transition-all"
                 :class="
-                  paymentMethod === 'NEQUI_BANCOLOMBIA'
+                  paymentMethod === 'NEQUI'
                     ? 'border-purple-600 bg-purple-50 text-purple-700 shadow-xs dark:border-purple-400 dark:bg-purple-950/40 dark:text-purple-300'
                     : 'border-surface-light-border bg-surface-light-canvas text-slate-600 hover:border-slate-300 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-400'
                 "
               >
                 <Smartphone class="h-4 w-4 stroke-[2]" />
-                <span>Nequi / Bancolombia</span>
+                <span>Nequi</span>
               </button>
             </div>
           </div>

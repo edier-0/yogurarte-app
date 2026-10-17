@@ -245,7 +245,7 @@ async function handleSubmit() {
                 class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
               >
                 <option value="EFECTIVO">Efectivo (Caja Menor)</option>
-                <option value="NEQUI">Nequi / Bancolombia (Transferencia)</option>
+                <option value="NEQUI">Nequi</option>
               </select>
             </div>
 

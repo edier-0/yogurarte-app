@@ -56,8 +56,8 @@ watch(
     if (!props.open || !props.payment) return;
 
     const p = props.payment;
-    amount.value = Math.abs(Number(p.amount) || 0);
-    paymentMethod.value = p.paymentMethod ? String(p.paymentMethod).toUpperCase().trim() : 'EFECTIVO';
+    const rawMethod = p.paymentMethod ? String(p.paymentMethod).toUpperCase().trim() : 'EFECTIVO';
+    paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI';
 
     const rawDate = p.date || p.movementDate || p.paymentDate || '';
     paymentDate.value = rawDate ? String(rawDate).slice(0, 10) : getTodayDateBogota();
@@ -258,12 +258,8 @@ async function handleSubmit() {
               v-model="paymentMethod"
               class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 px-3 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
             >
-              <option value="EFECTIVO">💵 Efectivo (Caja Menor Física)</option>
+              <option value="EFECTIVO">💵 Efectivo (Caja Menor)</option>
               <option value="NEQUI">🟣 Nequi</option>
-              <option value="BANCOLOMBIA">🟡 Bancolombia</option>
-              <option value="DAVIPLATA">🔴 Daviplata</option>
-              <option value="TRANSFERENCIA">🏦 Transferencia Bancaria</option>
-              <option value="OTRO">📱 Otro Medio Digital</option>
             </select>
           </div>
 
