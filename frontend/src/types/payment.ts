@@ -1,10 +1,10 @@
 /**
  * Estándar global de métodos de pago en YogurArte
  * Únicamente se admiten dos canales en todo el sistema:
- * - EFECTIVO: Efectivo Caja Menor
- * - NEQUI_BANCOLOMBIA: Nequi o Bancolombia (Billeteras y transferencias digitales)
+ * - EFECTIVO: Efectivo (Caja Menor)
+ * - NEQUI: Nequi
  */
-export type PaymentMethod = 'EFECTIVO' | 'NEQUI_BANCOLOMBIA';
+export type PaymentMethod = 'EFECTIVO' | 'NEQUI';
 
 export interface PaymentMethodOption {
   value: PaymentMethod;
@@ -15,13 +15,13 @@ export interface PaymentMethodOption {
 export const PAYMENT_METHOD_OPTIONS: readonly PaymentMethodOption[] = [
   {
     value: 'EFECTIVO',
-    label: 'Efectivo Caja Menor',
+    label: 'Efectivo (Caja Menor)',
     description: 'Dinero en efectivo físico disponible en caja menor',
   },
   {
-    value: 'NEQUI_BANCOLOMBIA',
-    label: 'Nequi o Bancolombia',
-    description: 'Transferencias digitales vía Nequi o cuenta Bancolombia',
+    value: 'NEQUI',
+    label: 'Nequi',
+    description: 'Billetera digital Nequi',
   },
 ] as const;
 
@@ -34,9 +34,10 @@ export function formatPaymentMethod(method?: string | null): string {
     clean === 'NEQUI' ||
     clean === 'BANCOLOMBIA' ||
     clean === 'TRANSFERENCIA' ||
-    clean === 'DIGITAL'
+    clean === 'DIGITAL' ||
+    clean === 'DAVIPLATA'
   ) {
-    return 'Nequi / Bancolombia';
+    return 'Nequi';
   }
   return method;
 }

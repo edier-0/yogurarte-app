@@ -126,13 +126,13 @@ function handleSmartWhatsApp(customer: CustomerItem) {
 
   if (deliveredDebt > 0) {
     title = `Recordatorio de Deuda: ${name}`;
-    generatedText = `¡Hola ${name}! 🥛✨ Te saludamos con mucho cariño desde *YogurArte*.\n\nEsperamos que estés disfrutando mucho tus yogures artesanales.\n\nTe recordamos amablemente que presentas un saldo pendiente de *${formatCurrency(deliveredDebt)}* de tu entrega anterior.\n\nPuedes transferir a nuestra cuenta Nequi/Bancolombia al *3024581882* y compartirnos tu comprobante por este medio. ¡Muchísimas gracias por tu apoyo continuo a nuestro emprendimiento artesanal! 🙌🐄`;
+    generatedText = `¡Hola ${name}! 🥛✨ Te saludamos con mucho cariño desde *YogurArte*.\n\nEsperamos que estés disfrutando mucho tus yogures artesanales.\n\nTe recordamos amablemente que presentas un saldo pendiente de *${formatCurrency(deliveredDebt)}* de tu entrega anterior.\n\nPuedes transferir a nuestro Nequi al *3024581882* y compartirnos tu comprobante por este medio. ¡Muchísimas gracias por tu apoyo continuo a nuestro emprendimiento artesanal! 🙌🐄`;
   } else if (inProcessPaidCount > 0 && inProcessPending <= 0) {
     title = `Aviso de Encargo Pago: ${name}`;
     generatedText = `¡Hola ${name}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\n🎉 Te confirmamos que tu encargo ya se encuentra 100% pago y lo tenemos en proceso de preparación fresca. 🥣🍓\n\nTe avisaremos en cuanto nuestro domiciliario vaya en camino hacia tu dirección. 🛵💨 ¡Muchas gracias por tu confianza! 🙌✨`;
   } else if (inProcessPending > 0) {
     title = `Aviso de Encargo por Cobrar: ${name}`;
-    generatedText = `¡Hola ${name}! 🥛✨ Te saludamos desde *YogurArte*.\n\nTu encargo de yogur artesanal 100% natural está siendo preparado fresco con todo el cuidado. 🥣🍓\n\nTe recordamos que el valor total es de *${formatCurrency(inProcessPending)}* para cancelar contra entrega (en efectivo o transferencia al recibir). Te avisaremos apenas vaya en ruta. ¡Gracias por tu encargo! 🛵💨`;
+    generatedText = `¡Hola ${name}! 🥛✨ Te saludamos desde *YogurArte*.\n\nTu encargo de yogur artesanal 100% natural está siendo preparado fresco con todo el cuidado. 🥣🍓\n\nTe recordamos que el valor total es de *${formatCurrency(inProcessPending)}* para cancelar contra entrega (en efectivo o Nequi al recibir). Te avisaremos apenas vaya en ruta. ¡Gracias por tu encargo! 🛵💨`;
   } else {
     title = `Saludo y Antojo: ${name}`;
     generatedText = `¡Hola ${name}! 🥛✨ Te saludamos con aprecio desde *YogurArte*.\n\n¿Cómo has estado? Pasamos a saludarte y recordarte si se te antoja un delicioso yogur artesanal fresco para estos días. ¡Tenemos sabores deliciosos listos para ti! Cuéntanos si deseas apartar el tuyo. 🍓🍑🍇`;

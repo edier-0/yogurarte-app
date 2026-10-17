@@ -30,6 +30,7 @@ import { useConfirm } from '@/composables/useConfirm';
 import ExpenseModal from '@/components/finance/ExpenseModal.vue';
 import ExpenseFormModal from '@/components/finance/ExpenseFormModal.vue';
 import CreditPaymentModal from '@/components/finance/CreditPaymentModal.vue';
+import { formatPaymentMethod } from '@/types/payment';
 
 interface ExpenseItem {
   id: number;
@@ -594,7 +595,7 @@ async function deleteCredit(id: number) {
                   <span>{{ formatDate(expense.expenseDate) }}</span>
                   <span>•</span>
                   <span class="font-bold text-slate-700 dark:text-slate-300">
-                    {{ expense.paymentMethod }}
+                    {{ formatPaymentMethod(expense.paymentMethod) }}
                   </span>
                   <span v-if="getDisplaySupplier(expense)">• Prov: {{ getDisplaySupplier(expense) }}</span>
                   <span v-if="expense.registeredBy">• Por: {{ expense.registeredBy }}</span>

@@ -55,8 +55,8 @@ const notes = ref<string>('');
 const isSubmitting = ref<boolean>(false);
 
 const paymentMethods = [
-  { id: 'EFECTIVO', label: 'Efectivo' },
-  { id: 'NEQUI', label: 'Nequi / Bancolombia' },
+  { id: 'EFECTIVO', label: 'Efectivo (Caja Menor)' },
+  { id: 'NEQUI', label: 'Nequi' },
 ];
 
 const totalPendingDebt = computed(() => {

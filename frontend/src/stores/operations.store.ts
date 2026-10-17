@@ -62,6 +62,7 @@ export interface Order {
   deliveryType: 'PROPIO' | 'DOMICILIARIO' | 'LOCAL' | string;
   deliveryStatus: DeliveryStatus;
   paymentStatus: PaymentStatus;
+  paymentMethod?: string;
   totalAmount: number;
   paidAmount?: number;
   totalPaid?: number;

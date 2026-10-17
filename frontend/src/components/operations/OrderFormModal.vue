@@ -300,8 +300,8 @@ watch(
         deliveryDate.value = o.deliveryDate ? o.deliveryDate.split('T')[0] : '';
         deliveryDriverId.value = o.deliveryDriverId || null;
         deliveryFee.value = o.deliveryFee || 0;
-        paidAmount.value = o.paidAmount || o.totalPaid || 0;
-        paymentMethod.value = 'EFECTIVO';
+        const rawMethod = (o.paymentMethod || 'EFECTIVO').toUpperCase().trim();
+        paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI';
         notes.value = o.notes || '';
 
         // Restaurar descuento previo si existe
@@ -942,8 +942,8 @@ const formatCurrency = (val: number) => {
                   v-model="paymentMethod"
                   class="w-full rounded-xl border border-slate-200 bg-surface-light-card py-2 px-3 text-xs font-semibold dark:border-slate-700 dark:bg-surface-dark-card"
                 >
-                  <option value="EFECTIVO">Efectivo Caja Menor</option>
-                  <option value="NEQUI_BANCOLOMBIA">Nequi o Bancolombia</option>
+                  <option value="EFECTIVO">Efectivo (Caja Menor)</option>
+                  <option value="NEQUI">Nequi</option>
                 </select>
               </div>
             </div>

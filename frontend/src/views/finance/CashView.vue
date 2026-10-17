@@ -32,6 +32,7 @@ import CashMovementModal, { type MovementMode } from '@/components/finance/CashM
 import ExpenseFormModal from '@/components/finance/ExpenseFormModal.vue';
 import CashAuditBreakdownModal from '@/components/finance/CashAuditBreakdownModal.vue';
 import EditOrderPaymentModal from '@/components/finance/EditOrderPaymentModal.vue';
+import { formatPaymentMethod } from '@/types/payment';
 
 const router = useRouter();
 const financeStore = useFinanceStore();
@@ -733,7 +734,7 @@ async function confirmDelete(mov: any) {
               <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                 <span>{{ formatMovementDate(mov.date) }}</span>
                 <span>•</span>
-                <span class="font-bold text-slate-700 dark:text-slate-300">{{ mov.paymentMethod }}</span>
+                <span class="font-bold text-slate-700 dark:text-slate-300">{{ formatPaymentMethod(mov.paymentMethod) }}</span>
                 <span v-if="mov.registeredBy">• Por: {{ mov.registeredBy }}</span>
               </div>
 
