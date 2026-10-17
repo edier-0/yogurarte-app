@@ -69,6 +69,17 @@ export const adjustStockSchema = z.object({
   adjustmentDate: z.string().optional(),
 });
 
+export const updateAdjustmentSchema = z.object({
+  quantity: z.coerce.number().min(0).optional(),
+  movementType: z.enum(['ENTRADA', 'SALIDA']).optional(),
+  newStock: z.coerce.number().min(0).optional(),
+  deltaQuantity: z.coerce.number().optional(),
+  type: z.string().optional(),
+  reason: z.string().optional().nullable(),
+  registeredBy: z.string().optional(),
+  adjustmentDate: z.string().optional(),
+});
+
 export const adjustmentsQuerySchema = z.object({
   rawMaterialId: z.string().optional(),
   type: z.string().optional(),
@@ -138,6 +149,7 @@ export type UpdateMaterialInput = z.infer<typeof updateMaterialSchema>;
 export type MaterialsQueryInput = z.infer<typeof materialsQuerySchema>;
 
 export type AdjustStockInput = z.infer<typeof adjustStockSchema>;
+export type UpdateAdjustmentInput = z.infer<typeof updateAdjustmentSchema>;
 export type AdjustmentsQueryInput = z.infer<typeof adjustmentsQuerySchema>;
 export type InventoryMovementsQueryInput = z.infer<typeof inventoryMovementsQuerySchema>;
 

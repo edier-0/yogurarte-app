@@ -203,6 +203,127 @@ describe('Inventory & Compound Recipes (Insumos Compuestos & Regla Contable)', (
     expect(check?.isActive).toBe(true);
   });
 
+  describe('Kardex Movements - Edición, Eliminación y Restablecimiento de Stock', () => {
+    let testMaterialId: number;
+    let adjustmentId: number;
+
+    it('Debe crear un insumo base y registrar un movimiento inicial de Kardex (SALIDA)', async () => {
+      const mat = await prisma.rawMaterial.create({
+        data: {
+          code: `KARDEX_TEST_${Date.now()}`,
+          name: 'Envase PET 1L Test',
+          category: 'EMPAQUE',
+          unit: 'Unidades',
+          currentStock: 100,
+          avgCost: 500,
+          minStockAlert: 10,
+          isActive: true,
+        },
+      });
+      testMaterialId = mat.id;
+
+      // Registrar salida de 20 unidades
+      const res = await request(app)
+        .post('/api/inventory/adjustments')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          rawMaterialId: testMaterialId,
+          newStock: 80, // delta = -20
+          type: 'MERMA_CONSUMO',
+          reason: 'Prueba de merma inicial',
+          registeredBy: 'Tester',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.adjustment).toBeDefined();
+      expect(res.body.adjustment.deltaQuantity).toBe(-20);
+      expect(res.body.material.currentStock).toBe(80);
+
+      adjustmentId = res.body.adjustment.id;
+    });
+
+    it('PUT /api/inventory/adjustments/:id debe editar el movimiento modificando cantidad y recalcular el stock', async () => {
+      // Modificar salida de 20 a salida de 15: el stock debe pasar de 80 a 85
+      const res = await request(app)
+        .put(`/api/inventory/adjustments/${adjustmentId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          quantity: 15,
+          movementType: 'SALIDA',
+          reason: 'Corrección: sólo se mermaron 15 unidades',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.adjustment.deltaQuantity).toBe(-15);
+      expect(res.body.adjustment.reason).toBe('Corrección: sólo se mermaron 15 unidades');
+      expect(res.body.newCurrentStock).toBe(85);
+
+      const mat = await prisma.rawMaterial.findUnique({ where: { id: testMaterialId } });
+      expect(mat?.currentStock).toBe(85);
+    });
+
+    it('PUT /api/inventory/movements/:id (alias) debe cambiar el tipo a ENTRADA y recalcular stock correspondientemente', async () => {
+      // Cambiar de salida de 15 a entrada de 10:
+      // Stock anterior era 85 (con delta de -15).
+      // Al cambiar a delta de +10, la diferencia es +10 - (-15) = +25.
+      // El stock debe pasar de 85 a 110 (100 base + 10 entrada)
+      const res = await request(app)
+        .put(`/api/inventory/movements/${adjustmentId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          quantity: 10,
+          movementType: 'ENTRADA',
+          reason: 'Corrección: era reposición de stock',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.adjustment.deltaQuantity).toBe(10);
+      expect(res.body.newCurrentStock).toBe(110);
+
+      const mat = await prisma.rawMaterial.findUnique({ where: { id: testMaterialId } });
+      expect(mat?.currentStock).toBe(110);
+    });
+
+    it('DELETE /api/inventory/adjustments/:id debe eliminar el movimiento y restablecer el stock original', async () => {
+      // El movimiento actual tiene deltaQuantity = +10 y stock actual = 110.
+      // Al eliminarlo, restoredStock = 110 - (+10) = 100.
+      const res = await request(app)
+        .delete(`/api/inventory/adjustments/${adjustmentId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.restoredStock).toBe(100);
+
+      const mat = await prisma.rawMaterial.findUnique({ where: { id: testMaterialId } });
+      expect(mat?.currentStock).toBe(100);
+
+      const adj = await prisma.inventoryAdjustment.findUnique({ where: { id: adjustmentId } });
+      expect(adj).toBeNull();
+    });
+
+    it('PUT y DELETE en movimientos inexistentes deben retornar 404', async () => {
+      const putRes = await request(app)
+        .put('/api/inventory/adjustments/999999')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ quantity: 5 });
+
+      expect(putRes.status).toBe(404);
+
+      const delRes = await request(app)
+        .delete('/api/inventory/adjustments/999999')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(delRes.status).toBe(404);
+    });
+
+    afterAll(async () => {
+      if (testMaterialId) {
+        await prisma.inventoryAdjustment.deleteMany({ where: { rawMaterialId: testMaterialId } }).catch(() => {});
+        await prisma.rawMaterial.delete({ where: { id: testMaterialId } }).catch(() => {});
+      }
+    });
+  });
+
   afterAll(async () => {
     if (compoundJamId) {
       await prisma.compoundRecipeItem.deleteMany({ where: { compoundMaterialId: compoundJamId } }).catch(() => {});

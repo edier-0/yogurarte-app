@@ -119,6 +119,15 @@ export const getInventoryMovements = async (req: Request, res: Response, next: N
 };
 
 
+export const updateAdjustment = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await inventoryService.updateAdjustment(Number(req.params.id), req.body);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const deleteAdjustment = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await inventoryService.deleteAdjustment(Number(req.params.id));
