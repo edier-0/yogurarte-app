@@ -238,4 +238,120 @@ describe('Cash Movements Management & Pagination', () => {
       await prisma.order.delete({ where: { id: orderId } }).catch(() => {});
     }
   });
+
+  it('GET /api/cash-movements/capital-balances y validación de tope en devolución de aporte y retiro de base', async () => {
+    // 1. Crear un socio temporal para la prueba
+    const partner = await prisma.staffMember.create({
+      data: {
+        fullName: 'Socio Test Aportes',
+        phone: '3109998877',
+        role: 'SOCIO',
+        type: 'SOCIO',
+        paymentScheme: 'PORCENTAJE',
+      },
+    });
+
+    try {
+      // 2. Consultar balances iniciales
+      const balancesRes = await request(app)
+        .get('/api/cash-movements/capital-balances')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(balancesRes.status).toBe(200);
+      expect(balancesRes.body).toHaveProperty('base');
+      expect(balancesRes.body).toHaveProperty('partners');
+      expect(Array.isArray(balancesRes.body.partners)).toBe(true);
+
+      const socioInitial = balancesRes.body.partners.find((p: any) => p.partnerId === partner.id);
+      expect(socioInitial).toBeDefined();
+      expect(socioInitial.available).toBe(0);
+
+      // 3. Intentar devolver un aporte a un socio sin aportes previos -> debe responder 400
+      const invalidReturnRes = await request(app)
+        .post('/api/cash-movements')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          type: 'DEVOLUCION_APORTE',
+          amount: 50000,
+          concept: 'Devolución indebida sin aportes',
+          staffMemberId: partner.id,
+          paymentMethod: 'EFECTIVO',
+        });
+
+      expect(invalidReturnRes.status).toBe(400);
+      expect(invalidReturnRes.body.message).toMatch(/no puede ser mayor al aporte disponible/i);
+
+      // 4. Registrar aporte de socio de $100.000
+      const aporteRes = await request(app)
+        .post('/api/cash-movements')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          type: 'APORTE_SOCIO',
+          amount: 100000,
+          concept: 'Aporte extraordinario de prueba',
+          staffMemberId: partner.id,
+          paymentMethod: 'EFECTIVO',
+        });
+
+      expect(aporteRes.status).toBe(201);
+      createdIds.push(aporteRes.body.id);
+
+      // 5. Intentar devolver $150.000 (mayor a los $100.000 aportados) -> debe responder 400
+      const overReturnRes = await request(app)
+        .post('/api/cash-movements')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          type: 'DEVOLUCION_APORTE',
+          amount: 150000,
+          concept: 'Devolución que excede aporte',
+          staffMemberId: partner.id,
+          paymentMethod: 'EFECTIVO',
+        });
+
+      expect(overReturnRes.status).toBe(400);
+      expect(overReturnRes.body.message).toMatch(/no puede ser mayor al aporte disponible/i);
+
+      // 6. Devolver monto válido de $40.000 -> debe responder 201
+      const validReturnRes = await request(app)
+        .post('/api/cash-movements')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          type: 'DEVOLUCION_APORTE',
+          amount: 40000,
+          concept: 'Devolución parcial válida de aporte',
+          staffMemberId: partner.id,
+          paymentMethod: 'EFECTIVO',
+        });
+
+      expect(validReturnRes.status).toBe(201);
+      createdIds.push(validReturnRes.body.id);
+
+      // 7. Verificar que el disponible del socio ahora sea exactamente $60.000
+      const afterBalances = await request(app)
+        .get('/api/cash-movements/capital-balances')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      const socioAfter = afterBalances.body.partners.find((p: any) => p.partnerId === partner.id);
+      expect(socioAfter.totalContributed).toBe(100000);
+      expect(socioAfter.totalReturned).toBe(40000);
+      expect(socioAfter.available).toBe(60000);
+
+      // 8. Intentar retirar más base de la disponible en caja -> debe responder 400
+      const currentBaseAvailable = afterBalances.body.base.available;
+      const overBaseRes = await request(app)
+        .post('/api/cash-movements')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          type: 'RETIRO_BASE',
+          amount: currentBaseAvailable + 50000000, // Monto absurdo que excede la base
+          concept: 'Retiro de base excesivo',
+          paymentMethod: 'EFECTIVO',
+        });
+
+      expect(overBaseRes.status).toBe(400);
+      expect(overBaseRes.body.message).toMatch(/no puede ser mayor a la base disponible/i);
+    } finally {
+      await prisma.staffMember.delete({ where: { id: partner.id } }).catch(() => {});
+    }
+  });
 });
