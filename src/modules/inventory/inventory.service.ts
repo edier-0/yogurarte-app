@@ -1,5 +1,10 @@
 import prisma from '../../prisma.js';
-import { parseColombiaDate } from '../../utils/date.utils.js';
+import {
+  parseColombiaDate,
+  getColombiaDateStr,
+  getColombiaStartOfDay,
+  getColombiaEndOfDay,
+} from '../../utils/date.utils.js';
 import {
   BadRequestError,
   NotFoundError,
@@ -614,7 +619,7 @@ export const deletePurchase = async (id: number) => {
     });
 
     // 2. Buscar y eliminar gasto vinculado si se registró automáticamente en caja
-    const pDate = purchase.purchaseDate ? new Date(purchase.purchaseDate).toISOString().split('T')[0] : '';
+    const pDate = purchase.purchaseDate ? getColombiaDateStr(purchase.purchaseDate) : '';
     const matchingExpense = await tx.expense.findFirst({
       where: {
         amount: purchase.totalCost,
@@ -622,8 +627,8 @@ export const deletePurchase = async (id: number) => {
         ...(pDate
           ? {
               expenseDate: {
-                gte: new Date(`${pDate}T00:00:00.000Z`),
-                lte: new Date(`${pDate}T23:59:59.999Z`),
+                gte: getColombiaStartOfDay(pDate),
+                lte: getColombiaEndOfDay(pDate),
               },
             }
           : {}),
@@ -661,10 +666,10 @@ export const getPurchasesHistory = async (query: PurchasesQueryInput) => {
   if (startDate || endDate) {
     whereClause.purchaseDate = {};
     if (startDate && typeof startDate === 'string') {
-      whereClause.purchaseDate.gte = new Date(`${startDate.split('T')[0]}T00:00:00.000Z`);
+      whereClause.purchaseDate.gte = getColombiaStartOfDay(startDate);
     }
     if (endDate && typeof endDate === 'string') {
-      whereClause.purchaseDate.lte = new Date(`${endDate.split('T')[0]}T23:59:59.999Z`);
+      whereClause.purchaseDate.lte = getColombiaEndOfDay(endDate);
     }
   }
 
@@ -784,10 +789,10 @@ export const getAdjustmentsHistory = async (query: AdjustmentsQueryInput) => {
   if (startDate || endDate) {
     whereClause.adjustmentDate = {};
     if (startDate && typeof startDate === 'string') {
-      whereClause.adjustmentDate.gte = new Date(`${startDate.split('T')[0]}T00:00:00.000Z`);
+      whereClause.adjustmentDate.gte = getColombiaStartOfDay(startDate);
     }
     if (endDate && typeof endDate === 'string') {
-      whereClause.adjustmentDate.lte = new Date(`${endDate.split('T')[0]}T23:59:59.999Z`);
+      whereClause.adjustmentDate.lte = getColombiaEndOfDay(endDate);
     }
   }
 
@@ -866,10 +871,10 @@ export const getInventoryMovements = async (query: InventoryMovementsQueryInput)
   if (startDate || endDate) {
     whereClause.adjustmentDate = {};
     if (startDate && typeof startDate === 'string') {
-      whereClause.adjustmentDate.gte = new Date(`${startDate.split('T')[0]}T00:00:00.000Z`);
+      whereClause.adjustmentDate.gte = getColombiaStartOfDay(startDate);
     }
     if (endDate && typeof endDate === 'string') {
-      whereClause.adjustmentDate.lte = new Date(`${endDate.split('T')[0]}T23:59:59.999Z`);
+      whereClause.adjustmentDate.lte = getColombiaEndOfDay(endDate);
     }
   }
 

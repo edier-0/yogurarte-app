@@ -59,6 +59,7 @@ export function parseColombiaDate(inputDate?: string | Date | null): Date {
   if (
     str.includes('T') &&
     !str.endsWith('T00:00:00.000Z') &&
+    !str.endsWith('T00:00:00') &&
     !str.endsWith('T12:00:00.000Z') &&
     !str.endsWith('T05:00:00.000Z')
   ) {
@@ -78,13 +79,8 @@ export function parseColombiaDate(inputDate?: string | Date | null): Date {
     return new Date();
   }
 
-  // Combinar fecha con la hora actual en Colombia (UTC-5)
-  const timeStr = getColombiaTimeStr(); // "HH:mm:ss"
-  const isoWithTz = `${dateOnly}T${timeStr}-05:00`;
-  const result = new Date(isoWithTz);
-  if (!isNaN(result.getTime())) return result;
-
-  // Fallback seguro a medio día UTC (12:00 PM Colombia = 17:00 UTC)
+  // Para fechas manuales diferentes a hoy, fijar a mediodía hora Colombia (12:00 PM Colombia = 17:00 UTC)
+  // garantizando que quede a 12 horas de cualquier cambio de día y no sufra desplazamientos
   return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 17, 0, 0));
 }
 

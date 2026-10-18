@@ -768,7 +768,7 @@ export const deleteExpense = async (id: number) => {
 
         // 2. Eliminar cualquier gasto vinculado residual
         const pDate = existingPurchase.purchaseDate
-          ? new Date(existingPurchase.purchaseDate).toISOString().split('T')[0]
+          ? getColombiaDateStr(existingPurchase.purchaseDate)
           : '';
         const linkedExpense = await tx.expense.findFirst({
           where: {
@@ -777,8 +777,8 @@ export const deleteExpense = async (id: number) => {
             ...(pDate
               ? {
                   expenseDate: {
-                    gte: new Date(`${pDate}T00:00:00.000Z`),
-                    lte: new Date(`${pDate}T23:59:59.999Z`),
+                    gte: getColombiaStartOfDay(pDate),
+                    lte: getColombiaEndOfDay(pDate),
                   },
                 }
               : {}),
@@ -822,7 +822,7 @@ export const deleteExpense = async (id: number) => {
 
   if (isRawMaterialExpense) {
     const eDate = existing.expenseDate
-      ? new Date(existing.expenseDate).toISOString().split('T')[0]
+      ? getColombiaDateStr(existing.expenseDate)
       : '';
     const matchingPurchase = await prisma.purchase.findFirst({
       where: {
@@ -830,8 +830,8 @@ export const deleteExpense = async (id: number) => {
         ...(eDate
           ? {
               purchaseDate: {
-                gte: new Date(`${eDate}T00:00:00.000Z`),
-                lte: new Date(`${eDate}T23:59:59.999Z`),
+                gte: getColombiaStartOfDay(eDate),
+                lte: getColombiaEndOfDay(eDate),
               },
             }
           : {}),
@@ -1207,13 +1207,13 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
   } else if (period === 'today') {
     activeFilterDate = todayStr;
   } else if (period === 'yesterday') {
-    const yest = new Date();
-    yest.setDate(yest.getDate() - 1);
-    activeFilterDate = getColombiaDateStr(yest);
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const yestDate = new Date(Date.UTC(y, m - 1, d - 1, 12, 0, 0));
+    activeFilterDate = getColombiaDateStr(yestDate);
   } else if (period === 'tomorrow') {
-    const tmrw = new Date();
-    tmrw.setDate(tmrw.getDate() + 1);
-    activeFilterDate = getColombiaDateStr(tmrw);
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const tmrwDate = new Date(Date.UTC(y, m - 1, d + 1, 12, 0, 0));
+    activeFilterDate = getColombiaDateStr(tmrwDate);
   }
 
   if (activeFilterDate) {
@@ -1265,12 +1265,13 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     dischargeWhere.dischargeDate = monthRange;
     batchWhere.preparationDate = monthRange;
   } else if (period === 'week') {
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const diffToMonday = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diffToMonday));
+    const [curY, curM, curD] = todayStr.split('-').map(Number);
+    const refDay = new Date(Date.UTC(curY, curM - 1, curD, 12, 0, 0));
+    const dayOfWeek = refDay.getUTCDay();
+    const diffToMonday = curD - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+    const monday = new Date(Date.UTC(curY, curM - 1, diffToMonday, 12, 0, 0));
     const mondayStr = getColombiaDateStr(monday);
-    const startOfWeek = new Date(`${mondayStr}T00:00:00.000Z`);
+    const startOfWeek = getColombiaStartOfDay(mondayStr);
 
     orderWhere.OR = [{ orderDate: { gte: startOfWeek } }, { deliveryDate: { gte: startOfWeek } }];
     expenseWhere.expenseDate = { gte: startOfWeek };
@@ -2237,48 +2238,13 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
               ];
             }),
         ].sort((a: any, b: any) => {
-          const getEffTime = (item: any) => {
-            const dStr = item.date
-              ? item.date instanceof Date
-                ? item.date.toISOString()
-                : String(item.date)
-              : '';
-            const cStr = item.createdAt
-              ? item.createdAt instanceof Date
-                ? item.createdAt.toISOString()
-                : String(item.createdAt)
-              : '';
-            const datePart = dStr ? dStr.split('T')[0] : cStr ? cStr.split('T')[0] : '';
-
-            if (
-              dStr &&
-              dStr.includes('T') &&
-              !dStr.endsWith('T00:00:00.000Z') &&
-              !dStr.endsWith('T12:00:00.000Z')
-            ) {
-              const d = new Date(dStr);
-              if (!isNaN(d.getTime())) return d.getTime();
-            }
-            if (cStr) {
-              const cDate = new Date(cStr);
-              if (!isNaN(cDate.getTime())) {
-                if (!datePart) return cDate.getTime();
-                const hours = String(cDate.getUTCHours()).padStart(2, '0');
-                const mins = String(cDate.getUTCMinutes()).padStart(2, '0');
-                const secs = String(cDate.getUTCSeconds()).padStart(2, '0');
-                const ms = String(cDate.getUTCMilliseconds()).padStart(3, '0');
-                const combined = new Date(`${datePart}T${hours}:${mins}:${secs}.${ms}Z`);
-                if (!isNaN(combined.getTime())) return combined.getTime();
-                return cDate.getTime();
-              }
-            }
-            if (dStr) {
-              const d = new Date(dStr);
-              if (!isNaN(d.getTime())) return d.getTime();
-            }
-            return 0;
+          const getTime = (item: any) => {
+            const d = item.date ? new Date(item.date).getTime() : 0;
+            if (!isNaN(d) && d > 0) return d;
+            const c = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+            return !isNaN(c) ? c : 0;
           };
-          return getEffTime(b) - getEffTime(a);
+          return getTime(b) - getTime(a);
         }),
         outflows: [
           ...expenses.map((e) => {
@@ -2372,48 +2338,13 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
               rawMovement: m,
             })),
         ].sort((a: any, b: any) => {
-          const getEffTime = (item: any) => {
-            const dStr = item.date
-              ? item.date instanceof Date
-                ? item.date.toISOString()
-                : String(item.date)
-              : '';
-            const cStr = item.createdAt
-              ? item.createdAt instanceof Date
-                ? item.createdAt.toISOString()
-                : String(item.createdAt)
-              : '';
-            const datePart = dStr ? dStr.split('T')[0] : cStr ? cStr.split('T')[0] : '';
-
-            if (
-              dStr &&
-              dStr.includes('T') &&
-              !dStr.endsWith('T00:00:00.000Z') &&
-              !dStr.endsWith('T12:00:00.000Z')
-            ) {
-              const d = new Date(dStr);
-              if (!isNaN(d.getTime())) return d.getTime();
-            }
-            if (cStr) {
-              const cDate = new Date(cStr);
-              if (!isNaN(cDate.getTime())) {
-                if (!datePart) return cDate.getTime();
-                const hours = String(cDate.getUTCHours()).padStart(2, '0');
-                const mins = String(cDate.getUTCMinutes()).padStart(2, '0');
-                const secs = String(cDate.getUTCSeconds()).padStart(2, '0');
-                const ms = String(cDate.getUTCMilliseconds()).padStart(3, '0');
-                const combined = new Date(`${datePart}T${hours}:${mins}:${secs}.${ms}Z`);
-                if (!isNaN(combined.getTime())) return combined.getTime();
-                return cDate.getTime();
-              }
-            }
-            if (dStr) {
-              const d = new Date(dStr);
-              if (!isNaN(d.getTime())) return d.getTime();
-            }
-            return 0;
+          const getTime = (item: any) => {
+            const d = item.date ? new Date(item.date).getTime() : 0;
+            if (!isNaN(d) && d > 0) return d;
+            const c = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+            return !isNaN(c) ? c : 0;
           };
-          return getEffTime(b) - getEffTime(a);
+          return getTime(b) - getTime(a);
         }),
         transfers: cashMovements
           .filter(

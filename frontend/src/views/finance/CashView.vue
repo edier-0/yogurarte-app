@@ -25,6 +25,8 @@ import {
   useFinanceStore,
   type PeriodFilter,
   getTodayDateBogota,
+  toInputDateFormat,
+  COLOMBIA_TIMEZONE,
 } from '@/stores/finance.store';
 import { useConfirm } from '@/composables/useConfirm';
 import TransferModal from '@/components/finance/TransferModal.vue';
@@ -67,6 +69,7 @@ const formatMovementDate = (dateStr: string) => {
   try {
     const d = new Date(dateStr);
     return new Intl.DateTimeFormat('es-CO', {
+      timeZone: COLOMBIA_TIMEZONE,
       day: '2-digit',
       month: 'short',
       hour: '2-digit',
@@ -147,7 +150,7 @@ function openEditExpense(mov: any) {
     category: mov.category || mov.categoryLabel || mov.type || (isPayroll ? 'NOMINA' : 'OPERATIVO'),
     description: mov.description || mov.concept || '',
     amount: Math.abs(Number(mov.amount) || 0),
-    expenseDate: mov.date ? String(mov.date).slice(0, 10) : getTodayDateBogota(),
+    expenseDate: mov.date ? toInputDateFormat(mov.date) : getTodayDateBogota(),
     paymentMethod: mov.paymentMethod || 'EFECTIVO',
     supplier: mov.supplier || null,
     notes: mov.notes || '',

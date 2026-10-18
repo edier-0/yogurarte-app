@@ -28,7 +28,7 @@ import {
   type BatchPackagingItem,
   type BatchPackagingPayload,
 } from '@/stores/production.store';
-import { getTodayDateBogota } from '@/stores/finance.store';
+import { getTodayDateBogota, toInputDateFormat, getDeviceTimestamp } from '@/stores/finance.store';
 import { http } from '@/api/client';
 import { formatStockQuantity } from '@/utils/formatters';
 
@@ -614,7 +614,7 @@ watch(
         price2L.value = pkg.price2L ?? 24000;
         notes.value = pkg.notes || '';
         packagedBy.value = pkg.packagedBy || 'Edier';
-        packagedAt.value = pkg.packagedAt ? pkg.packagedAt.split('T')[0] : getTodayDateBogota();
+        packagedAt.value = pkg.packagedAt ? toInputDateFormat(pkg.packagedAt) : getTodayDateBogota();
         selectedOrderIds.value = [];
         customContainers.value = [];
 
@@ -762,7 +762,7 @@ async function handleSubmit() {
       useLabels: !!selectedLabelId.value,
       notes: notes.value ? notes.value.trim() : undefined,
       packagedBy: packagedBy.value ? packagedBy.value.trim() : 'Edier',
-      packagedAt: packagedAt.value || getTodayDateBogota(),
+      packagedAt: getDeviceTimestamp(packagedAt.value),
       linkOrderIds: selectedOrderIds.value.length > 0 ? selectedOrderIds.value : undefined,
     };
 

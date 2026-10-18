@@ -19,7 +19,12 @@ import {
   CheckCircle2,
   Package,
 } from 'lucide-vue-next';
-import { useFinanceStore, getTodayDateBogota } from '@/stores/finance.store';
+import {
+  useFinanceStore,
+  getTodayDateBogota,
+  toInputDateFormat,
+  getDeviceTimestamp,
+} from '@/stores/finance.store';
 
 const props = defineProps<{
   open: boolean;
@@ -60,7 +65,7 @@ watch(
     paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI';
 
     const rawDate = p.date || p.movementDate || p.paymentDate || '';
-    paymentDate.value = rawDate ? String(rawDate).slice(0, 10) : getTodayDateBogota();
+    paymentDate.value = rawDate ? toInputDateFormat(rawDate) : getTodayDateBogota();
     notes.value = p.notes || '';
     errorMessage.value = '';
   },
@@ -111,7 +116,7 @@ async function handleSubmit() {
     await financeStore.updateOrderPayment(orderId, paymentId, {
       amount: amount.value,
       paymentMethod: paymentMethod.value,
-      paymentDate: paymentDate.value,
+      paymentDate: getDeviceTimestamp(paymentDate.value),
       notes: notes.value.trim() || null,
     });
 

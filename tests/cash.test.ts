@@ -354,4 +354,44 @@ describe('Cash Movements Management & Pagination', () => {
       await prisma.staffMember.delete({ where: { id: partner.id } }).catch(() => {});
     }
   });
+
+  it('Debe registrar y consultar movimientos nocturnos en Colombia (después de 7:00 PM) sin desfasar el día de calendario', async () => {
+    // 20:30 hora Colombia = 01:30 UTC del día siguiente
+    const testDate = '2026-11-20';
+    const nightTimestamp = `${testDate}T20:30:00-05:00`;
+
+    const createRes = await request(app)
+      .post('/api/cash/movements')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        type: 'INGRESO',
+        amount: 25000,
+        concept: 'Ingreso nocturno 8:30 PM Colombia',
+        paymentMethod: 'EFECTIVO',
+        movementDate: nightTimestamp,
+      });
+
+    expect(createRes.status).toBe(201);
+    createdIds.push(createRes.body.id);
+
+    // Consultar con filtro de fecha exacto de ese día
+    const filterRes = await request(app)
+      .get(`/api/cash/movements?startDate=${testDate}&endDate=${testDate}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(filterRes.status).toBe(200);
+    const found = filterRes.body.data.find((m: any) => m.id === createRes.body.id);
+    expect(found).toBeDefined();
+    expect(found.amount).toBe(25000);
+
+    // Verificar en getDashboardSummary para esa fecha
+    const summaryRes = await request(app)
+      .get(`/api/dashboard/summary?startDate=${testDate}&endDate=${testDate}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(summaryRes.status).toBe(200);
+    const inflows = summaryRes.body.detailedBreakdowns?.cashFlow?.inflows || [];
+    const foundInSummary = inflows.find((i: any) => i.id === createRes.body.id || i.rawId === createRes.body.id);
+    expect(foundInSummary).toBeDefined();
+  });
 });
