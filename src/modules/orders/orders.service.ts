@@ -1681,7 +1681,7 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
  */
 export const rescheduleOverdueOrders = async () => {
   const todayStr = getColombiaDateStr();
-  const todayStart = new Date(`${todayStr}T00:00:00.000Z`);
+  const todayStart = getColombiaStartOfDay(todayStr);
   const newDeliveryDate = new Date();
 
   const result = await prisma.order.updateMany({

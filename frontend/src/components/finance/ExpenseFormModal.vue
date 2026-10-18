@@ -15,7 +15,7 @@ import {
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
-import { getTodayDateBogota } from '@/stores/finance.store';
+import { getTodayDateBogota, toInputDateFormat, getDeviceTimestamp } from '@/stores/finance.store';
 
 export interface ExpenseItemData {
   id: number;
@@ -105,7 +105,7 @@ watch(
       const rawMethod = (props.expense.paymentMethod || 'EFECTIVO').toUpperCase().trim();
       paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI';
       const rawDate = props.expense.expenseDate;
-      expenseDate.value = rawDate ? String(rawDate).slice(0, 10) : getTodayDateBogota();
+      expenseDate.value = rawDate ? toInputDateFormat(rawDate) : getTodayDateBogota();
       notes.value = props.expense.notes || '';
     } else {
       amount.value = '';
@@ -154,7 +154,7 @@ async function handleSubmit() {
       const paymentId = props.expense.staffPaymentId || props.expense.id;
       await http.put(`/staff/payments/${paymentId}`, {
         amount: amount.value,
-        paymentDate: expenseDate.value,
+        paymentDate: getDeviceTimestamp(expenseDate.value),
         paymentMethod: paymentMethod.value,
         notes: notes.value.trim() || null,
         calculationDetails: description.value.trim() || null,
@@ -168,7 +168,7 @@ async function handleSubmit() {
         category: category.value,
         description: description.value.trim(),
         amount: amount.value,
-        expenseDate: expenseDate.value,
+        expenseDate: getDeviceTimestamp(expenseDate.value),
         paymentMethod: paymentMethod.value,
         supplier: supplier.value.trim() || null,
         notes: notes.value.trim() || null,

@@ -26,6 +26,7 @@ import {
 } from 'lucide-vue-next';
 import { useOperationsStore, type Order, type OrderItem, type DeliveryStatus } from '@/stores/operations.store';
 import { useProductionStore } from '@/stores/production.store';
+import { toInputDateFormat, getDeviceTimestamp } from '@/utils/dateUtils';
 import { toast } from 'vue-sonner';
 
 const props = defineProps<{
@@ -297,7 +298,7 @@ watch(
         customerAddress.value = o.customerAddress || o.customer?.address || '';
         deliveryStatus.value = (o.deliveryStatus as DeliveryStatus) || 'PENDING';
         deliveryType.value = (o.deliveryType as any) || 'PROPIO';
-        deliveryDate.value = o.deliveryDate ? o.deliveryDate.split('T')[0] : '';
+        deliveryDate.value = o.deliveryDate ? toInputDateFormat(o.deliveryDate) : '';
         deliveryDriverId.value = o.deliveryDriverId || null;
         deliveryFee.value = o.deliveryFee || 0;
         const rawMethod = (o.paymentMethod || 'EFECTIVO').toUpperCase().trim();
@@ -402,7 +403,7 @@ const handleSubmit = async () => {
       customerAddress: customerAddress.value.trim(),
       deliveryStatus: deliveryStatus.value,
       deliveryType: deliveryType.value,
-      deliveryDate: deliveryDate.value ? deliveryDate.value : undefined,
+      deliveryDate: deliveryDate.value ? getDeviceTimestamp(deliveryDate.value) : undefined,
       deliveryDriverId:
         deliveryType.value === 'DOMICILIARIO' &&
         typeof deliveryDriverId.value === 'number' &&

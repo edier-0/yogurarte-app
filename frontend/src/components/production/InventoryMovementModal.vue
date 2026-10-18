@@ -19,7 +19,7 @@ import {
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
-import { getTodayDateBogota } from '@/stores/finance.store';
+import { getTodayDateBogota, toInputDateFormat, getDeviceTimestamp } from '@/stores/finance.store';
 import { formatStockQuantity } from '@/utils/formatters';
 
 export interface MaterialOption {
@@ -69,7 +69,7 @@ watch(
         reason.value = toEdit.reason || '';
         registeredBy.value = toEdit.registeredBy || 'Edier';
         const dateStr = toEdit.adjustmentDate || toEdit.createdAt;
-        adjustmentDate.value = dateStr ? String(dateStr).split('T')[0] : getTodayDateBogota();
+        adjustmentDate.value = dateStr ? toInputDateFormat(dateStr) : getTodayDateBogota();
       } else {
         quantity.value = '';
         reason.value = '';
@@ -147,7 +147,7 @@ async function handleSubmit() {
         movementType: movementType.value,
         reason: reason.value.trim(),
         registeredBy: registeredBy.value || 'Edier',
-        adjustmentDate: adjustmentDate.value,
+        adjustmentDate: getDeviceTimestamp(adjustmentDate.value),
       });
 
       toast.success('¡Movimiento de Kardex Actualizado!', {
@@ -162,7 +162,7 @@ async function handleSubmit() {
         type: typeLabel,
         reason: reason.value.trim(),
         registeredBy: registeredBy.value || 'Edier',
-        adjustmentDate: adjustmentDate.value,
+        adjustmentDate: getDeviceTimestamp(adjustmentDate.value),
       });
 
       toast.success('¡Movimiento Registrado en Kardex!', {

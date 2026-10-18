@@ -172,16 +172,16 @@ export const getStaffPayments = async (query: StaffPaymentsQueryInput) => {
   }
 
   if (date && typeof date === 'string') {
-    const startOfDay = new Date(`${date}T00:00:00.000Z`);
-    const endOfDay = new Date(`${date}T23:59:59.999Z`);
+    const startOfDay = getColombiaStartOfDay(date);
+    const endOfDay = getColombiaEndOfDay(date);
     where.paymentDate = { gte: startOfDay, lte: endOfDay };
   } else if (startDate || endDate) {
     const dateFilter: any = {};
     if (startDate && typeof startDate === 'string') {
-      dateFilter.gte = new Date(`${startDate}T00:00:00.000Z`);
+      dateFilter.gte = getColombiaStartOfDay(startDate);
     }
     if (endDate && typeof endDate === 'string') {
-      dateFilter.lte = new Date(`${endDate}T23:59:59.999Z`);
+      dateFilter.lte = getColombiaEndOfDay(endDate);
     }
     where.paymentDate = dateFilter;
   } else if (month && typeof month === 'string') {
