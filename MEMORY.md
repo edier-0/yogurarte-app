@@ -13,6 +13,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Directorio de Clientes & CRM: métricas globales reales (deuda en la calle y encargos en proceso sin sesgo de paginación), mensajería inteligente por estado y plantilla rápida `/gracias_pago`.
 
 ## Decisiones (y por qué)
+- Zona Horaria y Hora del Dispositivo: erradicados recortes .slice(0, 10)/.split('T')[0] en modales con toInputDateFormat. Formularios envían getDeviceTimestamp con la hora local del dispositivo. En backend se eliminó la recombinación getEffTime y los filtros T00:00:00.000Z se unificaron en getColombiaStartOfDay/EndOfDay, eliminando saltos de fecha nocturna tras las 7:00 PM (UTC-5).
 - Mensajería y WhatsApp móvil: `WhatsAppMessagePreviewModal` cuenta con cabecera y footer fijos (`shrink-0`) con scroll central (`touch-pan-y`), y ofrece despacho dual: por CRM (Baileys) o apertura en la app oficial del teléfono vía `buildWhatsAppUrl`.
 - Recaudo y Cartera por Fracción: la meta a recaudar es el neto facturado con descuentos aplicados (`totalSoldRevenue`). El recaudo en caja (`totalPaidAmount`) y la deuda en calle (`totalPendingAmount`) se prorratean por pedido vinculado garantizando consistencia matemática exacta.
 - Restablecimiento de stock en Kardex: al eliminar un movimiento se revierte `currentStock = currentStock - deltaQuantity`; al editarlo se aplica la diferencia neta `newDelta - oldDelta`, garantizando stock exacto sin distorsionar el costo promedio histórico.
