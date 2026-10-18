@@ -19,8 +19,10 @@ import {
   CheckCheck,
   Edit3,
   Sparkles,
+  Smartphone,
 } from 'lucide-vue-next';
 import { useCrmStore } from '@/stores/crm.store';
+import { buildWhatsAppUrl } from '@/utils/whatsapp';
 
 const crmStore = useCrmStore();
 
@@ -58,6 +60,17 @@ async function handleConfirm() {
     isSubmitting.value = false;
   }
 }
+
+function handleSendFromPhone() {
+  const text = editableText.value.trim();
+  if (!text) return;
+
+  const phone = crmStore.messagePreview.phone || crmStore.messagePreview.contactName || '';
+  const url = buildWhatsAppUrl(phone, text);
+
+  window.open(url, '_blank', 'noopener,noreferrer');
+  handleClose();
+}
 </script>
 
 <template>
@@ -66,10 +79,10 @@ async function handleConfirm() {
       <DialogOverlay class="fixed inset-0 z-[9998] bg-black/70 backdrop-blur-sm transition-opacity" />
 
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-[9999] w-[95%] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-slate-200 bg-white p-5 shadow-2xl transition-all focus:outline-none dark:border-slate-800 dark:bg-slate-900 sm:p-6 max-h-[90vh] flex flex-col"
+        class="fixed left-1/2 top-1/2 z-[9999] flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl transition-all focus:outline-none dark:border-slate-800 dark:bg-slate-900"
       >
-        <!-- Header del Modal -->
-        <div class="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <!-- Header del Modal (Fijo) -->
+        <div class="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 p-4 sm:p-5 dark:border-slate-800 bg-white dark:bg-slate-900">
           <div class="flex items-center gap-3">
             <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-500/20 shadow-xs">
               <MessageSquare class="h-5 w-5" />
@@ -95,8 +108,8 @@ async function handleConfirm() {
           </button>
         </div>
 
-        <!-- Contenido Desplazable -->
-        <div class="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
+        <!-- Contenido Desplazable (Centro con scroll fluido y touch-pan-y) -->
+        <div class="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-4 sm:p-5 space-y-4">
           <!-- Tarjeta de Destinatario y Estado del Canal -->
           <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 dark:border-slate-800 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div class="flex items-center gap-2.5">
@@ -175,22 +188,35 @@ async function handleConfirm() {
           </div>
         </div>
 
-        <!-- Footer / Acciones -->
-        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2.5">
+        <!-- Footer / Acciones (Fijo) -->
+        <div class="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-end sm:gap-2.5 sm:p-5 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80">
           <button
             type="button"
             @click="handleClose"
             :disabled="isSubmitting"
-            class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            class="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 text-center"
           >
             Cancelar
           </button>
 
+          <!-- Botón de Envío desde Teléfono / App nativa -->
+          <button
+            type="button"
+            @click="handleSendFromPhone"
+            :disabled="!editableText.trim() || isSubmitting"
+            class="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50/80 px-3.5 py-2.5 text-xs font-bold text-emerald-800 shadow-xs transition-all hover:bg-emerald-100 active:scale-95 disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+            title="Abrir la app oficial de WhatsApp en tu teléfono con este mensaje listo para enviar"
+          >
+            <Smartphone class="h-4 w-4 text-emerald-600 dark:text-emerald-400 stroke-[2.2]" />
+            <span>Enviar desde mi teléfono</span>
+          </button>
+
+          <!-- Botón de Envío por el CRM -->
           <button
             type="button"
             @click="handleConfirm"
             :disabled="!editableText.trim() || isSubmitting"
-            class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
+            class="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
           >
             <Send v-if="!isSubmitting" class="h-4 w-4 stroke-[2.5]" />
             <span v-else class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
