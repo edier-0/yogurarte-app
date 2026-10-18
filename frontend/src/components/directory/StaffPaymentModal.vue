@@ -23,7 +23,7 @@ import {
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
-import { getTodayDateBogota } from '@/stores/finance.store';
+import { getTodayDateBogota, toInputDateFormat, getDeviceTimestamp } from '@/stores/finance.store';
 import type { StaffMemberItem } from './StaffModal.vue';
 
 export interface StaffPaymentItemData {
@@ -86,7 +86,7 @@ watch(
         const rawMethod = ((payment as StaffPaymentItemData).paymentMethod || 'EFECTIVO').toUpperCase().trim();
         paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI';
         paymentDate.value = (payment as StaffPaymentItemData).paymentDate
-          ? String((payment as StaffPaymentItemData).paymentDate).slice(0, 10)
+          ? toInputDateFormat((payment as StaffPaymentItemData).paymentDate)
           : getTodayDateBogota();
         notes.value = (payment as StaffPaymentItemData).notes || '';
         registeredBy.value = (payment as StaffPaymentItemData).registeredBy || 'Edier';
@@ -178,7 +178,7 @@ async function handleSubmit() {
         deductions: Number(deductions.value) || 0,
         netAmount: netAmount.value,
         paymentMethod: paymentMethod.value,
-        paymentDate: paymentDate.value,
+        paymentDate: getDeviceTimestamp(paymentDate.value),
         notes: notes.value.trim() || null,
         registeredBy: registeredBy.value || 'Edier',
       });
@@ -194,7 +194,7 @@ async function handleSubmit() {
         deductions: Number(deductions.value) || 0,
         netAmount: netAmount.value,
         paymentMethod: paymentMethod.value,
-        paymentDate: paymentDate.value,
+        paymentDate: getDeviceTimestamp(paymentDate.value),
         notes: notes.value.trim() || null,
         registeredBy: registeredBy.value || 'Edier',
       });

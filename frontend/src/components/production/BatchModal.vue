@@ -20,7 +20,7 @@ import {
   Square,
 } from 'lucide-vue-next';
 import { useProductionStore, type BatchItem } from '@/stores/production.store';
-import { getTodayDateBogota } from '@/stores/finance.store';
+import { getTodayDateBogota, toInputDateFormat, getDeviceTimestamp } from '@/stores/finance.store';
 import { http } from '@/api/client';
 import { formatStockQuantity } from '@/utils/formatters';
 
@@ -308,7 +308,7 @@ watch(
         expectedLiters.value = b.totalLitersProduced;
         cultureType.value = b.cultureType || cultureTypes[0];
         fermentationHours.value = (b as any).fermentationHours || 8;
-        preparationDate.value = b.preparationDate ? b.preparationDate.split('T')[0] : getTodayDateBogota();
+        preparationDate.value = b.preparationDate ? toInputDateFormat(b.preparationDate) : getTodayDateBogota();
         status.value = (b.status as any) || 'EN_FERMENTACION';
         notes.value = b.notes || '';
       } else {
@@ -421,7 +421,7 @@ async function handleSubmit() {
         fermentationHours: Number(fermentationHours.value),
         milkUsedLiters: milkUsedLiters.value,
         totalLitersProduced: expectedLiters.value ? Number(expectedLiters.value) : milkUsedLiters.value,
-        preparationDate: preparationDate.value,
+        preparationDate: getDeviceTimestamp(preparationDate.value),
         notes: notes.value.trim() || undefined,
         status: status.value,
         dynamicItems: selectedDynamicItems,
@@ -434,7 +434,7 @@ async function handleSubmit() {
         fermentationHours: Number(fermentationHours.value),
         milkUsedLiters: milkUsedLiters.value,
         totalLitersProduced: expectedLiters.value ? Number(expectedLiters.value) : milkUsedLiters.value,
-        preparationDate: preparationDate.value,
+        preparationDate: getDeviceTimestamp(preparationDate.value),
         notes: notes.value.trim() || undefined,
         status: status.value,
         useSugar: false,

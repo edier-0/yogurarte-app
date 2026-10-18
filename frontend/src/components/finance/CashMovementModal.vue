@@ -19,7 +19,11 @@ import {
   CheckCircle2,
   Calculator,
 } from 'lucide-vue-next';
-import { useFinanceStore, getTodayDateBogota } from '@/stores/finance.store';
+import {
+  useFinanceStore,
+  getTodayDateBogota,
+  toInputDateFormat,
+} from '@/stores/finance.store';
 import { http } from '@/api/client';
 
 export type MovementMode = 'BASE' | 'ADJUST' | 'WITHDRAW' | 'EDIT';
@@ -116,7 +120,7 @@ watch(
       const rawMethod = (m.paymentMethod || 'EFECTIVO').toUpperCase().trim();
       paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI';
       const rawDate = m.date || m.movementDate || '';
-      movementDate.value = rawDate ? String(rawDate).slice(0, 10) : getTodayDateBogota();
+      movementDate.value = rawDate ? toInputDateFormat(rawDate) : getTodayDateBogota();
       notes.value = m.notes || '';
       movementType.value = m.type || m.movementType || (m.flowType === 'OUTFLOW' ? 'EGRESO' : 'INGRESO');
       selectedPartnerId.value = m.staffMemberId || m.staffMember?.id || '';

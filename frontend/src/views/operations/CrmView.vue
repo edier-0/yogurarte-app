@@ -34,6 +34,7 @@ import {
 import { http } from '@/api/client';
 import { getSocket } from '@/api/socket';
 import { toast } from 'vue-sonner';
+import { getDeviceLocalDate } from '@/utils/dateUtils';
 import { useProductionStore } from '@/stores/production.store';
 import { useCrmStore } from '@/stores/crm.store';
 import CrmQrModal from '@/components/operations/crm/CrmQrModal.vue';
@@ -406,7 +407,7 @@ function handleOpenRecurring(cust?: any) {
     preferredFlavor: productionStore.activeFlavors[0]?.name || 'Fresa',
     bottleSize: '1L',
     quantity: 1,
-    nextDate: nextWeek.toISOString().split('T')[0],
+    nextDate: getDeviceLocalDate(nextWeek),
     isActive: true,
   };
   isRecurringModalOpen.value = true;

@@ -21,6 +21,7 @@ import {
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { useProductionStore } from '@/stores/production.store';
+import { getDeviceLocalDate, toInputDateFormat, getDeviceTimestamp } from '@/utils/dateUtils';
 import { toast } from 'vue-sonner';
 
 export interface RecurringScheduleData {
@@ -78,7 +79,7 @@ const form = ref<{
   preferredFlavor: 'Fresa',
   bottleSize: '1L',
   quantity: 1,
-  nextDate: new Date().toISOString().split('T')[0],
+  nextDate: getDeviceLocalDate(),
   notes: '',
   isActive: true,
 });
@@ -146,7 +147,7 @@ watch(
 
       if (props.scheduleToEdit) {
         const d = props.scheduleToEdit;
-        const formattedDate = d.nextDate ? new Date(d.nextDate).toISOString().split('T')[0] : '';
+        const formattedDate = d.nextDate ? toInputDateFormat(d.nextDate) : '';
 
         form.value = {
           id: d.id,
@@ -171,7 +172,7 @@ watch(
           preferredFlavor: availableFlavors.value[0] || 'Fresa',
           bottleSize: '1L',
           quantity: 1,
-          nextDate: nextWeek.toISOString().split('T')[0],
+          nextDate: getDeviceLocalDate(nextWeek),
           notes: '',
           isActive: true,
         };
@@ -204,7 +205,7 @@ async function handleSave() {
       preferredFlavor: form.value.preferredFlavor,
       bottleSize: form.value.bottleSize,
       quantity: Number(form.value.quantity),
-      nextDate: form.value.nextDate,
+      nextDate: getDeviceTimestamp(form.value.nextDate),
       notes: form.value.notes.trim() || undefined,
       isActive: form.value.isActive,
     };

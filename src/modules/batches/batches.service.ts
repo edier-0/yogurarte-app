@@ -1806,7 +1806,7 @@ export const createBatchDischarge = async (id: number, data: CreateBatchDischarg
     }
   }
 
-  const effectiveDischargeDate = dischargeDate ? new Date(dischargeDate) : new Date();
+  const effectiveDischargeDate = parseColombiaDate(dischargeDate);
   const effectiveRegisteredBy = registeredBy ? String(registeredBy).trim() : 'Edier';
 
   return await prisma.$transaction(async (tx) => {
@@ -3552,7 +3552,7 @@ export const recordPackagingDischarge = async (packagingId: number, input: Packa
         staffMemberId: staffMember.id,
         notes: notes ? notes.trim() : `Retiro de fracción ${pkg.packagingCode || pkg.flavor}`,
         registeredBy: registeredBy || 'Edier',
-        dischargeDate: dischargeDate ? new Date(dischargeDate) : new Date(),
+        dischargeDate: parseColombiaDate(dischargeDate),
       },
       include: {
         staffMember: { select: { id: true, fullName: true, role: true } },

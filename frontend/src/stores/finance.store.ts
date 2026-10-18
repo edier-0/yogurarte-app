@@ -4,19 +4,8 @@ import { refDebounced } from '@vueuse/core';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 
-export const COLOMBIA_TIMEZONE = 'America/Bogota';
-
-/**
- * Obtiene la fecha local de Colombia en formato YYYY-MM-DD
- */
-export function getTodayDateBogota(date: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: COLOMBIA_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
-}
+export * from '@/utils/dateUtils';
+import { getDeviceTimestamp } from '@/utils/dateUtils';
 
 export type PeriodFilter = 'today' | 'this_week' | 'this_month' | 'custom_range' | 'all';
 export type MovementTab = 'ALL' | 'SALES' | 'EXPENSES' | 'BASE' | 'TRANSFERS';
@@ -467,7 +456,7 @@ export const useFinanceStore = defineStore('finance', () => {
             ? 'Consignación de efectivo a Nequi'
             : 'Retiro de Nequi a efectivo'),
         paymentMethod: type === 'TRASLADO_EFECTIVO_A_BANCO' ? 'NEQUI' : 'EFECTIVO',
-        movementDate: payload.movementDate || getTodayDateBogota(),
+        movementDate: getDeviceTimestamp(payload.movementDate),
         notes: payload.notes || null,
       };
 
@@ -491,7 +480,7 @@ export const useFinanceStore = defineStore('finance', () => {
       const body = {
         ...payload,
         amount: Number(payload.amount),
-        movementDate: payload.movementDate || getTodayDateBogota(),
+        movementDate: getDeviceTimestamp(payload.movementDate || payload.date),
       };
 
       const res = await http.post('/cash-movements', body);
@@ -514,7 +503,7 @@ export const useFinanceStore = defineStore('finance', () => {
         ...payload,
         amount: payload.amount !== undefined ? Number(payload.amount) : undefined,
         concept: payload.concept || payload.description,
-        movementDate: payload.movementDate || payload.date,
+        movementDate: payload.movementDate || payload.date ? getDeviceTimestamp(payload.movementDate || payload.date) : undefined,
       };
 
       const res = await http.put(`/cash-movements/${id}`, body);
