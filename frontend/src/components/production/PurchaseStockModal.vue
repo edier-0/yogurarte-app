@@ -18,6 +18,7 @@ import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import { getTodayDateBogota } from '@/stores/finance.store';
 import { formatStockQuantity } from '@/utils/formatters';
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
 
 export interface MaterialOption {
   id: number;
@@ -91,6 +92,18 @@ watch(
 // Insumo seleccionado
 const currentMaterial = computed(() => {
   return props.materials.find((m) => m.id === selectedMaterialId.value);
+});
+
+const materialSelectOptions = computed(() => {
+  return props.materials.map((m) => ({
+    id: m.id,
+    name: m.name,
+    code: m.code,
+    category: m.category,
+    stock: m.currentStock,
+    unit: m.unit,
+    extraInfo: `Costo prom: ${formatCurrency(m.avgCost)}`,
+  }));
 });
 
 // Al cambiar de insumo sugerir el costo unitario existente
@@ -258,19 +271,14 @@ async function handleSubmit() {
           <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain touch-pan-y">
           <!-- 1. Selección de Insumo -->
           <div>
-            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-              Insumo o Materia Prima a Reabastecer *
-            </label>
-            <select
-              v-model.number="selectedMaterialId"
+            <SearchableSelect
+              v-model="selectedMaterialId"
+              :options="materialSelectOptions"
+              label="Insumo o Materia Prima a Reabastecer"
+              placeholder="Buscar insumo a comprar por nombre o código..."
+              :required="true"
               @change="handleMaterialChange"
-              required
-              class="w-full rounded-xl border border-surface-light-border bg-surface-light-card px-3.5 py-2.5 text-xs font-extrabold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-white"
-            >
-              <option v-for="mat in materials" :key="mat.id" :value="mat.id">
-                {{ mat.name }} (Stock: {{ formatStockQuantity(mat.currentStock, mat.unit) }} {{ mat.unit }} | Costo: {{ formatCurrency(mat.avgCost) }})
-              </option>
-            </select>
+            />
           </div>
 
           <!-- 2. Cantidad Adquirida y Costos -->

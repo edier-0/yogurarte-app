@@ -28,6 +28,15 @@ export const createPreparation = async (req: Request, res: Response, next: NextF
   }
 };
 
+export const updatePreparation = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const preparation = await preparationsService.updatePreparation(Number(req.params.id), req.body);
+    res.json(preparation);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const deletePreparation = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await preparationsService.deletePreparation(Number(req.params.id));

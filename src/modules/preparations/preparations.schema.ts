@@ -19,3 +19,11 @@ export const createPreparationSchema = z.object({
 
 export type PreparationIngredientInput = z.infer<typeof preparationIngredientSchema>;
 export type CreatePreparationInput = z.infer<typeof createPreparationSchema>;
+
+export const updatePreparationSchema = z.object({
+  preparationDate: z.string().optional(),
+  notes: z.string().optional().nullable(),
+  registeredBy: z.string().optional().nullable(),
+});
+
+export type UpdatePreparationInput = z.infer<typeof updatePreparationSchema>;

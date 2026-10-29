@@ -8,6 +8,8 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Auditoría de dependencias: 0 vulnerabilidades en producción tras blindar overrides (`body-parser`, `zod`, `follow-redirects`, `qs`, `nodemailer`).
 - Auditoría de Fracciones (Fase B): visualización de base consumida, volumen comercial, rendimiento %, costo unitario real por botella y recaudo/cartera.
 - Tesorería y Nequi en Neon: restaurado abono de $12.000 COP en pedido #PED-20261005-002 (Arieth Robles), restableciendo saldo Nequi a $99.400 COP. Spec 002 completada y fusionada en develop y main vía PRs #9 y #10.
+- Reversión de Elaboración en Neon: anulada preparación errónea PREP-20261029-01; stock de Azúcar restablecido a 2.1 Kg (+0.4 Kg) y Mermelada devuelta a 0 Kg.
+- Spec 003 completada (T1 a T7): Búsqueda predictiva con `SearchableSelect` en 5 modales de inventario/producción; pestaña "Elaboraciones" en Inventario con anulación transaccional (salvaguarda RF-10) y edición de metadatos.
 - Ciclo Git y PRs remotos: formalizado en Constitución v1.2.0 y AGENTS.md el ciclo obligatorio de integración vía Pull Requests en GitHub y borrado seguro con confirmación.
 
 ## Decisiones (y por qué)
@@ -28,4 +30,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Auditoría de seguridad: parches de dependencias transitivas en producción se blindan mediante `overrides` en `package.json`.
 
 ## Próximos pasos
-- Continuar desarrollo del sistema según prioridades del usuario aplicando la metodología SDD y el flujo de PRs remotos.
+- Publicar cambios de Spec 003, abrir PR a develop y main siguiendo el flujo constitucional de integración.
