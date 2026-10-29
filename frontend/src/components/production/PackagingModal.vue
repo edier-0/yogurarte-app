@@ -31,6 +31,7 @@ import {
 import { getTodayDateBogota, toInputDateFormat, getDeviceTimestamp } from '@/stores/finance.store';
 import { http } from '@/api/client';
 import { formatStockQuantity } from '@/utils/formatters';
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
 
 const props = defineProps<{
   open: boolean;
@@ -334,6 +335,41 @@ const labelMaterials = computed(() => {
       (cat === 'EMPAQUE' && name.includes('etiqueta'))
     );
   });
+});
+
+const containerSelectOptions = computed(() => {
+  return containerMaterials.value.map((m) => ({
+    id: m.id,
+    name: m.name,
+    code: m.code,
+    category: m.category,
+    stock: m.currentStock,
+    unit: 'und',
+  }));
+});
+
+const labelSelectOptions = computed(() => {
+  return labelMaterials.value.map((m) => ({
+    id: m.id,
+    name: m.name,
+    code: m.code,
+    category: m.category,
+    stock: m.currentStock,
+    unit: 'und',
+    extraInfo: `Costo: ${formatCurrency(m.avgCost)}`,
+  }));
+});
+
+const candidateSelectOptions = computed(() => {
+  return candidateMaterials.value.map((m) => ({
+    id: m.id,
+    name: m.name,
+    code: m.code,
+    category: m.category,
+    stock: m.currentStock,
+    unit: m.unit,
+    extraInfo: `Costo: ${formatCurrency(m.avgCost)}`,
+  }));
 });
 
 // Métodos para lista multi-fila de adiciones
@@ -1154,18 +1190,13 @@ async function handleSubmit() {
                 >
                   <div class="flex items-center justify-between gap-2">
                     <div class="flex-1">
-                      <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                        Insumo Envase *
-                      </label>
-                      <select
-                        v-model.number="c.rawMaterialId"
-                        class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-                      >
-                        <option :value="''">-- Seleccionar envase --</option>
-                        <option v-for="mat in containerMaterials" :key="mat.id" :value="mat.id">
-                          {{ mat.name }} (Stock: {{ formatStockQuantity(mat.currentStock, 'und') }} und)
-                        </option>
-                      </select>
+                      <SearchableSelect
+                        v-model="c.rawMaterialId"
+                        :options="containerSelectOptions"
+                        label="Insumo Envase"
+                        placeholder="Buscar envase..."
+                        :required="true"
+                      />
                     </div>
                     <button
                       type="button"
@@ -1247,18 +1278,13 @@ async function handleSubmit() {
 
               <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                 <div>
-                  <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                    Insumo de Etiqueta
-                  </label>
-                  <select
-                    v-model.number="selectedLabelId"
-                    class="w-full rounded-xl border border-surface-light-border bg-surface-light-card px-3 py-2 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-white"
-                  >
-                    <option :value="''">[Sin etiqueta / A granel]</option>
-                    <option v-for="lbl in labelMaterials" :key="lbl.id" :value="lbl.id">
-                      {{ lbl.name }} (Stock: {{ formatStockQuantity(lbl.currentStock, 'und') }} und | Costo: {{ formatCurrency(lbl.avgCost) }})
-                    </option>
-                  </select>
+                  <SearchableSelect
+                    v-model="selectedLabelId"
+                    :options="labelSelectOptions"
+                    label="Insumo de Etiqueta"
+                    placeholder="[Sin etiqueta / A granel] o buscar..."
+                    :clearable="true"
+                  />
                 </div>
 
                 <div v-if="selectedLabelId">
@@ -1394,18 +1420,13 @@ async function handleSubmit() {
                 <div class="flex items-start justify-between gap-2">
                   <!-- Selector de Insumo -->
                   <div class="flex-1">
-                    <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                      Insumo / Adición #{{ idx + 1 }} *
-                    </label>
-                    <select
-                      v-model.number="item.rawMaterialId"
-                      class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3 py-2 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-                    >
-                      <option :value="''">-- Seleccionar insumo de almacén --</option>
-                      <option v-for="mat in candidateMaterials" :key="mat.id" :value="mat.id">
-                        {{ mat.name }} (Stock: {{ formatStockQuantity(mat.currentStock, mat.unit) }} {{ mat.unit }} | Costo: {{ formatCurrency(mat.avgCost) }})
-                      </option>
-                    </select>
+                    <SearchableSelect
+                      v-model="item.rawMaterialId"
+                      :options="candidateSelectOptions"
+                      :label="`Insumo / Adición #${idx + 1}`"
+                      placeholder="Buscar insumo de almacén..."
+                      :required="true"
+                    />
                   </div>
 
                   <!-- Botón Eliminar Fila -->

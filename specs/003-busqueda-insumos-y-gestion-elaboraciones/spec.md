@@ -1,6 +1,6 @@
 # Spec 003 — Búsqueda Inteligente de Insumos e Historial de Elaboraciones con Reversión
 
-Estado: aprobada
+Estado: implementada
 
 ## Contexto y objetivo
 A medida que la fábrica amplía su catálogo de materias primas, insumos y preparaciones (envases, tapas, pulpas, mermeladas, etiquetas y cultivos), los menús desplegables estáticos generan fricción operativa y lentitud, obligando al usuario a desplazarse por listas extensas.
@@ -69,12 +69,12 @@ El objetivo de esta especificación es:
 - Creación de nuevas materias primas al vuelo desde el selector de búsqueda (se mantiene en su modal dedicado de insumos).
 
 ## Criterios de finalización
-- [ ] Selector con autocompletado (`SearchableSelect`) implementado y verificado en todos los modales de insumos (`PrepareCompoundModal`, `PurchaseStockModal`, `InventoryMovementModal`, `MaterialModal`, `PackagingModal`).
-- [ ] Pestaña de Historial de Elaboraciones operativa en la vista de Inventario (listado con desglose de materias primas).
-- [ ] Botón de anulación con reversión atómica de stock en backend y frontend.
-- [ ] Botón y modal de edición de metadatos (fecha, notas/lote, responsable) operativo en backend y frontend.
-- [ ] Pruebas unitarias y de integración pasando al 100%.
-- [ ] Cero errores en `npx tsc --noEmit` y `npm --prefix frontend run build`.
+- [x] Selector con autocompletado (`SearchableSelect`) implementado y verificado en todos los modales de insumos (`PrepareCompoundModal`, `PurchaseStockModal`, `InventoryMovementModal`, `MaterialModal`, `PackagingModal`).
+- [x] Pestaña de Historial de Elaboraciones operativa en la vista de Inventario (listado con desglose de materias primas).
+- [x] Botón de anulación con reversión atómica de stock en backend y frontend.
+- [x] Botón y modal de edición de metadatos (fecha, notas/lote, responsable) operativo en backend y frontend.
+- [x] Pruebas unitarias y de integración pasando al 100%.
+- [x] Cero errores en `npx tsc --noEmit` y `npm --prefix frontend run build`.
 
 ## Dudas abiertas
 - Ninguna. Dudas clarificadas con el usuario.
