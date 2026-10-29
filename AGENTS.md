@@ -63,21 +63,24 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
 
 ## Flujo Git, Fusión y Limpieza de Ramas
 - **Ramas permanentes**: Únicamente existen dos ramas permanentes: `develop` (integración y desarrollo) y `main` (producción).
-- **Creación de ramas**: Para cualquier tarea o cambio, se crea una rama temática (`feat/<kebab-case>`, `fix/<kebab-case>`, `refactor/<kebab-case>`) partiendo siempre de `develop`. No commitear directo en `develop` ni `main`.
+- **Creación de ramas**: Para cualquier tarea o cambio, se crea una rama temática (`feat/<kebab-case>`, `fix/<kebab-case>`, `refactor/<kebab-case>`, `docs/<kebab-case>`) partiendo siempre de `develop`. No commitear directo en `develop` ni `main`.
 - **Mensajes de commit**: Conventional Commits (`fix(scope): ...`, `feat(scope): ...`, `docs: ...`) con descripción en español.
-- **Ciclo de fusión**:
-  1. Verificar compilación y tipos (`npx tsc --noEmit` y build frontend).
-  2. Fusionar la rama temática en `develop`.
-  3. Fusionar posteriormente en `main`.
+- **Ciclo de integración remota (Pull Requests)**:
+  1. Verificar compilación, tipos y pruebas (`npx tsc --noEmit`, build frontend y pruebas de dominio).
+  2. Publicar la rama temática en el repositorio remoto (`git push origin <rama>`).
+  3. Crear Pull Request hacia `develop` en GitHub y fusionarlo.
+  4. Crear Pull Request de `develop` hacia `main` en GitHub y fusionarlo.
+  5. Sincronizar el entorno local (`git pull origin develop` y `git pull origin main`).
+
 - **Eliminación de ramas**:
-  - Tras fusionar con éxito en `develop` y `main`, la rama temática se elimina en local y en remoto.
+  - Tras fusionar con éxito en `develop` y `main`, la rama temática se elimina en local (`git branch -d`) y en remoto (`git push origin --delete`).
   - **REGLA ESTRICTA**: Antes de proceder con el borrado de cualquier rama (local o remota), **se debe solicitar siempre autorización explícita al usuario**.
 
 ## Límites
 - ✅ Siempre: seguir la skill `sdd` para realizar cambios en el aplicativo (especificar y validar antes de codificar).
 - ✅ Siempre: actualizar `MEMORY.md` al terminar cada tarea o fase de SDD.
 - ✅ Siempre: seguir `src/modules/` + `app.ts`; typecheck/pruebas del dominio tocado; no commitear `.env` ni secretos.
-- ✅ Siempre: crear rama desde `develop`, fusionar en `develop` luego en `main`, y pedir confirmación antes de borrar la rama.
+- ✅ Siempre: crear rama desde `develop`, integrar vía PRs a `develop` y `main`, y pedir confirmación antes de borrar la rama.
 - ⚠️ Pregunta antes: dependencias nuevas, archivos/módulos nuevos, migraciones Prisma, cambiar formato de datos, romper alias de API o **eliminar cualquier rama local o remota**.
 - 🚫 Nunca: eliminar ramas locales o remotas sin previa confirmación del usuario.
 - 🚫 Nunca: implementar código sin spec, plan y tareas aprobados por el usuario según la metodología de la skill `sdd`.

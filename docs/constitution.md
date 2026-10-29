@@ -1,7 +1,7 @@
 # Constitución del Software — YogurArte
 
 > **Documento Rector del Sistema Operativo, Contable y CRM**  
-> **Versión:** 1.1.0  
+> **Versión:** 1.2.0  
 > **Ámbito:** Todos los módulos, specs, planes y cambios de código en YogurArte.  
 > **Principio de Supremacía:** Ninguna especificación (`spec.md`), plan de arquitectura (`plan.md`) o línea de código puede contradecir los artículos de esta Constitución sin una enmienda explícita aprobada por el usuario.
 
@@ -107,12 +107,18 @@ Los requisitos funcionales de cada spec deben redactarse en español empleando l
 
 ## TÍTULO V: Ciclo de Vida Git y Gestión de Ramas
 
-### Artículo 16: Ramas Permanentes, Fusión y Eliminación Controlada
-1. Las únicas ramas permanentes en el repositorio son `develop` (desarrollo e integración) y `main` (producción).
-2. Para cada cambio o tarea se crea una rama temática partiendo exclusivamente de `develop`.
-3. Al concluir la verificación de la tarea, se fusiona primero en `develop` y seguidamente en `main`.
-4. Una vez completadas ambas fusiones, la rama temática debe eliminarse tanto localmente como en el repositorio remoto.
-5. **Cláusula de Salvaguarda**: Queda terminantemente prohibido borrar cualquier rama (local o remota) sin formular la pregunta y obtener la autorización explícita previa del usuario.
+### Artículo 16: Ramas Permanentes, Integración vía Pull Requests y Eliminación Controlada
+1. Las únicas ramas permanentes en el repositorio son `develop` (desarrollo e integración) y `main` (producción). Queda prohibido el commit directo en cualquiera de ellas.
+2. Para cada cambio, corrección o nueva funcionalidad se crea una rama temática (`feat/<kebab-case>`, `fix/<kebab-case>`, `refactor/<kebab-case>`, `docs/<kebab-case>`) partiendo siempre de `develop`.
+3. **Verificación local obligatoria**: Previo a la publicación remota, deben ejecutarse y aprobarse sin errores la compilación y tipos del backend (`npx tsc --noEmit`), el empaquetado del frontend (`npm --prefix frontend run build`) y las pruebas unitarias e integración (`vitest`).
+4. **Ciclo de integración remota vía Pull Requests**:
+   - Se publica la rama temática en el repositorio remoto (`git push origin <rama>`).
+   - Se crea un Pull Request (PR) de la rama temática hacia `develop` en GitHub y se aprueba y fusiona.
+   - Se crea un Pull Request (PR) de `develop` hacia `main` en GitHub y se aprueba y fusiona para sincronizar producción.
+   - Se sincroniza el entorno local actualizando ambas ramas permanentes desde el remoto (`git pull origin develop` y `git pull origin main`).
+5. **Eliminación y Cláusula de Salvaguarda**:
+   - Una vez fusionada con éxito en `develop` y `main`, la rama temática debe eliminarse tanto localmente (`git branch -d`) como en el repositorio remoto (`git push origin --delete`).
+   - Queda terminantemente prohibido borrar cualquier rama (local o remota) sin formular la pregunta y obtener la autorización explícita previa del usuario.
 
 ---
 
@@ -121,3 +127,10 @@ Los requisitos funcionales de cada spec deben redactarse en español empleando l
 ### Artículo 17: Procedimiento de Enmienda
 1. Esta Constitución solo puede modificarse mediante solicitud o aprobación expresa del usuario.
 2. Toda enmienda debe registrarse en el historial de revisiones del documento y documentarse en `MEMORY.md` bajo la sección de decisiones de arquitectura.
+
+---
+
+### Historial de Enmiendas y Revisiones
+- **v1.0.0**: Promulgación inicial de los Títulos I al VI (Principios, Invariantes, Arquitectura, SDD, Git y Enmiendas).
+- **v1.1.0**: Incorporación de reglas de auditoría y seguridad de dependencias en producción.
+- **v1.2.0**: Estandarización del ciclo de vida Git mediante Pull Requests remotos (PR rama temática $\rightarrow$ `develop` $\rightarrow$ `main`, sincronización local y borrado remoto/local con salvaguarda).
