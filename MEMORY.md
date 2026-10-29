@@ -5,7 +5,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - App ERP/CRM en producción: Fase A/B, inventario, pedidos/domicilio, caja bimonetaria, créditos, personal y CRM WhatsApp.
 - API canónica en `src/modules/` montada desde `src/app.ts`. `src/controllers|routes|schemas` son restos legacy.
 - Spec 001 completada (T1 a T8): Rendimiento real en fraccionamiento (`baseLitersUsed`, `yieldPercentage`) y costeo neto de mermeladas implementados y verificados al 100% en backend y frontend.
-- Modales móviles: arquitectura de 3 capas (`header` shrink-0, cuerpo `flex-1 overflow-y-auto`, `footer` shrink-0).
+- Auditoría de dependencias: 0 vulnerabilidades en producción tras blindar overrides (`body-parser`, `zod`, `follow-redirects`, `qs`, `nodemailer`).
 - Auditoría de Fracciones (Fase B): visualización de base consumida, volumen comercial, rendimiento %, costo unitario real por botella y recaudo/cartera.
 
 ## Decisiones (y por qué)
@@ -23,6 +23,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - En mensajes de validación de volumen, conservar el prefijo `Volumen insuficiente:` para mantener compatibilidad con las aserciones de la suite de pruebas.
 - En `updateBatchPackaging`: si no se envía `baseLitersUsed` explícito, mantener la proporción de rendimiento previo o 1:1 para evitar congelar la base en un valor estático si se agregan más botellas.
 - `vue-tsc` corre con `noUnusedLocals: true`: variables o imports no utilizados botan error y rompen el build.
+- Auditoría de seguridad: parches de dependencias transitivas en producción se blindan mediante `overrides` en `package.json`.
 
 ## Próximos pasos
-- Notificar al usuario la culminación exitosa de la Spec 001 y solicitar aprobación para mergear a develop/main o continuar con el libro de recetas.
+- Iniciar la especificación del libro de recetas bajo metodología SDD.
