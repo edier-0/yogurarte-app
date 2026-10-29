@@ -217,6 +217,8 @@ model BatchPackaging {
   bottles1L          Int                  @default(0)
   bottles2L          Int                  @default(0)
   totalLiters        Float
+  baseLitersUsed     Float            @default(0)
+  yieldPercentage    Float?           @default(100)
   price1L            Float?               @default(12000)
   price2L            Float?               @default(24000)
   bottle1LRawMaterialId Int?

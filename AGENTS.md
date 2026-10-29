@@ -4,7 +4,7 @@ ERP/CRM a medida para **YogurArte** (yogur artesanal, Fonseca, La Guajira): digi
 
 ## Memoria
 - Al empezar, lee `MEMORY.md` para conocer el estado del proyecto y las decisiones tomadas.
-- Al terminar una tarea, actualízalo: estado actual, decisiones importantes (con su porqué) y errores a evitar.
+- Al terminar una fase o tarea, actualízalo: estado actual, decisiones importantes (con su porqué) y errores a evitar.
 - Mantenlo breve (máximo ~50 líneas): resume o elimina lo que ya no aporte.
 - Si algo se convierte en una regla permanente, propón moverlo a `AGENTS.md` en lugar de dejarlo en la memoria.
 - No guardes nunca datos sensibles (claves, tokens, datos personales).
@@ -49,35 +49,39 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
 - Transacciones Prisma cuando stock, caja y pagos deban coincidir. No editar el cliente generado.
 - `User` ≠ `StaffMember`: `User` = cuentas de acceso/login al sistema (sin dependencias FK). `StaffMember` = nómina, colaboradores y liquidaciones de jornales/socios.
 
-## Forma de trabajar
-- Planificar antes de tocar código si el cambio cruza módulos (caja + pedidos, lote + inventario) o el contrato de datos.
-- Cambios pequeños y alineados al patrón del módulo/vista de referencia.
-- Al terminar: qué se hizo, cómo se verificó y actualizar `MEMORY.md`.
+## Metodología y Forma de trabajar (Skill SDD)
+- Para cualquier cambio, nueva funcionalidad o refactorización en el aplicativo, usar obligatoriamente la skill `sdd` (`.agent/skills/sdd/SKILL.md`).
+- Flujo canónico: **Constitución → Spec → Clarificación → Plan → Tareas → Implementación → Validación → Cambio**.
+- Reglas mandatorias del flujo SDD:
+  - **Aprobación de fases**: Nunca pasar a la siguiente fase sin la aprobación explícita del usuario.
+  - **La spec manda**: Si algo no está en la spec, no se implementa. Si falta una decisión o requisito, parar y preguntar.
+  - **Orden de requisitos**: Cualquier cambio de requisitos se hace primero en la spec (`spec.md`), luego en el plan (`plan.md`) y tareas (`tasks.md`), y por último en el código.
+  - **Ubicación de specs**: Cada spec vive en su carpeta: `specs/NNN-nombre/` con `spec.md`, `plan.md` y `tasks.md`.
+  - **Requisitos en EARS (en español)**: `CUANDO... EL SISTEMA...`, `SI... ENTONCES EL SISTEMA...`, `MIENTRAS... EL SISTEMA...`, `EL SISTEMA...`. Cada RF debe ser medible y verificable.
+  - **Implementación atómica**: Una sola tarea a la vez (~20-30 min): tests primero en rojo, código, verificar en verde (`vitest` / pruebas del módulo), marcar la tarea y parar para feedback.
+  - **Actualización continua**: Al terminar cada fase o tarea, actualizar `MEMORY.md`.
 
-## Flujo Git y Commits
-- Ramas: crear siempre una rama temática (`fix/<kebab-case>`, `feat/<kebab-case>`, `refactor/<kebab-case>`) a partir de `develop`. No commitear directo en `develop` ni `main`.
-- Mensajes de commit: Conventional Commits (`fix(scope): ...`, `feat(scope): ...`, `docs: ...`) con descripción en español.
-- Cuando el usuario pida commitear cambios:
+## Flujo Git, Fusión y Limpieza de Ramas
+- **Ramas permanentes**: Únicamente existen dos ramas permanentes: `develop` (integración y desarrollo) y `main` (producción).
+- **Creación de ramas**: Para cualquier tarea o cambio, se crea una rama temática (`feat/<kebab-case>`, `fix/<kebab-case>`, `refactor/<kebab-case>`) partiendo siempre de `develop`. No commitear directo en `develop` ni `main`.
+- **Mensajes de commit**: Conventional Commits (`fix(scope): ...`, `feat(scope): ...`, `docs: ...`) con descripción en español.
+- **Ciclo de fusión**:
   1. Verificar compilación y tipos (`npx tsc --noEmit` y build frontend).
-  2. Asegurar que los cambios se ubiquen en su rama correspondiente (`fix/...`, `feat/...`).
-  3. Crear commit atómico con mensaje convencional y descriptivo.
-  4. Dejar la rama preparada para posterior fusión con `develop` y `main`.
-
-## Memoria
-- Al empezar, lee `MEMORY.md` para conocer el estado del proyecto y las decisiones
-tomadas.
-- Al terminar una tarea, actualízalo: estado actual, decisiones importantes (con su
-porqué) y errores a evitar.
-- Mantenlo breve (máximo ~50 líneas): resume o elimina lo que ya no aporte.
-- Si algo se convierte en una regla permanente, propón moverlo a `AGENTS.md` en lugar de
-dejarlo en la memoria.
-- No guardes nunca datos sensibles (claves, tokens, datos personales).
+  2. Fusionar la rama temática en `develop`.
+  3. Fusionar posteriormente en `main`.
+- **Eliminación de ramas**:
+  - Tras fusionar con éxito en `develop` y `main`, la rama temática se elimina en local y en remoto.
+  - **REGLA ESTRICTA**: Antes de proceder con el borrado de cualquier rama (local o remota), **se debe solicitar siempre autorización explícita al usuario**.
 
 ## Límites
-- ✅ Siempre: actualizar `MEMORY.md` al terminar cada tarea.
+- ✅ Siempre: seguir la skill `sdd` para realizar cambios en el aplicativo (especificar y validar antes de codificar).
+- ✅ Siempre: actualizar `MEMORY.md` al terminar cada tarea o fase de SDD.
 - ✅ Siempre: seguir `src/modules/` + `app.ts`; typecheck/pruebas del dominio tocado; no commitear `.env` ni secretos.
-- ✅ Siempre: al commitear cambios, usar rama temática (`fix/...`, `feat/...`) y Conventional Commits.
-- ⚠️ Pregunta antes: dependencias nuevas, archivos/módulos nuevos, migraciones Prisma, cambiar formato de datos o romper alias de API.
+- ✅ Siempre: crear rama desde `develop`, fusionar en `develop` luego en `main`, y pedir confirmación antes de borrar la rama.
+- ⚠️ Pregunta antes: dependencias nuevas, archivos/módulos nuevos, migraciones Prisma, cambiar formato de datos, romper alias de API o **eliminar cualquier rama local o remota**.
+- 🚫 Nunca: eliminar ramas locales o remotas sin previa confirmación del usuario.
+- 🚫 Nunca: implementar código sin spec, plan y tareas aprobados por el usuario según la metodología de la skill `sdd`.
+- 🚫 Nunca: pasar a la siguiente fase de SDD sin aprobación explícita del usuario.
 - 🚫 Nunca: credenciales/tokens en docs o código; features en carpetas legacy; mezclar canales de caja; persistir deuda en `Customer`; lint/format inventados; wipe de auth WhatsApp sin pedirlo; commitear directo a `main` o `develop`.
 
 ## Verificación

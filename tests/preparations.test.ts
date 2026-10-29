@@ -110,6 +110,78 @@ describe('Supply Preparations Endpoints', () => {
     expect(revertedIngredient?.currentStock).toBe(10);
   });
 
+  it('Spec 001: Preparación de mermelada con fruta base + azúcar rinde mayor cantidad y calcula costo unitario exacto', async () => {
+    // 1. Crear insumos: Fruta Mora (10 kg a $8.000) y Azúcar (10 kg a $4.000)
+    const fruit = await prisma.rawMaterial.create({
+      data: {
+        code: `FRUTA_MORA_${Date.now()}`,
+        name: 'Mora Cruda Test Spec001',
+        category: 'MATERIA_PRIMA',
+        unit: 'Kg',
+        currentStock: 10,
+        avgCost: 8000,
+        isActive: true,
+      },
+    });
+
+    const sugar = await prisma.rawMaterial.create({
+      data: {
+        code: `AZUCAR_PREP_${Date.now()}`,
+        name: 'Azúcar Prep Test Spec001',
+        category: 'MATERIA_PRIMA',
+        unit: 'Kg',
+        currentStock: 10,
+        avgCost: 4000,
+        isActive: true,
+      },
+    });
+
+    // 2. Preparar mermelada: usa 1.7 kg de mora ($13.600) + 0.5 kg de azúcar ($2.000) = $15.600
+    // Rendimiento real obtenido: 2.2 kg de mermelada
+    const res = await request(app)
+      .post('/api/preparations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        newMaterialName: `Mermelada de Mora Spec001 ${Date.now()}`,
+        quantityProduced: 2.2,
+        unit: 'Kilogramos',
+        notes: 'Preparación de mora con expansión de rendimiento real',
+        ingredients: [
+          {
+            rawMaterialId: fruit.id,
+            quantityUsed: 1.7,
+            unitUsed: 'Kg',
+          },
+          {
+            rawMaterialId: sugar.id,
+            quantityUsed: 0.5,
+            unitUsed: 'Kg',
+          },
+        ],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.quantityProduced).toBe(2.2);
+    expect(res.body.totalCost).toBe(15600); // 1.7*8000 + 0.5*4000
+    expect(res.body.costPerUnit).toBe(Math.round(15600 / 2.2)); // 7091
+
+    // 3. Verificar stocks descontados
+    const updatedFruit = await prisma.rawMaterial.findUnique({ where: { id: fruit.id } });
+    expect(updatedFruit?.currentStock).toBeCloseTo(8.3, 2); // 10 - 1.7
+
+    const updatedSugar = await prisma.rawMaterial.findUnique({ where: { id: sugar.id } });
+    expect(updatedSugar?.currentStock).toBeCloseTo(9.5, 2); // 10 - 0.5
+
+    // 4. Verificar stock y costo unitario en el insumo generado
+    const outputMat = await prisma.rawMaterial.findUnique({ where: { id: res.body.outputMaterialId } });
+    expect(outputMat?.currentStock).toBe(2.2);
+    expect(outputMat?.avgCost).toBe(Math.round(15600 / 2.2));
+
+    // Limpieza
+    await prisma.supplyPreparation.delete({ where: { id: res.body.id } });
+    await prisma.rawMaterial.deleteMany({ where: { id: { in: [fruit.id, sugar.id, res.body.outputMaterialId] } } });
+  });
+
   afterAll(async () => {
     // Limpieza de datos de prueba
     if (testOutputMaterialId) {

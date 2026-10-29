@@ -39,6 +39,7 @@ export interface PackagingPresentationItem {
   freeLiters: number;
   rawMaterialId?: number | null;
   // Rentabilidad comercial y ganancia por litro
+  unitCost?: number;
   sellingPricePerLiter?: number;
   profitPerLiter?: number;
   profitMarginPercent?: number;
@@ -63,6 +64,8 @@ export interface BatchPackagingCardItem {
   containers?: any[];
   presentations: PackagingPresentationItem[];
   totalLiters: number;
+  baseLitersUsed?: number;
+  yieldPercentage?: number;
   soldLiters: number;
   dischargedLiters: number;
   freeLiters: number;
@@ -121,6 +124,8 @@ export interface PackagingSummaryData {
   presentations: PackagingPresentationItem[];
   volume: {
     totalLiters: number;
+    baseLitersUsed?: number;
+    yieldPercentage?: number;
     soldLiters: number;
     dischargedLiters: number;
     freeLiters: number;
@@ -159,6 +164,8 @@ export interface BatchPackagingItem {
   bottles1L: number;
   bottles2L: number;
   totalLiters: number;
+  baseLitersUsed?: number;
+  yieldPercentage?: number;
   price1L?: number | null;
   price2L?: number | null;
   containers?: any[];
@@ -194,6 +201,7 @@ export interface PackagingContainerItem {
 
 export interface BatchPackagingPayload {
   flavor: string;
+  baseLitersUsed?: number;
   bottles1L: number;
   bottles2L: number;
   price1L?: number;
@@ -222,6 +230,7 @@ export interface BatchPackagingPayload {
 
 export interface UpdateBatchPackagingPayload {
   flavor?: string;
+  baseLitersUsed?: number;
   bottles1L?: number;
   bottles2L?: number;
   price1L?: number;
