@@ -27,6 +27,7 @@ import {
 import { useOperationsStore, type Order, type OrderItem, type DeliveryStatus } from '@/stores/operations.store';
 import { useProductionStore } from '@/stores/production.store';
 import { toInputDateFormat, getDeviceTimestamp } from '@/utils/dateUtils';
+import { resolveOrderPaidAmount } from '@/utils/orderUtils';
 import { toast } from 'vue-sonner';
 
 const props = defineProps<{
@@ -301,6 +302,7 @@ watch(
         deliveryDate.value = o.deliveryDate ? toInputDateFormat(o.deliveryDate) : '';
         deliveryDriverId.value = o.deliveryDriverId || null;
         deliveryFee.value = o.deliveryFee || 0;
+        paidAmount.value = resolveOrderPaidAmount(o);
         const rawMethod = (o.paymentMethod || 'EFECTIVO').toUpperCase().trim();
         paymentMethod.value = rawMethod === 'EFECTIVO' ? 'EFECTIVO' : 'NEQUI';
         notes.value = o.notes || '';
