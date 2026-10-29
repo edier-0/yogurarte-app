@@ -7,6 +7,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Spec 001 completada (T1 a T8): Rendimiento real en fraccionamiento (`baseLitersUsed`, `yieldPercentage`) y costeo neto de mermeladas implementados y verificados al 100% en backend y frontend.
 - Auditoría de dependencias: 0 vulnerabilidades en producción tras blindar overrides (`body-parser`, `zod`, `follow-redirects`, `qs`, `nodemailer`).
 - Auditoría de Fracciones (Fase B): visualización de base consumida, volumen comercial, rendimiento %, costo unitario real por botella y recaudo/cartera.
+- Tesorería y Nequi en Neon: restaurado abono de $12.000 COP en pedido #PED-20261005-002 (Arieth Robles), restableciendo saldo Nequi a $99.400 COP. Spec 002 implementada y verificada: `resolveOrderPaidAmount` y `OrderFormModal.vue` precargan y preservan el abono real en la edición de pedidos.
 
 ## Decisiones (y por qué)
 - SDD y Rendimiento Real (Spec 001): `baseLitersUsed` desacopla los litros consumidos del tanque de los litros comerciales envasados. Fraccionamiento con almíbar o pulpa rinde más sin falsos bloqueos de capacidad.
@@ -26,4 +27,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Auditoría de seguridad: parches de dependencias transitivas en producción se blindan mediante `overrides` en `package.json`.
 
 ## Próximos pasos
-- Iniciar la especificación del libro de recetas bajo metodología SDD.
+- Fusionar `fix/order-form-preserve-paid-amount` en `develop` y luego en `main`.

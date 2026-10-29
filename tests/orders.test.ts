@@ -173,6 +173,53 @@ describe('Orders Endpoints and Atomic Operations', () => {
     expect(res.body.items[0].flavor).toBe('Guanábana');
   });
 
+  it('PUT /api/orders/:id debe preservar el abono previo al editar notas u otros campos (Spec 002)', async () => {
+    // 1. Crear un pedido con abono parcial
+    const createRes = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerName: 'Cliente Test Spec 002',
+        customerPhone: '3119998877',
+        items: [
+          { bottleSize: '1L', flavor: 'Melocotón', quantity: 1, unitPrice: 12000 }
+        ],
+        totalAmount: 12000,
+        paidAmount: 6000,
+        paymentMethod: 'NEQUI',
+        deliveryType: 'PROPIO',
+        deliveryStatus: 'PENDING',
+        notes: 'Pedido inicial'
+      });
+
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.paidAmount).toBe(6000);
+    expect(createRes.body.pendingAmount).toBe(6000);
+    expect(createRes.body.paymentStatus).toBe('PARTIAL');
+
+    const orderIdToEdit = createRes.body.id;
+
+    // 2. Editar solo las notas conservando el paidAmount (como lo hace ahora OrderFormModal corregido)
+    const updateRes = await request(app)
+      .put(`/api/orders/${orderIdToEdit}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        paidAmount: 6000,
+        notes: 'paga el 30'
+      });
+
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.paidAmount).toBe(6000);
+    expect(updateRes.body.pendingAmount).toBe(6000);
+    expect(updateRes.body.paymentStatus).toBe('PARTIAL');
+    expect(updateRes.body.notes).toBe('paga el 30');
+
+    // 3. Limpiar pedido de prueba
+    await request(app)
+      .delete(`/api/orders/${orderIdToEdit}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+  });
+
   it('PUT /api/orders/:id/delivery-status con pago total debe marcar PAID y registrar ingreso en caja atómicamente', async () => {
     const newOrderRes = await request(app)
       .post('/api/orders')
