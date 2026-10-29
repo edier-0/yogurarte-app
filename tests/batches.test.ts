@@ -1608,5 +1608,182 @@ describe('Production Batches - Fase A Fermentación, Fase B Envasado, Preventas,
       await prisma.productionBatch.delete({ where: { id: auditBatchId } });
     });
   });
-});
 
+  describe('Spec 001 — Rendimiento Real en Fraccionamiento (Fase B) y Reversibilidad', () => {
+    let specBatchId: number;
+    let strawberryRawMatId: number;
+    let bottle500mlMatId: number;
+    let sugarMatId: number;
+
+    beforeAll(async () => {
+      // 1. Insumos de prueba
+      let strawberry = await prisma.rawMaterial.findFirst({ where: { code: 'FRUTA_FRESA_TEST' } });
+      if (!strawberry) {
+        strawberry = await prisma.rawMaterial.create({
+          data: {
+            code: 'FRUTA_FRESA_TEST',
+            name: 'Mermelada de Fresa Test',
+            category: 'FRUTA',
+            unit: 'Kilogramos',
+            currentStock: 20,
+            avgCost: 8000,
+            isActive: true,
+          },
+        });
+      } else {
+        await prisma.rawMaterial.update({ where: { id: strawberry.id }, data: { currentStock: 20 } });
+      }
+      strawberryRawMatId = strawberry.id;
+
+      let bottle500 = await prisma.rawMaterial.findFirst({ where: { code: 'ENVASE_500ML_TEST' } });
+      if (!bottle500) {
+        bottle500 = await prisma.rawMaterial.create({
+          data: {
+            code: 'ENVASE_500ML_TEST',
+            name: 'Botella Pet 500ml Test',
+            category: 'EMPAQUE',
+            unit: 'Unidades',
+            currentStock: 50,
+            avgCost: 600,
+            isActive: true,
+          },
+        });
+      } else {
+        await prisma.rawMaterial.update({ where: { id: bottle500.id }, data: { currentStock: 50 } });
+      }
+      bottle500mlMatId = bottle500.id;
+
+      let sugar = await prisma.rawMaterial.findFirst({ where: { code: 'AZUCAR_TEST' } });
+      if (!sugar) {
+        sugar = await prisma.rawMaterial.create({
+          data: {
+            code: 'AZUCAR_TEST',
+            name: 'Azúcar Blanco Test',
+            category: 'INSUMO',
+            unit: 'Kilogramos',
+            currentStock: 20,
+            avgCost: 4000,
+            isActive: true,
+          },
+        });
+      } else {
+        await prisma.rawMaterial.update({ where: { id: sugar.id }, data: { currentStock: 20 } });
+      }
+      sugarMatId = sugar.id;
+
+      // 2. Crear lote madre de 12 litros de base pura
+      const batch = await prisma.productionBatch.create({
+        data: {
+          batchCode: `LOTE-SPEC001-${Date.now()}`,
+          milkUsedLiters: 12,
+          totalLitersProduced: 12,
+          packagedLiters: 0,
+          bottles1LProduced: 0,
+          bottles2LProduced: 0,
+          yieldPercentage: 100,
+          flavor: 'Natural',
+          status: 'DISPONIBLE',
+          costPerLiter: 5000,
+          totalCost: 60000,
+        },
+      });
+      specBatchId = batch.id;
+    });
+
+    it('T2.1: Envasar fracción Fresa con 6L de base y 1.5kg de fruta rindiendo 15 botellas de 500ml (7.5L comerciales)', async () => {
+      const res = await request(app)
+        .post(`/api/batches/${specBatchId}/packaging`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          flavor: 'Fresa Artesanal',
+          baseLitersUsed: 6.0,
+          customContainers: [
+            {
+              rawMaterialId: bottle500mlMatId,
+              capacityLiters: 0.5,
+              quantity: 15, // 15 * 0.5 = 7.5L comerciales
+              price: 7000,
+            },
+          ],
+          extraItems: [
+            {
+              rawMaterialId: strawberryRawMatId,
+              quantityUsed: 1.5, // 1.5 kg
+            },
+          ],
+        });
+
+      expect(res.status).toBe(201);
+      const pkg = res.body.packaging;
+      expect(pkg.baseLitersUsed).toBe(6.0);
+      expect(pkg.totalLiters).toBe(7.5);
+      expect(pkg.yieldPercentage).toBe(125); // (7.5 / 6.0) * 100 = 125%
+
+      // El lote madre sólo descuenta los 6L de base
+      const updatedBatch = await prisma.productionBatch.findUnique({ where: { id: specBatchId } });
+      expect(updatedBatch?.packagedLiters).toBe(6.0);
+      expect(updatedBatch?.totalLitersProduced).toBe(12.0);
+      expect(updatedBatch?.status).toBe('DISPONIBLE');
+    });
+
+    it('T2.2: Bloquea si la base solicitada supera la base disponible en el lote madre', async () => {
+      const res = await request(app)
+        .post(`/api/batches/${specBatchId}/packaging`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          flavor: 'Mora',
+          baseLitersUsed: 7.0,
+          bottles1L: 7,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error || res.body.message).toMatch(/insuficiente/i);
+    });
+
+    it('T2.3: Envasar yogur Natural con azúcar agotando los 6L de base restantes', async () => {
+      const res = await request(app)
+        .post(`/api/batches/${specBatchId}/packaging`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          flavor: 'Natural',
+          baseLitersUsed: 6.0,
+          bottles1L: 7, // 7 Litros comerciales
+          extraItems: [
+            {
+              rawMaterialId: sugarMatId,
+              quantityUsed: 0.6,
+            },
+          ],
+        });
+
+      expect(res.status).toBe(201);
+      const pkg = res.body.packaging;
+      expect(pkg.baseLitersUsed).toBe(6.0);
+      expect(pkg.totalLiters).toBe(7.0);
+      expect(pkg.yieldPercentage).toBe(116.67);
+
+      // El lote madre agota la base disponible (12.0L envasados)
+      const updatedBatch = await prisma.productionBatch.findUnique({ where: { id: specBatchId } });
+      expect(updatedBatch?.packagedLiters).toBe(12.0);
+      expect(updatedBatch?.status).toBe('DISPONIBLE');
+    });
+
+    it('T2.4: Reversión al eliminar fracción restablece baseLitersUsed y reactiva estado', async () => {
+      const packagings = await prisma.batchPackaging.findMany({ where: { batchId: specBatchId } });
+      const naturalPkg = packagings.find((p) => p.flavor === 'Natural');
+      expect(naturalPkg).toBeDefined();
+
+      const delRes = await request(app)
+        .delete(`/api/batches/packagings/${naturalPkg!.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(delRes.status).toBe(200);
+
+      // El lote madre debe reactivarse a DISPONIBLE con 6.0L envasados (6.0L libres)
+      const restoredBatch = await prisma.productionBatch.findUnique({ where: { id: specBatchId } });
+      expect(restoredBatch?.packagedLiters).toBe(6.0);
+      expect(restoredBatch?.status).toBe('DISPONIBLE');
+    });
+  });
+
+});
