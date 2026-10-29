@@ -1,6 +1,6 @@
 # Spec 003 — Búsqueda Inteligente de Insumos e Historial de Elaboraciones con Reversión
 
-Estado: borrador
+Estado: aprobada
 
 ## Contexto y objetivo
 A medida que la fábrica amplía su catálogo de materias primas, insumos y preparaciones (envases, tapas, pulpas, mermeladas, etiquetas y cultivos), los menús desplegables estáticos generan fricción operativa y lentitud, obligando al usuario a desplazarse por listas extensas.
@@ -48,6 +48,10 @@ El objetivo de esta especificación es:
 - **RF-10**: SI el insumo elaborado ya no tiene suficiente stock disponible en bodega (por ejemplo, porque ya fue envasado y consumido en fracciones de yogur), ENTONCES EL SISTEMA debe impedir la anulación y mostrar un mensaje de error indicando que el stock actual no cubre la cantidad a revertir.
 - **RF-11**: CUANDO una elaboración sea anulada exitosamente, EL SISTEMA debe emitir una notificación confirmando la restauración de las materias primas y actualizar de inmediato las existencias visibles en pantalla.
 
+### Edición de Elaboraciones
+- **RF-12**: CUANDO el usuario presione el botón de editar en una elaboración existente, EL SISTEMA debe abrir un modal de edición permitiendo modificar la fecha de fabricación, observaciones/lote y responsable.
+- **RF-13**: CUANDO el usuario guarde las modificaciones de fecha, lote u observaciones, EL SISTEMA debe persistir los cambios sin alterar los balances de inventario ni los costos registrados.
+
 ## Requisitos no funcionales
 - **RNF-1 (Usabilidad móvil y táctil)**: Las listas de sugerencias deben tener áreas de toque confortables (mínimo 44px de altura por ítem) y scroll táctil fluido sin solaparse con teclados virtuales.
 - **RNF-2 (Rendimiento)**: El filtrado de opciones en el selector de insumos debe responder en menos de 50 ms para un catálogo de hasta 500 insumos locales.
@@ -65,11 +69,12 @@ El objetivo de esta especificación es:
 - Creación de nuevas materias primas al vuelo desde el selector de búsqueda (se mantiene en su modal dedicado de insumos).
 
 ## Criterios de finalización
-- [ ] Selector con autocompletado implementado y verificado en todos los modales de insumos (`PrepareCompoundModal`, `PurchaseStockModal`, `InventoryMovementModal`, `MaterialModal`, `PackagingModal`).
-- [ ] Pestaña de Historial de Elaboraciones visible y operativa en Inventario.
-- [ ] Reversión de elaboraciones probada mediante tests unitarios y de integración con restablecimiento exacto del stock.
+- [ ] Selector con autocompletado (`SearchableSelect`) implementado y verificado en todos los modales de insumos (`PrepareCompoundModal`, `PurchaseStockModal`, `InventoryMovementModal`, `MaterialModal`, `PackagingModal`).
+- [ ] Pestaña de Historial de Elaboraciones operativa en la vista de Inventario (listado con desglose de materias primas).
+- [ ] Botón de anulación con reversión atómica de stock en backend y frontend.
+- [ ] Botón y modal de edición de metadatos (fecha, notas/lote, responsable) operativo en backend y frontend.
+- [ ] Pruebas unitarias y de integración pasando al 100%.
 - [ ] Cero errores en `npx tsc --noEmit` y `npm --prefix frontend run build`.
-- [ ] Aprobación de la spec, plan y tareas por parte del usuario.
 
 ## Dudas abiertas
-- [NECESITA ACLARACIÓN] En la pestaña de elaboraciones, además de "Anular / Deshacer" (que devuelve el 100% de los insumos y borra la preparación), ¿deseas también un botón de "Editar" para modificar únicamente la fecha y notas de la preparación, o prefieres que cualquier cambio de cantidades se gestione anulando y volviendo a preparar?
+- Ninguna. Dudas clarificadas con el usuario.
