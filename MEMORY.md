@@ -4,7 +4,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 ## Estado actual
 - App ERP/CRM en uso: producción (Fase A/B), inventario, pedidos/domicilio, caja bimonetaria, créditos, personal y CRM WhatsApp (Baileys + Socket.IO).
 - API canónica en `src/modules/` montada desde `src/app.ts`. Carpetas `src/controllers|routes|schemas` son restos; no son la fuente de verdad.
-- Contexto de agentes listo: `AGENTS.md`, `MEMORY.md`, `.cursor/rules/` (español).
+- Metodología SDD y Git: Constitución en `docs/constitution.md`. Spec 001 en borrador (`specs/001-rendimiento-fracciones-y-recetas/`).
 - Modales móviles: arquitectura de 3 capas fijas (`header` shrink-0, cuerpo `flex-1 overflow-y-auto`, `footer` shrink-0) en todos los modales del sistema, incluyendo auditorías (`BatchSummaryModal`, `PackagingSummaryModal`, `KardexModal`, `CashAuditBreakdownModal`) y confirmación de mensajes (`WhatsAppMessagePreviewModal`).
 - Auditoría de Fracciones (Fase B): visualización de recaudo efectivo en caja, deuda en la calle y meta neta a recaudar (con descuentos aplicados) por fracción, más badges de pago y saldos por pedido vinculado.
 - Lotes y Descuentos: corregido bug de conversión a pre-venta con descuentos; auto-vínculo blindado y balances financieros proporcionales.
@@ -13,6 +13,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Directorio de Clientes & CRM: métricas globales reales (deuda en la calle y encargos en proceso sin sesgo de paginación), mensajería inteligente por estado y plantilla rápida `/gracias_pago`.
 
 ## Decisiones (y por qué)
+- SDD y Constitución: docs/constitution.md fija la supremacía de la spec, invariantes (deuda dinámica, caja bimonetaria, User != StaffMember) y ciclo Git: ramas temáticas desde develop, fusión develop -> main, y borrado con permiso previo del usuario.
 - Zona Horaria y Hora del Dispositivo: erradicados recortes .slice(0, 10)/.split('T')[0] en modales con toInputDateFormat. Formularios envían getDeviceTimestamp con la hora local del dispositivo. En backend se eliminó la recombinación getEffTime y los filtros T00:00:00.000Z se unificaron en getColombiaStartOfDay/EndOfDay, eliminando saltos de fecha nocturna tras las 7:00 PM (UTC-5).
 - Mensajería y WhatsApp móvil: `WhatsAppMessagePreviewModal` cuenta con cabecera y footer fijos (`shrink-0`) con scroll central (`touch-pan-y`), y ofrece despacho dual: por CRM (Baileys) o apertura en la app oficial del teléfono vía `buildWhatsAppUrl`.
 - Recaudo y Cartera por Fracción: la meta a recaudar es el neto facturado con descuentos aplicados (`totalSoldRevenue`). El recaudo en caja (`totalPaidAmount`) y la deuda en calle (`totalPendingAmount`) se prorratean por pedido vinculado garantizando consistencia matemática exacta.
@@ -41,4 +42,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Sincronización automática de BD: script start incluye 'npx prisma db push --skip-generate' para que Render sincronice el schema en Neon en cada despliegue.
 
 ## Próximos pasos
-- Diseñar e implementar el libro flexible de recetas de yogures y mermeladas para estandarizar sabores y rendimiento.
+- Clarificar dudas abiertas de Spec 001 con el usuario y aprobar spec.md para avanzar al plan.md.
