@@ -62,6 +62,9 @@ const notes = ref<string>('');
 const packagedBy = ref<string>('Edier');
 const packagedAt = ref<string>(getTodayDateBogota());
 
+// Rendimiento y litros de base láctea utilizados (Fase B)
+const baseLitersUsed = ref<number | ''>('');
+
 // Otras presentaciones de envase (500ml, Galón, etc.)
 export interface CustomContainerRow {
   rawMaterialId: number | '';
@@ -219,20 +222,42 @@ const totalBottles = computed(() => {
   return (Number(bottles1L.value) || 0) + (Number(bottles2L.value) || 0) + customContainersBottles.value;
 });
 
-// Litros sin envasar del lote (sumando el volumen actual del fraccionamiento si estamos editando)
+// Litros de base láctea efectivos a descontar del lote madre
+const effectiveBaseLiters = computed(() => {
+  if (typeof baseLitersUsed.value === 'number' && !isNaN(baseLitersUsed.value) && baseLitersUsed.value > 0) {
+    return Math.round(baseLitersUsed.value * 100) / 100;
+  }
+  return requiredLiters.value;
+});
+
+// Porcentaje de rendimiento en tiempo real (volumen comercial / base láctea)
+const yieldPercentage = computed(() => {
+  const base = effectiveBaseLiters.value;
+  const commercial = requiredLiters.value;
+  if (base > 0 && commercial > 0) {
+    return Math.round((commercial / base) * 10000) / 100;
+  }
+  return 100;
+});
+
+// Litros sin envasar del lote (sumando el volumen base actual del fraccionamiento si estamos editando)
 const unpackagedLiters = computed(() => {
   if (!props.batch) return 0;
   const total = Number(props.batch.totalLitersProduced) || Number(props.batch.milkUsedLiters) || 0;
   const packaged = Number(props.batch.packagedLiters) || 0;
   const alreadyInThisPkg = props.packagingToEdit
-    ? Number(props.packagingToEdit.bottles1L) * 1.0 + Number(props.packagingToEdit.bottles2L) * 2.0
+    ? Number(
+        props.packagingToEdit.baseLitersUsed ??
+        props.packagingToEdit.totalLiters ??
+        (Number(props.packagingToEdit.bottles1L) * 1.0 + Number(props.packagingToEdit.bottles2L) * 2.0)
+      )
     : 0;
   return Math.max(0, Math.round((total - packaged + alreadyInThisPkg) * 100) / 100);
 });
 
-// Validación de capacidad
+// Validación de capacidad: la base requerida no debe superar el saldo disponible en tanque
 const exceedsVolume = computed(() => {
-  return requiredLiters.value > unpackagedLiters.value + 0.05;
+  return effectiveBaseLiters.value > unpackagedLiters.value + 0.05;
 });
 
 // Helper para detectar unidad kilogramos
@@ -487,7 +512,7 @@ const projectedPackagingCost = computed(() => {
 
 const baseMilkCost = computed(() => {
   const costPerLiter = Number(props.batch?.costPerLiter) || 2800;
-  return Math.round(requiredLiters.value * costPerLiter);
+  return Math.round(effectiveBaseLiters.value * costPerLiter);
 });
 
 const totalBatchFractionCost = computed(() => {
@@ -524,7 +549,8 @@ const isValid = computed(() => {
   const hasFlavor = resolvedFlavor.value.trim().length > 0;
   const stockOk = !hasInsufficientStock.value && !hasPackagingInsufficientStock.value;
   const pricesOk = (Number(price1L.value) || 0) >= 0 && (Number(price2L.value) || 0) >= 0;
-  return hasBottles && notExceeds && hasFlavor && stockOk && pricesOk && !isSubmitting.value;
+  const validBase = effectiveBaseLiters.value > 0;
+  return hasBottles && notExceeds && hasFlavor && stockOk && pricesOk && validBase && !isSubmitting.value;
 });
 
 // Total de litros requeridos por las órdenes pre-seleccionadas
@@ -612,6 +638,7 @@ watch(
         bottles2L.value = pkg.bottles2L;
         price1L.value = pkg.price1L ?? 12000;
         price2L.value = pkg.price2L ?? 24000;
+        baseLitersUsed.value = pkg.baseLitersUsed ?? (pkg.totalLiters || '');
         notes.value = pkg.notes || '';
         packagedBy.value = pkg.packagedBy || 'Edier';
         packagedAt.value = pkg.packagedAt ? toInputDateFormat(pkg.packagedAt) : getTodayDateBogota();
@@ -676,6 +703,7 @@ watch(
         bottles2L.value = 0;
         price1L.value = 12000;
         price2L.value = 24000;
+        baseLitersUsed.value = '';
         extraItems.value = [];
         customContainers.value = [];
         notes.value = '';
@@ -750,6 +778,9 @@ async function handleSubmit() {
       bottles2L: Number(bottles2L.value) || 0,
       price1L: Number(price1L.value) || 0,
       price2L: Number(price2L.value) || 0,
+      baseLitersUsed: typeof baseLitersUsed.value === 'number' && !isNaN(baseLitersUsed.value) && baseLitersUsed.value > 0
+        ? baseLitersUsed.value
+        : undefined,
       bottle1LRawMaterialId: selectedBottle1LId.value ? Number(selectedBottle1LId.value) : (currentBottle1LMat.value?.id || undefined),
       bottle2LRawMaterialId: selectedBottle2LId.value ? Number(selectedBottle2LId.value) : (currentBottle2LMat.value?.id || undefined),
       labelRawMaterialId: selectedLabelId.value ? Number(selectedLabelId.value) : null,
@@ -913,22 +944,117 @@ async function handleSubmit() {
             </div>
           </div>
 
+          <!-- Base Láctea del Lote & Rendimiento (Fase B) -->
+          <div class="space-y-3 rounded-2xl border border-surface-light-border bg-surface-light-card p-4 dark:border-surface-dark-border dark:bg-surface-dark-card">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 dark:text-white">
+                <Milk class="h-4 w-4 text-brand-700 dark:text-brand-darkText" />
+                <span>Base Láctea del Lote & Rendimiento</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span
+                  class="rounded-full px-2.5 py-0.5 text-[11px] font-black"
+                  :class="
+                    yieldPercentage > 100
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                      : yieldPercentage < 100
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
+                      : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                  "
+                >
+                  Rendimiento: {{ yieldPercentage }}%
+                </span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Litros de Base a Extraer del Lote (L)
+                  </label>
+                  <span class="text-[11px] text-slate-400">
+                    Disponible: {{ unpackagedLiters }} L
+                  </span>
+                </div>
+                <div class="relative">
+                  <input
+                    v-model.number="baseLitersUsed"
+                    type="number"
+                    min="0"
+                    step="any"
+                    :placeholder="`Sugerido: ${requiredLiters || unpackagedLiters} L`"
+                    class="w-full rounded-xl border bg-surface-light-canvas px-3.5 py-2.5 text-sm font-extrabold focus:border-brand-800 focus:outline-none dark:bg-surface-dark-canvas"
+                    :class="
+                      exceedsVolume
+                        ? 'border-rose-500 bg-rose-500/10 text-rose-500 dark:border-rose-500 dark:bg-rose-950/30 dark:text-rose-400'
+                        : 'border-surface-light-border text-slate-900 dark:border-surface-dark-border dark:text-white'
+                    "
+                  />
+                  <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                    Litros Base
+                  </span>
+                </div>
+                <div class="mt-1 flex items-center justify-between text-[11px]">
+                  <button
+                    type="button"
+                    @click="baseLitersUsed = unpackagedLiters"
+                    class="font-bold text-brand-700 hover:underline dark:text-brand-darkText"
+                  >
+                    Usar todo el saldo ({{ unpackagedLiters }} L)
+                  </button>
+                  <button
+                    v-if="requiredLiters > 0"
+                    type="button"
+                    @click="baseLitersUsed = requiredLiters"
+                    class="text-slate-500 hover:underline dark:text-slate-400"
+                  >
+                    Igual al volumen ({{ requiredLiters }} L)
+                  </button>
+                </div>
+              </div>
+
+              <!-- Resumen comparativo de Rendimiento -->
+              <div class="rounded-xl border border-surface-light-border/60 bg-slate-50/70 p-3 text-xs dark:border-surface-dark-border/60 dark:bg-surface-dark-canvas/70 space-y-1.5">
+                <div class="flex items-center justify-between text-[11px]">
+                  <span class="text-slate-500">Base láctea a descontar:</span>
+                  <span class="font-extrabold text-slate-800 dark:text-slate-200">{{ effectiveBaseLiters }} L</span>
+                </div>
+                <div class="flex items-center justify-between text-[11px]">
+                  <span class="text-slate-500">Volumen comercial envasado:</span>
+                  <span class="font-extrabold text-emerald-600 dark:text-emerald-400">{{ requiredLiters }} L</span>
+                </div>
+                <div class="flex items-center justify-between text-[11px] border-t border-slate-200/60 pt-1 dark:border-slate-700/60">
+                  <span class="text-slate-500">Diferencia por adición:</span>
+                  <span
+                    class="font-black"
+                    :class="requiredLiters >= effectiveBaseLiters ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'"
+                  >
+                    {{ requiredLiters >= effectiveBaseLiters ? '+' : '' }}{{ (Math.round((requiredLiters - effectiveBaseLiters) * 100) / 100) }} L
+                  </span>
+                </div>
+                <p v-if="yieldPercentage > 100" class="text-[10px] text-emerald-700 dark:text-emerald-400">
+                  Rendimiento expandido: La fracción rinde más gracias al almíbar/fruta agregados.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Botellas a Envasar (1L y 2L) -->
           <div class="space-y-3 rounded-2xl border border-surface-light-border bg-surface-light-card p-4 dark:border-surface-dark-border dark:bg-surface-dark-card">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 dark:text-white">
-                <Milk class="h-4 w-4 text-emerald-500" />
-                <span>Fraccionamiento en Envases</span>
+                <PackageCheck class="h-4 w-4 text-emerald-500" />
+                <span>Presentaciones Comerciales a Envasar</span>
               </div>
               <div class="text-right text-xs">
-                <span class="text-slate-400">Volumen requerido:</span>
+                <span class="text-slate-400">Envasado:</span>
                 <span
-                  class="ml-1 font-black"
-                  :class="exceedsVolume ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'"
+                  class="ml-1 font-black text-emerald-600 dark:text-emerald-400"
                 >
                   {{ requiredLiters }} L
                 </span>
-                <span class="text-slate-400"> / {{ unpackagedLiters }} L libres</span>
+                <span class="text-slate-400"> (Base: {{ effectiveBaseLiters }} L)</span>
               </div>
             </div>
 
@@ -1178,7 +1304,7 @@ async function handleSubmit() {
             >
               <AlertCircle class="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
               <span>
-                El volumen requerido ({{ requiredLiters }}L) supera el saldo disponible sin envasar del lote ({{ unpackagedLiters }}L). Reduce las unidades.
+                La base láctea a extraer ({{ effectiveBaseLiters }} L) supera el saldo disponible sin envasar del lote ({{ unpackagedLiters }} L). Reduce la base a extraer o las unidades.
               </span>
             </div>
           </div>
@@ -1409,7 +1535,7 @@ async function handleSubmit() {
             <!-- Cuadrícula de Componentes de Costo (4 Columnas sin tapas independientes) -->
             <div class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
               <div class="rounded-xl border border-surface-light-border/60 bg-surface-light-canvas/60 p-2 dark:border-surface-dark-border/60 dark:bg-surface-dark-canvas/60">
-                <span class="block text-[9px] font-bold text-slate-400 uppercase">Base Láctea</span>
+                <span class="block text-[9px] font-bold text-slate-400 uppercase">Base Láctea ({{ effectiveBaseLiters }}L)</span>
                 <span class="font-extrabold text-slate-700 dark:text-slate-300">
                   {{ formatCurrency(baseMilkCost) }}
                 </span>

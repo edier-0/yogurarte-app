@@ -489,6 +489,19 @@ watch(activeTab, async (newTab) => {
                 >
                   {{ summary.volume.status }}
                 </span>
+                <span
+                  v-if="summary.volume.yieldPercentage"
+                  class="rounded-full px-2.5 py-0.5 text-[10px] font-black"
+                  :class="
+                    summary.volume.yieldPercentage > 100
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                      : summary.volume.yieldPercentage < 100
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                      : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                  "
+                >
+                  Rendimiento: {{ summary.volume.yieldPercentage }}%
+                </span>
               </div>
 
               <div class="flex flex-wrap items-center gap-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -573,19 +586,29 @@ watch(activeTab, async (newTab) => {
 
           <!-- PESTAÑA 1: PRESENTACIONES Y COSTOS -->
           <div v-if="activeTab === 'PRESENTATIONS'" class="space-y-5">
-            <!-- Cuadrícula de Métricas Clave -->
-            <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <!-- Cuadrícula de Métricas Clave (Base, Volumen Comercial, Rendimiento y Costo) -->
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
               <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-3.5 shadow-sm dark:border-surface-dark-border dark:bg-surface-dark-card">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Volumen</span>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Base Consumida</span>
                 <p class="mt-1 text-xl font-black text-slate-900 dark:text-white">
+                  {{ summary.volume.baseLitersUsed ?? summary.volume.totalLiters }} L
+                </p>
+                <span class="text-[10px] text-slate-500">Del lote madre</span>
+              </div>
+
+              <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-3.5 shadow-sm dark:border-surface-dark-border dark:bg-surface-dark-card">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Volumen Envasado</span>
+                <p class="mt-1 text-xl font-black text-emerald-600 dark:text-emerald-400">
                   {{ summary.volume.totalLiters }} L
                 </p>
-                <span class="text-[10px] text-slate-500">Fracción envasada</span>
+                <span class="text-[10px] font-bold" :class="(summary.volume.yieldPercentage || 100) > 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'">
+                  Rendimiento: {{ summary.volume.yieldPercentage || 100 }}%
+                </span>
               </div>
 
               <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-3.5 shadow-sm dark:border-surface-dark-border dark:bg-surface-dark-card">
                 <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Costo Real / Litro</span>
-                <p class="mt-1 text-xl font-black text-emerald-600 dark:text-emerald-400">
+                <p class="mt-1 text-xl font-black text-brand-800 dark:text-brand-darkText">
                   {{ formatCOP(summary.costs.costPerLiter) }}
                 </p>
                 <span class="text-[10px] text-slate-500">Base + empaque + pulpas</span>
@@ -599,7 +622,7 @@ watch(activeTab, async (newTab) => {
                 <span class="text-[10px] text-slate-500">{{ summary.volume.progressPercentage }}% comercializado</span>
               </div>
 
-              <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-3.5 shadow-sm dark:border-surface-dark-border dark:bg-surface-dark-card">
+              <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-3.5 shadow-sm dark:border-surface-dark-border dark:bg-surface-dark-card col-span-2 sm:col-span-1">
                 <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Saldo Libre</span>
                 <p class="mt-1 text-xl font-black text-dairy-600 dark:text-dairy-400">
                   {{ summary.volume.freeLiters.toFixed(1) }} L
@@ -739,8 +762,8 @@ watch(activeTab, async (newTab) => {
                       <th class="p-2.5 text-center">Vendidas</th>
                       <th class="p-2.5 text-center">Retiros</th>
                       <th class="p-2.5 text-center">Libres</th>
+                      <th class="p-2.5 text-right">Costo Unit.</th>
                       <th class="p-2.5 text-right">Precio Venta</th>
-                      <th class="p-2.5 text-right">Precio / Litro</th>
                       <th class="p-2.5 text-right">Ganancia / Litro</th>
                       <th class="p-2.5 text-right">Ingreso Proy.</th>
                       <th class="p-2.5 text-right">Ganancia Proy.</th>
@@ -764,11 +787,14 @@ watch(activeTab, async (newTab) => {
                       <td class="p-2.5 text-center font-black text-brand-800 dark:text-brand-darkText">
                         {{ pres.free }} und
                       </td>
-                      <td class="p-2.5 text-right font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                        {{ formatCOP(pres.price) }}
+                      <td class="p-2.5 text-right font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        {{ formatCOP(pres.unitCost || Math.round(summary.costs.costPerLiter * pres.capacityLiters)) }}
                       </td>
-                      <td class="p-2.5 text-right font-bold text-slate-700 dark:text-slate-200 whitespace-nowrap">
-                        {{ formatCOP(pres.sellingPricePerLiter || (pres.capacityLiters > 0 ? Math.round(pres.price / pres.capacityLiters) : pres.price)) }}/L
+                      <td class="p-2.5 text-right font-extrabold text-slate-900 dark:text-white whitespace-nowrap">
+                        {{ formatCOP(pres.price) }}
+                        <span class="block text-[10px] font-normal text-slate-400">
+                          ({{ formatCOP(pres.sellingPricePerLiter || (pres.capacityLiters > 0 ? Math.round(pres.price / pres.capacityLiters) : pres.price)) }}/L)
+                        </span>
                       </td>
                       <td class="p-2.5 text-right whitespace-nowrap">
                         <div class="flex flex-col items-end">
@@ -798,12 +824,29 @@ watch(activeTab, async (newTab) => {
               </div>
             </div>
 
-            <!-- Insumos y Empaque Consumidos (itemsUsed) -->
-            <div v-if="summary.itemsUsed && summary.itemsUsed.length > 0" class="rounded-2xl border border-surface-light-border bg-surface-light-card p-4 shadow-sm dark:border-surface-dark-border dark:bg-surface-dark-card">
-              <h4 class="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                Insumos, Envases y Dosificación Consumidos
-              </h4>
+            <!-- Insumos, Base Láctea y Empaque Consumidos -->
+            <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-4 shadow-sm dark:border-surface-dark-border dark:bg-surface-dark-card">
+              <div class="flex items-center justify-between">
+                <h4 class="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Desglose de Costos de la Fracción
+                </h4>
+                <span class="text-xs font-black text-brand-800 dark:text-brand-darkText">
+                  Total: {{ formatCOP(summary.costs.totalCost) }}
+                </span>
+              </div>
               <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <!-- Base Láctea del Lote Madre -->
+                <div class="flex items-center justify-between rounded-xl bg-purple-50/70 p-2.5 text-xs dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40">
+                  <div>
+                    <span class="font-extrabold text-purple-950 dark:text-purple-200">Base Láctea (Lote Madre)</span>
+                    <p class="text-[10px] text-purple-700/80 dark:text-purple-300/80">
+                      {{ summary.volume.baseLitersUsed ?? summary.volume.totalLiters }} L consumidos de tanque
+                    </p>
+                  </div>
+                  <span class="font-black text-purple-900 dark:text-purple-200">
+                    {{ formatCOP(summary.costs.milkBaseCost) }}
+                  </span>
+                </div>
                 <div
                   v-for="item in summary.itemsUsed"
                   :key="item.id || item.rawMaterialId"

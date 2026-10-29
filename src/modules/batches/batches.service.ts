@@ -1901,6 +1901,7 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
     flavor,
     bottles1L,
     bottles2L,
+    baseLitersUsed,
     price1L,
     price2L,
     bottle1LRawMaterialId,
@@ -1933,14 +1934,24 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
     throw new BadRequestError('Debes ingresar al menos una presentación para envasar');
   }
 
+  const effectiveBaseLitersUsed =
+    baseLitersUsed !== undefined && Number(baseLitersUsed) > 0
+      ? Number(baseLitersUsed)
+      : totalPackagingLiters;
+
   const currentPackaged = batch.packagedLiters || 0;
   const availableUnpackaged = Math.max(0, batch.totalLitersProduced - currentPackaged);
 
-  if (totalPackagingLiters > availableUnpackaged + 0.05) {
+  if (effectiveBaseLitersUsed > availableUnpackaged + 0.05) {
     throw new BadRequestError(
-      `Volumen insuficiente para envasar. Hay ${availableUnpackaged.toFixed(1)}L sin envasar y solicitas ${totalPackagingLiters.toFixed(1)}L.`
+      `Volumen insuficiente: Hay ${availableUnpackaged.toFixed(1)}L de base disponibles y solicitas extraer ${effectiveBaseLitersUsed.toFixed(1)}L.`
     );
   }
+
+  const yieldPercentage =
+    effectiveBaseLitersUsed > 0
+      ? Math.round((totalPackagingLiters / effectiveBaseLitersUsed) * 10000) / 100
+      : 100;
 
   // 1. Validar Stock de Botellas 1L
   let bottle1LMat: any = null;
@@ -2280,6 +2291,8 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
         bottles1L: b1L,
         bottles2L: b2L,
         totalLiters: totalPackagingLiters,
+        baseLitersUsed: effectiveBaseLitersUsed,
+        yieldPercentage,
         price1L: price1L !== undefined && Number(price1L) >= 0 ? Number(price1L) : (batch.price1L || 12000),
         price2L: price2L !== undefined && Number(price2L) >= 0 ? Number(price2L) : (batch.price2L || 24000),
         containers: containersData,
@@ -2322,7 +2335,7 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
     });
 
     // Actualizar lote madre (el costo base por litro se mantiene íntegro)
-    const updatedPackagedLiters = currentPackaged + totalPackagingLiters;
+    const updatedPackagedLiters = currentPackaged + effectiveBaseLitersUsed;
     const updatedB1L = (batch.bottles1LProduced || 0) + b1L;
     const updatedB2L = (batch.bottles2LProduced || 0) + b2L;
 
@@ -2379,7 +2392,7 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
  */
 export const updateBatchPackaging = async (packagingId: number, data: UpdateBatchPackagingInput) => {
   return await prisma.$transaction(async (tx) => {
-    const pkg = await tx.batchPackaging.findUnique({
+    const pkg = await tx.batchPackaging.findFirst({
       where: { id: packagingId },
       include: { batch: true },
     });
@@ -2392,6 +2405,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       flavor,
       bottles1L,
       bottles2L,
+      baseLitersUsed,
       price1L,
       price2L,
       bottle1LRawMaterialId,
@@ -2461,16 +2475,26 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
 
     const oldPkgLiters = pkg.totalLiters;
     const newPkgLiters = newB1L * 1.0 + newB2L * 2.0 + customContainersLiters;
-    const deltaLiters = newPkgLiters - oldPkgLiters;
+    const oldBaseUsed = (pkg.baseLitersUsed && pkg.baseLitersUsed > 0) ? pkg.baseLitersUsed : oldPkgLiters;
+    const newBaseUsed = baseLitersUsed !== undefined && Number(baseLitersUsed) > 0
+      ? Number(baseLitersUsed)
+      : (pkg.baseLitersUsed && pkg.baseLitersUsed > 0 && oldPkgLiters > 0 && Math.abs(pkg.baseLitersUsed - oldPkgLiters) > 0.01
+          ? Math.round((newPkgLiters * (pkg.baseLitersUsed / oldPkgLiters)) * 100) / 100
+          : newPkgLiters);
+    const deltaBaseLiters = newBaseUsed - oldBaseUsed;
 
     // Validar volumen total del lote madre
     const batch = pkg.batch;
-    const newPackagedLiters = (batch.packagedLiters || 0) + deltaLiters;
+    const newPackagedLiters = (batch.packagedLiters || 0) + deltaBaseLiters;
     if (newPackagedLiters > batch.totalLitersProduced + 0.05) {
       throw new BadRequestError(
-        `Volumen insuficiente para el ajuste de envasado. El lote tiene ${batch.totalLitersProduced}L totales y el ajuste llevaría a ${newPackagedLiters.toFixed(1)}L envasados.`
+        `Volumen insuficiente en el lote madre para este ajuste. El lote tiene ${batch.totalLitersProduced}L totales y el ajuste llevaría a ${newPackagedLiters.toFixed(1)}L de base extraídos.`
       );
     }
+
+    const newYieldPercentage = newBaseUsed > 0
+      ? Math.round((newPkgLiters / newBaseUsed) * 10000) / 100
+      : 100;
 
     let deltaPackagingCost = 0;
 
@@ -2757,6 +2781,8 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
         bottles1L: newB1L,
         bottles2L: newB2L,
         totalLiters: newPkgLiters,
+        baseLitersUsed: newBaseUsed,
+        yieldPercentage: newYieldPercentage,
         price1L: price1L !== undefined ? Number(price1L) : pkg.price1L,
         price2L: price2L !== undefined ? Number(price2L) : pkg.price2L,
         containers: containersData,
@@ -3060,6 +3086,7 @@ export function calculatePackagingProfitability(
     const profitPerUnit = Math.round(profitPerLiter * capacity);
 
     // Ingresos y ganancias totales proyectadas
+    const unitCost = Math.round(fractionCostPerLiter * capacity);
     const projectedRevenue = quantity * price;
     const totalProjectedProfit = quantity * profitPerUnit;
 
@@ -3078,6 +3105,7 @@ export function calculatePackagingProfitability(
 
     return {
       ...p,
+      unitCost,
       sellingPricePerLiter,
       profitPerLiter,
       profitMarginPercent,
@@ -3202,7 +3230,8 @@ export const getBatchPackagings = async (query: PackagingsQueryInput) => {
 
   const items = rawPackagings.map((pkg) => {
     const computed = computePackagingPresentations(pkg);
-    const milkBaseCost = Math.round(computed.totalLiters * (pkg.batch?.costPerLiter || 2800));
+    const effectiveBaseLiters = (pkg.baseLitersUsed && pkg.baseLitersUsed > 0) ? pkg.baseLitersUsed : computed.totalLiters;
+    const milkBaseCost = Math.round(effectiveBaseLiters * (pkg.batch?.costPerLiter || 2800));
     const totalFractionCost = milkBaseCost + (pkg.packagingCost || 0);
     const fractionCostPerLiter = computed.totalLiters > 0 ? Math.round(totalFractionCost / computed.totalLiters) : 0;
     const { presentations, profitability } = calculatePackagingProfitability(
@@ -3222,6 +3251,8 @@ export const getBatchPackagings = async (query: PackagingsQueryInput) => {
       bottles1L: pkg.bottles1L,
       bottles2L: pkg.bottles2L,
       containers: pkg.containers,
+      baseLitersUsed: pkg.baseLitersUsed,
+      yieldPercentage: pkg.yieldPercentage,
       presentations,
       totalLiters: computed.totalLiters,
       soldLiters: computed.soldLiters,
@@ -3316,7 +3347,8 @@ export const getPackagingSummary = async (packagingId: number) => {
   }
 
   const computed = computePackagingPresentations(pkg);
-  const milkBaseCost = Math.round(computed.totalLiters * (pkg.batch?.costPerLiter || 2800));
+  const effectiveBaseLiters = (pkg.baseLitersUsed && pkg.baseLitersUsed > 0) ? pkg.baseLitersUsed : computed.totalLiters;
+  const milkBaseCost = Math.round(effectiveBaseLiters * (pkg.batch?.costPerLiter || 2800));
   const totalFractionCost = milkBaseCost + (pkg.packagingCost || 0);
   const fractionCostPerLiter = computed.totalLiters > 0 ? Math.round(totalFractionCost / computed.totalLiters) : 0;
   const { presentations, profitability } = calculatePackagingProfitability(
@@ -3372,6 +3404,8 @@ export const getPackagingSummary = async (packagingId: number) => {
     },
     presentations,
     volume: {
+      baseLitersUsed: effectiveBaseLiters,
+      yieldPercentage: pkg.yieldPercentage || (effectiveBaseLiters > 0 ? Math.round((computed.totalLiters / effectiveBaseLiters) * 10000) / 100 : 100),
       totalLiters: computed.totalLiters,
       soldLiters: computed.soldLiters,
       dischargedLiters: computed.dischargedLiters,
@@ -3396,31 +3430,32 @@ export const getPackagingSummary = async (packagingId: number) => {
  * Eliminar fracción de envasado, reintegrando litros al lote madre e insumos al inventario
  */
 export const deleteBatchPackaging = async (packagingId: number, options?: DeletePackagingQueryInput) => {
-  return await prisma.$transaction(async (tx) => {
-    const pkg = await tx.batchPackaging.findUnique({
-      where: { id: packagingId },
-      include: {
-        batch: true,
-        itemsUsed: true,
-        orderItems: {
-          include: { order: true },
-        },
+  const pkg = await prisma.batchPackaging.findFirst({
+    where: { id: packagingId },
+    include: {
+      batch: true,
+      itemsUsed: true,
+      orderItems: {
+        include: { order: true },
       },
-    });
+    },
+  });
 
-    if (!pkg) {
-      throw new NotFoundError('Fracción de envasado no encontrada');
-    }
+  if (!pkg) {
+    throw new NotFoundError('Fracción de envasado no encontrada');
+  }
 
-    const activeLinkedOrders = (pkg.orderItems || []).filter(
-      (it) => it.order && it.order.deliveryStatus !== 'CANCELLED'
+  const activeLinkedOrders = (pkg.orderItems || []).filter(
+    (it) => it.order && it.order.deliveryStatus !== 'CANCELLED'
+  );
+
+  if (activeLinkedOrders.length > 0 && !options?.force) {
+    throw new BadRequestError(
+      `No se puede eliminar la fracción "${pkg.packagingCode || pkg.flavor}" porque tiene ${activeLinkedOrders.length} pedido(s) vinculado(s). Debes desvincular los pedidos vinculados antes de eliminarla.`
     );
+  }
 
-    if (activeLinkedOrders.length > 0 && !options?.force) {
-      throw new BadRequestError(
-        `No se puede eliminar la fracción "${pkg.packagingCode || pkg.flavor}" porque tiene ${activeLinkedOrders.length} pedido(s) vinculado(s). Debes desvincular los pedidos vinculados antes de eliminarla.`
-      );
-    }
+  return await prisma.$transaction(async (tx) => {
 
     // 1. Reintegrar stock de botellas estándar
     if (pkg.bottle1LRawMaterialId && pkg.bottles1L > 0) {
@@ -3454,7 +3489,8 @@ export const deleteBatchPackaging = async (packagingId: number, options?: Delete
 
     // 4. Reintegrar litros y costos al lote madre
     const batch = pkg.batch;
-    const updatedPackagedLiters = Math.max(0, (batch.packagedLiters || 0) - pkg.totalLiters);
+    const baseToRestore = (pkg.baseLitersUsed && pkg.baseLitersUsed > 0) ? pkg.baseLitersUsed : pkg.totalLiters;
+    const updatedPackagedLiters = Math.max(0, (batch.packagedLiters || 0) - baseToRestore);
     const updatedB1L = Math.max(0, (batch.bottles1LProduced || 0) - pkg.bottles1L);
     const updatedB2L = Math.max(0, (batch.bottles2LProduced || 0) - pkg.bottles2L);
 
@@ -3484,7 +3520,7 @@ export const deleteBatchPackaging = async (packagingId: number, options?: Delete
     await syncBatchStatusBidirectional(tx, batch.id);
 
     return {
-      message: `Fracción ${pkg.packagingCode || pkg.flavor} eliminada exitosamente. Se reintegraron ${pkg.totalLiters}L al lote madre ${batch.batchCode} y los insumos al almacén.`,
+      message: `Fracción ${pkg.packagingCode || pkg.flavor} eliminada exitosamente. Se reintegraron ${baseToRestore}L de base al lote madre ${batch.batchCode} y los insumos al almacén.`,
       batchId: batch.id,
       packagingId: pkg.id,
     };

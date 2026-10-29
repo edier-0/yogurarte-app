@@ -99,6 +99,7 @@ export const packagingContainerItemSchema = z.object({
 });
 
 export const batchPackagingSchema = z.object({
+  baseLitersUsed: z.coerce.number().min(0).optional(),
   flavor: z.string().min(1, 'El sabor es obligatorio'),
   bottles1L: z.coerce.number().int().min(0).default(0),
   bottles2L: z.coerce.number().int().min(0).default(0),
@@ -121,6 +122,7 @@ export const batchPackagingSchema = z.object({
 });
 
 export const updateBatchPackagingSchema = z.object({
+  baseLitersUsed: z.coerce.number().min(0).optional(),
   flavor: z.string().min(1).optional(),
   bottles1L: z.coerce.number().int().min(0).optional(),
   bottles2L: z.coerce.number().int().min(0).optional(),
