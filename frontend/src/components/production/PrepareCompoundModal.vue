@@ -20,6 +20,7 @@ import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import { getTodayDateBogota } from '@/stores/finance.store';
 import { formatStockQuantity } from '@/utils/formatters';
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
 
 export interface CompoundMaterialOption {
   id: number;
@@ -94,6 +95,17 @@ watch(
 // Insumo compuesto seleccionado
 const currentCompound = computed(() => {
   return props.compoundMaterials.find((m) => m.id === selectedMaterialId.value) || null;
+});
+
+const compoundSelectOptions = computed(() => {
+  return props.compoundMaterials.map((c) => ({
+    id: c.id,
+    name: c.name,
+    code: c.code,
+    category: 'INSUMO COMPUESTO',
+    stock: c.currentStock,
+    unit: c.unit,
+  }));
 });
 
 // Al cambiar el selector de insumo compuesto, actualizar cantidad por defecto al rendimiento base
@@ -244,18 +256,14 @@ async function handlePrepare() {
           <!-- Selección de Insumo Compuesto y Cantidad -->
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label class="block text-xs font-bold text-slate-600 dark:text-slate-300">
-                Insumo Compuesto a Elaborar
-              </label>
-              <select
+              <SearchableSelect
                 v-model="selectedMaterialId"
+                :options="compoundSelectOptions"
+                label="Insumo Compuesto a Elaborar"
+                placeholder="Buscar compuesto a elaborar..."
+                :required="true"
                 @change="handleCompoundChange"
-                class="mt-1 w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-              >
-                <option v-for="c in compoundMaterials" :key="c.id" :value="c.id">
-                  {{ c.name }} (Stock: {{ c.currentStock }} {{ c.unit }})
-                </option>
-              </select>
+              />
             </div>
 
             <div>

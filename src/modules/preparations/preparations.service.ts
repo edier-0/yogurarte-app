@@ -1,7 +1,7 @@
 import prisma from '../../prisma.js';
 import { getColombiaDateStr, parseColombiaDate } from '../../utils/date.utils.js';
 import { BadRequestError, NotFoundError } from '../../shared/errors/appError.js';
-import { CreatePreparationInput } from './preparations.schema.js';
+import { CreatePreparationInput, UpdatePreparationInput } from './preparations.schema.js';
 
 function isKgUnit(unit: string): boolean {
   if (!unit) return false;
@@ -243,6 +243,44 @@ export async function createPreparation(data: CreatePreparationInput) {
   });
 }
 
+export async function updatePreparation(id: number, data: UpdatePreparationInput) {
+  const { preparationDate, notes, registeredBy } = data;
+
+  const existing = await prisma.supplyPreparation.findUnique({
+    where: { id },
+  });
+
+  if (!existing) {
+    throw new NotFoundError('Elaboración no encontrada');
+  }
+
+  const updateData: any = {};
+  if (preparationDate !== undefined && preparationDate !== null) {
+    updateData.preparationDate = parseColombiaDate(preparationDate);
+  }
+  if (notes !== undefined) {
+    updateData.notes = notes ? notes.trim() : null;
+  }
+  if (registeredBy !== undefined) {
+    updateData.registeredBy = registeredBy ? registeredBy.trim() : existing.registeredBy;
+  }
+
+  const updated = await prisma.supplyPreparation.update({
+    where: { id },
+    data: updateData,
+    include: {
+      outputMaterial: true,
+      ingredients: {
+        include: {
+          rawMaterial: true,
+        },
+      },
+    },
+  });
+
+  return updated;
+}
+
 export async function deletePreparation(id: number) {
   return prisma.$transaction(async (tx) => {
     const preparation = await tx.supplyPreparation.findUnique({
@@ -260,6 +298,12 @@ export async function deletePreparation(id: number) {
     // 1. Revertir stock del insumo producido
     if (preparation.outputMaterial) {
       const currentProdStock = preparation.outputMaterial.currentStock;
+      if (currentProdStock < preparation.quantityProduced) {
+        throw new BadRequestError(
+          `No es posible anular la elaboración: el stock disponible actual (${currentProdStock} ${preparation.outputMaterial.unit}) ` +
+          `es menor a la cantidad producida (${preparation.quantityProduced} ${preparation.outputMaterial.unit}) porque ya fue consumida.`
+        );
+      }
       await tx.rawMaterial.update({
         where: { id: preparation.outputMaterialId },
         data: {
@@ -281,7 +325,10 @@ export async function deletePreparation(id: number) {
       }
     }
 
-    // 3. Eliminar preparación
+    // 3. Eliminar preparación e ingredientes asociados
+    await tx.supplyPreparationItem.deleteMany({
+      where: { preparationId: id },
+    });
     await tx.supplyPreparation.delete({
       where: { id },
     });

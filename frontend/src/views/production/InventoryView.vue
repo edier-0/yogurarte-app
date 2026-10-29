@@ -45,6 +45,7 @@ import PurchaseStockModal from '@/components/production/PurchaseStockModal.vue';
 import MaterialModal from '@/components/production/MaterialModal.vue';
 import PrepareCompoundModal from '@/components/production/PrepareCompoundModal.vue';
 import KardexModal from '@/components/production/KardexModal.vue';
+import EditPreparationModal from '@/components/production/EditPreparationModal.vue';
 
 
 export interface RecipeIngredientItem {
@@ -108,7 +109,7 @@ const adjustments = ref<AdjustmentItem[]>([]);
 const isLoading = ref<boolean>(false);
 
 // Navegación de pestañas
-const activeTab = ref<'materials' | 'kardex'>('materials');
+const activeTab = ref<'materials' | 'kardex' | 'preparations'>('materials');
 
 // Filtros para Catálogo de Insumos
 const selectedCategoryChip = ref<MaterialCategoryChip>('ALL');
@@ -163,10 +164,66 @@ async function fetchAdjustments() {
   }
 }
 
+// Historial de Elaboraciones Internas (Spec 003)
+const preparations = ref<any[]>([]);
+const searchPreparation = ref<string>('');
+const isEditPrepModalOpen = ref(false);
+const prepToEdit = ref<any | null>(null);
+
+async function fetchPreparations() {
+  try {
+    const res = await http.get<any[]>('/preparations');
+    if (Array.isArray(res)) {
+      preparations.value = res;
+    }
+  } catch {
+    // Manejado por interceptor global
+  }
+}
+
+const filteredPreparations = computed(() => {
+  const q = searchPreparation.value.trim().toLowerCase();
+  if (!q) return preparations.value;
+  return preparations.value.filter((p) => {
+    return (
+      (p.code || '').toLowerCase().includes(q) ||
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.notes || '').toLowerCase().includes(q) ||
+      (p.registeredBy || '').toLowerCase().includes(q)
+    );
+  });
+});
+
+function openEditPreparation(prep: any) {
+  prepToEdit.value = prep;
+  isEditPrepModalOpen.value = true;
+}
+
+async function handleDeletePreparation(prep: any) {
+  const confirmed = await confirm({
+    title: '¿Anular y deshacer elaboración?',
+    message: `¿Estás seguro de anular la elaboración ${prep.code} (${prep.name})?\n\nSe devolverán las materias primas consumidas al almacén y se restarán ${prep.quantityProduced} ${prep.unit} del inventario de ${prep.name}. Esta acción es irreversible.`,
+    confirmText: 'Sí, anular y devolver stock',
+    variant: 'danger',
+  });
+
+  if (!confirmed) return;
+
+  try {
+    await http.delete(`/preparations/${prep.id}`);
+    toast.success('Elaboración anulada', {
+      description: `Se restauraron las materias primas y se descontó ${prep.name} del almacén.`,
+    });
+    refreshAll();
+  } catch (err: any) {
+    toast.error(err?.response?.data?.error || 'Error al anular la elaboración');
+  }
+}
+
 async function refreshAll() {
   isLoading.value = true;
   try {
-    await Promise.all([fetchMaterials(), fetchAdjustments()]);
+    await Promise.all([fetchMaterials(), fetchAdjustments(), fetchPreparations()]);
   } finally {
     isLoading.value = false;
   }
@@ -606,6 +663,17 @@ async function reactivateMaterial(mat: MaterialItem) {
           <span>Kardex y Movimientos de Entrada/Salida</span>
           <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             {{ adjustments.length }}
+          </span>
+        </TabsTrigger>
+
+        <TabsTrigger
+          value="preparations"
+          class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
+        >
+          <ChefHat class="h-4 w-4 stroke-[2]" />
+          <span>Historial de Elaboraciones</span>
+          <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            {{ preparations.length }}
           </span>
         </TabsTrigger>
       </TabsList>
@@ -1153,6 +1221,159 @@ async function reactivateMaterial(mat: MaterialItem) {
           </p>
         </div>
       </TabsContent>
+
+      <!-- PESTAÑA 3: HISTORIAL DE ELABORACIONES (Spec 003) -->
+      <TabsContent value="preparations" class="space-y-4 focus:outline-none">
+        <!-- Barra de Búsqueda y Botón Rápido -->
+        <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-4 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="relative w-full sm:max-w-xs">
+              <Search class="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 stroke-[2]" />
+              <input
+                v-model="searchPreparation"
+                type="text"
+                placeholder="Buscar por insumo, código, lote..."
+                class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2.5 pl-10 pr-3.5 text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
+              />
+            </div>
+
+            <button
+              type="button"
+              @click="openPrepareModal()"
+              class="inline-flex items-center justify-center gap-2 rounded-xl bg-hero-gradient px-4 py-2.5 text-xs font-extrabold text-white shadow-card transition-all active:scale-95"
+            >
+              <ChefHat class="h-4 w-4 stroke-[2]" />
+              <span>+ Preparar Insumo</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Listado de Elaboraciones -->
+        <div v-if="filteredPreparations.length > 0" class="space-y-3">
+          <div
+            v-for="p in filteredPreparations"
+            :key="p.id"
+            class="rounded-2xl border border-surface-light-border bg-surface-light-card p-4 sm:p-5 shadow-card transition-all hover:border-slate-300 dark:border-surface-dark-border dark:bg-surface-dark-card dark:hover:border-slate-700"
+          >
+            <!-- Cabecera de la Tarjeta -->
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-surface-light-border pb-3 dark:border-surface-dark-border">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                  {{ p.code }}
+                </span>
+                <span class="flex items-center gap-1 text-xs font-bold text-slate-500 dark:text-slate-400">
+                  <Calendar class="h-3.5 w-3.5" />
+                  {{ formatDate(p.preparationDate) }}
+                </span>
+                <span v-if="p.registeredBy" class="flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                  <User class="h-3 w-3" />
+                  {{ p.registeredBy }}
+                </span>
+              </div>
+
+              <!-- Acciones: Editar y Anular -->
+              <div class="flex items-center gap-1 self-end sm:self-auto">
+                <button
+                  type="button"
+                  @click="openEditPreparation(p)"
+                  class="inline-flex items-center gap-1 rounded-xl border border-surface-light-border bg-surface-light-canvas px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+                  title="Editar fecha o notas"
+                >
+                  <Edit3 class="h-3.5 w-3.5 text-slate-500" />
+                  <span>Editar</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="handleDeletePreparation(p)"
+                  class="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-950/60 transition-colors"
+                  title="Anular elaboración y revertir stock"
+                >
+                  <Trash2 class="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+                  <span>Anular / Deshacer</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Contenido Principal -->
+            <div class="grid grid-cols-1 gap-4 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+              <!-- Insumo Producido -->
+              <div>
+                <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Insumo Elaborado
+                </div>
+                <div class="mt-0.5 text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <ChefHat class="h-4 w-4 text-amber-600 shrink-0" />
+                  <span>{{ p.name }}</span>
+                </div>
+                <div class="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-black text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                  +{{ p.quantityProduced }} {{ p.unit }}
+                </div>
+              </div>
+
+              <!-- Costos -->
+              <div>
+                <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Costos de Fabricación
+                </div>
+                <div class="mt-0.5 text-sm font-black text-slate-900 dark:text-white">
+                  {{ formatCurrency(p.totalCost) }}
+                </div>
+                <div class="mt-0.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  Costo unitario: <strong>{{ formatCurrency(p.costPerUnit) }} / {{ p.unit }}</strong>
+                </div>
+              </div>
+
+              <!-- Observaciones -->
+              <div v-if="p.notes" class="sm:col-span-2 lg:col-span-1">
+                <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Observaciones / Lote
+                </div>
+                <div class="mt-0.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-surface-light-canvas dark:bg-surface-dark-canvas p-2 rounded-xl border border-surface-light-border dark:border-surface-dark-border">
+                  {{ p.notes }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Desglose de Materias Primas Consumidas -->
+            <div v-if="p.ingredients && p.ingredients.length > 0" class="mt-4 rounded-xl border border-surface-light-border bg-surface-light-canvas p-3 dark:border-surface-dark-border dark:bg-surface-dark-canvas">
+              <div class="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                Materias Primas Descontadas del Almacén ({{ p.ingredients.length }})
+              </div>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
+                <div
+                  v-for="ing in p.ingredients"
+                  :key="ing.id"
+                  class="flex items-center justify-between rounded-lg border border-surface-light-border bg-surface-light-card px-2.5 py-1.5 text-xs dark:border-surface-dark-border dark:bg-surface-dark-card"
+                >
+                  <span class="font-bold text-slate-800 dark:text-slate-200 truncate">
+                    {{ ing.rawMaterial?.name || `Insumo #${ing.rawMaterialId}` }}
+                  </span>
+                  <div class="text-right shrink-0 ml-2">
+                    <span class="font-extrabold text-rose-600 dark:text-rose-400">
+                      -{{ formatStockQuantity(ing.quantityUsed, ing.unitUsed || ing.rawMaterial?.unit || 'Kg') }} {{ ing.unitUsed || ing.rawMaterial?.unit || 'Kg' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Estado Vacío -->
+        <div
+          v-else
+          class="rounded-3xl border border-dashed border-surface-light-border bg-surface-light-card p-12 text-center dark:border-surface-dark-border dark:bg-surface-dark-card"
+        >
+          <ChefHat class="mx-auto h-12 w-12 text-slate-400 stroke-[1.5]" />
+          <h3 class="mt-3 text-base font-extrabold text-slate-900 dark:text-white">
+            Sin elaboraciones registradas
+          </h3>
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Transforma materias primas en mermeladas o preparados internos usando el botón "+ Preparar Insumo".
+          </p>
+        </div>
+      </TabsContent>
     </TabsRoot>
 
     <!-- Modal de Movimiento de Kardex (Ajuste) -->
@@ -1258,5 +1479,12 @@ async function reactivateMaterial(mat: MaterialItem) {
         </DialogContent>
       </DialogPortal>
     </DialogRoot>
+
+    <!-- Modal de Edición de Elaboración (Spec 003) -->
+    <EditPreparationModal
+      v-model:open="isEditPrepModalOpen"
+      :preparation="prepToEdit"
+      @updated="refreshAll"
+    />
   </div>
 </template>

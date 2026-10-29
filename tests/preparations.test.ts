@@ -93,6 +93,28 @@ describe('Supply Preparations Endpoints', () => {
     expect(updatedIngredient?.currentStock).toBe(8); // 10 - 2
   });
 
+  it('PUT /api/preparations/:id debe actualizar fecha y notas de la elaboración sin alterar stock', async () => {
+    if (!testPrepId) return;
+
+    const res = await request(app)
+      .put(`/api/preparations/${testPrepId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        notes: 'Notas actualizadas Spec 003',
+        registeredBy: 'Supervisor Test',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.notes).toBe('Notas actualizadas Spec 003');
+    expect(res.body.registeredBy).toBe('Supervisor Test');
+
+    // Verificar que el stock de insumos e ingrediente permanezca intacto
+    const ingredient = await prisma.rawMaterial.findUnique({
+      where: { id: testRawMaterialId },
+    });
+    expect(ingredient?.currentStock).toBe(8);
+  });
+
   it('DELETE /api/preparations/:id debe revertir el stock y eliminar la preparación', async () => {
     if (!testPrepId) return;
 
@@ -108,6 +130,49 @@ describe('Supply Preparations Endpoints', () => {
       where: { id: testRawMaterialId },
     });
     expect(revertedIngredient?.currentStock).toBe(10);
+  });
+
+  it('RF-10: DELETE /api/preparations/:id debe rechazar la anulación si el stock del producto elaborado es insuficiente', async () => {
+    const baseMat = await prisma.rawMaterial.create({
+      data: {
+        code: `RF10_BASE_${Date.now()}`,
+        name: 'Insumo Base RF10',
+        category: 'MATERIA_PRIMA',
+        unit: 'Kg',
+        currentStock: 10,
+        avgCost: 2000,
+        isActive: true,
+      },
+    });
+
+    const prepRes = await request(app)
+      .post('/api/preparations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        newMaterialName: `Mermelada RF10 ${Date.now()}`,
+        quantityProduced: 5,
+        unit: 'Kilogramos',
+        ingredients: [{ rawMaterialId: baseMat.id, quantityUsed: 5, unitUsed: 'Kg' }],
+      });
+    expect(prepRes.status).toBe(201);
+    const prepId = prepRes.body.id;
+    const outputMatId = prepRes.body.outputMaterialId;
+
+    await prisma.rawMaterial.update({
+      where: { id: outputMatId },
+      data: { currentStock: 1 },
+    });
+
+    const delRes = await request(app)
+      .delete(`/api/preparations/${prepId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(delRes.status).toBe(400);
+    expect(delRes.body.error).toContain('No es posible anular la elaboración');
+
+    await prisma.supplyPreparationItem.deleteMany({ where: { preparationId: prepId } });
+    await prisma.supplyPreparation.delete({ where: { id: prepId } });
+    await prisma.rawMaterial.deleteMany({ where: { id: { in: [baseMat.id, outputMatId] } } });
   });
 
   it('Spec 001: Preparación de mermelada con fruta base + azúcar rinde mayor cantidad y calcula costo unitario exacto', async () => {

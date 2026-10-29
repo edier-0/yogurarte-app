@@ -20,6 +20,7 @@ import {
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
 
 export interface IngredientOption {
   id: number;
@@ -107,6 +108,18 @@ const selectableIngredients = computed(() => {
   return props.availableIngredients.filter(
     (m) => !props.materialToEdit?.id || m.id !== props.materialToEdit.id
   );
+});
+
+const ingredientSelectOptions = computed(() => {
+  return selectableIngredients.value.map((m) => ({
+    id: m.id,
+    name: m.name,
+    code: m.code,
+    category: m.category,
+    stock: m.currentStock,
+    unit: m.unit,
+    extraInfo: `PMP: ${formatCurrency(m.avgCost)}`,
+  }));
 });
 
 // Sincronizar datos al abrir modal
@@ -517,15 +530,13 @@ async function handleSave() {
               >
                 <!-- Selector de Materia Prima -->
                 <div class="flex-1">
-                  <label class="block text-[10px] font-bold text-slate-400">Ingrediente {{ idx + 1 }}</label>
-                  <select
+                  <SearchableSelect
                     v-model="row.ingredientId"
-                    class="mt-0.5 w-full rounded-lg border border-surface-light-border bg-surface-light-card px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-card dark:text-white"
-                  >
-                    <option v-for="ing in selectableIngredients" :key="ing.id" :value="ing.id">
-                      {{ ing.name }} (Stock: {{ ing.currentStock }} {{ ing.unit }} • PMP: {{ formatCurrency(ing.avgCost) }})
-                    </option>
-                  </select>
+                    :options="ingredientSelectOptions"
+                    :label="`Ingrediente ${idx + 1}`"
+                    placeholder="Buscar materia prima..."
+                    :required="true"
+                  />
                 </div>
 
                 <!-- Cantidad Requerida -->

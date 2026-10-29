@@ -21,6 +21,7 @@ import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import { getTodayDateBogota, toInputDateFormat, getDeviceTimestamp } from '@/stores/finance.store';
 import { formatStockQuantity } from '@/utils/formatters';
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
 
 export interface MaterialOption {
   id: number;
@@ -89,6 +90,16 @@ watch(
 
 const currentMaterial = computed(() => {
   return props.materials.find((m) => m.id === selectedMaterialId.value);
+});
+
+const materialSelectOptions = computed(() => {
+  return props.materials.map((m) => ({
+    id: m.id,
+    name: m.name,
+    category: m.category,
+    stock: m.currentStock,
+    unit: m.unit,
+  }));
 });
 
 // Diferencia neta respecto a la variación original del movimiento
@@ -269,24 +280,14 @@ async function handleSubmit() {
 
             <!-- Selección del Insumo -->
             <div>
-              <div class="flex items-center justify-between mb-1">
-                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Insumo / Materia Prima *
-                </label>
-                <span v-if="isEditing" class="text-[10px] font-semibold text-slate-400 italic">
-                  (Insumo original fijo)
-                </span>
-              </div>
-              <select
+              <SearchableSelect
                 v-model="selectedMaterialId"
+                :options="materialSelectOptions"
+                label="Insumo / Materia Prima"
+                placeholder="Buscar insumo a mover..."
                 :disabled="isEditing"
-                required
-                class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-brand-800 focus:outline-none disabled:opacity-75 disabled:cursor-not-allowed dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-              >
-                <option v-for="mat in materials" :key="mat.id" :value="mat.id">
-                  {{ mat.name }} (Stock: {{ formatStockQuantity(mat.currentStock, mat.unit) }} {{ mat.unit }})
-                </option>
-              </select>
+                :required="true"
+              />
             </div>
 
             <!-- Cantidad y Stock Resultante -->
