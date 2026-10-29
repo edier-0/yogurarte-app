@@ -749,7 +749,7 @@ export const createOrder = async (data: CreateOrderInput) => {
     }
 
     for (const [pId, requestedLiters] of pkgLitersMap.entries()) {
-      const pkgObj = await tx.batchPackaging.findUnique({
+      const pkgObj = await tx.batchPackaging.findFirst({
         where: { id: pId },
         include: {
           orderItems: { where: { order: { deliveryStatus: { not: 'CANCELLED' } } } },
@@ -1155,7 +1155,7 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
       }
 
       for (const [pId, requestedLiters] of pkgLitersMap.entries()) {
-        const pkgObj = await tx.batchPackaging.findUnique({
+        const pkgObj = await tx.batchPackaging.findFirst({
           where: { id: pId },
           include: {
             orderItems: { where: { order: { deliveryStatus: { not: 'CANCELLED' } } } },
