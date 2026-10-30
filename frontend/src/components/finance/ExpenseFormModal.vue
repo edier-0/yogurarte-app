@@ -85,7 +85,16 @@ watch(
 
     if (props.expense) {
       amount.value = Math.abs(Number(props.expense.amount) || 0);
-      category.value = props.expense.category || 'OPERATIVO';
+      let cat = (props.expense.category || 'OPERATIVO').trim();
+      if (
+        cat === 'COMPRA_INSUMO' ||
+        cat.includes('Compra Insumo') ||
+        cat.includes('MATERIA_PRIMA') ||
+        cat.includes('INSUMOS')
+      ) {
+        cat = 'INSUMOS_EXTRA';
+      }
+      category.value = cat;
 
       let rawDesc = props.expense.description || '';
       let initialSupplier = props.expense.supplier || '';
@@ -164,8 +173,18 @@ async function handleSubmit() {
         description: 'La liquidación fue modificada satisfactoriamente.',
       });
     } else {
+      let cleanCat = category.value.trim();
+      if (
+        cleanCat === 'COMPRA_INSUMO' ||
+        cleanCat.includes('Compra Insumo') ||
+        cleanCat.includes('MATERIA_PRIMA') ||
+        cleanCat.includes('INSUMOS')
+      ) {
+        cleanCat = 'INSUMOS_EXTRA';
+      }
+
       const payload = {
-        category: category.value,
+        category: cleanCat,
         description: description.value.trim(),
         amount: amount.value,
         expenseDate: getDeviceTimestamp(expenseDate.value),

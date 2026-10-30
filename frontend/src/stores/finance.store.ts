@@ -48,6 +48,7 @@ export interface UnifiedMovement {
   createdAt?: string;
   flowType: 'INFLOW' | 'OUTFLOW' | 'TRANSFER';
   tabCategory: 'SALES' | 'EXPENSES' | 'BASE' | 'TRANSFERS';
+  category?: string;
   concept: string;
   description: string;
   amount: number;
@@ -348,7 +349,8 @@ export const useFinanceStore = defineStore('finance', () => {
         const isPurchaseItem =
           !!o.isPurchase ||
           String(o.id).startsWith('purch_') ||
-          o.category === 'COMPRA_INSUMO' ||
+          o.category === 'INSUMOS_EXTRA' ||
+          o.category === 'MATERIA_PRIMA' ||
           (o.categoryLabel && o.categoryLabel.includes('Compra'));
 
         const purchaseId = o.purchaseId || (String(o.id).startsWith('purch_') ? Number(o.rawId) : undefined);
@@ -375,6 +377,7 @@ export const useFinanceStore = defineStore('finance', () => {
           createdAt: o.createdAt,
           flowType: 'OUTFLOW',
           tabCategory: isAdj || isBaseWithdrawal ? 'BASE' : 'EXPENSES',
+          category: o.category || (isPurchaseItem ? 'INSUMOS_EXTRA' : isPayrollItem ? 'NOMINA' : 'OPERATIVO'),
           concept: o.concept || o.description || o.name || (isPurchaseItem ? 'Compra de Insumo' : isPayrollItem ? 'Pago de Nómina' : 'Gasto Operativo'),
           description: o.description || o.concept || o.name || '',
           amount: Number(o.amount) || 0,

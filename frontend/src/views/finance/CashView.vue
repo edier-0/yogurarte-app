@@ -145,9 +145,24 @@ function openEditExpense(mov: any) {
     mov.categoryLabel?.includes('Nómina') ||
     mov.categoryLabel?.includes('Retiro');
 
+  const isPurchase =
+    !!mov.isPurchase ||
+    String(mov.id).startsWith('purch_') ||
+    mov.category === 'INSUMOS_EXTRA' ||
+    mov.category === 'COMPRA_INSUMO' ||
+    mov.categoryLabel?.includes('Compra') ||
+    mov.categoryLabel?.includes('Insumo');
+
+  let initialCategory = mov.category || mov.type || 'OPERATIVO';
+  if (isPayroll) {
+    initialCategory = mov.category === 'RETIRO_SOCIO' ? 'RETIRO_SOCIO' : 'NOMINA';
+  } else if (isPurchase) {
+    initialCategory = 'INSUMOS_EXTRA';
+  }
+
   selectedExpenseToEdit.value = {
     id: mov.rawId || mov.id,
-    category: mov.category || mov.categoryLabel || mov.type || (isPayroll ? 'NOMINA' : 'OPERATIVO'),
+    category: initialCategory,
     description: mov.description || mov.concept || '',
     amount: Math.abs(Number(mov.amount) || 0),
     expenseDate: mov.date ? toInputDateFormat(mov.date) : getTodayDateBogota(),
