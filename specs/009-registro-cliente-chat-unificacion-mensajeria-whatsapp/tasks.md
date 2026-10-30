@@ -6,7 +6,7 @@
 - [x] **T2. Backend: Prevención de bifurcación de chats en `whatsappService.sendMessage`.** RF-6, RF-7
   - Hecho cuando: prueba automatizada verifique que al enviar un mensaje saliente (notificación o plantilla) a un destinatario cuyo cliente ya cuenta con un hilo en el CRM, el sistema reutilice dicha conversación en lugar de crear un segundo registro duplicado.
 
-- [ ] **T3. Backend: Resolución de JID canónico para `@usuario` y robustecimiento de `mergeChats`.** RF-8, RF-9, RF-10
+- [x] **T3. Backend: Resolución de JID canónico para `@usuario` y robustecimiento de `mergeChats`.** RF-8, RF-9, RF-10
   - Hecho cuando: pruebas automatizadas verifiquen que `resolveRecipientJid` resuelva el JID canónico de WhatsApp para clientes registrados con `@usuario` que posean conversación previa, y que `mergeChats` traslade los mensajes y consolide hilos sin fallos por restricción única en `remoteJid`.
 
 - [ ] **T4. Frontend: Propagación del cliente guardado en `CustomerModal.vue` y `customerId` en `operations.store.ts`.** RF-2, RF-6, RF-9

@@ -405,17 +405,35 @@ export async function linkCustomer(conversationId: number, customerId: number | 
 
   const cleanCustPhone = customer.phone ? customer.phone.replace(/\D/g, '') : null;
   const last10 = cleanCustPhone && cleanCustPhone.length >= 7 ? cleanCustPhone.slice(-10) : null;
+  const custUsername = customer.phone && customer.phone.startsWith('@')
+    ? customer.phone.slice(1).trim()
+    : (!cleanCustPhone && customer.phone && /[a-zA-Z]/.test(customer.phone) ? customer.phone.trim() : null);
 
-  // Buscar todas las demás conversaciones asociadas a este cliente (por customerId o por su teléfono)
+  const otherConvConditions: any[] = [{ customerId: targetCustId }];
+  if (cleanCustPhone && cleanCustPhone.length >= 7) {
+    otherConvConditions.push({ phoneNumber: cleanCustPhone });
+  }
+  if (last10) {
+    otherConvConditions.push(
+      { phoneNumber: { contains: last10 } },
+      { remoteJid: { contains: last10 } }
+    );
+  }
+  if (custUsername && custUsername.length >= 2) {
+    otherConvConditions.push(
+      { contactName: { equals: custUsername, mode: 'insensitive' } },
+      { contactName: { contains: custUsername, mode: 'insensitive' } },
+      { phoneNumber: { equals: custUsername, mode: 'insensitive' } },
+      { phoneNumber: { contains: custUsername, mode: 'insensitive' } },
+      { remoteJid: { contains: custUsername, mode: 'insensitive' } }
+    );
+  }
+
+  // Buscar todas las demás conversaciones asociadas a este cliente (por customerId, teléfono o @usuario)
   const otherConvs = await prisma.chatConversation.findMany({
     where: {
       id: { not: conversationId },
-      OR: [
-        { customerId: targetCustId },
-        ...(cleanCustPhone ? [{ phoneNumber: cleanCustPhone }] : []),
-        ...(last10 ? [{ phoneNumber: { contains: last10 } }] : []),
-        ...(last10 ? [{ remoteJid: { contains: last10 } }] : []),
-      ],
+      OR: otherConvConditions,
     },
     include: { messages: true },
   });
@@ -533,6 +551,9 @@ export async function mergeChats(input: MergeChatInput) {
   const cleanCustomerPhone = targetCustomer.phone
     ? normalizeColombianJid(targetCustomer.phone.replace(/\D/g, ''))
     : null;
+  const targetUsername = targetCustomer.phone && targetCustomer.phone.startsWith('@')
+    ? targetCustomer.phone.slice(1).trim()
+    : (!cleanCustomerPhone && targetCustomer.phone && /[a-zA-Z]/.test(targetCustomer.phone) ? targetCustomer.phone.trim() : null);
 
   // Ejecución atómica en transacción
   const result = await prisma.$transaction(async (tx) => {
@@ -544,18 +565,41 @@ export async function mergeChats(input: MergeChatInput) {
       },
     });
 
-    // 2. Si no hay por customerId, buscar por teléfono o JID canónico
-    if (!targetConv && cleanCustomerPhone) {
-      targetConv = await tx.chatConversation.findFirst({
-        where: {
-          id: { not: sourceChatId },
-          OR: [
-            { phoneNumber: cleanCustomerPhone },
-            { remoteJid: `${cleanCustomerPhone}@s.whatsapp.net` },
-            ...(rawCanonicalJid ? [{ remoteJid: rawCanonicalJid }] : []),
-          ],
-        },
-      });
+    // 2. Si no hay por customerId, buscar por teléfono, JID canónico o @usuario
+    if (!targetConv) {
+      const searchConditions: any[] = [];
+      if (cleanCustomerPhone && cleanCustomerPhone.length >= 7) {
+        searchConditions.push(
+          { phoneNumber: cleanCustomerPhone },
+          { remoteJid: `${cleanCustomerPhone}@s.whatsapp.net` }
+        );
+        const last10 = cleanCustomerPhone.slice(-10);
+        searchConditions.push(
+          { phoneNumber: { contains: last10 } },
+          { remoteJid: { contains: last10 } }
+        );
+      }
+      if (rawCanonicalJid) {
+        searchConditions.push({ remoteJid: rawCanonicalJid });
+      }
+      if (targetUsername && targetUsername.length >= 2) {
+        searchConditions.push(
+          { contactName: { equals: targetUsername, mode: 'insensitive' } },
+          { contactName: { contains: targetUsername, mode: 'insensitive' } },
+          { phoneNumber: { equals: targetUsername, mode: 'insensitive' } },
+          { phoneNumber: { contains: targetUsername, mode: 'insensitive' } },
+          { remoteJid: { contains: targetUsername, mode: 'insensitive' } }
+        );
+      }
+
+      if (searchConditions.length > 0) {
+        targetConv = await tx.chatConversation.findFirst({
+          where: {
+            id: { not: sourceChatId },
+            OR: searchConditions,
+          },
+        });
+      }
     }
 
     if (targetConv) {
@@ -570,8 +614,16 @@ export async function mergeChats(input: MergeChatInput) {
         where: { id: sourceChatId },
       });
 
-      // Determinar el JID canónico final
-      const finalJid = rawCanonicalJid || normalizeColombianJid(targetConv.remoteJid);
+      // Determinar el JID canónico final seguro (evitando colisión con terceros)
+      let finalJid = rawCanonicalJid || normalizeColombianJid(targetConv.remoteJid);
+      if (finalJid !== targetConv.remoteJid) {
+        const existingWithJid = await tx.chatConversation.findUnique({
+          where: { remoteJid: finalJid },
+        });
+        if (existingWithJid && existingWithJid.id !== targetConv.id) {
+          finalJid = targetConv.remoteJid;
+        }
+      }
       const finalPhone = cleanCustomerPhone || normalizeColombianJid(targetConv.phoneNumber);
 
       // Obtener el último mensaje cronológico

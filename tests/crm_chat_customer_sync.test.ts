@@ -131,4 +131,112 @@ describe('T1 & T2: Sincronización y prevención de bifurcación de chats', () =
     });
     expect(totalChatsForCustomer).toBe(1);
   });
+
+  it('T3: resolveRecipientJid debe resolver el JID canónico para cliente con @usuario si posee conversación', async () => {
+    const randomUser = `ana_${Date.now().toString().slice(-6)}`;
+    const phoneJid = `57300${Date.now().toString().slice(-7)}@s.whatsapp.net`;
+
+    const customer = await prisma.customer.create({
+      data: {
+        fullName: 'Ana Yogur Especial',
+        phone: `@${randomUser}`,
+        address: 'Fonseca',
+      },
+    });
+    createdCustomerIds.push(customer.id);
+
+    const chat = await prisma.chatConversation.create({
+      data: {
+        remoteJid: phoneJid,
+        phoneNumber: phoneJid.split('@')[0],
+        contactName: 'Ana Yogur Especial',
+        customerId: customer.id,
+      },
+    });
+    createdConversationIds.push(chat.id);
+
+    const { resolveRecipientJid } = await import('../src/modules/crm/crm.service.js');
+
+    // Con customerId
+    const resolvedWithId = await resolveRecipientJid(`@${randomUser}`, customer.id);
+    expect(resolvedWithId).toBe(phoneJid);
+
+    // Sin customerId (búsqueda inversa por @usuario)
+    const resolvedWithoutId = await resolveRecipientJid(`@${randomUser}`);
+    expect(resolvedWithoutId).toBe(phoneJid);
+  });
+
+  it('T3: mergeChats debe consolidar bidireccionalmente hilos y mensajes para clientes con @usuario', async () => {
+    const randomUser = `felipe_${Date.now().toString().slice(-6)}`;
+    const jid1 = `${Date.now().toString().slice(-8)}@lid`;
+    const jid2 = `57315${Date.now().toString().slice(-7)}@s.whatsapp.net`;
+
+    const customer = await prisma.customer.create({
+      data: {
+        fullName: 'Felipe Usuario',
+        phone: `@${randomUser}`,
+        address: 'Fonseca',
+      },
+    });
+    createdCustomerIds.push(customer.id);
+
+    // Chat 1: entrante original huérfano con LID
+    const chat1 = await prisma.chatConversation.create({
+      data: {
+        remoteJid: jid1,
+        phoneNumber: jid1.split('@')[0],
+        contactName: randomUser,
+        customerId: null,
+      },
+    });
+    createdConversationIds.push(chat1.id);
+
+    // Chat 2: vinculado al cliente con su número
+    const chat2 = await prisma.chatConversation.create({
+      data: {
+        remoteJid: jid2,
+        phoneNumber: jid2.split('@')[0],
+        contactName: 'Felipe Usuario',
+        customerId: customer.id,
+      },
+    });
+    createdConversationIds.push(chat2.id);
+
+    // Mensajes en ambos chats
+    const msg1 = await prisma.chatMessage.create({
+      data: {
+        conversationId: chat1.id,
+        messageId: `MSG1-${Date.now()}`,
+        text: 'Mensaje del chat 1',
+      },
+    });
+    const msg2 = await prisma.chatMessage.create({
+      data: {
+        conversationId: chat2.id,
+        messageId: `MSG2-${Date.now()}`,
+        text: 'Mensaje del chat 2',
+      },
+    });
+
+    const { mergeChats } = await import('../src/modules/crm/crm.service.js');
+    const result = await mergeChats({
+      sourceChatId: chat1.id,
+      targetClientId: customer.id,
+    });
+
+    expect(result).toHaveProperty('id');
+    expect(result.id).toBe(chat2.id);
+
+    // Chat 1 debe haber sido eliminado
+    const deletedChat = await prisma.chatConversation.findUnique({
+      where: { id: chat1.id },
+    });
+    expect(deletedChat).toBeNull();
+
+    // Mensajes de chat 1 deben haber sido transferidos al chat canónico (chat2)
+    const transferredMsg1 = await prisma.chatMessage.findUnique({
+      where: { id: msg1.id },
+    });
+    expect(transferredMsg1?.conversationId).toBe(chat2.id);
+  });
 });
