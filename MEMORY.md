@@ -3,26 +3,29 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 
 ## Estado actual
 - ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
-- Spec 009 finalizada, integrada en `develop` y `main`, y desplegada.
-- Rama `feat/registro-cliente-chat-unificacion-whatsapp` eliminada en local y remoto tras autorización.
-- Tareas completadas:
-  - T1: Autovinculación preventiva de chats huérfanos al crear/actualizar clientes.
-  - T2: Prevención de bifurcación de chats en `whatsappService.sendMessage`.
-  - T3: Resolución de JID canónico para `@usuario` y robustecimiento de `mergeChats` y `linkCustomer`.
-  - T4: Propagación de cliente guardado en `CustomerModal.vue` y `customerId` en despachos.
-  - T5: Botón `[+ Registrar cliente]` en barra de chat y panel lateral con vinculación atómica inmediata.
-  - T6: Enrutamiento inteligente de `@usuario` y prevención síncrona de bloqueo de popups en WhatsApp oficial.
-- Pruebas y compilación en verde: backend (`crm_chat_customer_sync.test.ts`, `crm.test.ts`) y frontend (`vue-tsc` + Vite build) 100% operativos.
+- Constitución (v1.3.0) y `AGENTS.md` actualizados con reglas permanentes:
+  - Presentaciones dinámicas y sin 1L/2L hardcodeados en Fase B.
+  - Entregas, salidas y auditoría de botellas exclusivas de Fase B (`BatchPackaging`).
+  - Alerta de fidelización 10+1 en toma de pedidos con acceso directo a CRM.
+- Spec 010 completada (T1 a T6):
+  - T1: Backend CRM `customerId` en `getLoyaltyOverview` para respuesta en milisegundos.
+  - T2: Segregación dinámica de salidas de fidelización (`loyaltyDischarged` a $0 COP) en `batches.service.ts`.
+  - T3: Suite automatizada de integración `tests/loyalty_phase_b_audit.test.ts` (4/4 verde).
+  - T4: Banner proactivo de fidelización en `OrderFormModal.vue` con botón de redención directa a `RedeemRewardModal.vue`.
+  - T5: Auditoría visual dinámica y rotulado badge de `PREMIO_FIDELIZACION` en `PackagingSummaryModal.vue`.
+  - T6: Verificación integral exitosa (`npx tsc --noEmit`, `npm run build` y vitest 19/19 verde).
+- Rama temática: `feat/auditoria-fase-b-dinamica-y-alerta-fidelizacion`.
 
 ## Decisiones (y por qué)
-- Botón directo en chat: incorporar botón `[+ Registrar cliente]` en encabezado y barra lateral del chat para precargar modal y vincular atómicamente la conversación.
-- Autovinculación preventiva: `createOrUpdateCustomer` y `sendMessage` asocian automáticamente chats huérfanos para evitar bifurcación al despachar mensajes predeterminados.
-- Reutilización estricta: `resolveOrCreateConversationForOutgoing` reutiliza cualquier conversación existente del cliente o terminación de 10 dígitos antes de crear un nuevo registro.
-- Prevención síncrona de popup blocker: para destinatarios `@usuario` sin chat previo o con sesión desconectada, `window.open` se dispara de forma síncrona en el contexto del clic del usuario antes de cualquier resolución de promesas asíncronas.
+- Segregación estricta de auditoría: Fase A es exclusivamente base láctea a granel; Fase B asume el 100% de la auditoría de botellas dinámicas, ventas y salidas por fidelización ($0 COP).
+- Notificación no invasiva en pedidos: aviso destacado en `OrderFormModal.vue` al seleccionar cliente frecuente con acción rápida para abrir `RedeemRewardModal` sin perder los datos del pedido en curso.
+- Restricción innegociable de 1.0L: el premio no puede superar 1.0 Litro (1x 1L o 2x 500ml); controlado tanto en validación Zod/servicio backend como en selector reactivo frontend.
+- Uso de `findFirst` en queries complejas de Prisma sobre Neon para evitar caídas P1017 por transacciones/prepared statements.
 
 ## Aprendizajes y errores a evitar
-- No intentar `window.open` tras una promesa asíncrona de red; el navegador bloquea la ventana emergente por expiración del contexto de usuario transitorio.
-- En Baileys, los mensajes requieren JIDs válidos (@s.whatsapp.net o @lid); los @usuarios de WhatsApp deben resolverse contra la conversación existente en base de datos o abrirse en WhatsApp oficial.
+- No duplicar métricas de botellas en Fase A; distorsiona el balance de tinas que solo fermentan leche líquida.
+- Conectar siempre redención desde la comanda sin reiniciar el formulario de pedido.
+- No eliminar ramas locales ni remotas sin autorización explícita previa del usuario.
 
 ## Próximos pasos
-- Monitorear el flujo de registro directo desde chat y mensajería en producción.
+- Presentar la entrega completa de la Spec 010 al usuario y coordinar ciclo Git (commit, push, PR y merge a `develop` y `main`).

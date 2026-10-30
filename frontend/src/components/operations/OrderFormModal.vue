@@ -23,12 +23,16 @@ import {
   Percent,
   DollarSign,
   Tag,
+  Gift,
 } from 'lucide-vue-next';
 import { useOperationsStore, type Order, type OrderItem, type DeliveryStatus } from '@/stores/operations.store';
 import { useProductionStore } from '@/stores/production.store';
 import { toInputDateFormat, getDeviceTimestamp } from '@/utils/dateUtils';
 import { resolveOrderPaidAmount } from '@/utils/orderUtils';
 import { toast } from 'vue-sonner';
+import { http } from '@/api/client';
+import RedeemRewardModal from '@/components/operations/crm/RedeemRewardModal.vue';
+import type { LoyaltyCustomerItem, LoyaltyResponse } from '@/components/operations/crm/LoyaltyTab.vue';
 
 const props = defineProps<{
   open: boolean;
@@ -114,6 +118,45 @@ const notes = ref('');
 const isSubmitting = ref(false);
 const customerSearch = ref('');
 const showSuggestions = ref(false);
+
+// Fidelización 10+1 y Alerta Proactiva en Comanda
+const loyaltyCustomer = ref<LoyaltyCustomerItem | null>(null);
+const showRedeemModal = ref(false);
+
+const checkCustomerLoyalty = async (targetId: number | null) => {
+  if (!targetId || targetId <= 0) {
+    loyaltyCustomer.value = null;
+    return;
+  }
+  try {
+    const res = await http.get<LoyaltyResponse>('/crm/loyalty', {
+      params: { customerId: targetId },
+    });
+    if (res && res.customers && res.customers.length > 0) {
+      loyaltyCustomer.value = res.customers[0];
+    } else {
+      loyaltyCustomer.value = null;
+    }
+  } catch (err) {
+    console.error('Error al consultar fidelización del cliente:', err);
+    loyaltyCustomer.value = null;
+  }
+};
+
+const handleRewardRedeemed = async () => {
+  if (customerId.value) {
+    await checkCustomerLoyalty(customerId.value);
+  }
+  await productionStore.fetchAvailablePackagings();
+};
+
+watch(customerId, (newId) => {
+  if (newId) {
+    checkCustomerLoyalty(newId);
+  } else {
+    loyaltyCustomer.value = null;
+  }
+});
 
 // Módulo de Descuentos
 const discountMode = ref<'NONE' | 'PERCENTAGE' | 'FIXED'>('NONE');
@@ -652,6 +695,42 @@ const formatCurrency = (val: number) => {
                 />
               </div>
             </div>
+
+            <!-- Alerta Proactiva de Fidelización (10+1) -->
+            <div
+              v-if="loyaltyCustomer && loyaltyCustomer.rewardsAvailable > 0"
+              class="relative overflow-hidden rounded-xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 p-3.5 shadow-sm transition-all dark:border-emerald-500/20 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-indigo-950/30"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
+                    <Gift class="h-5 w-5 animate-bounce" />
+                  </div>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="text-xs font-black text-emerald-800 dark:text-emerald-300">
+                        ¡Premio de Fidelización Disponible!
+                      </span>
+                      <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300">
+                        🎁 {{ loyaltyCustomer.rewardsAvailable }} {{ loyaltyCustomer.rewardsAvailable === 1 ? 'Litro' : 'Litros' }} GRATIS
+                      </span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                      Acumuló 10 botellas completadas. Puedes canjear y entregar su cortesía ($0 COP) sin perder el pedido en curso.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  @click="showRedeemModal = true"
+                  class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-emerald-700 active:scale-95 transition-all"
+                >
+                  <Gift class="h-3.5 w-3.5" />
+                  <span>Redimir en CRM</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- 2. Sección Productos / Ítems vinculados a Lote o Pre-venta -->
@@ -1136,5 +1215,13 @@ const formatCurrency = (val: number) => {
         </form>
       </DialogContent>
     </DialogPortal>
+
+    <!-- Modal para Redención de Fidelización en Vivo -->
+    <RedeemRewardModal
+      v-if="showRedeemModal"
+      v-model:open="showRedeemModal"
+      :customer="loyaltyCustomer"
+      @redeemed="handleRewardRedeemed"
+    />
   </DialogRoot>
 </template>
