@@ -1,6 +1,6 @@
 # Desglose de Tareas — Spec 009: Registro de Clientes desde el Chat, Unificación de Hilos y Mensajería WhatsApp por Usuario
 
-- [ ] **T1. Backend: Autovinculación preventiva de chats huérfanos al registrar o actualizar clientes.** RF-5, RF-7
+- [x] **T1. Backend: Autovinculación preventiva de chats huérfanos al registrar o actualizar clientes.** RF-5, RF-7
   - Hecho cuando: pruebas automatizadas en `tests/crm_chat_customer_sync.test.ts` verifiquen que al ejecutar `createOrUpdateCustomer` en `customers.service.ts`, cualquier conversación previa con `customerId: null` cuyo número, terminación de 10 dígitos o `@usuario` coincida con el cliente quede vinculada automáticamente sin bifurcarse.
 
 - [ ] **T2. Backend: Prevención de bifurcación de chats en `whatsappService.sendMessage`.** RF-6, RF-7
