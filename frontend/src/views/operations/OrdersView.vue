@@ -56,7 +56,7 @@ const openOrderDetails = (order: Order) => {
 const handleDeleteOrder = async (order: Order) => {
   const ok = await confirm({
     title: 'Eliminar Pedido',
-    message: `¿Estás seguro de eliminar el pedido ${order.orderCode || '#' + order.id} de "${order.customer?.fullName || order.customerName || 'Cliente'}"? Las botellas y litros reservados serán liberados inmediatamente al inventario disponible.`,
+    message: `¿Estás seguro de eliminar el pedido ${order.orderCode || '#' + order.id} de "${order.customer?.fullName || order.customerName || 'Cliente'}"? Los envases y litros reservados serán liberados inmediatamente al inventario disponible.`,
     confirmText: 'Eliminar Pedido',
     cancelText: 'Cancelar',
     variant: 'danger',
@@ -466,7 +466,7 @@ const getStatusBadge = (status: DeliveryStatus) => {
               type="button"
               @click="handleDeleteOrder(order)"
               class="flex h-10 items-center justify-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-1 text-xs font-bold text-rose-700 transition-all active:scale-95 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-900/40"
-              title="Eliminar pedido y liberar botellas reservadas"
+              title="Eliminar pedido y liberar envases reservados"
             >
               <Trash2 class="h-3.5 w-3.5 stroke-[1.75]" />
               <span>Eliminar</span>

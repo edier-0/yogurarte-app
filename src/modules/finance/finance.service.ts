@@ -5,6 +5,9 @@ import {
   getColombiaStartOfDay,
   getColombiaEndOfDay,
 } from '../../utils/date.utils.js';
+import { formatLitersVolume } from '../../utils/volume.utils.js';
+import { computePackagingPresentations } from '../batches/batches.service.js';
+import { resolvePresentationLiters } from '../orders/orders.service.js';
 import {
   BadRequestError,
   NotFoundError,
@@ -1347,6 +1350,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     periodBatches,
     allActiveBatches,
     batchDischarges,
+    activePackagings,
     allTimeCashMovements,
     allTimeOrders,
     allTimeExpenses,
@@ -1388,6 +1392,8 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
             bottleSize: true,
             quantity: true,
             flavor: true,
+            litersPerUnit: true,
+            totalLiters: true,
           },
         },
         payments: {
@@ -1543,7 +1549,12 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
         flavor: true,
         status: true,
         totalLitersProduced: true,
+        packagedLiters: true,
         preparationDate: true,
+        orderItems: { select: { id: true, orderId: true, totalLiters: true, packagingId: true } },
+        orders: { select: { id: true, totalLiters: true } },
+        discharges: { select: { id: true, totalLiters: true, packagingId: true } },
+        packagings: { select: { id: true } },
       },
     }),
     prisma.batchDischarge.findMany({
@@ -1577,6 +1588,32 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
         },
       },
       orderBy: { dischargeDate: 'desc' },
+    }),
+    prisma.batchPackaging.findMany({
+      where: {
+        batch: {
+          isActive: true,
+          status: { not: 'ARCHIVADO' },
+        },
+      },
+      include: {
+        orderItems: {
+          include: {
+            order: {
+              select: {
+                id: true,
+                deliveryStatus: true,
+                discount: true,
+                totalAmount: true,
+                paidAmount: true,
+                paymentStatus: true,
+                items: true,
+              },
+            },
+          },
+        },
+        discharges: true,
+      },
     }),
     isPeriodFiltered
       ? prisma.cashMovement.findMany({
@@ -1948,6 +1985,136 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
   );
   const totalBatchesCountThisMonth = batchesThisMonth.length;
 
+  // 3. Métricas de Stock de Fase B y Presentaciones envasadas disponibles (Spec 007)
+  let availableLiters = 0;
+  let availableBatchesCount = 0;
+  const stockPresentationsMap = new Map<string, { name: string; quantity: number; capacityLiters: number; totalLiters: number }>();
+
+  for (const pkg of (activePackagings || [])) {
+    const computed = computePackagingPresentations(pkg);
+    if (computed.freeLiters > 0.05) {
+      availableBatchesCount += 1;
+      availableLiters += computed.freeLiters;
+
+      for (const pres of computed.presentations) {
+        if (pres.free > 0) {
+          const key = pres.containerName || `${pres.capacityLiters}L`;
+          const existing = stockPresentationsMap.get(key) || {
+            name: key,
+            quantity: 0,
+            capacityLiters: pres.capacityLiters,
+            totalLiters: 0,
+          };
+          existing.quantity += pres.free;
+          existing.totalLiters += pres.freeLiters;
+          stockPresentationsMap.set(key, existing);
+        }
+      }
+    }
+  }
+
+  // Soporte retrocompatible para lotes legacy que no tengan fracciones envasadas de Fase B (RF-4):
+  for (const b of (allActiveBatches || [])) {
+    if (b.status !== 'EN_FERMENTACION' && (!b.packagings || b.packagings.length === 0)) {
+      const soldFromItems = b.orderItems?.reduce((sum: number, it: any) => sum + (Number(it.totalLiters) || 0), 0) || 0;
+      const legacySold = (b.orders || [])
+        .filter((o: any) => !b.orderItems?.some((it: any) => it.orderId === o.id))
+        .reduce((sum: number, o: any) => sum + (Number(o.totalLiters) || 0), 0);
+      const discharged = (b.discharges || []).reduce((sum: number, d: any) => sum + (Number(d.totalLiters) || 0), 0);
+      const directAvailable = Math.max(0, (Number(b.totalLitersProduced) || 0) - (Number(b.packagedLiters) || 0) - (soldFromItems + legacySold) - discharged);
+      if (directAvailable > 0.05) {
+        availableLiters += directAvailable;
+        availableBatchesCount += 1;
+        const key = '1L';
+        const existing = stockPresentationsMap.get(key) || {
+          name: key,
+          quantity: 0,
+          capacityLiters: 1.0,
+          totalLiters: 0,
+        };
+        existing.quantity += Math.round(directAvailable);
+        existing.totalLiters += directAvailable;
+        stockPresentationsMap.set(key, existing);
+      }
+    }
+  }
+
+  availableLiters = Math.round(availableLiters * 100) / 100;
+  const availableStockPresentations = Array.from(stockPresentationsMap.values()).map((p) => ({
+    ...p,
+    totalLiters: Math.round(p.totalLiters * 100) / 100,
+  }));
+
+  // Desglose de despachos de pedidos por presentación (Spec 007)
+  const computeOrdersBreakdown = (orderList: typeof orders) => {
+    let totalUnits = 0;
+    const map = new Map<string, { name: string; quantity: number; capacityLiters: number; totalLiters: number }>();
+
+    for (const o of orderList) {
+      if (o.items && o.items.length > 0) {
+        for (const it of o.items) {
+          const name = it.bottleSize || '1L';
+          const qty = Number(it.quantity) || 1;
+          const cap = it.litersPerUnit || resolvePresentationLiters(name);
+          const vol = it.totalLiters || (qty * cap);
+          totalUnits += qty;
+
+          const ex = map.get(name) || { name, quantity: 0, capacityLiters: cap, totalLiters: 0 };
+          ex.quantity += qty;
+          ex.totalLiters += vol;
+          map.set(name, ex);
+        }
+      } else {
+        const name = o.bottleSize || '1L';
+        const qty = Number(o.quantityBottles) || 1;
+        const cap = resolvePresentationLiters(name);
+        const vol = o.totalLiters || (qty * cap);
+        totalUnits += qty;
+
+        const ex = map.get(name) || { name, quantity: 0, capacityLiters: cap, totalLiters: 0 };
+        ex.quantity += qty;
+        ex.totalLiters += vol;
+        map.set(name, ex);
+      }
+    }
+
+    const breakdown = Array.from(map.values()).map((p) => ({
+      ...p,
+      totalLiters: Math.round(p.totalLiters * 100) / 100,
+    }));
+
+    return { totalUnits, breakdown };
+  };
+
+  const deliveredBreakdown = computeOrdersBreakdown(deliveredOrders);
+  const inProcessBreakdown = computeOrdersBreakdown(inProcessOrders);
+  const allOrdersBreakdown = computeOrdersBreakdown(orders);
+
+  // Desglose de consumos de socios por presentación (Spec 007)
+  let totalPartnerUnits = 0;
+  const partnerMap = new Map<string, { name: string; quantity: number; capacityLiters: number; totalLiters: number }>();
+
+  for (const d of batchDischarges || []) {
+    const isPartner = d.reasonType === 'CONSUMO_SOCIO' || d.staffMember?.type === 'SOCIO' || d.staffMember?.fullName;
+    if (isPartner) {
+      const name = d.bottleSize || '1L';
+      const qty = Number(d.quantityBottles) || 1;
+      const vol = Number(d.totalLiters) || (qty * resolvePresentationLiters(name));
+      const cap = qty > 0 ? Math.round((vol / qty) * 1000) / 1000 : resolvePresentationLiters(name);
+      totalPartnerUnits += qty;
+
+      const ex = partnerMap.get(name) || { name, quantity: 0, capacityLiters: cap, totalLiters: 0 };
+      ex.quantity += qty;
+      ex.totalLiters += vol;
+      partnerMap.set(name, ex);
+    }
+  }
+
+  const partnerBreakdown = Array.from(partnerMap.values()).map((p) => ({
+    ...p,
+    totalLiters: Math.round(p.totalLiters * 100) / 100,
+  }));
+
   const groupByBatchAndFlavor = (orderList: typeof orders) => {
     const groups: Record<
       string,
@@ -1957,6 +2124,8 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
         totalLiters: number;
         totalBottles1L: number;
         totalBottles2L: number;
+        totalUnits: number;
+        presentationsBreakdown: Record<string, number>;
         totalAmount: number;
         paidAmount: number;
         pendingAmount: number;
@@ -1993,6 +2162,8 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
           totalLiters: 0,
           totalBottles1L: 0,
           totalBottles2L: 0,
+          totalUnits: 0,
+          presentationsBreakdown: {},
           totalAmount: 0,
           paidAmount: 0,
           pendingAmount: 0,
@@ -2010,12 +2181,20 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
 
       if (o.items && o.items.length > 0) {
         o.items.forEach((item) => {
-          if (item.bottleSize === '1L') g.totalBottles1L += item.quantity;
-          if (item.bottleSize === '2L') g.totalBottles2L += item.quantity;
+          const size = item.bottleSize || '1L';
+          const qty = Number(item.quantity) || 1;
+          g.totalUnits = (g.totalUnits || 0) + qty;
+          g.presentationsBreakdown[size] = (g.presentationsBreakdown[size] || 0) + qty;
+          if (size === '1L') g.totalBottles1L += qty;
+          if (size === '2L') g.totalBottles2L += qty;
         });
       } else {
-        if (o.bottleSize === '1L') g.totalBottles1L += o.quantityBottles;
-        if (o.bottleSize === '2L') g.totalBottles2L += o.quantityBottles;
+        const size = o.bottleSize || '1L';
+        const qty = Number(o.quantityBottles) || 1;
+        g.totalUnits = (g.totalUnits || 0) + qty;
+        g.presentationsBreakdown[size] = (g.presentationsBreakdown[size] || 0) + qty;
+        if (size === '1L') g.totalBottles1L += qty;
+        if (size === '2L') g.totalBottles2L += qty;
       }
 
       const bottlesSummary =
@@ -2060,6 +2239,10 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
   return {
     kpis: {
       totalOrdersCount,
+      totalUnitsSold: deliveredBreakdown.totalUnits,
+      availableLiters,
+      availableBatchesCount,
+      availableStockPresentations,
       totalLitersAll,
       totalLitersSold: deliveredLiters,
       totalSalesLiters: deliveredLiters,
@@ -2506,20 +2689,26 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     dispatchSummary: {
       clientDeliveries: {
         ordersCount: deliveredOrders.length,
-        liters: deliveredLiters,
+        liters: Math.round(deliveredLiters * 100) / 100,
+        totalUnits: deliveredBreakdown.totalUnits,
+        presentationsBreakdown: deliveredBreakdown.breakdown,
         totalAmount: deliveredTotalSales,
         paidAmount: deliveredPaidAmount,
         pendingAmount: deliveredPendingToCollect,
       },
       partnerConsumptions: {
         dischargesCount: partnerDischarges.length,
-        liters: totalPartnerDischargedLiters,
+        liters: Math.round(totalPartnerDischargedLiters * 100) / 100,
+        totalUnits: totalPartnerUnits,
+        presentationsBreakdown: partnerBreakdown,
         totalAmount: totalPartnerDischargedAmount,
       },
-      totalDispatchedLiters,
+      totalDispatchedLiters: Math.round(totalDispatchedLiters * 100) / 100,
       inProcessOrders: {
         ordersCount: inProcessOrders.length,
-        liters: inProcessLiters,
+        liters: Math.round(inProcessLiters * 100) / 100,
+        totalUnits: inProcessBreakdown.totalUnits,
+        presentationsBreakdown: inProcessBreakdown.breakdown,
         totalAmount: inProcessTotalSales,
         paidAmount: inProcessPaidAmount,
         pendingAmount: inProcessPendingToCollect,
@@ -2540,19 +2729,30 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
       status: 'TERMINADO',
       efficiencyRate: b.yieldPercentage,
     })),
-    recentOrders: orders.slice(0, 5).map((o) => ({
-      id: o.id,
-      orderNumber: o.orderNumber,
-      customerName: o.customer?.fullName || 'Cliente mostrador',
-      total: o.totalAmount,
-      totalAmount: o.totalAmount,
-      paidAmount: o.paidAmount ?? (o.payments?.reduce((s, p) => s + (p.amount || 0), 0) || 0),
-      pendingAmount: o.pendingAmount ?? Math.max(0, o.totalAmount - (o.paidAmount ?? 0)),
-      paymentStatus: o.paymentStatus,
-      status: o.paymentStatus,
-      deliveryStatus: o.deliveryStatus,
-      orderDate: o.orderDate,
-    })),
+    recentOrders: orders.slice(0, 5).map((o) => {
+      const itemsSummary = o.items && o.items.length > 0
+        ? o.items.map((it) => `${it.quantity}x ${it.bottleSize || '1L'} (${it.flavor || o.flavor || 'Natural'})`).join(', ')
+        : `${o.quantityBottles}x ${o.bottleSize || '1L'} (${o.flavor || 'Natural'})`;
+      const totalUnits = o.items && o.items.length > 0
+        ? o.items.reduce((s, it) => s + (it.quantity || 0), 0)
+        : (o.quantityBottles || 1);
+
+      return {
+        id: o.id,
+        orderNumber: o.orderNumber,
+        customerName: o.customer?.fullName || 'Cliente mostrador',
+        total: o.totalAmount,
+        totalAmount: o.totalAmount,
+        paidAmount: o.paidAmount ?? (o.payments?.reduce((s, p) => s + (p.amount || 0), 0) || 0),
+        pendingAmount: o.pendingAmount ?? Math.max(0, o.totalAmount - (o.paidAmount ?? 0)),
+        paymentStatus: o.paymentStatus,
+        status: o.paymentStatus,
+        deliveryStatus: o.deliveryStatus,
+        orderDate: o.orderDate,
+        itemsSummary,
+        totalUnits,
+      };
+    }),
     periodOrders: includeOrders === 'true' ? orders : [],
     inventorySummary: rawMaterials,
   };

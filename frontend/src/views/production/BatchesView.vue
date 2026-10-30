@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import {
   FlaskConical,
   TrendingUp,
@@ -37,11 +38,25 @@ import BatchSummaryModal from '@/components/production/BatchSummaryModal.vue';
 import PackagingSummaryModal from '@/components/production/PackagingSummaryModal.vue';
 import CompleteFermentationModal from '@/components/production/CompleteFermentationModal.vue';
 
+const route = useRoute();
 const productionStore = useProductionStore();
 const { confirm } = useConfirm();
 
 // Pestaña principal: Fase A (Madre) vs Fase B (Envasados)
 const activeMainTab = ref<'BASE' | 'PACKAGING'>('BASE');
+
+// Sincronizar pestaña inicial y reactiva desde query param ?tab=packaging
+watch(
+  () => route.query.tab,
+  (newTab) => {
+    const tab = String(newTab || '').toLowerCase();
+    if (tab === 'packaging' || tab === 'fase-b' || tab === 'envasados') {
+      activeMainTab.value = 'PACKAGING';
+    } else if (tab === 'base' || tab === 'fase-a' || tab === 'madre') {
+      activeMainTab.value = 'BASE';
+    }
+  }
+);
 
 const isBatchModalOpen = ref(false);
 const isFlavorsModalOpen = ref(false);
@@ -65,6 +80,10 @@ const isPackagingSummaryModalOpen = ref(false);
 const selectedPackagingIdForSummary = ref<number | null>(null);
 
 onMounted(() => {
+  const tab = String(route.query.tab || '').toLowerCase();
+  if (tab === 'packaging' || tab === 'fase-b' || tab === 'envasados') {
+    activeMainTab.value = 'PACKAGING';
+  }
   productionStore.fetchBatches(1);
   productionStore.fetchBatchesMetrics();
   productionStore.fetchPackagings(1);
@@ -682,7 +701,7 @@ watch(activeMainTab, (newTab) => {
                 type="button"
                 @click="openPackagingModal(batch)"
                 class="inline-flex h-9 w-full md:w-auto items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 text-xs font-extrabold text-white shadow-sm transition-transform active:scale-95 hover:bg-emerald-700"
-                title="Fraccionar por sabor, botellas y presentaciones flexibles"
+                title="Fraccionar por sabor, envases y presentaciones flexibles"
               >
                 <PackageCheck class="h-3.5 w-3.5 shrink-0 stroke-[2.5]" />
                 <span>Envasar / Fraccionar</span>

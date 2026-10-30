@@ -193,7 +193,7 @@ async function handleSave() {
     return;
   }
   if (form.value.quantity < 1) {
-    toast.error('La cantidad mínima de botellas es 1');
+    toast.error('La cantidad mínima de envases es 1');
     return;
   }
 
@@ -320,7 +320,7 @@ async function handleSave() {
 
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Presentación de Botella
+                Presentación del Envase
               </label>
               <div class="grid grid-cols-2 gap-2">
                 <button
@@ -355,7 +355,7 @@ async function handleSave() {
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Cantidad de Botellas
+                Cantidad de Envases
               </label>
               <div class="relative">
                 <Package class="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />

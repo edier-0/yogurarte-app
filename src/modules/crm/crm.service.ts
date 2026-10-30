@@ -898,7 +898,7 @@ export async function redeemLoyaltyReward(rawInput: any) {
 
   if (netBottles < 10) {
     throw new BadRequestError(
-      `El cliente solo tiene ${(netBottles % 10).toFixed(1)} botellas equivalentes acumuladas. Requiere 10 para canjear su premio.`
+      `El cliente solo tiene ${(netBottles % 10).toFixed(1)} unidades de 1L (o litros equivalentes) acumuladas. Requiere 10 para canjear su premio.`
     );
   }
 
@@ -1318,7 +1318,7 @@ export async function getQuickReplies() {
         title: 'Programa 10+1 Yogur Gratis',
         category: 'VENTAS',
         content:
-          'Estimado/a {{cliente}}, con el Programa de Fidelizacion YogurArte acumulas litros en cada compra: por cada 10 botellas, recibes 1 botella de 1 Litro totalmente gratis.',
+          'Estimado/a {{cliente}}, con el Programa de Fidelización YogurArte acumulas litros en cada compra: por cada 10 envases de 1L (o 10 litros equivalentes), recibes 1 envase de 1 Litro totalmente gratis.',
       },
     ];
 

@@ -2,20 +2,20 @@
 Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado actual
-- App ERP/CRM en producción: Fase A/B, inventario, pedidos/domicilio, caja bimonetaria, créditos, personal y CRM WhatsApp.
-- Specs 001 a 006 completadas e implementadas al 100%. 210/210 pruebas pasando en verde.
-- Neon DB Producción: Compras de hoy reparadas (Purchase #77 y #78 en Nequi); stock restablecido (6 und de 1L y 15 und de 500ml); gastos #25 y #26 normalizados a `INSUMOS_EXTRA`.
-- Spec 006 completada: Unificación canónica en `INSUMOS_EXTRA`, erradicación de `COMPRA_INSUMO`, sincronización atómica bidireccional entre `Expense` y `Purchase` en `$transaction`, blindaje de caja sin duplicaciones. Rama `fix/sync-expenses-purchases-cash` lista para PR.
+- ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
+- Spec 007 completada e implementada al 100%: Lotes y litros disponibles en Dashboard calculados exclusivamente desde Fase B (`BatchPackaging`), chips de multi-presentación (1L, 500ml, 80ml, etc.) en despachos y stock, y estandarización transversal de "botellas" a "envases / unidades".
+- Typecheck (`npx tsc --noEmit`) y empaquetado (`npm --prefix frontend run build`) 100% limpios. Suite de integración `tests/dashboard_phase_b.test.ts` y `tests/orders.test.ts` pasando en verde.
+- Rama actual: `feat/dashboard-phase-b-stock-presentations`. Lista para confirmación de commit y ciclo Git (PR -> develop -> merge -> main).
 
 ## Decisiones (y por qué)
-- Un solo identificador canónico `INSUMOS_EXTRA`: erradicar el alias `COMPRA_INSUMO` elimina la ambigüedad en todo el sistema y evita bugs de sobreescritura de categoría.
-- Sincronización atómica `Expense` $\leftrightarrow$ `Purchase`: al editar canal de pago (ej. Efectivo a Nequi), monto o proveedor en un gasto de insumos, se actualiza la compra respectiva dentro de `$transaction`.
-- Preservación de stock en reversiones de egreso: solo descontar de `RawMaterial` cuando se elimine conscientemente una compra, y borrar atómicamente el gasto asociado.
+- Segregación estricta Fase A vs Fase B: solo las fracciones envasadas con saldo libre (`freeLiters > 0.05`) constituyen producto terminado disponible para la venta en el Dashboard; los tanques de fermentación base no se mezclan como stock para la venta.
+- Formato volumétrico adaptativo `formatLitersVolume`: suprime decimales innecesarios para enteros (`4 L`) y preserva hasta 2 decimales para formatos pequeños (`0.08 L`, `4.16 L`).
+- Estandarización a "envases / unidades": sustituye el término "botella(s)" en UI, modales, alertas y comprobantes de WhatsApp, manteniendo compatibilidad de columnas en la BD.
+- Despacho multi-formato: desgloses en chips visuales (`[12x 1L] [13x 500ml] [50x 80ml]`) para entregas a clientes, consumo de socios y pedidos en curso.
 
 ## Aprendizajes y errores a evitar
-- Nunca usar etiquetas visuales formateadas (`categoryLabel`) como valor del campo `category` en modales ni persistencia.
-- `periodUnexpensedPurchases` debe basarse en la categoría canónica `INSUMOS_EXTRA` y no en strings de visualización.
-- `getColombiaStartOfDay` y `getColombiaEndOfDay` requieren strings en formato `YYYY-MM-DD`; si se tiene un objeto `Date`, formatear antes con `getColombiaDateStr`.
+- Neon Pooler: peticiones secuenciales pesadas pueden reiniciar conexiones inactivas; agrupar aserciones de integración en una sola llamada analítica (`GET /api/dashboard/summary`).
+- No alterar nombres de columnas físicas de Prisma (`quantityBottles`, `bottles1LProduced`) para no comprometer la base de datos de producción.
 
 ## Próximos pasos
-- Ejecutar ciclo Git de integración: push de `fix/sync-expenses-purchases-cash`, PR a `develop`, fusión a `main`, y solicitar autorización al usuario para borrar la rama temática.
+- Solicitar autorización del usuario para proceder con el commit, push y ciclo de Pull Request a `develop` y fusión a `main`.

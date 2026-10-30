@@ -118,10 +118,10 @@ function handleRedeemReward(cust: LoyaltyCustomerItem) {
 function handleNotifyWhatsApp(cust: LoyaltyCustomerItem) {
   let textMessage = '';
   if (cust.rewardsAvailable > 0) {
-    textMessage = `Estimado/a *${cust.fullName}*, le saludamos de *YogurArte*. Nos complace informarle que en nuestro Programa de Fidelización acumula ${cust.totalBottles} botellas y cuenta con *${cust.rewardsAvailable} botella(s) de 1 Litro GRATIS* lista(s) para reclamar en su próximo pedido. ¡Gracias por su preferencia!`;
+    textMessage = `Estimado/a *${cust.fullName}*, le saludamos de *YogurArte*. Nos complace informarle que en nuestro Programa de Fidelización acumula ${cust.totalBottles} unidades (1L) y cuenta con *${cust.rewardsAvailable} premio(s) de 1 Litro GRATIS* listo(s) para reclamar en su próximo pedido. ¡Gracias por su preferencia!`;
   } else {
     const remaining = 10 - cust.currentCycleBottles;
-    textMessage = `Estimado/a *${cust.fullName}*, le saludamos de *YogurArte*. Le recordamos que en su tarjeta de fidelización lleva *${cust.currentCycleBottles}/10 botellas*. Le faltan solo *${remaining} botella(s)* para recibir su próximo litro totalmente gratis.`;
+    textMessage = `Estimado/a *${cust.fullName}*, le saludamos de *YogurArte*. Le recordamos que en su tarjeta de fidelización lleva *${cust.currentCycleBottles}/10 envases*. Le faltan solo *${remaining} envase(s)* para recibir su próximo litro totalmente gratis.`;
   }
 
   crmStore.openMessagePreview({
@@ -166,7 +166,7 @@ onMounted(() => {
 
       <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-4 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card flex items-center justify-between">
         <div>
-          <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Botellas Acumuladas</p>
+          <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Envases Acumulados</p>
           <h3 class="text-xl font-extrabold text-slate-900 dark:text-white mt-0.5">
             {{ metrics.totalBottlesSum }}
           </h3>
@@ -238,7 +238,7 @@ onMounted(() => {
     <div v-else-if="customers.length === 0" class="rounded-3xl border border-surface-light-border bg-surface-light-card p-12 text-center text-slate-400 dark:border-surface-dark-border dark:bg-surface-dark-card">
       <Gift class="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600 mb-2 stroke-[1.5]" />
       <h3 class="text-sm font-extrabold text-slate-700 dark:text-slate-300">No se encontraron clientes</h3>
-      <p class="text-xs text-slate-400 mt-1">Los clientes acumulan botellas automáticamente con cada pedido registrado.</p>
+      <p class="text-xs text-slate-400 mt-1">Los clientes acumulan envases / unidades automáticamente con cada pedido registrado.</p>
     </div>
 
     <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -281,7 +281,7 @@ onMounted(() => {
             </span>
           </div>
 
-          <!-- Métricas de Botellas -->
+          <!-- Métricas de Envases / Unidades -->
           <div class="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-surface-light-canvas/70 p-2.5 text-center dark:bg-surface-dark-canvas/70">
             <div>
               <p class="text-[10px] font-bold text-slate-400 uppercase">Total</p>
