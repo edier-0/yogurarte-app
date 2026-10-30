@@ -26,7 +26,7 @@ import {
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
 import ExpenseModal from '@/components/finance/ExpenseModal.vue';
 import TransferModal from '@/components/finance/TransferModal.vue';
-import { formatStockQuantity, formatLitersVolume } from '@/utils/formatters';
+import { formatStockQuantity, formatLitersVolume, formatPresentationChip } from '@/utils/formatters';
 
 const router = useRouter();
 
@@ -44,9 +44,15 @@ interface DashboardData {
     totalSalesAmount: number;
     totalSalesLiters: number;
     totalUnitsSold?: number;
+    totalCashCollected?: number;
+    totalPendingToCollect?: number;
+    deliveredPaidAmount?: number;
+    inProcessTotalSales?: number;
+    inProcessPaidAmount?: number;
+    inProcessPendingToCollect?: number;
     availableLiters?: number;
     availableBatchesCount?: number;
-    availableStockPresentations?: string[];
+    availableStockPresentations?: any[];
     cashBalance: number;
     cashInHand: number;
     digitalBank: number;
@@ -139,6 +145,12 @@ const dashboardData = ref<DashboardData>({
     totalSalesAmount: 0,
     totalSalesLiters: 0,
     totalUnitsSold: 0,
+    totalCashCollected: 0,
+    totalPendingToCollect: 0,
+    deliveredPaidAmount: 0,
+    inProcessTotalSales: 0,
+    inProcessPaidAmount: 0,
+    inProcessPendingToCollect: 0,
     availableLiters: 0,
     availableBatchesCount: 0,
     availableStockPresentations: [],
@@ -209,6 +221,12 @@ async function loadDashboard() {
             0
           ),
           totalUnitsSold: Number(kpis.totalUnitsSold ?? 0),
+          totalCashCollected: Number(kpis.totalCashCollected ?? 0),
+          totalPendingToCollect: Number(kpis.totalPendingToCollect ?? 0),
+          deliveredPaidAmount: Number(kpis.deliveredPaidAmount ?? 0),
+          inProcessTotalSales: Number(kpis.inProcessTotalSales ?? 0),
+          inProcessPaidAmount: Number(kpis.inProcessPaidAmount ?? 0),
+          inProcessPendingToCollect: Number(kpis.inProcessPendingToCollect ?? 0),
           availableLiters: Number(kpis.availableLiters ?? 0),
           availableBatchesCount: Number(kpis.availableBatchesCount ?? 0),
           availableStockPresentations: Array.isArray(kpis.availableStockPresentations) ? kpis.availableStockPresentations : [],
@@ -482,6 +500,23 @@ onMounted(() => {
             <span>•</span>
             <span>{{ formatLitersVolume(dashboardData.kpis?.totalSalesLiters) }} vendidos</span>
           </div>
+          <!-- Desglose: Pagado vs Con Deuda / Encargos -->
+          <div class="mt-2.5 grid grid-cols-2 gap-1 rounded-xl bg-surface-light-canvas p-1.5 text-[11px] font-bold dark:bg-surface-dark-canvas">
+            <div class="flex items-center gap-1 text-emerald-700 dark:text-emerald-300" title="Dinero ya cobrado/pagado de los pedidos">
+              <CheckCircle2 class="h-3 w-3 text-emerald-600 shrink-0" />
+              <div class="truncate">
+                <span class="block text-[9px] uppercase tracking-wider text-slate-400 font-extrabold leading-none mb-0.5">Ya Pagado</span>
+                <span>{{ formatCurrency(dashboardData.kpis?.totalCashCollected) }}</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-1 text-amber-700 dark:text-amber-400" title="Saldo por cobrar de pedidos entregados con deuda y pedidos encargados en proceso">
+              <Clock class="h-3 w-3 text-amber-600 shrink-0" />
+              <div class="truncate">
+                <span class="block text-[9px] uppercase tracking-wider text-slate-400 font-extrabold leading-none mb-0.5">Con Deuda</span>
+                <span>{{ formatCurrency(dashboardData.kpis?.totalPendingToCollect) }}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -544,11 +579,11 @@ onMounted(() => {
             class="mt-2.5 flex flex-wrap gap-1"
           >
             <span
-              v-for="chip in dashboardData.kpis.availableStockPresentations"
-              :key="chip"
+              v-for="(chip, idx) in dashboardData.kpis.availableStockPresentations"
+              :key="idx"
               class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-extrabold text-indigo-700 border border-indigo-200/60 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800/60"
             >
-              {{ chip }}
+              {{ formatPresentationChip(chip) }}
             </span>
           </div>
         </div>
@@ -635,11 +670,11 @@ onMounted(() => {
                 class="mt-2 flex flex-wrap gap-1"
               >
                 <span
-                  v-for="chip in dashboardData.dispatchSummary.clientDeliveries.presentationsBreakdown"
-                  :key="chip"
+                  v-for="(chip, idx) in dashboardData.dispatchSummary.clientDeliveries.presentationsBreakdown"
+                  :key="idx"
                   class="inline-flex items-center rounded-md bg-emerald-100/70 px-1.5 py-0.5 text-[10px] font-extrabold text-emerald-800 border border-emerald-300/60 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60"
                 >
-                  {{ chip }}
+                  {{ formatPresentationChip(chip) }}
                 </span>
               </div>
             </div>
@@ -687,11 +722,11 @@ onMounted(() => {
                 class="mt-2 flex flex-wrap gap-1"
               >
                 <span
-                  v-for="chip in dashboardData.dispatchSummary.partnerConsumptions.presentationsBreakdown"
-                  :key="chip"
+                  v-for="(chip, idx) in dashboardData.dispatchSummary.partnerConsumptions.presentationsBreakdown"
+                  :key="idx"
                   class="inline-flex items-center rounded-md bg-purple-100/70 px-1.5 py-0.5 text-[10px] font-extrabold text-purple-800 border border-purple-300/60 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800/60"
                 >
-                  {{ chip }}
+                  {{ formatPresentationChip(chip) }}
                 </span>
               </div>
             </div>
@@ -735,11 +770,11 @@ onMounted(() => {
                 class="mt-2 flex flex-wrap gap-1"
               >
                 <span
-                  v-for="chip in dashboardData.dispatchSummary.inProcessOrders.presentationsBreakdown"
-                  :key="chip"
+                  v-for="(chip, idx) in dashboardData.dispatchSummary.inProcessOrders.presentationsBreakdown"
+                  :key="idx"
                   class="inline-flex items-center rounded-md bg-indigo-100/70 px-1.5 py-0.5 text-[10px] font-extrabold text-indigo-800 border border-indigo-300/60 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800/60"
                 >
-                  {{ chip }}
+                  {{ formatPresentationChip(chip) }}
                 </span>
               </div>
             </div>

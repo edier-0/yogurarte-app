@@ -103,6 +103,12 @@ El objetivo de esta especificación es:
 - **RF-16 (Estandarización en Comprobantes y Notificaciones WhatsApp)**:
   CUANDO se generen mensajes de resumen de pedido o estado de cuenta para WhatsApp, EL SISTEMA debe formular las líneas de producto como `• Cantidad x [Presentación] (Sabor)` (ej. `• 20x 80ml (Cuchareable Mora)` o `• 2x 1L (Melocotón)`), suprimiendo la palabra "Botella".
 
+- **RF-17 (Formateo Amigable de Chips de Stock y Despacho)**:
+  CUANDO el Dashboard renderice los chips de stock disponible de Fase B o los desgloses de despachos (recibidos como objetos `{ name, quantity, capacityLiters, totalLiters }` o strings), EL SISTEMA debe formatear cada elemento como una cápsula compacta y legible tipo `[5x 1L]`, `[6x 500ml]`, `[20x 80ml]`, eliminando palabras redundantes como "Botella", "Botellas", "plástica", "de", o "pet", y nunca exponer la serialización JSON en texto crudo.
+
+- **RF-18 (Desglose Financiero en Tarjeta de Ventas Totales: Cobrado vs Con Deuda / Encargos)**:
+  CUANDO el usuario visualice la tarjeta de "Ventas Totales" en el Dashboard, EL SISTEMA debe desglosar el valor total de ventas/pedidos encargados del período (`totalSalesAmount`), mostrando claramente cuánto corresponde a dinero ya pagado/cobrado (`totalCashCollected`) y cuánto corresponde a saldo pendiente con deuda o por cobrar (`totalPendingToCollect`), abarcando tanto los pedidos entregados con deuda como los pedidos encargados en preparación/ruta pendientes de recaudo.
+
 ---
 
 ## Requisitos no funcionales
