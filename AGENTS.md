@@ -43,7 +43,9 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
 - Caja bimonetaria: no mezclar `EFECTIVO` con `NEQUI`/`BANCOLOMBIA`.
 - Fase A = `ProductionBatch`; Fase B = `BatchPackaging` (descuento de inventario y recetas compuestas).
 - Entrega: `PREPARING` → `IN_ROUTE` → `DELIVERED` / `CANCELLED`.
-- Fidelización 10+1 = botellas 1 L completadas, no un contador arbitrario.
+- **Auditoría Dinámica de Fase B**: Fracciones operan con presentaciones dinámicas (500 ml, 1 L, 2 L y futuras). Prohibido hardcodear columnas fijas (1L/2L) en balances, rentabilidad o auditorías de Fase B.
+- **Entregas y Auditoría exclusivas de Fase B**: Las ventas, salidas y premios de fidelización pertenecen y se auditan exclusivamente en Fase B (`BatchPackaging`), nunca en Fase A (Lote Madre es solo base láctea a granel).
+- Fidelización 10+1 = botellas 1 L completadas, no un contador arbitrario. Redención en CRM a $0 COP (`PREMIO_FIDELIZACION`). En la toma diaria de pedidos (`OrderModal`), el sistema debe alertar proactivamente si el cliente tiene premios disponibles con acceso directo a redimir en CRM, y la fracción envasada de Fase B debe reflejar claramente el descargo en su auditoría.
 - WhatsApp: no borrar sesión para “arreglar” reconexión (401 vs 440/515).
 - El README (árbol `src/controllers`) está desactualizado; fiarse de `app.ts` y `modules/`.
 - Transacciones Prisma cuando stock, caja y pagos deban coincidir. No editar el cliente generado.
