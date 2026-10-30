@@ -19,6 +19,7 @@ import {
   MapPin,
   User,
   RotateCw,
+  Edit3,
 } from 'lucide-vue-next';
 import { useOperationsStore, type Order, type DeliveryStatus } from '@/stores/operations.store';
 
@@ -30,6 +31,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:open', val: boolean): void;
   (e: 'confirmed', order: Order): void;
+  (e: 'edit', order: Order): void;
 }>();
 
 const store = useOperationsStore();
@@ -65,6 +67,20 @@ const isAlreadyPaid = computed(() => {
     previouslyPaid.value >= orderTotal.value
   );
 });
+
+// Detectar si el pedido contiene ítems en preventa (sin lote o fracción asignada)
+const unassignedItems = computed(() => {
+  if (!props.order?.items || props.order.items.length === 0) return [];
+  return props.order.items.filter((it) => !it.packagingId && !it.batchId);
+});
+
+const hasPresaleItems = computed(() => unassignedItems.value.length > 0);
+
+const handleEditOrder = () => {
+  if (!props.order) return;
+  emit('edit', props.order);
+  emit('update:open', false);
+};
 
 // Inicialización reactiva cuando cambia la orden o cuando se abre el modal
 const syncState = (o: Order | null) => {
@@ -152,7 +168,7 @@ const handleClose = () => {
 };
 
 const handleConfirm = async () => {
-  if (!props.order) return;
+  if (!props.order || hasPresaleItems.value) return;
 
   isSubmitting.value = true;
   try {
@@ -265,6 +281,41 @@ const handleConfirm = async () => {
                 >
                   {{ currentPending > 0 ? `Pendiente: ${formatCurrency(currentPending)}` : 'Paz y Salvo' }}
                 </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Advertencia de Pedido en Preventa / Sin Lote Asignado (Spec 005 / RF-2) -->
+          <div v-if="hasPresaleItems" class="rounded-2xl border border-amber-300 bg-amber-50/90 p-4 dark:border-amber-700/60 dark:bg-amber-950/40">
+            <div class="flex items-start gap-3">
+              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
+                <AlertCircle class="h-6 w-6 stroke-[2]" />
+              </div>
+              <div class="space-y-1.5 flex-1 min-w-0">
+                <h5 class="text-sm font-extrabold text-amber-950 dark:text-amber-200">
+                  No es posible confirmar la entrega
+                </h5>
+                <p class="text-xs font-semibold text-amber-900/90 dark:text-amber-300 leading-relaxed">
+                  Este pedido contiene productos en <strong>preventa o sin lote asignado</strong>:
+                </p>
+                <ul class="text-[11px] font-bold text-amber-800 dark:text-amber-300 list-disc list-inside space-y-0.5">
+                  <li v-for="it in unassignedItems" :key="it.id || it.flavor">
+                    {{ it.quantity }}x {{ it.flavor }} ({{ it.bottleSize || '1L' }})
+                  </li>
+                </ul>
+                <p class="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                  Debes vincular cada producto a un lote envasado disponible (Fase B) antes de poder registrar la entrega.
+                </p>
+                <div class="pt-1">
+                  <button
+                    type="button"
+                    @click="handleEditOrder"
+                    class="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-amber-700 transition-colors"
+                  >
+                    <Edit3 class="h-3.5 w-3.5" />
+                    Asignar Lote en Pedido
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -540,12 +591,12 @@ const handleConfirm = async () => {
             <button
               type="button"
               @click="handleConfirm"
-              :disabled="isSubmitting"
-              class="inline-flex items-center gap-2 rounded-xl bg-natural-500 px-5 py-2.5 text-xs font-black text-white shadow-card transition-all active:scale-95 hover:bg-natural-600 disabled:opacity-50"
+              :disabled="isSubmitting || hasPresaleItems"
+              class="inline-flex items-center gap-2 rounded-xl bg-natural-500 px-5 py-2.5 text-xs font-black text-white shadow-card transition-all active:scale-95 hover:bg-natural-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RotateCw v-if="isSubmitting" class="h-4 w-4 animate-spin stroke-[2]" />
               <CheckCircle2 v-else class="h-4 w-4 stroke-[2]" />
-              <span>{{ isSubmitting ? 'Confirmando...' : (isAlreadyPaid ? 'Confirmar Entrega' : 'Confirmar y Entregar Pedido') }}</span>
+              <span>{{ isSubmitting ? 'Confirmando...' : (hasPresaleItems ? 'Asignar Lote Primero' : (isAlreadyPaid ? 'Confirmar Entrega' : 'Confirmar y Entregar Pedido')) }}</span>
             </button>
           </div>
         </div>

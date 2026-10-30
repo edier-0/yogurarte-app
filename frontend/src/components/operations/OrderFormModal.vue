@@ -209,6 +209,14 @@ function isCustomOptionNeeded(item: OrderItem): boolean {
   return !activeCatalogFlavors.value.includes(item.flavor);
 }
 
+// Detectar si el formulario contiene ítems en preventa sin lote asignado (Spec 005)
+const hasPresaleInForm = computed(() => {
+  return items.value.some((it) => {
+    const key = getItemSelectionKey(it);
+    return key.startsWith('presale_') || (!it.packagingId && !it.batchId);
+  });
+});
+
 // Sugerencias predictivas de clientes
 const customerSuggestions = computed(() => {
   const q = customerSearch.value.trim().toLowerCase();
@@ -430,6 +438,13 @@ const handleSubmit = async () => {
   if (!customerName.value.trim()) {
     toast.error('Nombre Requerido', {
       description: 'Por favor ingresa el nombre del cliente para procesar el pedido.',
+    });
+    return;
+  }
+
+  if (deliveryStatus.value === 'DELIVERED' && hasPresaleInForm.value) {
+    toast.error('No se puede entregar', {
+      description: 'No es posible marcar el pedido como entregado porque contiene productos en preventa o sin lote asignado. Asigna un lote envasado a cada producto o cambia el estado a "Por Entregar".',
     });
     return;
   }
@@ -911,6 +926,12 @@ const formatCurrency = (val: number) => {
                   <option value="DELIVERED">Entregado</option>
                   <option value="CANCELLED">Cancelado</option>
                 </select>
+                <p
+                  v-if="deliveryStatus === 'DELIVERED' && hasPresaleInForm"
+                  class="mt-1 text-[11px] font-bold text-amber-600 dark:text-amber-400"
+                >
+                  ⚠️ Hay productos en preventa sin lote. Asigna un lote antes de entregar.
+                </p>
               </div>
 
               <!-- Tipo de Entrega -->

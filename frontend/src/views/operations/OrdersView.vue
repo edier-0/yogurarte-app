@@ -30,6 +30,7 @@ import {
   Eye,
 } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
+import { toast } from 'vue-sonner';
 
 const store = useOperationsStore();
 const { confirm } = useConfirm();
@@ -125,11 +126,26 @@ const onDeliveryStatusChange = async (order: Order, event: Event) => {
   if (newStatus === 'DELIVERED') {
     if (order.deliveryStatus === 'DELIVERED') return;
     target.value = order.deliveryStatus; // Revertir visualmente hasta que se confirme en el modal
+    const hasPresale = (order.items || []).some((it) => !it.packagingId && !it.batchId);
+    if (hasPresale) {
+      toast.error('No se puede entregar', {
+        description: 'Este pedido contiene productos en preventa o sin lote asignado. Asigna primero un lote envasado al pedido.',
+      });
+      orderToEdit.value = order;
+      isFormModalOpen.value = true;
+      return;
+    }
     orderForDelivery.value = order;
     isDeliveryModalOpen.value = true;
   } else {
     await store.updateDeliveryStatus(order.id, { deliveryStatus: newStatus });
   }
+};
+
+const openEditFromDeliveryModal = (order: Order) => {
+  isDeliveryModalOpen.value = false;
+  orderToEdit.value = order;
+  isFormModalOpen.value = true;
 };
 
 const formatCurrency = (val: number) => {
@@ -518,6 +534,7 @@ const getStatusBadge = (status: DeliveryStatus) => {
       v-model:open="isDeliveryModalOpen"
       :order="orderForDelivery"
       @confirmed="store.fetchOrders()"
+      @edit="openEditFromDeliveryModal"
     />
 
     <!-- Modal de Creación / Edición de Pedidos (Reka UI) -->
