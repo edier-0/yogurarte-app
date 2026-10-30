@@ -20,14 +20,23 @@ import {
 } from 'lucide-vue-next';
 import { useDirectoryStore, type CustomerItem } from '@/stores/directory.store';
 
+export interface CustomerPrefillData {
+  fullName?: string;
+  phone?: string;
+  address?: string;
+  neighborhood?: string;
+  notes?: string;
+}
+
 const props = defineProps<{
   open: boolean;
   customerToEdit?: CustomerItem | null;
+  prefillData?: CustomerPrefillData | null;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:open', val: boolean): void;
-  (e: 'saved'): void;
+  (e: 'saved', customer?: CustomerItem): void;
 }>();
 
 const directoryStore = useDirectoryStore();
@@ -45,7 +54,7 @@ const isEditing = computed(() => !!props.customerToEdit?.id);
 
 // Sincronizar datos al abrir modal
 watch(
-  () => [props.open, props.customerToEdit],
+  () => [props.open, props.customerToEdit, props.prefillData],
   ([isOpen]) => {
     if (isOpen) {
       errorMessage.value = '';
@@ -55,6 +64,12 @@ watch(
         address.value = props.customerToEdit.address || '';
         neighborhood.value = props.customerToEdit.neighborhood || '';
         notes.value = props.customerToEdit.notes || '';
+      } else if (props.prefillData) {
+        fullName.value = props.prefillData.fullName || '';
+        phone.value = props.prefillData.phone || '';
+        address.value = props.prefillData.address || 'Fonseca';
+        neighborhood.value = props.prefillData.neighborhood || '';
+        notes.value = props.prefillData.notes || '';
       } else {
         fullName.value = '';
         phone.value = '';
@@ -86,7 +101,7 @@ async function handleSubmit() {
   errorMessage.value = '';
 
   try {
-    await directoryStore.saveCustomer({
+    const savedCustomer = await directoryStore.saveCustomer({
       id: props.customerToEdit?.id,
       fullName: fullName.value,
       phone: phone.value,
@@ -95,7 +110,7 @@ async function handleSubmit() {
       notes: notes.value,
     });
 
-    emit('saved');
+    emit('saved', savedCustomer);
     handleClose();
   } catch (err: any) {
     errorMessage.value = err?.message || 'Error al guardar datos del cliente';

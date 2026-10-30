@@ -138,6 +138,7 @@ export const getConversationsQuerySchema = z.object({
   search: z.string().optional(),
   unreadOnly: z.enum(['true', 'false']).optional(),
   tag: z.string().optional(),
+  customerId: z.string().optional(),
 });
 
 export const getMessagesQuerySchema = z.object({

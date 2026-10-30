@@ -19,6 +19,7 @@ import {
   CheckCheck,
   MapPin,
   Plus,
+  UserPlus,
   UserCheck,
   GitMerge,
   ExternalLink,
@@ -40,6 +41,7 @@ import { useCrmStore } from '@/stores/crm.store';
 import CrmQrModal from '@/components/operations/crm/CrmQrModal.vue';
 import QuickRepliesModal from '@/components/operations/crm/QuickRepliesModal.vue';
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
+import CustomerModal, { type CustomerPrefillData } from '@/components/directory/CustomerModal.vue';
 import LoyaltyTab from '@/components/operations/crm/LoyaltyTab.vue';
 import TemplatesTab from '@/components/operations/crm/TemplatesTab.vue';
 import RecurringTab from '@/components/operations/crm/RecurringTab.vue';
@@ -122,6 +124,8 @@ const isQuickRepliesModalOpen = ref(false);
 const isOrderModalOpen = ref(false);
 const orderToPrefill = ref<any>(null);
 const isMergeModalOpen = ref(false);
+const isRegisterCustomerModalOpen = ref(false);
+const customerRegisterPrefill = ref<CustomerPrefillData | null>(null);
 const isRecurringModalOpen = ref(false);
 const recurringToPrefill = ref<any>(null);
 const isMobileClientInfoOpen = ref(false);
@@ -420,6 +424,55 @@ function handleOpenMerge(conv?: any) {
   }
   if (!selectedConversation.value) return;
   isMergeModalOpen.value = true;
+}
+
+// Abrir modal para registrar cliente directamente desde el chat
+function handleOpenRegisterCustomer(conv?: any) {
+  const targetConv = conv || selectedConversation.value;
+  if (!targetConv) return;
+
+  const contactInfo = resolveContactInfo(targetConv, targetConv.customer);
+  const rawName = targetConv.contactName || '';
+  const digitsInName = rawName.replace(/\D/g, '');
+  const isNameOnlyDigits = digitsInName.length >= 7 && digitsInName === rawName.trim();
+  const cleanName = isNameOnlyDigits ? '' : rawName;
+
+  const contactVal = contactInfo.isUsername
+    ? contactInfo.identifier
+    : (targetConv.phoneNumber || contactInfo.identifier || '');
+
+  customerRegisterPrefill.value = {
+    fullName: cleanName,
+    phone: contactVal,
+    address: 'Fonseca',
+  };
+  isRegisterCustomerModalOpen.value = true;
+}
+
+// Cliente registrado desde el chat: vincular de inmediato y refrescar
+async function handleCustomerRegistered(newCust?: any) {
+  if (!selectedConversation.value) return;
+
+  try {
+    if (newCust?.id) {
+      await http.post(`/crm/conversations/${selectedConversation.value.id}/link-customer`, {
+        customerId: newCust.id,
+      });
+      toast.success('Cliente registrado y vinculado', {
+        description: `${newCust.fullName || 'Cliente'} ha sido asociado al chat exitosamente.`,
+      });
+    }
+  } catch (err: any) {
+    console.warn('Aviso vinculando cliente tras registro:', err);
+  } finally {
+    await fetchConversations();
+    if (selectedConversation.value) {
+      const refreshed = conversations.value.find((c) => c.id === selectedConversation.value?.id);
+      if (refreshed) {
+        selectedConversation.value = refreshed;
+      }
+    }
+  }
 }
 
 // Chat unificado exitosamente
@@ -1010,6 +1063,19 @@ onUnmounted(() => {
 
             <!-- Botonera del Header del Chat -->
             <div class="flex items-center gap-1.5 shrink-0">
+              <!-- Botón Registrar Cliente (cuando NO está registrado) -->
+              <button
+                v-if="!selectedConversation.customer"
+                type="button"
+                @click="handleOpenRegisterCustomer(selectedConversation)"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-hero-gradient px-3 py-1.5 text-xs font-black text-white hover:opacity-95 shadow-xs transition-transform active:scale-95"
+                title="Registrar contacto como cliente en el sistema y vincular chat automáticamente"
+              >
+                <UserPlus class="h-3.5 w-3.5 stroke-[2.5]" />
+                <span class="hidden sm:inline text-[11px]">Registrar cliente</span>
+                <span class="sm:hidden text-[11px]">Registrar</span>
+              </button>
+
               <!-- Botón Abrir en WhatsApp Externo (Web/App) -->
               <button
                 type="button"
@@ -1269,6 +1335,7 @@ onUnmounted(() => {
           :conversation="selectedConversation"
           @open-recurring="handleOpenRecurring"
           @open-merge="handleOpenMerge"
+          @register-customer="handleOpenRegisterCustomer"
           @unlink="handleUnlinkChat"
           @create-order="handleOpenCreateOrder"
         />
@@ -1322,6 +1389,13 @@ onUnmounted(() => {
       @merged="handleChatMerged"
     />
 
+    <!-- Modal para Registrar Cliente directamente desde el chat -->
+    <CustomerModal
+      v-model:open="isRegisterCustomerModalOpen"
+      :prefill-data="customerRegisterPrefill"
+      @saved="handleCustomerRegistered"
+    />
+
     <RecurringEditModal
       v-model:open="isRecurringModalOpen"
       :schedule-to-edit="recurringToPrefill"
@@ -1341,6 +1415,7 @@ onUnmounted(() => {
             :show-close-button="true"
             @open-recurring="handleOpenRecurring"
             @open-merge="handleOpenMerge"
+            @register-customer="handleOpenRegisterCustomer"
             @unlink="handleUnlinkChat"
             @create-order="handleOpenCreateOrder"
             @close="isMobileClientInfoOpen = false"
