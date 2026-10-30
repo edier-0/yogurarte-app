@@ -1,5 +1,5 @@
 # Spec 009 — Registro de Clientes desde el Chat, Unificación de Hilos y Mensajería WhatsApp por Usuario
-Estado: aprobada
+Estado: implementada
 
 ## Contexto y objetivo
 En el CRM y módulo de mensajería WhatsApp de YogurArte ocurren actualmente tres fricciones críticas:
