@@ -90,3 +90,51 @@ export function formatCurrency(amount: number | string | null | undefined): stri
     maximumFractionDigits: 0,
   }).format(isNaN(val) ? 0 : val);
 }
+
+/**
+ * Limpia y normaliza el nombre de una presentación comercial (ej. "Botella 1L" -> "1L", "Botella plástica de 500 ML" -> "500ml")
+ */
+export function cleanPresentationLabel(name: string, capacityLiters?: number): string {
+  let label = (name || '').trim();
+
+  // Limpiar prefijos de tipo de empaque redundantes
+  label = label.replace(/botellas?\s+(pl[aá]sticas?\s+)?(de\s+)?/gi, '').trim();
+  label = label.replace(/envases?\s+(pl[aá]sticos?\s+)?(de\s+)?/gi, '').trim();
+  label = label.replace(/vasos?\s+(pl[aá]sticos?\s+)?(de\s+)?/gi, '').trim();
+  label = label.replace(/tarros?\s+(pl[aá]sticos?\s+)?(de\s+)?/gi, '').trim();
+  label = label.replace(/\bpet\b/gi, '').trim();
+  label = label.replace(/\s+/g, ' ').trim();
+
+  // Si tras la limpieza queda vacío o un término genérico, inferir desde capacityLiters
+  if (!label || /^(envases?|unidades?|vasos?|tarros?)$/i.test(label)) {
+    const cap = Number(capacityLiters) || 0;
+    if (cap >= 1) {
+      label = `${cap}L`;
+    } else if (cap > 0) {
+      label = `${Math.round(cap * 1000)}ml`;
+    } else {
+      label = '1L';
+    }
+  }
+
+  // Estandarizar unidades comunes: "1 Litro" -> "1L", "500 ML" -> "500ml"
+  return label
+    .replace(/(\d+)\s*litros?/gi, '$1L')
+    .replace(/(\d+)\s*l\b/gi, '$1L')
+    .replace(/(\d+)\s*ml\b/gi, '$1ml')
+    .trim();
+}
+
+/**
+ * Formatea un chip de presentación comercial para badges visuales (ej. "5x 1L", "6x 500ml")
+ */
+export function formatPresentationChip(item: any): string {
+  if (!item) return '';
+  if (typeof item === 'string') return item;
+
+  const qty = Number(item.quantity) || 1;
+  const cap = Number(item.capacityLiters) || 0;
+  const label = cleanPresentationLabel(item.name || item.containerName || '', cap);
+
+  return `${qty}x ${label}`;
+}

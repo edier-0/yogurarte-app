@@ -17,3 +17,9 @@
 
 - [x] **T6. Frontend: Estandarización terminológica transversal a "envases / unidades", Typecheck y Build de producción.** RF-14, RNF-1, RNF-2, RNF-3
   - Hecho cuando: Se actualicen los textos y modales restantes (`BatchSummaryModal.vue`, `PackagingModal.vue`, `LoyaltyTab.vue`, `OrdersView.vue`, etc.) reemplazando "botellas" por "envases / unidades", y la verificación de tipos (`npx tsc --noEmit`) y empaquetado del cliente (`npm --prefix frontend run build`) se ejecuten al 100% limpios sin advertencias ni errores.
+
+- [x] **T7. Frontend & Utils: Helper `formatPresentationChip` y renderizado de chips limpios (evitar objetos JSON en UI).** RF-17
+  - Hecho cuando: Se agregue `formatPresentationChip` en `frontend/src/utils/formatters.ts` (y opcionalmente en backend `volumeUtils.ts`) para limpiar nombres de catálogo ("Botella 1L", "Botella plástica de 500 ML" $\to$ `[5x 1L]`, `[6x 500ml]`) y se aplique en todas las tarjetas de stock y despachos de `DashboardView.vue`.
+
+- [x] **T8. Frontend: Desglose de Ventas Totales con Pagado y Saldo Pendiente con Deuda / Encargos.** RF-18
+  - Hecho cuando: `DashboardView.vue` mapee `totalCashCollected` y `totalPendingToCollect` desde `kpis`, y la tarjeta de Ventas Totales muestre el monto total encargado/facturado, y un sub-desglose con lo pagado/cobrado y lo que tiene deuda o está pendiente por cobrar.

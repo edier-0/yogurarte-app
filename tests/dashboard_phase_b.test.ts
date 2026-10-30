@@ -3,6 +3,7 @@ import request from 'supertest';
 import { app } from '../src/app.js';
 import { getAdminAuthToken } from './setup.js';
 import prisma from '../src/prisma.js';
+import { cleanPresentationLabel, formatPresentationChip } from '../src/shared/utils/volumeUtils.js';
 
 describe('Spec 007 — Métricas de Fase B, Multi-Presentación y Despachos en Dashboard', () => {
   const adminToken = getAdminAuthToken();
@@ -226,5 +227,19 @@ describe('Spec 007 — Métricas de Fase B, Multi-Presentación y Despachos en D
     expect(ourOrder.itemsSummary).toBeDefined();
     expect(ourOrder.itemsSummary).toContain('500ml');
     expect(ourOrder.itemsSummary).toContain('1L');
+
+    // 5. Desglose financiero de ventas (RF-18)
+    expect(kpis.totalCashCollected).toBeDefined();
+    expect(typeof kpis.totalCashCollected).toBe('number');
+    expect(kpis.totalPendingToCollect).toBeDefined();
+    expect(typeof kpis.totalPendingToCollect).toBe('number');
+
+    // 6. Helpers de formateo limpio de chips (RF-17)
+    expect(cleanPresentationLabel('Botella 1L', 1)).toBe('1L');
+    expect(cleanPresentationLabel('Botella plástica de 500 ML', 0.5)).toBe('500ml');
+    expect(cleanPresentationLabel('Envase pet 250ml', 0.25)).toBe('250ml');
+    expect(formatPresentationChip({ name: 'Botella 1L', quantity: 5, capacityLiters: 1 })).toBe('5x 1L');
+    expect(formatPresentationChip({ name: 'Botella plástica de 500 ML', quantity: 6, capacityLiters: 0.5 })).toBe('6x 500ml');
+    expect(formatPresentationChip('10x 1L')).toBe('10x 1L');
   }, 45000);
 });
