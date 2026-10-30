@@ -1,8 +1,9 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import prisma from '../src/prisma.js';
 import { createOrUpdateCustomer } from '../src/modules/customers/customers.service.js';
+import { whatsappService } from '../src/services/whatsapp.service.js';
 
-describe('T1: Autovinculación preventiva de chats huérfanos al registrar/actualizar clientes', () => {
+describe('T1 & T2: Sincronización y prevención de bifurcación de chats', () => {
   const createdCustomerIds: number[] = [];
   const createdConversationIds: number[] = [];
 
@@ -23,11 +24,10 @@ describe('T1: Autovinculación preventiva de chats huérfanos al registrar/actua
     }
   });
 
-  it('debe vincular automáticamente una conversación huérfana al crear un cliente por número telefónico (10 dígitos)', async () => {
+  it('T1: debe vincular automáticamente una conversación huérfana al crear un cliente por número telefónico (10 dígitos)', async () => {
     const testPhone10 = `300${Date.now().toString().slice(-7)}`;
     const fullJid = `57${testPhone10}@s.whatsapp.net`;
 
-    // 1. Crear conversación huérfana previa (como si WhatsApp hubiera recibido mensaje entrante)
     const orphanConv = await prisma.chatConversation.create({
       data: {
         remoteJid: fullJid,
@@ -40,7 +40,6 @@ describe('T1: Autovinculación preventiva de chats huérfanos al registrar/actua
     });
     createdConversationIds.push(orphanConv.id);
 
-    // 2. Crear cliente desde el sistema con el formato local de 10 dígitos
     const customer = await createOrUpdateCustomer({
       fullName: 'Cliente Autovinculado Test',
       phone: testPhone10,
@@ -48,7 +47,6 @@ describe('T1: Autovinculación preventiva de chats huérfanos al registrar/actua
     });
     createdCustomerIds.push(customer.id);
 
-    // 3. Verificar que la conversación ahora tiene customerId asignado
     const updatedConv = await prisma.chatConversation.findUnique({
       where: { id: orphanConv.id },
     });
@@ -57,10 +55,9 @@ describe('T1: Autovinculación preventiva de chats huérfanos al registrar/actua
     expect(updatedConv?.customerId).toBe(customer.id);
   });
 
-  it('debe vincular automáticamente una conversación huérfana al crear un cliente por nombre de usuario (@usuario)', async () => {
+  it('T1: debe vincular automáticamente una conversación huérfana al crear un cliente por nombre de usuario (@usuario)', async () => {
     const randomUser = `user_${Date.now().toString().slice(-6)}`;
 
-    // 1. Crear conversación previa con pushName o username en el contacto
     const orphanConv = await prisma.chatConversation.create({
       data: {
         remoteJid: `${Date.now().toString().slice(-8)}@lid`,
@@ -73,7 +70,6 @@ describe('T1: Autovinculación preventiva de chats huérfanos al registrar/actua
     });
     createdConversationIds.push(orphanConv.id);
 
-    // 2. Crear cliente registrado como @usuario
     const customer = await createOrUpdateCustomer({
       fullName: 'Usuario Instagram / WhatsApp',
       phone: `@${randomUser}`,
@@ -81,12 +77,58 @@ describe('T1: Autovinculación preventiva de chats huérfanos al registrar/actua
     });
     createdCustomerIds.push(customer.id);
 
-    // 3. Verificar vinculación
     const updatedConv = await prisma.chatConversation.findUnique({
       where: { id: orphanConv.id },
     });
 
     expect(updatedConv).not.toBeNull();
     expect(updatedConv?.customerId).toBe(customer.id);
+  });
+
+  it('T2: debe reutilizar la conversación existente del cliente y NO crear un segundo chat bifurcado al enviar mensaje', async () => {
+    const phoneDigits = `311${Date.now().toString().slice(-7)}`;
+    const lidJid = `${Date.now().toString().slice(-9)}@lid`;
+
+    // 1. Cliente registrado en el sistema
+    const customer = await prisma.customer.create({
+      data: {
+        fullName: 'Carlos Anti Bifurcación',
+        phone: phoneDigits,
+        address: 'Fonseca, La Guajira',
+      },
+    });
+    createdCustomerIds.push(customer.id);
+
+    // 2. Chat previo existente para este cliente (incluso con LID o número alternativo)
+    const existingChat = await prisma.chatConversation.create({
+      data: {
+        remoteJid: lidJid,
+        phoneNumber: phoneDigits,
+        contactName: 'Carlos Anti Bifurcación',
+        lastMessageText: 'Mensaje previo del cliente',
+        lastMessageTimestamp: new Date(Date.now() - 60000),
+        customerId: customer.id,
+      },
+    });
+    createdConversationIds.push(existingChat.id);
+
+    // 3. Simular despacho de mensaje predeterminado a su número canónico
+    const canonicalJid = `57${phoneDigits}@s.whatsapp.net`;
+    const resolvedConv = await whatsappService.resolveOrCreateConversationForOutgoing(
+      canonicalJid,
+      `57${phoneDigits}`,
+      '🥛 ¡Hola Carlos! Tu pedido ha sido confirmado con éxito.',
+      customer.fullName,
+      customer.id
+    );
+
+    // 4. Debe reutilizar existingChat.id y NO crear una segunda fila
+    expect(resolvedConv.id).toBe(existingChat.id);
+    expect(resolvedConv.lastMessageText).toContain('Tu pedido ha sido confirmado');
+
+    const totalChatsForCustomer = await prisma.chatConversation.count({
+      where: { customerId: customer.id },
+    });
+    expect(totalChatsForCustomer).toBe(1);
   });
 });
