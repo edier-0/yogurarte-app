@@ -8,6 +8,8 @@ describe('Customers Endpoints and Payment Cascade', () => {
   const adminToken = getAdminAuthToken();
   let testCustomerId: number;
   let testOrderId: number;
+  let testBatchId: number;
+  let testPackagingId: number;
 
   it('GET /api/customers sin autenticación debe retornar 401', async () => {
     const res = await request(app).get('/api/customers');
@@ -109,14 +111,39 @@ describe('Customers Endpoints and Payment Cascade', () => {
   });
 
   it('Debe crear un pedido de prueba y luego aplicar un abono en cascada atómico', async () => {
+    // 0. Crear un lote y empaque disponible para permitir entrega física (Spec 005)
+    const batch = await prisma.productionBatch.create({
+      data: {
+        batchCode: `LOTE-CUST-TEST-${Date.now()}`,
+        flavor: 'Mora',
+        milkUsedLiters: 10,
+        totalLitersProduced: 10,
+        yieldPercentage: 100,
+        status: 'COMPLETADO',
+      },
+    });
+    testBatchId = batch.id;
+
+    const pkg = await prisma.batchPackaging.create({
+      data: {
+        batchId: batch.id,
+        flavor: 'Mora',
+        totalLiters: 10,
+      },
+    });
+    testPackagingId = pkg.id;
+
     // 1. Crear un pedido para este cliente
     const orderRes = await request(app)
       .post('/api/orders')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         customerId: testCustomerId,
+        batchId: testBatchId,
         items: [
           {
+            batchId: testBatchId,
+            packagingId: testPackagingId,
             bottleSize: '1L',
             flavor: 'Mora',
             quantity: 2,
@@ -186,6 +213,12 @@ describe('Customers Endpoints and Payment Cascade', () => {
       await prisma.orderPayment.deleteMany({ where: { orderId: testOrderId } });
       await prisma.orderItem.deleteMany({ where: { orderId: testOrderId } });
       await prisma.order.delete({ where: { id: testOrderId } });
+    }
+    if (testPackagingId) {
+      await prisma.batchPackaging.delete({ where: { id: testPackagingId } }).catch(() => {});
+    }
+    if (testBatchId) {
+      await prisma.productionBatch.delete({ where: { id: testBatchId } }).catch(() => {});
     }
     if (testCustomerId) {
       await prisma.customer.delete({ where: { id: testCustomerId } });
