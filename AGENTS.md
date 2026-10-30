@@ -63,28 +63,71 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
   - **Implementación atómica**: Una sola tarea a la vez (~20-30 min): tests primero en rojo, código, verificar en verde (`vitest` / pruebas del módulo), marcar la tarea y parar para feedback.
   - **Actualización continua**: Al terminar cada fase o tarea, actualizar `MEMORY.md`.
 
-## Flujo Git, Fusión y Limpieza de Ramas
-- **Ramas permanentes**: Únicamente existen dos ramas permanentes: `develop` (integración y desarrollo) y `main` (producción).
-- **Creación de ramas**: Para cualquier tarea o cambio, se crea una rama temática (`feat/<kebab-case>`, `fix/<kebab-case>`, `refactor/<kebab-case>`, `docs/<kebab-case>`) partiendo siempre de `develop`. No commitear directo en `develop` ni `main`.
-- **Mensajes de commit**: Conventional Commits (`fix(scope): ...`, `feat(scope): ...`, `docs: ...`) con descripción en español.
-- **Ciclo de integración remota (Pull Requests y Fusión)**:
-  1. Verificar compilación, tipos y pruebas (`npx tsc --noEmit`, build frontend y pruebas de dominio).
-  2. Publicar la rama temática en el repositorio remoto (`git push origin <rama>`).
-  3. Crear Pull Request hacia `develop` en GitHub y fusionarlo.
-  4. Sincronizar `develop` local (`git checkout develop && git pull origin develop`).
-  5. Fusionar `develop` directamente en `main` y publicar (`git checkout main && git merge develop && git push origin main`), sin abrir Pull Request intermedio entre `develop` y `main`.
-  6. Regresar a `develop` (`git checkout develop`).
+## Directiva de Flujo de Trabajo en Git (Feature Branch & PR)
+El agente debe adherirse estrictamente al siguiente protocolo para cualquier ciclo de desarrollo, modificación de código o actualización de documentación. Queda terminantemente prohibido fusionar directamente ramas de características en ramas base locales sin un Pull Request mediador.
 
-- **Eliminación de ramas**:
-  - Tras fusionar con éxito en `develop` y `main`, la rama temática se elimina en local (`git branch -d`) y en remoto (`git push origin --delete`).
+### Reglas Clave
+1. **Aislamiento Total:** Todo desarrollo, corrección o tarea ocurre exclusivamente en su propia rama dedicada (`feature/*`, `fix/*`, `chore/*`, `refactor/*`, `docs/*`).
+2. **Sin Merges Locales a Base:** La rama local `develop` (o `main`) nunca recibe merges manuales directos de la rama de trabajo.
+3. **Integración Exclusiva vía Remoto:** El PR es el único mecanismo autorizado para integrar cambios hacia la rama base.
+
+### Secuencia Obligatoria de Operación
+
+#### 1. Inicialización de Rama
+Partir siempre del estado más reciente de la rama base remota:
+```bash
+git checkout develop
+git pull origin develop
+git checkout -b <tipo>/<nombre-tarea>
+```
+Tipos válidos: `feature/`, `fix/`, `chore/`, `refactor/`, `docs/`.
+
+#### 2. Desarrollo y Commits
+- Realizar cambios granulares y testeables.
+- Redactar mensajes de commit con formato semántico (`feat:`, `fix:`, `docs:`, etc.) y descripción en español.
+
+#### 3. Sincronización Pre-Integración
+Antes de publicar la rama o abrir el PR, sincronizar con las actualizaciones recientes de `develop` para resolver conflictos en la rama propia:
+- Estrategia preferida (Historial lineal): `git fetch origin && git rebase origin/develop`
+- Estrategia alternativa (Preservar contexto): `git fetch origin && git merge origin/develop`
+*Nota: Si surgen conflictos, resolverlos dentro de `<tipo>/<nombre-tarea>`, verificar que las pruebas y compilación pasen, y continuar.*
+
+#### 4. Publicación (Push)
+Publicar la rama al repositorio remoto:
+```bash
+git push origin <tipo>/<nombre-tarea>
+```
+*(Si se aplicó rebase y la rama ya existía en remoto: `git push --force-with-lease origin <tipo>/<nombre-tarea>`).*
+
+#### 5. Apertura y Fusión del Pull Request (PR)
+- Base Branch: `develop` | Compare Branch: `<tipo>/<nombre-tarea>`.
+- **Protocolo de Consultas y Autorizaciones**:
+  - El agente **debe preguntar siempre al usuario** antes de abrir el PR y antes de aceptarlo/fusionarlo, **a menos que el usuario indique explícitamente en su instrucción ejecutar todos los pasos sin requerir aprobación**.
+  - El agente mismo se encarga de crear el PR y fusionarlo (vía GitHub MCP/API o squash merge), tras la confirmación correspondiente.
+- **Sincronización a Producción (`main`)**:
+  - Una vez integrado en `develop` vía PR, sincronizar `develop` localmente (`git checkout develop && git pull origin develop`).
+  - Fusionar `develop` directamente en `main` y publicar (`git checkout main && git merge develop && git push origin main`), sin abrir PR intermedio entre `develop` y `main`.
+  - Regresar a `develop` (`git checkout develop`).
+
+#### 6. Limpieza Post-Merge (Eliminación de Ramas)
+- Una vez fusionado en `develop` y `main`:
   - **REGLA ESTRICTA**: Antes de proceder con el borrado de cualquier rama (local o remota), **se debe solicitar siempre autorización explícita al usuario**.
+  - Tras la aprobación del usuario, se elimina la rama en local y remoto:
+```bash
+git checkout develop
+git pull origin develop
+git branch -d <tipo>/<nombre-tarea>
+git push origin --delete <tipo>/<nombre-tarea>
+```
 
 ## Límites
 - ✅ Siempre: seguir la skill `sdd` para realizar cambios en el aplicativo (especificar y validar antes de codificar).
 - ✅ Siempre: actualizar `MEMORY.md` al terminar cada tarea o fase de SDD.
 - ✅ Siempre: seguir `src/modules/` + `app.ts`; typecheck/pruebas del dominio tocado; no commitear `.env` ni secretos.
-- ✅ Siempre: crear rama desde `develop`, integrar vía PR a `develop`, fusionar directo a `main`, y pedir confirmación antes de borrar la rama.
-- ⚠️ Pregunta antes: dependencias nuevas, archivos/módulos nuevos, migraciones Prisma, cambiar formato de datos, romper alias de API o **eliminar cualquier rama local o remota**.
+- ✅ Siempre: crear rama desde `develop`, integrar exclusivamente vía PR a `develop`, sincronizar a `main`, y pedir confirmación antes de abrir PR, fusionar PR y borrar ramas (salvo orden expresa de ejecutar todo sin aprobación).
+- ⚠️ Pregunta antes: dependencias nuevas, archivos/módulos nuevos, migraciones Prisma, cambiar formato de datos, romper alias de API, **abrir PR, fusionar PR o eliminar cualquier rama local o remota**.
+- 🚫 Nunca: fusionar directamente ramas temáticas en `develop` o `main` localmente sin un Pull Request mediador en GitHub.
+- 🚫 Nunca: abrir o fusionar PRs sin previa confirmación del usuario, salvo que haya indicado explícitamente ejecutar todos los pasos sin requerir aprobación.
 - 🚫 Nunca: eliminar ramas locales o remotas sin previa confirmación del usuario.
 - 🚫 Nunca: implementar código sin spec, plan y tareas aprobados por el usuario según la metodología de la skill `sdd`.
 - 🚫 Nunca: pasar a la siguiente fase de SDD sin aprobación explícita del usuario.
