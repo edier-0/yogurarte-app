@@ -23,7 +23,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - `vue-tsc` corre con `noUnusedLocals: true`: variables o imports no utilizados botan error y rompen el build.
 
 ## Próximos pasos
-- Realizar commit de los cambios con Conventional Commits en español.
-- Publicar rama remota `feat/dynamic-product-presentations` e iniciar ciclo de integración PR (`develop` y `main`).
-- Pedir confirmación explícita al usuario antes de borrar la rama temática.
-- Iniciar Spec 005 (Plantillas Centralizadas y Automatizadas de WhatsApp).
+- Iniciar Spec 005 (Plantillas Centralizadas y Automatizadas de WhatsApp) bajo metodología SDD.
+
+
+
