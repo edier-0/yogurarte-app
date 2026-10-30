@@ -38,6 +38,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:open', val: boolean): void;
   (e: 'saved'): void;
+  (e: 'order-created'): void;
 }>();
 
 const store = useOperationsStore();
@@ -146,10 +147,13 @@ function getItemSelectionKey(item: OrderItem): string {
     return `pkg_${item.packagingId}`;
   }
   if (item.batchId) {
+    const itemFlavor = (item.flavor || '').trim().toLowerCase();
     const source = productionStore.packagings.length > 0
       ? productionStore.packagings
       : productionStore.availablePackagings;
-    const matched = source.find((p) => p.batchId === item.batchId);
+    const matched = source.find(
+      (p) => p.batchId === item.batchId && (p.flavor || '').trim().toLowerCase() === itemFlavor
+    );
     if (matched) {
       item.packagingId = matched.id;
       return `pkg_${matched.id}`;
@@ -167,7 +171,7 @@ function getAssignedPackagingLabel(item: OrderItem): string {
     if (pkg) {
       return `${pkg.flavor} — ${pkg.packagingCode || `Lote #${pkg.id}`} (Asignado a este pedido)`;
     }
-    return `${item.flavor} — Lote #${item.packagingId} (Asignado a este pedido)`;
+    return `${item.flavor} — Fracción #${item.packagingId} (Asignado a este pedido)`;
   }
   if (item.batchId) {
     return `${item.flavor} — Lote #${item.batchId} (Asignado a este pedido)`;
@@ -204,7 +208,10 @@ function isCustomOptionNeeded(item: OrderItem): boolean {
     return !activePackagings.value.some((p) => p.id === item.packagingId);
   }
   if (item.batchId) {
-    return !activePackagings.value.some((p) => p.batchId === item.batchId);
+    const itemFlavor = (item.flavor || '').trim().toLowerCase();
+    return !activePackagings.value.some(
+      (p) => p.batchId === item.batchId && (p.flavor || '').trim().toLowerCase() === itemFlavor
+    );
   }
   return !activeCatalogFlavors.value.includes(item.flavor);
 }
@@ -375,7 +382,11 @@ watch(
             let bId = it.batchId || null;
 
             if (!pkgId && bId) {
-              const matched = availablePkgs.find((p) => p.batchId === bId);
+              const itemFlavor = (it.flavor || '').trim().toLowerCase();
+              const source = productionStore.packagings.length > 0 ? productionStore.packagings : availablePkgs;
+              const matched = source.find(
+                (p) => p.batchId === bId && (p.flavor || '').trim().toLowerCase() === itemFlavor
+              );
               if (matched) {
                 pkgId = matched.id;
               }
@@ -505,6 +516,7 @@ const handleSubmit = async () => {
     }
 
     emit('saved');
+    emit('order-created');
     handleClose();
   } catch (err: any) {
     console.error(err);
