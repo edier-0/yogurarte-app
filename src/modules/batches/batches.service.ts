@@ -2999,6 +2999,14 @@ export function computePackagingPresentations(pkg: any) {
       const capMatch = Math.abs(unitLiters - p.capacityLiters) < 0.01;
       return sizeMatch || capMatch;
     });
+    const loyaltyDischarges = matchingDischarges.filter((d: any) => d.reasonType === 'PREMIO_FIDELIZACION');
+    const partnerDischarges = matchingDischarges.filter((d: any) => d.reasonType === 'CONSUMO_SOCIO');
+    const otherDischarges = matchingDischarges.filter(
+      (d: any) => d.reasonType !== 'PREMIO_FIDELIZACION' && d.reasonType !== 'CONSUMO_SOCIO'
+    );
+    const loyaltyDischarged = loyaltyDischarges.reduce((sum: number, d: any) => sum + (d.quantityBottles || 0), 0);
+    const partnerDischarged = partnerDischarges.reduce((sum: number, d: any) => sum + (d.quantityBottles || 0), 0);
+    const otherDischarged = otherDischarges.reduce((sum: number, d: any) => sum + (d.quantityBottles || 0), 0);
     const discharged = matchingDischarges.reduce((sum: number, d: any) => sum + (d.quantityBottles || 0), 0);
 
     const free = Math.max(0, p.quantity - sold - discharged);
@@ -3009,6 +3017,11 @@ export function computePackagingPresentations(pkg: any) {
       quantity: p.quantity,
       sold,
       discharged,
+      loyaltyDischarged,
+      partnerDischarged,
+      otherDischarged,
+      loyaltyDischargedLiters: Math.round(loyaltyDischarged * p.capacityLiters * 100) / 100,
+      partnerDischargedLiters: Math.round(partnerDischarged * p.capacityLiters * 100) / 100,
       free,
       price: p.price,
       totalLiters: Math.round(p.quantity * p.capacityLiters * 100) / 100,
@@ -3025,6 +3038,10 @@ export function computePackagingPresentations(pkg: any) {
   const totalLiters = Math.round(presentations.reduce((sum, p) => sum + p.totalLiters, 0) * 100) / 100 || pkg.totalLiters || 0;
   const soldLiters = Math.round(presentations.reduce((sum, p) => sum + p.soldLiters, 0) * 100) / 100;
   const dischargedLiters = Math.round(presentations.reduce((sum, p) => sum + p.dischargedLiters, 0) * 100) / 100;
+  const loyaltyDischargedLiters = Math.round(presentations.reduce((sum, p) => sum + (p.loyaltyDischargedLiters || 0), 0) * 100) / 100;
+  const loyaltyBottlesCount = presentations.reduce((sum, p) => sum + (p.loyaltyDischarged || 0), 0);
+  const partnerDischargedLiters = Math.round(presentations.reduce((sum, p) => sum + (p.partnerDischargedLiters || 0), 0) * 100) / 100;
+  const partnerBottlesCount = presentations.reduce((sum, p) => sum + (p.partnerDischarged || 0), 0);
   const freeLiters = Math.max(0, Math.round((totalLiters - soldLiters - dischargedLiters) * 100) / 100);
   const progressPercentage = totalLiters > 0 ? Math.min(100, Math.round(((soldLiters + dischargedLiters) / totalLiters) * 100)) : 0;
   const status = freeLiters <= 0.05 ? 'AGOTADO' : 'DISPONIBLE';
@@ -3034,6 +3051,10 @@ export function computePackagingPresentations(pkg: any) {
     totalLiters,
     soldLiters,
     dischargedLiters,
+    loyaltyDischargedLiters,
+    loyaltyBottlesCount,
+    partnerDischargedLiters,
+    partnerBottlesCount,
     freeLiters,
     progressPercentage,
     status,
@@ -3305,7 +3326,7 @@ export const getBatchPackagings = async (query: PackagingsQueryInput) => {
  * Obtener auditoría y resumen exclusivo de una fracción envasada
  */
 export const getPackagingSummary = async (packagingId: number) => {
-  const pkg = await prisma.batchPackaging.findUnique({
+  const pkg = await prisma.batchPackaging.findFirst({
     where: { id: packagingId },
     include: {
       batch: {
@@ -3408,6 +3429,10 @@ export const getPackagingSummary = async (packagingId: number) => {
     presentations,
     volume: {
       baseLitersUsed: effectiveBaseLiters,
+      loyaltyDischargedLiters: computed.loyaltyDischargedLiters,
+      loyaltyBottlesCount: computed.loyaltyBottlesCount,
+      partnerDischargedLiters: computed.partnerDischargedLiters,
+      partnerBottlesCount: computed.partnerBottlesCount,
       yieldPercentage: pkg.yieldPercentage || (effectiveBaseLiters > 0 ? Math.round((computed.totalLiters / effectiveBaseLiters) * 10000) / 100 : 100),
       totalLiters: computed.totalLiters,
       soldLiters: computed.soldLiters,
@@ -3534,7 +3559,7 @@ export const deleteBatchPackaging = async (packagingId: number, options?: Delete
  * Registrar retiro directo de socio sobre una fracción envasada
  */
 export const recordPackagingDischarge = async (packagingId: number, input: PackagingDischargeInput) => {
-  const pkg = await prisma.batchPackaging.findUnique({
+  const pkg = await prisma.batchPackaging.findFirst({
     where: { id: packagingId },
     include: {
       batch: true,
@@ -3659,7 +3684,7 @@ export const unlinkOrderFromPackaging = async (packagingId: number, orderId: num
  * Vincular pedidos masivamente a una fracción de lote existente ($transaction)
  */
 export const linkOrdersToPackaging = async (packagingId: number, data: LinkOrdersToBatchInput) => {
-  const pkg = await prisma.batchPackaging.findUnique({
+  const pkg = await prisma.batchPackaging.findFirst({
     where: { id: packagingId },
     include: { batch: true },
   });
@@ -3956,7 +3981,11 @@ export const getBatchSummary = async (batchId: number) => {
   }, 0);
 
   const projectedRevenueTotal =
-    totalBottles1LProduced * (batch.price1L || 12000) + totalBottles2LProduced * (batch.price2L || 24000);
+    enrichedPackagings.length > 0
+      ? enrichedPackagings.reduce((sum, p) => {
+          return sum + (p.presentations || []).reduce((pSum: number, pres: any) => pSum + (pres.quantity * pres.price), 0);
+        }, 0)
+      : (totalBottles1LProduced * (batch.price1L || 12000) + totalBottles2LProduced * (batch.price2L || 24000));
 
   return {
     batch: {

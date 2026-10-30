@@ -36,6 +36,11 @@ export interface PackagingPresentationItem {
   totalLiters: number;
   soldLiters: number;
   dischargedLiters?: number;
+  loyaltyDischarged?: number;
+  partnerDischarged?: number;
+  otherDischarged?: number;
+  loyaltyDischargedLiters?: number;
+  partnerDischargedLiters?: number;
   freeLiters: number;
   rawMaterialId?: number | null;
   // Rentabilidad comercial y ganancia por litro
@@ -128,6 +133,10 @@ export interface PackagingSummaryData {
     yieldPercentage?: number;
     soldLiters: number;
     dischargedLiters: number;
+    loyaltyDischargedLiters?: number;
+    loyaltyBottlesCount?: number;
+    partnerDischargedLiters?: number;
+    partnerBottlesCount?: number;
     freeLiters: number;
     progressPercentage: number;
     status: string;

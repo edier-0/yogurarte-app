@@ -838,11 +838,14 @@ export async function unlinkChat(input: UnlinkChatInput) {
 // ==========================================
 
 export async function getLoyaltyOverview(query: GetLoyaltyQuery) {
-  const { search, page = '1', limit = '12' } = query;
+  const { search, page = '1', limit = '12', customerId } = query;
   const pageNum = Math.max(1, Number(page) || 1);
   const limitNum = Math.min(100, Math.max(1, Number(limit) || 12));
 
   const where: any = { isActive: true };
+  if (customerId && !isNaN(Number(customerId))) {
+    where.id = Number(customerId);
+  } else
   if (search && search.trim()) {
     where.OR = [
       { fullName: { contains: search.trim(), mode: 'insensitive' } },

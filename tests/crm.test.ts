@@ -88,6 +88,22 @@ describe('CRM & WhatsApp Endpoints', () => {
     expect(Array.isArray(res.body.customers)).toBe(true);
   });
 
+  it('GET /api/crm/loyalty?customerId=:id debe filtrar exactamente al cliente solicitado para la alerta en pedidos', async () => {
+    const customer = await prisma.customer.findFirst();
+    if (!customer) return;
+
+    const res = await request(app)
+      .get(`/api/crm/loyalty?customerId=${customer.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('customers');
+    expect(res.body.customers.length).toBe(1);
+    expect(res.body.customers[0].id).toBe(customer.id);
+    expect(res.body.customers[0]).toHaveProperty('rewardsAvailable');
+    expect(res.body.customers[0]).toHaveProperty('currentCycleBottles');
+  });
+
   it('GET /api/crm/recurring debe responder 200 con listado de compras frecuentes', async () => {
     const res = await request(app)
       .get('/api/crm/recurring')

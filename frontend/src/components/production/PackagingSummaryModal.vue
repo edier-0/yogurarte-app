@@ -619,7 +619,15 @@ watch(activeTab, async (newTab) => {
                 <p class="mt-1 text-xl font-black text-purple-600 dark:text-purple-400">
                   {{ (summary.volume.soldLiters + summary.volume.dischargedLiters).toFixed(1) }} L
                 </p>
-                <span class="text-[10px] text-slate-500">{{ summary.volume.progressPercentage }}% comercializado</span>
+                <span class="text-[10px] text-slate-500">
+                  {{ summary.volume.progressPercentage }}% comercializado
+                  <span
+                    v-if="summary.volume.loyaltyDischargedLiters && summary.volume.loyaltyDischargedLiters > 0"
+                    class="block font-bold text-emerald-600 dark:text-emerald-400"
+                  >
+                    🎁 {{ summary.volume.loyaltyDischargedLiters }}L por Fidelización
+                  </span>
+                </span>
               </div>
 
               <div class="rounded-2xl border border-surface-light-border bg-surface-light-card p-3.5 shadow-sm dark:border-surface-dark-border dark:bg-surface-dark-card col-span-2 sm:col-span-1">
@@ -783,6 +791,12 @@ watch(activeTab, async (newTab) => {
                       </td>
                       <td class="p-2.5 text-center font-black text-amber-600 dark:text-amber-400">
                         {{ pres.discharged }} und
+                        <span
+                          v-if="pres.loyaltyDischarged && pres.loyaltyDischarged > 0"
+                          class="block text-[10px] font-bold text-emerald-600 dark:text-emerald-400"
+                        >
+                          🎁 {{ pres.loyaltyDischarged }} fideliz.
+                        </span>
                       </td>
                       <td class="p-2.5 text-center font-black text-brand-800 dark:text-brand-darkText">
                         {{ pres.free }} und
@@ -1158,9 +1172,17 @@ watch(activeTab, async (newTab) => {
           <!-- PESTAÑA 3: CONSUMO DE SOCIOS / BAJAS -->
           <div v-if="activeTab === 'PARTNERS'" class="space-y-4">
             <div class="flex items-center justify-between">
-              <span class="text-xs font-bold text-slate-500">
-                Retiros realizados: {{ summary.discharges?.length || 0 }}
-              </span>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-bold text-slate-500">
+                  Retiros realizados: {{ summary.discharges?.length || 0 }}
+                </span>
+                <span
+                  v-if="summary.volume?.loyaltyBottlesCount && summary.volume.loyaltyBottlesCount > 0"
+                  class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-extrabold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                >
+                  🎁 Premios Fidelización (10+1): {{ summary.volume.loyaltyBottlesCount }} und ({{ summary.volume.loyaltyDischargedLiters }}L)
+                </span>
+              </div>
 
               <button
                 type="button"
@@ -1263,18 +1285,37 @@ watch(activeTab, async (newTab) => {
               <div
                 v-for="d in paginatedDischarges"
                 :key="d.id"
-                class="flex items-center justify-between rounded-xl border border-surface-light-border bg-slate-50 p-3 text-xs dark:border-surface-dark-border dark:bg-slate-800/40"
+                class="flex items-center justify-between rounded-xl border p-3 text-xs transition-colors"
+                :class="d.reasonType === 'PREMIO_FIDELIZACION'
+                  ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/40 dark:bg-emerald-950/20'
+                  : 'border-surface-light-border bg-slate-50 dark:border-surface-dark-border dark:bg-slate-800/40'"
               >
                 <div>
-                  <span class="font-black text-slate-900 dark:text-white">{{ d.staffMember?.fullName || 'Socio' }}</span>
-                  <p class="text-[10px] text-slate-500">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-black text-slate-900 dark:text-white">
+                      {{ d.reasonType === 'PREMIO_FIDELIZACION' ? (d.notes || 'Premio Fidelización a Cliente') : (d.staffMember?.fullName || 'Socio') }}
+                    </span>
+                    <span
+                      v-if="d.reasonType === 'PREMIO_FIDELIZACION'"
+                      class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300"
+                    >
+                      🎁 Premio Fidelización (10+1)
+                    </span>
+                  </div>
+                  <p class="text-[10px] text-slate-500 mt-0.5">
                     {{ d.quantityBottles }}x {{ d.bottleSize }} ({{ d.totalLiters }}L) · {{ formatDate(d.dischargeDate) }}
-                    <span v-if="d.notes"> · "{{ d.notes }}"</span>
+                    <span v-if="d.notes && d.reasonType !== 'PREMIO_FIDELIZACION'"> · "{{ d.notes }}"</span>
+                    <span v-if="d.registeredBy"> · Reg: {{ d.registeredBy }}</span>
                   </p>
                 </div>
-                <span class="font-extrabold text-amber-600 dark:text-amber-400">
-                  {{ formatCOP(d.totalAmount) }}
-                </span>
+                <div class="text-right">
+                  <span
+                    class="font-extrabold"
+                    :class="d.reasonType === 'PREMIO_FIDELIZACION' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'"
+                  >
+                    {{ d.reasonType === 'PREMIO_FIDELIZACION' ? '$ 0 (Fidelización)' : formatCOP(d.totalAmount) }}
+                  </span>
+                </div>
               </div>
 
               <!-- Paginación de retiros a 5 registros -->

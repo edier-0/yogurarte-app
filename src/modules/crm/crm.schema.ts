@@ -147,6 +147,7 @@ export const getMessagesQuerySchema = z.object({
 });
 
 export const getLoyaltyQuerySchema = z.object({
+  customerId: z.string().optional(),
   search: z.string().optional(),
   page: z.string().optional(),
   limit: z.string().optional(),

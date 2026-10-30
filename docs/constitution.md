@@ -1,7 +1,7 @@
 # Constitución del Software — YogurArte
 
 > **Documento Rector del Sistema Operativo, Contable y CRM**  
-> **Versión:** 1.2.0  
+> **Versión:** 1.3.0  
 > **Ámbito:** Todos los módulos, specs, planes y cambios de código en YogurArte.  
 > **Principio de Supremacía:** Ninguna especificación (`spec.md`), plan de arquitectura (`plan.md`) o línea de código puede contradecir los artículos de esta Constitución sin una enmienda explícita aprobada por el usuario.
 
@@ -44,6 +44,8 @@ YogurArte es un sistema integral de misión crítica para la digitalización ope
 1. **Fase A (`ProductionBatch`)**: Comprende la recepción láctea cruda, calentamiento, siembra del cultivo termófilo, fermentación controlada y enfriamiento del yogur base.
 2. **Fase B (`BatchPackaging`)**: Comprende el fraccionamiento de la base, incorporación de mermeladas o endulzantes, y envasado en presentaciones comerciales (1 L, 2 L, porciones).
 3. **Descuento de inventario en envasado**: El consumo de envases, tapas, etiquetas y mermeladas se ejecuta atómicamente en la Fase B. Ningún lote puede considerarse terminado sin el correspondiente descargo de insumos de almacén.
+4. **Auditoría Dinámica de Presentaciones en Fase B**: Las fracciones envasadas operan sobre un catálogo dinámico y extensible de presentaciones comerciales (500 ml, 1 L, 2 L o cualquier formato futuro). Queda prohibido hardcodear columnas fijas de botellas en los balances de stock, rentabilidad o auditorías de Fase B.
+5. **Segregación Estricta de Entregas y Salidas**: Las entregas a clientes, ventas y salidas de producto terminado (incluyendo premios de fidelización y consumo de socios) pertenecen y se auditan exclusivamente a nivel de **Fase B** (`BatchPackaging`). La auditoría del Lote Madre (Fase A) permanece estrictamente reservada para el balance de materia prima cruda (leche/cultivo) y base láctea fermentada a granel consumida por las fracciones.
 
 ### Artículo 6: Inventario, Kardex y Costeo Promedio
 1. **Trazabilidad atómica**: Cada entrada, salida o ajuste en el inventario debe generar un movimiento auditable en el Kardex.
@@ -53,6 +55,7 @@ YogurArte es un sistema integral de misión crítica para la digitalización ope
 ### Artículo 7: Ciclo Logístico y Fidelización
 1. **Ciclo de vida del pedido**: Toda orden transita de manera unidireccional y verificable: `PREPARING` $\rightarrow$ `IN_ROUTE` $\rightarrow$ `DELIVERED` (o `CANCELLED`).
 2. **Regla de fidelización 10+1**: El beneficio se acumula únicamente por cada 10 unidades de botellas de 1 L entregadas y pagadas. Queda prohibido manipular o incrementar contadores de fidelización manualmente sin respaldo de pedidos reales.
+3. **Flujo de Notificación y Canje de Fidelización**: La redención y descargo de inventario del premio de fidelización se gestiona a través del módulo CRM a valor de \$0 COP (`PREMIO_FIDELIZACION`). En el flujo de toma de pedidos comerciales, el sistema debe alertar proactivamente la disponibilidad del beneficio al seleccionar un cliente calificado, proveyendo un enlace o acción directa para redimirlo en CRM sin fricción. Todo premio entregado debe auditarse de forma visible y diferenciada en la fracción envasada de Fase B de donde se extrajo el producto.
 
 ### Artículo 8: Zona Horaria y Precisión Temporal
 1. El sistema opera canónicamente bajo la hora legal de Colombia (`UTC-5`, `America/Bogota`).
@@ -134,3 +137,4 @@ Los requisitos funcionales de cada spec deben redactarse en español empleando l
 - **v1.0.0**: Promulgación inicial de los Títulos I al VI (Principios, Invariantes, Arquitectura, SDD, Git y Enmiendas).
 - **v1.1.0**: Incorporación de reglas de auditoría y seguridad de dependencias en producción.
 - **v1.2.0**: Estandarización del ciclo de vida Git mediante Pull Requests remotos (PR rama temática $\rightarrow$ `develop` $\rightarrow$ `main`, sincronización local y borrado remoto/local con salvaguarda).
+- **v1.3.0**: Enmienda a los Artículos 5 y 7: Trazabilidad y auditoría dinámica de presentaciones en Fase B (prohibición de 1L/2L fijos), segregación estricta de entregas y salidas exclusivamente en Fase B, y flujo proactivo de alerta de fidelización desde pedidos hacia CRM con auditoría visible en la fracción envasada.
