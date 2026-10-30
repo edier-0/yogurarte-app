@@ -38,11 +38,15 @@ export async function refreshQR() {
 // ==========================================
 
 export async function getConversations(query: GetConversationsQuery) {
-  const { search, unreadOnly, tag } = query;
+  const { search, unreadOnly, tag, customerId } = query;
 
   const where: any = {
     isArchived: false,
   };
+
+  if (customerId && !isNaN(Number(customerId))) {
+    where.customerId = Number(customerId);
+  }
 
   if (unreadOnly === 'true') {
     where.unreadCount = { gt: 0 };

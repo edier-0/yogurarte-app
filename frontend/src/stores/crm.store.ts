@@ -15,6 +15,7 @@ export interface SmartWhatsAppOptions {
   customerId?: number | null;
   contactName?: string | null;
   fallbackUrl?: string | null;
+  skipExternalOpen?: boolean;
 }
 
 export interface MessagePreviewOptions {
@@ -24,6 +25,7 @@ export interface MessagePreviewOptions {
   customerId?: number | null;
   title?: string;
   fallbackUrl?: string | null;
+  hasActiveChat?: boolean | null;
   onConfirm?: (editedText: string) => Promise<void> | void;
 }
 
@@ -47,6 +49,7 @@ export const useCrmStore = defineStore('crm', () => {
     customerId: null,
     title: 'Previsualización de Mensaje WhatsApp',
     fallbackUrl: null,
+    hasActiveChat: null,
   });
 
   const isWhatsAppConnected = computed(
@@ -165,6 +168,10 @@ export const useCrmStore = defineStore('crm', () => {
     }
 
     // Escenario B: Sesión Interna Desconectada o Fallo Interno -> Fallback a WhatsApp Web / App
+    if (options.skipExternalOpen) {
+      return { success: false, method: 'EXTERNAL' };
+    }
+
     const targetForUrl = rawContact || options.phone || options.contactName || '';
     const fallbackUrl = options.fallbackUrl || buildWhatsAppUrl(targetForUrl, textMessage);
 
@@ -186,6 +193,41 @@ export const useCrmStore = defineStore('crm', () => {
     }
   }
 
+  /**
+   * Verifica si un destinatario posee conversación previa en el CRM con remoteJid activo.
+   * Crucial para nombres de usuario (@usuario) donde Baileys no puede iniciar chats sin conversación previa.
+   */
+  async function checkRecipientHasChat(target: {
+    customerId?: number | null;
+    phone?: string | null;
+    contactName?: string | null;
+  }): Promise<boolean> {
+    const rawContact = (target.phone || target.contactName || '').trim();
+    const isUsername = isWhatsAppUsername(rawContact);
+
+    // Si es un número telefónico tradicional con dígitos válidos,
+    // Baileys puede despachar directamente si está conectado sin requerir chat previo en base de datos.
+    if (!isUsername) {
+      return true;
+    }
+
+    // Para nombres de usuario (@usuario), Baileys NO puede iniciar chats de la nada;
+    // requiere que exista una conversación previa vinculada en el CRM con remoteJid.
+    try {
+      const params: Record<string, string> = {};
+      if (target.customerId) {
+        params.customerId = String(target.customerId);
+      } else {
+        params.search = rawContact.replace(/^@/, '');
+      }
+
+      const res = await http.get<any[]>('/crm/conversations', { params });
+      return Array.isArray(res) && res.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
   function openMessagePreview(options: MessagePreviewOptions) {
     messagePreview.value = {
       isOpen: true,
@@ -195,6 +237,7 @@ export const useCrmStore = defineStore('crm', () => {
       customerId: options.customerId || null,
       title: options.title || 'Previsualización de Mensaje WhatsApp',
       fallbackUrl: options.fallbackUrl || null,
+      hasActiveChat: options.hasActiveChat ?? null,
       onConfirm: options.onConfirm,
     };
   }
@@ -203,7 +246,7 @@ export const useCrmStore = defineStore('crm', () => {
     messagePreview.value.isOpen = false;
   }
 
-  async function confirmAndSendPreview(editedText: string) {
+  async function confirmAndSendPreview(editedText: string, options?: { skipExternalOpen?: boolean }) {
     if (!messagePreview.value.isOpen) return;
     const current = { ...messagePreview.value };
     closeMessagePreview();
@@ -217,6 +260,7 @@ export const useCrmStore = defineStore('crm', () => {
         customerId: current.customerId || undefined,
         contactName: current.contactName || undefined,
         fallbackUrl: current.fallbackUrl || undefined,
+        skipExternalOpen: options?.skipExternalOpen,
       });
     }
   }
@@ -232,6 +276,7 @@ export const useCrmStore = defineStore('crm', () => {
     fetchStatus,
     initSocketListeners,
     sendSmartWhatsApp,
+    checkRecipientHasChat,
     openMessagePreview,
     closeMessagePreview,
     confirmAndSendPreview,
