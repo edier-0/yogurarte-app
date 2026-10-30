@@ -18,6 +18,14 @@ export function resolvePresentationLiters(sizeName: string, fallbackCapacity?: n
   return 1.0;
 }
 
+/**
+ * Determina si una lista de ítems de pedido contiene productos en preventa o sin lote asignado
+ */
+export function hasUnassignedItems(items?: Array<{ batchId?: number | null; packagingId?: number | null }>): boolean {
+  if (!items || items.length === 0) return true;
+  return items.some((it) => !it.packagingId && !it.batchId);
+}
+
 import prisma from '../../prisma.js';
 import { getAllSettingsMap } from '../../controllers/settings.controller.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.utils.js';
@@ -585,12 +593,16 @@ export const createOrder = async (data: CreateOrderInput) => {
         let itemPackagingId: number | null = null;
         if (item.packagingId !== undefined && item.packagingId !== null && !isNaN(Number(item.packagingId))) {
           itemPackagingId = Number(item.packagingId);
+        } else if (item.packagingId === null) {
+          itemPackagingId = null;
         }
 
         let itemBatchId: number | null = null;
         if (item.batchId !== undefined && item.batchId !== null && !isNaN(Number(item.batchId))) {
           itemBatchId = Number(item.batchId);
-        } else if (parsedBatchId !== undefined && parsedBatchId !== null) {
+        } else if (item.batchId === null) {
+          itemBatchId = null;
+        } else if (item.batchId === undefined && parsedBatchId !== undefined && parsedBatchId !== null) {
           itemBatchId = Number(parsedBatchId);
         }
 
@@ -652,7 +664,7 @@ export const createOrder = async (data: CreateOrderInput) => {
             if (matchingPkgs.length > 0) {
               const exactFlavorPkg = matchingPkgs.find(
                 (p) => p.flavor.toLowerCase().trim() === it.flavor.toLowerCase().trim()
-              ) || matchingPkgs[0];
+              );
               if (exactFlavorPkg) {
                 it.packagingId = exactFlavorPkg.id;
               }
@@ -660,6 +672,10 @@ export const createOrder = async (data: CreateOrderInput) => {
           }
         }
       }
+
+      // Si se actualizaron los ítems, el batchId de la orden se sincroniza con los ítems (o null si todos son preventa)
+      const firstBatchItem = rawParsed.find((i) => i.batchId !== null && i.batchId !== undefined);
+      parsedBatchId = firstBatchItem ? firstBatchItem.batchId : null;
 
       // Consolidar ítems idénticos
       for (const it of rawParsed) {
@@ -732,9 +748,9 @@ export const createOrder = async (data: CreateOrderInput) => {
       ? parsedItems[0].bottleSize
       : 'MIXTO';
 
-    // 4. Auto-vincular lote si no se envió explícito
+    // 4. Auto-vincular lote solo para pedidos legacy sin lista de ítems detallada y sin preventa explícita
     const hasAnyItemBatch = parsedItems.some((i) => i.batchId !== null && i.batchId !== undefined);
-    if (!hasAnyItemBatch && !parsedBatchId) {
+    if (!hasAnyItemBatch && !parsedBatchId && batchId === undefined && (!Array.isArray(items) || items.length === 0)) {
       const isExplicitPreventa = batchId === null;
       if (!isExplicitPreventa) {
         const primaryFlavor = (parsedItems[0]?.flavor || flavor || 'Natural').trim();
@@ -880,6 +896,11 @@ export const createOrder = async (data: CreateOrderInput) => {
     if (deliveryDate) {
       initialDeliveryDate = parseColombiaDate(deliveryDate);
     } else if (deliveryStatus === 'DELIVERED') {
+      if (hasUnassignedItems(parsedItems)) {
+        throw new BadRequestError(
+          'No es posible marcar el pedido como entregado porque contiene productos en preventa o sin lote asignado. Asigna primero un lote envasado (Fase B) a todos los productos del pedido.'
+        );
+      }
       initialDeliveryDate = new Date();
     }
 
@@ -963,7 +984,7 @@ export const createOrder = async (data: CreateOrderInput) => {
       }).catch((e) => console.warn('Aviso: No se pudo incrementar loyaltyRedeemedCount:', e.message));
     }
 
-    if (order.deliveryStatus === 'DELIVERED' || order.deliveryStatus === 'IN_ROUTE') {
+    if (order.deliveryStatus === 'IN_ROUTE') {
       await autoLinkOrderItemsToAvailableBatches(tx, order.id);
       return await tx.order.findUnique({
         where: { id: order.id },
@@ -1075,12 +1096,16 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
         let itemPackagingId: number | null = null;
         if (item.packagingId !== undefined && item.packagingId !== null && !isNaN(Number(item.packagingId))) {
           itemPackagingId = Number(item.packagingId);
+        } else if (item.packagingId === null) {
+          itemPackagingId = null;
         }
 
         let itemBatchId: number | null = null;
         if (item.batchId !== undefined && item.batchId !== null && !isNaN(Number(item.batchId))) {
           itemBatchId = Number(item.batchId);
-        } else if (parsedBatchId !== undefined && parsedBatchId !== null) {
+        } else if (item.batchId === null) {
+          itemBatchId = null;
+        } else if (item.batchId === undefined && parsedBatchId !== undefined && parsedBatchId !== null) {
           itemBatchId = Number(parsedBatchId);
         }
 
@@ -1142,7 +1167,7 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
             if (matchingPkgs.length > 0) {
               const exactFlavorPkg = matchingPkgs.find(
                 (p) => p.flavor.toLowerCase().trim() === it.flavor.toLowerCase().trim()
-              ) || matchingPkgs[0];
+              );
               if (exactFlavorPkg) {
                 it.packagingId = exactFlavorPkg.id;
               }
@@ -1150,6 +1175,10 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
           }
         }
       }
+
+      // Si se actualizaron los ítems, el batchId de la orden se sincroniza con los ítems (o null si todos son preventa)
+      const firstBatchItem = rawParsed.find((i) => i.batchId !== null && i.batchId !== undefined);
+      parsedBatchId = firstBatchItem ? firstBatchItem.batchId : null;
 
       // Consolidar ítems idénticos
       const parsedItems: typeof rawParsed = [];
@@ -1296,6 +1325,16 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
       }
     }
 
+    const effectiveDeliveryStatus = deliveryStatus || currentOrder.deliveryStatus;
+    if (effectiveDeliveryStatus === 'DELIVERED') {
+      const itemsToCheck = parsedItemsList || currentOrder.items;
+      if (hasUnassignedItems(itemsToCheck)) {
+        throw new BadRequestError(
+          'No es posible marcar el pedido como entregado porque contiene productos en preventa o sin lote asignado. Asigna primero un lote envasado (Fase B) a todos los productos del pedido.'
+        );
+      }
+    }
+
     let finalDeliveryDate = currentOrder.deliveryDate;
     if (deliveryDate) {
       finalDeliveryDate = parseColombiaDate(deliveryDate);
@@ -1432,8 +1471,7 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
       await syncBatchStatusBidirectional(tx, bId);
     }
 
-    const isDeliveredOrInRoute = (updatedOrder.deliveryStatus === 'DELIVERED' || updatedOrder.deliveryStatus === 'IN_ROUTE');
-    if (isDeliveredOrInRoute) {
+    if (updatedOrder.deliveryStatus === 'IN_ROUTE') {
       await autoLinkOrderItemsToAvailableBatches(tx, id);
       return await tx.order.findUnique({
         where: { id },
@@ -1621,6 +1659,12 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
     if (deliveryStatus) {
       updateData.deliveryStatus = deliveryStatus;
       if (deliveryStatus === 'DELIVERED') {
+        const orderItems = await tx.orderItem.findMany({ where: { orderId: id } });
+        if (hasUnassignedItems(orderItems)) {
+          throw new BadRequestError(
+            'No es posible marcar el pedido como entregado porque contiene productos en preventa o sin lote asignado. Asigna primero un lote envasado (Fase B) a todos los productos del pedido.'
+          );
+        }
         updateData.deliveryDate = new Date();
       } else {
         if (existing.deliveryStatus === 'DELIVERED') {
@@ -1707,8 +1751,7 @@ export const updateDeliveryStatus = async (id: number, data: UpdateDeliveryStatu
       }
     }
 
-    const isDeliveringOrInRoute = deliveryStatus === 'DELIVERED' || deliveryStatus === 'IN_ROUTE';
-    if (isDeliveringOrInRoute) {
+    if (deliveryStatus === 'IN_ROUTE') {
       await autoLinkOrderItemsToAvailableBatches(tx, id);
       return await tx.order.findUnique({
         where: { id },

@@ -3,27 +3,20 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 
 ## Estado actual
 - App ERP/CRM en producción: Fase A/B, inventario, pedidos/domicilio, caja bimonetaria, créditos, personal y CRM WhatsApp.
-- API canónica en `src/modules/` montada desde `src/app.ts`. `src/controllers|routes|schemas` son restos legacy.
-- Spec 001, 002 y 003 completadas y verificadas al 100%. Auditoría de dependencias: 0 vulnerabilidades en producción.
-- Spec 004 completada al 100% en `feat/dynamic-product-presentations`: tareas T1 a T9 finalizadas y verificadas (typecheck limpio, frontend build limpio y 100% pruebas en verde).
-- Se implementaron presentaciones dinámicas (1L $12k, 2L $24k, 500ml $8k), modal administrativo, pedidos reactivos, fraccionamiento en Fase B y fidelización proporcional con canje flexible hasta 1.0L a $0 COP.
+- Specs 001 a 005 completadas e implementadas al 100%.
+- Neon DB Producción: Pedido #PED-20261029-001 (Daila Pérez) corregido; ítems y orden en preventa (`batchId: null`, `deliveryStatus: 'PENDING'`), pago de $20.000 Nequi intacto y Lote 2 de Fase B liberado de asignaciones fantasma.
+- Spec 005 finalizada: Bloqueo de entrega de pedidos sin lote en backend (HTTP 400) y frontend (modales y tabla). Blindaje de desvinculación a preventa en `updateOrder` sin fallback de sabor cruzado. Rama `feat/block-delivery-without-batch` lista para PR.
 
 ## Decisiones (y por qué)
-- Catálogo en DB `ProductPresentation`: permite agregar formatos nuevos (ej. 500 ml a $8.000) con envase opcional sin modificar código.
-- Fidelización proporcional: botellas de 500 ml aportan 0.5 botellas equivalentes; canje flexible de hasta 1.0 L con salida $0 COP y descargo en lote (`PREMIO_FIDELIZACION`).
-- Fase A puramente líquida; el envasado y presentaciones operan exclusivamente en Fase B.
-- Plantillas de WhatsApp diferidas a Spec 005 para mantener entregas atómicas según SDD.
-- Prisma en Neon DB: usar `select` específico en vez de `include` anidado para evitar timeouts con pooler PgBouncer.
-- Deuda calculada, no columna: evita saldos desfasados respecto a pagos. Excluye pedidos `CANCELLED`.
+- Bloqueo estricto HTTP 400 al entregar (`DELIVERED`) pedidos con ítems en preventa: protege la consistencia del kardex de producto terminado y evita salidas físicas sin descargo de lote.
+- Eliminación del fallback `matchingPkgs[0]`: impide que ítems de Fresa se vinculen a lotes de Natural cuando no hay fracción coincidente de sabor.
+- `order.batchId = null` al desvincular todos los ítems a preventa: evita que la cabecera retenga lotes fantasma que re-infecten los ítems al guardar.
+- Preservación de pagos anticipados en preventa: el recaudo registrado (ej. Nequi) se mantiene sin cambios mientras el pedido espera asignación de lote físico.
 
 ## Aprendizajes y errores a evitar
 - Prisma DataLoader con `findUnique` en transacciones contra Neon: usar `select` puntual para evitar timeouts y conexión rota.
-- En mensajes de validación de volumen, conservar el prefijo `Volumen insuficiente:` para mantener compatibilidad con las aserciones de la suite de pruebas.
-- En `updateBatchPackaging`: si no se envía `baseLitersUsed` explícito, mantener la proporción de rendimiento previo o 1:1.
+- En `updateOrder`, evaluar explícitamente `item.batchId === null` para no forzar el `batchId` previo de la orden sobre ítems desvinculados a preventa.
 - `vue-tsc` corre con `noUnusedLocals: true`: variables o imports no utilizados botan error y rompen el build.
 
 ## Próximos pasos
-- Iniciar Spec 005 (Plantillas Centralizadas y Automatizadas de WhatsApp) bajo metodología SDD.
-
-
-
+- Ejecutar ciclo Git de integración: push de `feat/block-delivery-without-batch`, PR a `develop`, fusión a `main`, y solicitar autorización al usuario para borrar la rama temática.

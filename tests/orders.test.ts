@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
 import { getAdminAuthToken } from './setup.js';
@@ -8,6 +8,34 @@ describe('Orders Endpoints and Atomic Operations', () => {
   const adminToken = getAdminAuthToken();
   let createdOrderId: number;
   let testPaymentId: number;
+  let sharedBatch: any;
+  let sharedPkg: any;
+
+  beforeAll(async () => {
+    sharedBatch = await prisma.productionBatch.create({
+      data: {
+        batchCode: `LOTE-ORDERS-TEST-${Date.now()}`,
+        flavor: 'Fresa',
+        milkUsedLiters: 100,
+        totalLitersProduced: 100,
+        yieldPercentage: 100,
+        status: 'COMPLETADO',
+      },
+    });
+
+    sharedPkg = await prisma.batchPackaging.create({
+      data: {
+        batchId: sharedBatch.id,
+        flavor: 'Fresa',
+        totalLiters: 100,
+      },
+    });
+  });
+
+  afterAll(async () => {
+    if (sharedPkg) await prisma.batchPackaging.delete({ where: { id: sharedPkg.id } }).catch(() => {});
+    if (sharedBatch) await prisma.productionBatch.delete({ where: { id: sharedBatch.id } }).catch(() => {});
+  });
 
   it('GET /api/orders sin autenticación debe retornar 401', async () => {
     const res = await request(app).get('/api/orders');
@@ -93,15 +121,25 @@ describe('Orders Endpoints and Atomic Operations', () => {
   });
 
   it('PUT /api/orders/:id/delivery-status debe actualizar el estado de entrega', async () => {
-    const res = await request(app)
+    // Intentar entregar sin lote debe responder 400
+    const rejectRes = await request(app)
       .put(`/api/orders/${createdOrderId}/delivery-status`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         deliveryStatus: 'DELIVERED',
       });
+    expect(rejectRes.status).toBe(400);
+
+    // Actualizar a IN_ROUTE debe tener éxito
+    const res = await request(app)
+      .put(`/api/orders/${createdOrderId}/delivery-status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        deliveryStatus: 'IN_ROUTE',
+      });
 
     expect(res.status).toBe(200);
-    expect(res.body.deliveryStatus).toBe('DELIVERED');
+    expect(res.body.deliveryStatus).toBe('IN_ROUTE');
   });
 
   it('POST /api/orders/:id/payments debe agregar un abono transaccional y recalcular saldo', async () => {
@@ -228,8 +266,9 @@ describe('Orders Endpoints and Atomic Operations', () => {
         customerName: 'Cliente Entrega Total',
         customerPhone: '3119991122',
         customerAddress: 'Calle 100 # 20-30',
+        batchId: sharedBatch.id,
         items: [
-          { bottleSize: '1L', flavor: 'Fresa', quantity: 2, unitPrice: 12000 },
+          { bottleSize: '1L', flavor: 'Fresa', quantity: 2, unitPrice: 12000, batchId: sharedBatch.id, packagingId: sharedPkg.id },
         ],
         deliveryFee: 2000,
         paidAmount: 5000,
@@ -280,8 +319,9 @@ describe('Orders Endpoints and Atomic Operations', () => {
         customerName: 'Cliente Entrega Abono',
         customerPhone: '3119993344',
         customerAddress: 'Avenida 68 # 45-12',
+        batchId: sharedBatch.id,
         items: [
-          { bottleSize: '2L', flavor: 'Mora', quantity: 2, unitPrice: 20000 },
+          { bottleSize: '2L', flavor: 'Mora', quantity: 2, unitPrice: 20000, batchId: sharedBatch.id, packagingId: sharedPkg.id },
         ],
         deliveryFee: 3000,
         paidAmount: 0,
@@ -329,8 +369,9 @@ describe('Orders Endpoints and Atomic Operations', () => {
         customerName: 'Cliente Entrega Fiado',
         customerPhone: '3119995566',
         customerAddress: 'Diagonal 45 # 12-80',
+        batchId: sharedBatch.id,
         items: [
-          { bottleSize: '1L', flavor: 'Melocotón', quantity: 1, unitPrice: 12000 },
+          { bottleSize: '1L', flavor: 'Melocotón', quantity: 1, unitPrice: 12000, batchId: sharedBatch.id, packagingId: sharedPkg.id },
         ],
         deliveryFee: 0,
         paidAmount: 0,
@@ -401,6 +442,8 @@ describe('Orders Endpoints and Atomic Operations', () => {
   });
 
   it('PUT /api/orders/:id/delivery-status reabrir pedido entregado a IN_ROUTE debe limpiar deliveryDate', async () => {
+    await prisma.orderItem.updateMany({ where: { orderId: createdOrderId }, data: { batchId: sharedBatch.id, packagingId: sharedPkg.id } });
+    await prisma.order.update({ where: { id: createdOrderId }, data: { batchId: sharedBatch.id } });
     // 1. Marcar el pedido como entregado
     await request(app)
       .put(`/api/orders/${createdOrderId}/delivery-status`)
@@ -547,6 +590,223 @@ describe('Orders Endpoints and Atomic Operations', () => {
         await prisma.customer.deleteMany({ where: { id: cust.id } });
       }
     }
+  });
+
+  describe('Spec 005 — Bloqueo de Entrega sin Lote y Gestión de Preventa', () => {
+    let testBatchNatural: any;
+    let testPkgNatural: any;
+
+    const safeCleanupCustomer = async (phone: string) => {
+      const cust = await prisma.customer.findFirst({ where: { phone } });
+      if (cust) {
+        await prisma.orderPayment.deleteMany({ where: { order: { customerId: cust.id } } });
+        await prisma.orderItem.deleteMany({ where: { order: { customerId: cust.id } } });
+        await prisma.order.deleteMany({ where: { customerId: cust.id } });
+        await prisma.chatConversation.deleteMany({ where: { customerId: cust.id } });
+        await prisma.customer.deleteMany({ where: { id: cust.id } });
+      }
+    };
+
+    it('PUT /api/orders/:id/delivery-status con ítems en preventa (sin lote) debe responder 400 y mensaje claro (RF-1)', async () => {
+      const orderRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customerName: 'Cliente Preventa Test',
+          customerPhone: '3129990001',
+          items: [
+            { bottleSize: '1L', flavor: 'Fresa', quantity: 1, unitPrice: 12000 },
+          ],
+          paymentMethod: 'EFECTIVO',
+          deliveryStatus: 'PENDING',
+        });
+
+      expect(orderRes.status).toBe(201);
+      const orderId = orderRes.body.id;
+
+      const deliverRes = await request(app)
+        .put(`/api/orders/${orderId}/delivery-status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ deliveryStatus: 'DELIVERED' });
+
+      expect(deliverRes.status).toBe(400);
+      expect(deliverRes.body.error || deliverRes.body.message).toMatch(/sin lote asignado|preventa/i);
+
+      // Limpieza
+      await safeCleanupCustomer('3129990001');
+    });
+
+    it('POST /api/orders con deliveryStatus DELIVERED e ítems en preventa debe responder 400 (RF-1)', async () => {
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customerName: 'Cliente Directo Sin Lote',
+          customerPhone: '3129990002',
+          items: [
+            { bottleSize: '1L', flavor: 'Mora', quantity: 1, unitPrice: 12000 },
+          ],
+          deliveryStatus: 'DELIVERED',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error || res.body.message).toMatch(/sin lote asignado|preventa/i);
+      await safeCleanupCustomer('3129990002');
+    });
+
+    it('PUT /api/orders/:id con deliveryStatus DELIVERED e ítems en preventa debe responder 400 (RF-1)', async () => {
+      const orderRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customerName: 'Cliente Edit Sin Lote',
+          customerPhone: '3129990003',
+          items: [
+            { bottleSize: '1L', flavor: 'Maracuyá', quantity: 1, unitPrice: 12000 },
+          ],
+          deliveryStatus: 'PENDING',
+        });
+
+      const orderId = orderRes.body.id;
+
+      const editRes = await request(app)
+        .put(`/api/orders/${orderId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          deliveryStatus: 'DELIVERED',
+        });
+
+      expect(editRes.status).toBe(400);
+      expect(editRes.body.error || editRes.body.message).toMatch(/sin lote asignado|preventa/i);
+
+      // Limpieza
+      await safeCleanupCustomer('3129990003');
+    });
+
+    it('PUT /api/orders/:id debe desvincular ítems a preventa (null) y limpiar order.batchId a null (RF-3, RF-5)', async () => {
+      // 1. Crear lote y fracción de prueba
+      testBatchNatural = await prisma.productionBatch.create({
+        data: {
+          batchCode: `LOTE-S005-${Date.now()}`,
+          flavor: 'Natural',
+          milkUsedLiters: 10,
+          totalLitersProduced: 10,
+          yieldPercentage: 100,
+          status: 'COMPLETADO',
+        },
+      });
+
+      testPkgNatural = await prisma.batchPackaging.create({
+        data: {
+          batchId: testBatchNatural.id,
+          flavor: 'Natural',
+          totalLiters: 10,
+        },
+      });
+
+      // 2. Crear pedido vinculado
+      const orderRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customerName: 'Cliente Vinculado Test',
+          customerPhone: '3129990004',
+          batchId: testBatchNatural.id,
+          items: [
+            {
+              bottleSize: '1L',
+              flavor: 'Natural',
+              quantity: 1,
+              unitPrice: 12000,
+              batchId: testBatchNatural.id,
+              packagingId: testPkgNatural.id,
+            },
+          ],
+          deliveryStatus: 'PENDING',
+        });
+
+      const orderId = orderRes.body.id;
+      expect(orderRes.body.batchId).toBe(testBatchNatural.id);
+      expect(orderRes.body.items[0].packagingId).toBe(testPkgNatural.id);
+
+      // 3. Desvincular ítems a preventa (batchId: null, packagingId: null)
+      const unlinkRes = await request(app)
+        .put(`/api/orders/${orderId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          items: [
+            {
+              id: orderRes.body.items[0].id,
+              bottleSize: '1L',
+              flavor: 'Natural',
+              quantity: 1,
+              unitPrice: 12000,
+              batchId: null,
+              packagingId: null,
+            },
+          ],
+        });
+
+      expect(unlinkRes.status).toBe(200);
+      expect(unlinkRes.body.batchId).toBeNull();
+      expect(unlinkRes.body.items[0].batchId).toBeNull();
+      expect(unlinkRes.body.items[0].packagingId).toBeNull();
+
+      // Limpieza
+      await safeCleanupCustomer('3129990004');
+    });
+
+    it('PUT /api/orders/:id no debe asociar una fracción de sabor distinto cuando un ítem tiene batchId pero no packagingId (RF-4)', async () => {
+      // Enviar ítem con sabor 'Fresa' y batchId de testBatchNatural (que solo tiene packaging de 'Natural')
+      const orderRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customerName: 'Cliente Sabor Cruzado',
+          customerPhone: '3129990005',
+          items: [
+            {
+              bottleSize: '1L',
+              flavor: 'Fresa',
+              quantity: 1,
+              unitPrice: 12000,
+              batchId: testBatchNatural.id,
+              packagingId: null,
+            },
+          ],
+          deliveryStatus: 'PENDING',
+        });
+
+      expect(orderRes.status).toBe(201);
+      const orderId = orderRes.body.id;
+
+      // Al actualizar, NO debe autoasignar testPkgNatural (Natural) al ítem de Fresa
+      const updateRes = await request(app)
+        .put(`/api/orders/${orderId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          items: [
+            {
+              id: orderRes.body.items[0].id,
+              bottleSize: '1L',
+              flavor: 'Fresa',
+              quantity: 1,
+              unitPrice: 12000,
+              batchId: testBatchNatural.id,
+              packagingId: null,
+            },
+          ],
+        });
+
+      expect(updateRes.status).toBe(200);
+      expect(updateRes.body.items[0].packagingId).toBeNull();
+
+      // Limpieza
+      await safeCleanupCustomer('3129990005');
+
+      if (testPkgNatural) await prisma.batchPackaging.delete({ where: { id: testPkgNatural.id } }).catch(() => {});
+      if (testBatchNatural) await prisma.productionBatch.delete({ where: { id: testBatchNatural.id } }).catch(() => {});
+    });
   });
 });
 
