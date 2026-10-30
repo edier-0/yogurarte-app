@@ -7,14 +7,14 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
   - Presentaciones dinámicas y sin 1L/2L hardcodeados en Fase B.
   - Entregas, salidas y auditoría de botellas exclusivas de Fase B (`BatchPackaging`).
   - Alerta de fidelización 10+1 en toma de pedidos con acceso directo a CRM.
-- Spec 010 completada (T1 a T6):
+- Spec 010 completada (T1 a T6) y fusionada en `develop` (PR #25) y `main`:
   - T1: Backend CRM `customerId` en `getLoyaltyOverview` para respuesta en milisegundos.
   - T2: Segregación dinámica de salidas de fidelización (`loyaltyDischarged` a $0 COP) en `batches.service.ts`.
   - T3: Suite automatizada de integración `tests/loyalty_phase_b_audit.test.ts` (4/4 verde).
   - T4: Banner proactivo de fidelización en `OrderFormModal.vue` con botón de redención directa a `RedeemRewardModal.vue`.
   - T5: Auditoría visual dinámica y rotulado badge de `PREMIO_FIDELIZACION` en `PackagingSummaryModal.vue`.
   - T6: Verificación integral exitosa (`npx tsc --noEmit`, `npm run build` y vitest 19/19 verde).
-- Rama temática: `feat/auditoria-fase-b-dinamica-y-alerta-fidelizacion`.
+- Rama activa: `develop`.
 
 ## Decisiones (y por qué)
 - Segregación estricta de auditoría: Fase A es exclusivamente base láctea a granel; Fase B asume el 100% de la auditoría de botellas dinámicas, ventas y salidas por fidelización ($0 COP).
@@ -28,4 +28,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - No eliminar ramas locales ni remotas sin autorización explícita previa del usuario.
 
 ## Próximos pasos
-- Presentar la entrega completa de la Spec 010 al usuario y coordinar ciclo Git (commit, push, PR y merge a `develop` y `main`).
+- Consultar autorización explícita al usuario para eliminar la rama temática `feat/auditoria-fase-b-dinamica-y-alerta-fidelizacion` (local y remota).
