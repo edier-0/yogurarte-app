@@ -579,6 +579,27 @@ export const getExpenses = async (query: ExpensesQueryInput) => {
 };
 
 /**
+ * Normalizar canónicamente la categoría del gasto para erradicar alias visuales y mantener un único identificador (Spec 006)
+ */
+export const normalizeExpenseCategory = (category?: string | null): string => {
+  if (!category) return 'OTRO';
+  const trimmed = category.trim();
+  const upper = trimmed.toUpperCase();
+  if (
+    upper === 'COMPRA_INSUMO' ||
+    upper === 'COMPRA_INSUMOS' ||
+    upper === 'INSUMO' ||
+    upper === 'INSUMOS' ||
+    upper.includes('COMPRA INSUMO') ||
+    upper.includes('COMPRA DE INSUMO') ||
+    upper === 'INSUMOS_EXTRA'
+  ) {
+    return 'INSUMOS_EXTRA';
+  }
+  return trimmed;
+};
+
+/**
  * Registrar un gasto operativo
  */
 export const createExpense = async (data: CreateExpenseInput) => {
@@ -590,10 +611,11 @@ export const createExpense = async (data: CreateExpenseInput) => {
   }
 
   const parsedExpenseDate = parseColombiaDate(expenseDate);
+  const normalizedCategory = normalizeExpenseCategory(category);
 
   return prisma.expense.create({
     data: {
-      category: category || 'OTRO',
+      category: normalizedCategory,
       description: description.trim(),
       amount: parsedAmount,
       expenseDate: parsedExpenseDate,
@@ -695,11 +717,12 @@ export const updateExpense = async (id: number, data: UpdateExpenseInput) => {
 
   const rawDate = date || expenseDate;
   const parsedExpenseDate = rawDate ? parseColombiaDate(rawDate) : existing.expenseDate;
+  const normalizedCategory = category !== undefined ? normalizeExpenseCategory(category) : existing.category;
 
   const updatedExpense = await prisma.expense.update({
     where: { id },
     data: {
-      category: category !== undefined ? category.trim() : existing.category,
+      category: normalizedCategory,
       description: description !== undefined ? description.trim() : existing.description,
       amount: parsedAmount,
       expenseDate: parsedExpenseDate,
@@ -710,31 +733,47 @@ export const updateExpense = async (id: number, data: UpdateExpenseInput) => {
     },
   });
 
-  // Si es un gasto de compra de insumos, sincronizar también el proveedor y método de pago en la tabla Purchase si coincide
+  // Si es un gasto de compra de insumos, sincronizar también el método de pago, proveedor y monto en la tabla Purchase si coincide
   if (
-    (existing.category === 'INSUMOS_EXTRA' || category === 'INSUMOS_EXTRA' || existing.category === 'MATERIA_PRIMA') &&
-    supplier !== undefined
+    existing.category === 'INSUMOS_EXTRA' ||
+    normalizedCategory === 'INSUMOS_EXTRA' ||
+    existing.category === 'MATERIA_PRIMA'
   ) {
     try {
-      const cleanSupplier = supplier ? String(supplier).trim() : null;
+      const cleanSupplier = supplier !== undefined ? (supplier ? String(supplier).trim() : null) : undefined;
+      const cleanPaymentMethod = paymentMethod !== undefined ? String(paymentMethod).trim() : undefined;
+      const cleanAmount = amount !== undefined ? parsedAmount : undefined;
+
+      const expenseDateStr = getColombiaDateStr(parsedExpenseDate);
+      const expenseDayStart = getColombiaStartOfDay(expenseDateStr);
+      const expenseDayEnd = getColombiaEndOfDay(expenseDateStr);
+
       const matchingPurchase = await prisma.purchase.findFirst({
         where: {
-          totalCost: existing.amount,
-          purchaseDate: existing.expenseDate,
+          purchaseDate: {
+            gte: expenseDayStart,
+            lte: expenseDayEnd,
+          },
+          OR: [
+            { totalCost: existing.amount },
+            ...(amount !== undefined ? [{ totalCost: parsedAmount }] : []),
+          ],
         },
         orderBy: { id: 'desc' },
       });
+
       if (matchingPurchase) {
         await prisma.purchase.update({
           where: { id: matchingPurchase.id },
           data: {
-            supplier: cleanSupplier,
-            paymentMethod: paymentMethod !== undefined ? String(paymentMethod).trim() : matchingPurchase.paymentMethod,
+            ...(cleanSupplier !== undefined ? { supplier: cleanSupplier } : {}),
+            ...(cleanPaymentMethod !== undefined ? { paymentMethod: cleanPaymentMethod } : {}),
+            ...(cleanAmount !== undefined ? { totalCost: cleanAmount } : {}),
           },
         });
       }
     } catch (syncErr) {
-      console.warn('Advertencia al sincronizar proveedor en Purchase:', syncErr);
+      console.warn('Advertencia al sincronizar en Purchase:', syncErr);
     }
   }
 
@@ -773,7 +812,7 @@ export const deleteExpense = async (id: number) => {
         const linkedExpense = await tx.expense.findFirst({
           where: {
             amount: existingPurchase.totalCost,
-            category: { in: ['INSUMOS_EXTRA', 'MATERIA_PRIMA'] },
+            category: { in: ['INSUMOS_EXTRA', 'MATERIA_PRIMA', 'COMPRA_INSUMO'] },
             ...(pDate
               ? {
                   expenseDate: {
@@ -818,7 +857,10 @@ export const deleteExpense = async (id: number) => {
 
   // Si existe en Expense y es una compra de materia prima/insumos, sincronizar con Purchase e inventario
   const isRawMaterialExpense =
-    existing.category === 'INSUMOS_EXTRA' || existing.category === 'MATERIA_PRIMA';
+    existing.category === 'INSUMOS_EXTRA' ||
+    existing.category === 'MATERIA_PRIMA' ||
+    existing.category === 'COMPRA_INSUMO' ||
+    existing.category.includes('Compra');
 
   if (isRawMaterialExpense) {
     const eDate = existing.expenseDate
@@ -1747,8 +1789,14 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     const pDate = p.purchaseDate ? new Date(p.purchaseDate).toISOString().split('T')[0] : '';
     return !expenses.some((e) => {
       const eDate = e.expenseDate ? new Date(e.expenseDate).toISOString().split('T')[0] : '';
+      const isSupplyExpense =
+        e.category === 'INSUMOS_EXTRA' ||
+        e.category === 'MATERIA_PRIMA' ||
+        e.category === 'COMPRA_INSUMO' ||
+        e.category.includes('Compra') ||
+        e.category.includes('Insumo');
       return (
-        (e.category === 'INSUMOS_EXTRA' || e.category === 'MATERIA_PRIMA') &&
+        isSupplyExpense &&
         Math.abs(e.amount - p.totalCost) < 1 &&
         (!pDate || !eDate || pDate === eDate)
       );
@@ -1849,8 +1897,14 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     const pDate = p.purchaseDate ? new Date(p.purchaseDate).toISOString().split('T')[0] : '';
     return !treasuryExpenses.some((e) => {
       const eDate = e.expenseDate ? new Date(e.expenseDate).toISOString().split('T')[0] : '';
+      const isSupplyExpense =
+        e.category === 'INSUMOS_EXTRA' ||
+        e.category === 'MATERIA_PRIMA' ||
+        e.category === 'COMPRA_INSUMO' ||
+        e.category.includes('Compra') ||
+        e.category.includes('Insumo');
       return (
-        (e.category === 'INSUMOS_EXTRA' || e.category === 'MATERIA_PRIMA') &&
+        isSupplyExpense &&
         Math.abs(e.amount - p.totalCost) < 1 &&
         (!pDate || !eDate || pDate === eDate)
       );
@@ -2254,7 +2308,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
               rawId: e.id,
               date: e.expenseDate,
               createdAt: e.createdAt,
-              category: isRawMaterial ? 'COMPRA_INSUMO' : 'GASTO_GENERAL',
+              category: e.category,
               categoryLabel: isRawMaterial ? '🥛 Compra Insumo' : `⚙️ ${e.category}`,
               description: e.description,
               amount: e.amount,
@@ -2272,7 +2326,7 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
             isPurchase: true,
             date: p.purchaseDate,
             createdAt: p.createdAt,
-            category: 'COMPRA_INSUMO',
+            category: 'INSUMOS_EXTRA',
             categoryLabel: '🥛 Compra Insumo',
             description: `${p.rawMaterial?.name || 'Insumo'} (${p.quantity} ${
               p.rawMaterial?.unit || 'und'

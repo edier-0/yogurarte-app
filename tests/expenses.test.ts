@@ -183,4 +183,137 @@ describe('Expenses Management & Full Edit', () => {
     // Limpieza
     await prisma.staffMember.delete({ where: { id: staff.id } });
   });
+
+  describe('Spec 006 — Unificación Canónica Insumos, Sincronización y Blindaje de Caja', () => {
+    let testRawMaterialId: number;
+    let testPurchaseId: number;
+    let testExpenseId: number;
+
+    it('POST y PUT /api/expenses deben normalizar forzosamente "🥛 Compra Insumo" o "COMPRA_INSUMO" a "INSUMOS_EXTRA" (RF-1, RF-2)', async () => {
+      // 1. Probar que POST normaliza la categoría visual
+      const postRes = await request(app)
+        .post('/api/expenses')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          amount: 25000,
+          category: '🥛 Compra Insumo',
+          description: 'Compra de tapas plásticas',
+          paymentMethod: 'EFECTIVO',
+        });
+
+      expect(postRes.status).toBe(201);
+      expect(postRes.body.category).toBe('INSUMOS_EXTRA');
+      const createdId = postRes.body.id;
+      createdExpenseIds.push(createdId);
+
+      const dbPostCheck = await prisma.expense.findUnique({ where: { id: createdId } });
+      expect(dbPostCheck?.category).toBe('INSUMOS_EXTRA');
+
+      // 2. Probar que PUT normaliza si se envía 'COMPRA_INSUMO'
+      const putRes = await request(app)
+        .put(`/api/expenses/${createdId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          category: 'COMPRA_INSUMO',
+          amount: 26000,
+        });
+
+      expect(putRes.status).toBe(200);
+      expect(putRes.body.category).toBe('INSUMOS_EXTRA');
+
+      const dbPutCheck = await prisma.expense.findUnique({ where: { id: createdId } });
+      expect(dbPutCheck?.category).toBe('INSUMOS_EXTRA');
+      expect(dbPutCheck?.amount).toBe(26000);
+    });
+
+    it('PUT /api/expenses/:id debe sincronizar paymentMethod, monto y proveedor hacia Purchase atómicamente (RF-5)', async () => {
+      // 1. Crear insumo de prueba y compra en Purchase
+      const material = await prisma.rawMaterial.create({
+        data: {
+          code: `TEST-BOT-${Date.now()}`,
+          name: 'Botella Test 1L',
+          category: 'EMPAQUE',
+          unit: 'Unidades',
+          currentStock: 10,
+        },
+      });
+      testRawMaterialId = material.id;
+
+      const purchase = await prisma.purchase.create({
+        data: {
+          rawMaterialId: material.id,
+          quantity: 10,
+          unitCost: 1500,
+          totalCost: 15000,
+          supplier: 'Plásticos Test SAS',
+          paymentMethod: 'EFECTIVO',
+          purchaseDate: new Date(),
+        },
+      });
+      testPurchaseId = purchase.id;
+
+      // 2. Crear gasto asociado de insumos
+      const expense = await prisma.expense.create({
+        data: {
+          category: 'INSUMOS_EXTRA',
+          description: 'Compra de Botella Test 1L (10 Unidades)',
+          amount: 15000,
+          expenseDate: purchase.purchaseDate,
+          paymentMethod: 'EFECTIVO',
+          supplier: 'Plásticos Test SAS',
+        },
+      });
+      testExpenseId = expense.id;
+      createdExpenseIds.push(expense.id);
+
+      // 3. Modificar el gasto cambiando canal de pago a NEQUI y proveedor
+      const updateRes = await request(app)
+        .put(`/api/expenses/${expense.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          paymentMethod: 'NEQUI',
+          supplier: 'Plásticos Test Actualizado',
+        });
+
+      expect(updateRes.status).toBe(200);
+      expect(updateRes.body.paymentMethod).toBe('NEQUI');
+
+      // 4. Verificar que en BD la Purchase se actualizó en sincronía a NEQUI
+      const syncedPurchase = await prisma.purchase.findUnique({
+        where: { id: purchase.id },
+      });
+      expect(syncedPurchase?.paymentMethod).toBe('NEQUI');
+      expect(syncedPurchase?.supplier).toBe('Plásticos Test Actualizado');
+    });
+
+    it('GET /api/dashboard/summary debe retornar category "INSUMOS_EXTRA" y no duplicar compras en cashFlow.outflows (RF-3, RF-6)', async () => {
+      expect(testExpenseId).toBeDefined();
+
+      const summaryRes = await request(app)
+        .get('/api/dashboard/summary')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(summaryRes.status).toBe(200);
+      const outflows = summaryRes.body.detailedBreakdowns?.cashFlow?.outflows || [];
+
+      // Buscar las salidas relacionadas con nuestra compra de prueba
+      const matchingOutflows = outflows.filter(
+        (o: any) =>
+          Number(o.amount) === 15000 &&
+          (o.rawId === testExpenseId || o.rawId === testPurchaseId)
+      );
+
+      // NO debe duplicarse: debe haber exactamente 1 salida en el flujo de caja
+      expect(matchingOutflows.length).toBe(1);
+
+      const item = matchingOutflows[0];
+      // La propiedad category debe ser la técnica 'INSUMOS_EXTRA', no el alias 'COMPRA_INSUMO'
+      expect(item.category).toBe('INSUMOS_EXTRA');
+      expect(item.categoryLabel).toContain('Insumo');
+
+      // Limpieza de datos de prueba
+      await prisma.purchase.delete({ where: { id: testPurchaseId } }).catch(() => {});
+      await prisma.rawMaterial.delete({ where: { id: testRawMaterialId } }).catch(() => {});
+    });
+  });
 });
