@@ -222,7 +222,7 @@ async function handleUnlinkOrder(order: any) {
 
   const ok = await confirm({
     title: 'Desvincular Pedido de la Fracción',
-    message: `¿Estás seguro de desvincular el pedido #${order.orderNumber || order.id} de ${order.customer?.fullName || 'Cliente'}? El pedido regresará inmediatamente a pre-venta sin lote y las botellas asignadas volverán a quedar libres en esta fracción.`,
+    message: `¿Estás seguro de desvincular el pedido #${order.orderNumber || order.id} de ${order.customer?.fullName || 'Cliente'}? El pedido regresará inmediatamente a pre-venta sin lote y los envases asignados volverán a quedar libres en esta fracción.`,
     confirmText: 'Desvincular Pedido',
     cancelText: 'Cancelar',
     variant: 'danger',
@@ -240,7 +240,7 @@ async function handleUnlinkOrder(order: any) {
 // Registrar retiro de socio sobre la fracción
 async function handleRegisterWithdrawal() {
   if (!summary.value || !selectedPartnerId.value || withdrawalQuantity.value <= 0 || !selectedPresentationSize.value) {
-    withdrawalError.value = 'Selecciona el socio, la presentación y una cantidad válida de botellas';
+    withdrawalError.value = 'Selecciona el socio, la presentación y una cantidad válida de envases';
     return;
   }
 
@@ -360,7 +360,7 @@ async function handleLinkSelectedOrders() {
 
   const ok = await confirm({
     title: 'Vincular Pedidos a la Fracción',
-    message: `¿Estás seguro de vincular ${count} pedido(s) (${liters} L) a la fracción "${summary.value.packaging.packagingCode || summary.value.packaging.flavor}"? Los pedidos quedarán asignados a esta fracción y se descontarán de las botellas disponibles.`,
+    message: `¿Estás seguro de vincular ${count} pedido(s) (${liters} L) a la fracción "${summary.value.packaging.packagingCode || summary.value.packaging.flavor}"? Los pedidos quedarán asignados a esta fracción y se descontarán de los envases disponibles.`,
     confirmText: `Vincular ${count} Pedido(s)`,
     cancelText: 'Cancelar',
     variant: 'info',
@@ -933,7 +933,7 @@ watch(activeTab, async (newTab) => {
                     type="button"
                     @click="handleUnlinkOrder(order)"
                     class="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/70 px-3 py-1.5 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300"
-                    title="Desvincular pedido y liberar botellas de esta fracción"
+                    title="Desvincular pedido y liberar envases de esta fracción"
                   >
                     <Unlink class="h-3.5 w-3.5" />
                     <span>Desvincular</span>

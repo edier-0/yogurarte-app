@@ -2081,10 +2081,10 @@ export const getWhatsAppLink = async (id: number, type?: string) => {
   let itemsBreakdown = '';
   if (order.items && order.items.length > 0) {
     itemsBreakdown = order.items
-      .map((i) => `• ${i.quantity}x Botella ${i.bottleSize} (${i.flavor}) - ${formatCurrency(i.totalPrice)}`)
+      .map((i) => `• ${i.quantity}x ${i.bottleSize} (${i.flavor}) - ${formatCurrency(i.totalPrice)}`)
       .join('\n');
   } else {
-    itemsBreakdown = `• ${order.quantityBottles}x Botella ${order.bottleSize} (${order.flavor}) - ${formatCurrency(order.totalAmount)}`;
+    itemsBreakdown = `• ${order.quantityBottles}x ${order.bottleSize} (${order.flavor}) - ${formatCurrency(order.totalAmount)}`;
   }
 
   const settings = await getAllSettingsMap();

@@ -453,7 +453,7 @@ export const useOperationsStore = defineStore('operations', () => {
       const res = await http.delete<{ message: string; id: number }>(`/orders/${id}`);
       orders.value = orders.value.filter((o) => o.id !== id);
       toast.success('Pedido Eliminado', {
-        description: res?.message || 'El pedido ha sido eliminado del sistema y se liberaron sus botellas.',
+        description: res?.message || 'El pedido ha sido eliminado del sistema y se liberaron sus envases.',
       });
       fetchOrdersMetrics();
       return true;

@@ -168,7 +168,7 @@ function handleClose() {
                 "
               >
                 <span class="font-extrabold text-sm">1x 1 Litro</span>
-                <span class="text-[10px] text-slate-500 dark:text-slate-400">1 Botella (1.0 L)</span>
+                <span class="text-[10px] text-slate-500 dark:text-slate-400">1 Envase (1.0 L)</span>
               </button>
 
               <button
@@ -182,7 +182,7 @@ function handleClose() {
                 "
               >
                 <span class="font-extrabold text-sm">2x 500 ml</span>
-                <span class="text-[10px] text-slate-500 dark:text-slate-400">2 Botellas (1.0 L)</span>
+                <span class="text-[10px] text-slate-500 dark:text-slate-400">2 Envases (1.0 L)</span>
               </button>
 
               <button

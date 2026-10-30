@@ -26,7 +26,7 @@ import {
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
 import ExpenseModal from '@/components/finance/ExpenseModal.vue';
 import TransferModal from '@/components/finance/TransferModal.vue';
-import { formatStockQuantity } from '@/utils/formatters';
+import { formatStockQuantity, formatLitersVolume } from '@/utils/formatters';
 
 const router = useRouter();
 
@@ -43,6 +43,10 @@ interface DashboardData {
   kpis: {
     totalSalesAmount: number;
     totalSalesLiters: number;
+    totalUnitsSold?: number;
+    availableLiters?: number;
+    availableBatchesCount?: number;
+    availableStockPresentations?: string[];
     cashBalance: number;
     cashInHand: number;
     digitalBank: number;
@@ -62,23 +66,29 @@ interface DashboardData {
   dispatchSummary: {
     clientDeliveries: {
       ordersCount: number;
+      totalUnits?: number;
       liters: number;
       totalAmount: number;
       paidAmount: number;
       pendingAmount: number;
+      presentationsBreakdown?: string[];
     };
     partnerConsumptions: {
       dischargesCount: number;
+      totalUnits?: number;
       liters: number;
       totalAmount: number;
+      presentationsBreakdown?: string[];
     };
     totalDispatchedLiters: number;
     inProcessOrders: {
       ordersCount: number;
+      totalUnits?: number;
       liters: number;
       totalAmount: number;
       paidAmount: number;
       pendingAmount: number;
+      presentationsBreakdown?: string[];
     };
   };
   periodBatches: Array<{
@@ -113,6 +123,7 @@ interface DashboardData {
     id: number;
     orderNumber: string;
     customerName?: string;
+    itemsSummary?: string;
     total: number;
     totalAmount?: number;
     paidAmount?: number;
@@ -127,6 +138,10 @@ const dashboardData = ref<DashboardData>({
   kpis: {
     totalSalesAmount: 0,
     totalSalesLiters: 0,
+    totalUnitsSold: 0,
+    availableLiters: 0,
+    availableBatchesCount: 0,
+    availableStockPresentations: [],
     cashBalance: 0,
     cashInHand: 0,
     digitalBank: 0,
@@ -193,6 +208,10 @@ async function loadDashboard() {
             kpis.totalLitersAll ??
             0
           ),
+          totalUnitsSold: Number(kpis.totalUnitsSold ?? 0),
+          availableLiters: Number(kpis.availableLiters ?? 0),
+          availableBatchesCount: Number(kpis.availableBatchesCount ?? 0),
+          availableStockPresentations: Array.isArray(kpis.availableStockPresentations) ? kpis.availableStockPresentations : [],
           cashBalance: Number(kpis.cashBalance ?? 0),
           cashInHand: Number(kpis.cashInHand ?? 0),
           digitalBank: Number(kpis.digitalBank ?? 0),
@@ -218,39 +237,55 @@ async function loadDashboard() {
           ? {
               clientDeliveries: {
                 ordersCount: Number(res.dispatchSummary.clientDeliveries?.ordersCount ?? 0),
+                totalUnits: Number(res.dispatchSummary.clientDeliveries?.totalUnits ?? 0),
                 liters: Number(res.dispatchSummary.clientDeliveries?.liters ?? 0),
                 totalAmount: Number(res.dispatchSummary.clientDeliveries?.totalAmount ?? 0),
                 paidAmount: Number(res.dispatchSummary.clientDeliveries?.paidAmount ?? 0),
                 pendingAmount: Number(res.dispatchSummary.clientDeliveries?.pendingAmount ?? 0),
+                presentationsBreakdown: Array.isArray(res.dispatchSummary.clientDeliveries?.presentationsBreakdown)
+                  ? res.dispatchSummary.clientDeliveries.presentationsBreakdown
+                  : [],
               },
               partnerConsumptions: {
                 dischargesCount: Number(res.dispatchSummary.partnerConsumptions?.dischargesCount ?? 0),
+                totalUnits: Number(res.dispatchSummary.partnerConsumptions?.totalUnits ?? 0),
                 liters: Number(res.dispatchSummary.partnerConsumptions?.liters ?? 0),
                 totalAmount: Number(res.dispatchSummary.partnerConsumptions?.totalAmount ?? 0),
+                presentationsBreakdown: Array.isArray(res.dispatchSummary.partnerConsumptions?.presentationsBreakdown)
+                  ? res.dispatchSummary.partnerConsumptions.presentationsBreakdown
+                  : [],
               },
               totalDispatchedLiters: Number(res.dispatchSummary.totalDispatchedLiters ?? 0),
               inProcessOrders: {
                 ordersCount: Number(res.dispatchSummary.inProcessOrders?.ordersCount ?? 0),
+                totalUnits: Number(res.dispatchSummary.inProcessOrders?.totalUnits ?? 0),
                 liters: Number(res.dispatchSummary.inProcessOrders?.liters ?? 0),
                 totalAmount: Number(res.dispatchSummary.inProcessOrders?.totalAmount ?? 0),
                 paidAmount: Number(res.dispatchSummary.inProcessOrders?.paidAmount ?? 0),
                 pendingAmount: Number(res.dispatchSummary.inProcessOrders?.pendingAmount ?? 0),
+                presentationsBreakdown: Array.isArray(res.dispatchSummary.inProcessOrders?.presentationsBreakdown)
+                  ? res.dispatchSummary.inProcessOrders.presentationsBreakdown
+                  : [],
               },
             }
           : {
               clientDeliveries: {
                 ordersCount: Number(res.deliveredStats?.deliveredOrdersCount ?? 0),
+                totalUnits: 0,
                 liters: Number(kpis.deliveredLiters ?? 0),
                 totalAmount: Number(kpis.deliveredTotalSales ?? 0),
                 paidAmount: Number(kpis.deliveredPaidAmount ?? 0),
                 pendingAmount: Number(kpis.deliveredPendingToCollect ?? 0),
+                presentationsBreakdown: [],
               },
               partnerConsumptions: {
                 dischargesCount: Number(
                   res.detailedBreakdowns?.salesByBatchAndFlavor?.dischargesSummary?.dischargesCount ?? 0
                 ),
+                totalUnits: 0,
                 liters: Number(kpis.partnerDischargedLiters ?? 0),
                 totalAmount: Number(kpis.partnerDischargedAmount ?? 0),
+                presentationsBreakdown: [],
               },
               totalDispatchedLiters: Number(
                 kpis.totalDispatchedLiters ??
@@ -258,10 +293,12 @@ async function loadDashboard() {
               ),
               inProcessOrders: {
                 ordersCount: Number(res.inProcessStats?.inProcessOrdersCount ?? 0),
+                totalUnits: 0,
                 liters: Number(kpis.inProcessLiters ?? 0),
                 totalAmount: Number(kpis.inProcessTotalSales ?? 0),
                 paidAmount: Number(kpis.inProcessPaidAmount ?? 0),
                 pendingAmount: Number(kpis.inProcessPendingToCollect ?? 0),
+                presentationsBreakdown: [],
               },
             },
         periodBatches: Array.isArray(res.periodBatches) ? res.periodBatches : [],
@@ -281,6 +318,7 @@ async function loadDashboard() {
               id: o.id,
               orderNumber: o.orderNumber || 'PED-000',
               customerName: o.customer?.fullName || o.customerName || 'Cliente mostrador',
+              itemsSummary: o.itemsSummary || '',
               total,
               totalAmount: total,
               paidAmount: paid,
@@ -439,8 +477,10 @@ onMounted(() => {
           <p class="text-2xl font-black text-slate-900 dark:text-white">
             {{ formatCurrency(dashboardData.kpis?.totalSalesAmount) }}
           </p>
-          <div class="mt-1 flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-            <span>{{ (dashboardData.kpis?.totalSalesLiters ?? 0).toFixed(1) }} L vendidos</span>
+          <div class="mt-1 flex items-center gap-1.5 flex-wrap text-xs font-bold text-slate-500 dark:text-slate-400">
+            <span>{{ dashboardData.kpis?.totalUnitsSold ?? 0 }} envases</span>
+            <span>•</span>
+            <span>{{ formatLitersVolume(dashboardData.kpis?.totalSalesLiters) }} vendidos</span>
           </div>
         </div>
       </div>
@@ -472,11 +512,11 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 3. Producción Activa -->
+      <!-- 3. Producción Activa / Lotes Disponibles (Fase B) -->
       <div class="rounded-3xl border border-surface-light-border bg-surface-light-card p-5 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card">
         <div class="flex items-center justify-between">
           <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-            Lotes Activos
+            Lotes Disponibles (Fase B)
           </span>
           <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
             <FlaskConical class="h-4 w-4 stroke-[2.2]" />
@@ -484,19 +524,32 @@ onMounted(() => {
         </div>
         <div class="mt-3">
           <p class="text-2xl font-black text-slate-900 dark:text-white">
-            {{ (dashboardData.allActiveBatches && dashboardData.allActiveBatches.length > 0) ? dashboardData.allActiveBatches.length : (dashboardData.kpis?.totalBatchesCount || 0) }} Lotes
+            {{ dashboardData.kpis?.availableBatchesCount ?? 0 }} {{ (dashboardData.kpis?.availableBatchesCount === 1) ? 'Fracción' : 'Fracciones' }}
           </p>
           <div class="mt-1 flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
             <span>
-              {{ dashboardData.kpis?.totalLitersProduced ?? 0 }} L producidos
+              {{ formatLitersVolume(dashboardData.kpis?.availableLiters) }} disponibles
             </span>
             <RouterLink
-              to="/produccion/lotes"
+              to="/produccion/lotes?tab=packaging"
               class="inline-flex items-center gap-0.5 text-brand-800 hover:underline dark:text-brand-darkText"
             >
-              <span>Ver planta</span>
+              <span>Ver envasados</span>
               <ArrowRight class="h-3 w-3" />
             </RouterLink>
+          </div>
+          <!-- Chips de presentaciones disponibles en stock de Fase B -->
+          <div
+            v-if="dashboardData.kpis?.availableStockPresentations && dashboardData.kpis.availableStockPresentations.length > 0"
+            class="mt-2.5 flex flex-wrap gap-1"
+          >
+            <span
+              v-for="chip in dashboardData.kpis.availableStockPresentations"
+              :key="chip"
+              class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-extrabold text-indigo-700 border border-indigo-200/60 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800/60"
+            >
+              {{ chip }}
+            </span>
           </div>
         </div>
       </div>
@@ -550,7 +603,7 @@ onMounted(() => {
         <div class="inline-flex items-center gap-2 self-start rounded-2xl border border-brand-200 bg-brand-50/80 px-3.5 py-1.5 dark:border-brand-900/60 dark:bg-brand-950/40 sm:self-auto">
           <Milk class="h-4 w-4 text-brand-800 dark:text-brand-300" />
           <div class="text-xs font-extrabold text-brand-900 dark:text-brand-200">
-            <span>{{ (dashboardData.dispatchSummary?.totalDispatchedLiters ?? dashboardData.kpis?.totalDispatchedLiters ?? 0).toFixed(1) }} L</span>
+            <span>{{ formatLitersVolume(dashboardData.dispatchSummary?.totalDispatchedLiters ?? dashboardData.kpis?.totalDispatchedLiters) }}</span>
             <span class="ml-1 text-[11px] font-bold text-brand-700 dark:text-brand-400">Despachados en Total</span>
           </div>
         </div>
@@ -571,11 +624,24 @@ onMounted(() => {
             </div>
             <div class="mt-2">
               <p class="text-xl font-black text-slate-900 dark:text-white">
-                {{ (dashboardData.dispatchSummary?.clientDeliveries?.liters ?? 0).toFixed(1) }} L
+                {{ formatLitersVolume(dashboardData.dispatchSummary?.clientDeliveries?.liters) }}
               </p>
               <p class="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                {{ dashboardData.dispatchSummary?.clientDeliveries?.ordersCount ?? 0 }} pedidos entregados • {{ formatCurrency(dashboardData.dispatchSummary?.clientDeliveries?.totalAmount) }}
+                {{ dashboardData.dispatchSummary?.clientDeliveries?.ordersCount ?? 0 }} pedidos • {{ dashboardData.dispatchSummary?.clientDeliveries?.totalUnits ?? 0 }} envases
               </p>
+              <!-- Chips de desglose multi-presentación -->
+              <div
+                v-if="dashboardData.dispatchSummary?.clientDeliveries?.presentationsBreakdown && dashboardData.dispatchSummary.clientDeliveries.presentationsBreakdown.length > 0"
+                class="mt-2 flex flex-wrap gap-1"
+              >
+                <span
+                  v-for="chip in dashboardData.dispatchSummary.clientDeliveries.presentationsBreakdown"
+                  :key="chip"
+                  class="inline-flex items-center rounded-md bg-emerald-100/70 px-1.5 py-0.5 text-[10px] font-extrabold text-emerald-800 border border-emerald-300/60 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60"
+                >
+                  {{ chip }}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -610,11 +676,24 @@ onMounted(() => {
             </div>
             <div class="mt-2">
               <p class="text-xl font-black text-slate-900 dark:text-white">
-                {{ (dashboardData.dispatchSummary?.partnerConsumptions?.liters ?? 0).toFixed(1) }} L
+                {{ formatLitersVolume(dashboardData.dispatchSummary?.partnerConsumptions?.liters) }}
               </p>
               <p class="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                {{ dashboardData.dispatchSummary?.partnerConsumptions?.dischargesCount ?? 0 }} retiros registrados
+                {{ dashboardData.dispatchSummary?.partnerConsumptions?.dischargesCount ?? 0 }} retiros • {{ dashboardData.dispatchSummary?.partnerConsumptions?.totalUnits ?? 0 }} envases
               </p>
+              <!-- Chips de desglose multi-presentación -->
+              <div
+                v-if="dashboardData.dispatchSummary?.partnerConsumptions?.presentationsBreakdown && dashboardData.dispatchSummary.partnerConsumptions.presentationsBreakdown.length > 0"
+                class="mt-2 flex flex-wrap gap-1"
+              >
+                <span
+                  v-for="chip in dashboardData.dispatchSummary.partnerConsumptions.presentationsBreakdown"
+                  :key="chip"
+                  class="inline-flex items-center rounded-md bg-purple-100/70 px-1.5 py-0.5 text-[10px] font-extrabold text-purple-800 border border-purple-300/60 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800/60"
+                >
+                  {{ chip }}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -645,11 +724,24 @@ onMounted(() => {
             </div>
             <div class="mt-2">
               <p class="text-xl font-black text-slate-900 dark:text-white">
-                {{ (dashboardData.dispatchSummary?.inProcessOrders?.liters ?? 0).toFixed(1) }} L
+                {{ formatLitersVolume(dashboardData.dispatchSummary?.inProcessOrders?.liters) }}
               </p>
               <p class="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                {{ dashboardData.dispatchSummary?.inProcessOrders?.ordersCount ?? 0 }} pedidos activos • {{ formatCurrency(dashboardData.dispatchSummary?.inProcessOrders?.totalAmount) }}
+                {{ dashboardData.dispatchSummary?.inProcessOrders?.ordersCount ?? 0 }} pedidos activos • {{ dashboardData.dispatchSummary?.inProcessOrders?.totalUnits ?? 0 }} envases
               </p>
+              <!-- Chips de desglose multi-presentación -->
+              <div
+                v-if="dashboardData.dispatchSummary?.inProcessOrders?.presentationsBreakdown && dashboardData.dispatchSummary.inProcessOrders.presentationsBreakdown.length > 0"
+                class="mt-2 flex flex-wrap gap-1"
+              >
+                <span
+                  v-for="chip in dashboardData.dispatchSummary.inProcessOrders.presentationsBreakdown"
+                  :key="chip"
+                  class="inline-flex items-center rounded-md bg-indigo-100/70 px-1.5 py-0.5 text-[10px] font-extrabold text-indigo-800 border border-indigo-300/60 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800/60"
+                >
+                  {{ chip }}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -782,6 +874,9 @@ onMounted(() => {
               </div>
               <p class="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
                 {{ order.customerName || 'Cliente mostrador' }}
+              </p>
+              <p v-if="order.itemsSummary" class="truncate text-[10px] font-semibold text-slate-400 dark:text-slate-500 mt-0.5">
+                {{ order.itemsSummary }}
               </p>
             </div>
             <div class="flex flex-col items-end gap-1 shrink-0">

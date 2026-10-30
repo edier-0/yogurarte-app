@@ -3,7 +3,7 @@
  */
 
 /**
- * Detecta si una unidad de medida es discreta (números enteros: unidades, botellas, tapas, etiquetas)
+ * Detecta si una unidad de medida es discreta (números enteros: unidades, envases, vasos, tapas, etiquetas)
  */
 export function isDiscreteUnit(unit?: string): boolean {
   if (!unit) return false;
@@ -13,6 +13,12 @@ export function isDiscreteUnit(unit?: string): boolean {
     u === 'unds' ||
     u === 'unidad' ||
     u === 'unidades' ||
+    u === 'envase' ||
+    u === 'envases' ||
+    u === 'vaso' ||
+    u === 'vasos' ||
+    u === 'tarro' ||
+    u === 'tarros' ||
     u === 'botella' ||
     u === 'botellas' ||
     u === 'tapa' ||
@@ -47,6 +53,25 @@ export function formatStockQuantity(qty: number | string | null | undefined, uni
 }
 
 /**
+ * Formatea un volumen en litros con precisión adaptativa:
+ * - Enteros: "4 L"
+ * - 1 decimal exacto (ej. 0.5L): "4.5 L"
+ * - 2 decimales para formatos centesimales (ej. 0.08L, 0.15L): "4.08 L", "0.15 L"
+ */
+export function formatLitersVolume(liters: number | string | null | undefined): string {
+  const num = typeof liters === 'number' ? liters : Number(liters);
+  if (isNaN(num) || num <= 0) return '0 L';
+  const rounded2 = Math.round(num * 100) / 100;
+  if (Math.abs(rounded2 - Math.round(rounded2)) < 0.001) {
+    return `${Math.round(rounded2)} L`;
+  }
+  if (Math.abs(rounded2 * 10 - Math.round(rounded2 * 10)) < 0.01) {
+    return `${rounded2.toFixed(1)} L`;
+  }
+  return `${rounded2.toFixed(2)} L`;
+}
+
+/**
  * Formatea stock junto a su unidad de medida
  */
 export function formatStockWithUnit(qty: number | string | null | undefined, unit?: string): string {
@@ -58,7 +83,10 @@ export function formatStockWithUnit(qty: number | string | null | undefined, uni
  * Formatea un valor monetario en pesos colombianos ($ COP)
  */
 export function formatCurrency(amount: number | string | null | undefined): string {
-  const num = typeof amount === 'number' ? amount : Number(amount);
-  if (isNaN(num)) return '$ 0';
-  return `$ ${num.toLocaleString('es-CO')}`;
+  const val = typeof amount === 'number' ? amount : Number(amount);
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    maximumFractionDigits: 0,
+  }).format(isNaN(val) ? 0 : val);
 }
