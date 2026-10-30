@@ -1,7 +1,7 @@
 # Constitución del Software — YogurArte
 
 > **Documento Rector del Sistema Operativo, Contable y CRM**  
-> **Versión:** 1.3.0  
+> **Versión:** 1.4.0  
 > **Ámbito:** Todos los módulos, specs, planes y cambios de código en YogurArte.  
 > **Principio de Supremacía:** Ninguna especificación (`spec.md`), plan de arquitectura (`plan.md`) o línea de código puede contradecir los artículos de esta Constitución sin una enmienda explícita aprobada por el usuario.
 
@@ -110,18 +110,23 @@ Los requisitos funcionales de cada spec deben redactarse en español empleando l
 
 ## TÍTULO V: Ciclo de Vida Git y Gestión de Ramas
 
-### Artículo 16: Ramas Permanentes, Integración vía Pull Requests y Eliminación Controlada
-1. Las únicas ramas permanentes en el repositorio son `develop` (desarrollo e integración) y `main` (producción). Queda prohibido el commit directo en cualquiera de ellas.
-2. Para cada cambio, corrección o nueva funcionalidad se crea una rama temática (`feat/<kebab-case>`, `fix/<kebab-case>`, `refactor/<kebab-case>`, `docs/<kebab-case>`) partiendo siempre de `develop`.
-3. **Verificación local obligatoria**: Previo a la publicación remota, deben ejecutarse y aprobarse sin errores la compilación y tipos del backend (`npx tsc --noEmit`), el empaquetado del frontend (`npm --prefix frontend run build`) y las pruebas unitarias e integración (`vitest`).
-4. **Ciclo de integración remota vía Pull Requests**:
-   - Se publica la rama temática en el repositorio remoto (`git push origin <rama>`).
-   - Se crea un Pull Request (PR) de la rama temática hacia `develop` en GitHub y se aprueba y fusiona.
-   - Se crea un Pull Request (PR) de `develop` hacia `main` en GitHub y se aprueba y fusiona para sincronizar producción.
-   - Se sincroniza el entorno local actualizando ambas ramas permanentes desde el remoto (`git pull origin develop` y `git pull origin main`).
-5. **Eliminación y Cláusula de Salvaguarda**:
-   - Una vez fusionada con éxito en `develop` y `main`, la rama temática debe eliminarse tanto localmente (`git branch -d`) como en el repositorio remoto (`git push origin --delete`).
-   - Queda terminantemente prohibido borrar cualquier rama (local o remota) sin formular la pregunta y obtener la autorización explícita previa del usuario.
+### Artículo 16: Directiva de Flujo de Trabajo en Git (Feature Branch & PR) y Eliminación Controlada
+1. **Ramas permanentes y aislamiento total**: Las únicas ramas permanentes son `develop` (desarrollo e integración) y `main` (producción). Todo desarrollo, corrección o tarea ocurre exclusivamente en su propia rama dedicada (`feature/*`, `fix/*`, `chore/*`, `refactor/*`, `docs/*`) partiendo del estado más reciente de `develop`. Queda terminantemente prohibido el commit directo en `develop` o `main`.
+2. **Prohibición de merges locales a ramas base**: La rama local `develop` (o `main`) nunca recibe merges manuales directos de la rama de trabajo. El Pull Request en remoto es el único mecanismo autorizado para integrar cambios hacia la rama base.
+3. **Verificación local y sincronización pre-integración**:
+   - Previo a la publicación remota, deben ejecutarse y aprobarse sin errores la compilación y tipos del backend (`npx tsc --noEmit`), el empaquetado del frontend (`npm --prefix frontend run build`) y las pruebas unitarias e integración (`vitest`).
+   - Sincronizar la rama temática con el estado remoto de `develop` (`git fetch origin && git rebase origin/develop` o `git merge origin/develop`) resolviendo cualquier conflicto dentro de la rama propia antes de solicitar el PR.
+4. **Publicación y protocolo de Pull Request**:
+   - Se publica la rama temática en el repositorio remoto (`git push origin <tipo>/<nombre-tarea>`).
+   - **Consultas obligatorias de PR**: El agente **debe preguntar siempre al usuario** antes de abrir el PR y antes de fusionarlo/aceptarlo, a menos que el usuario haya indicado explícitamente en su instrucción ejecutar todos los pasos sin requerir aprobación.
+   - El agente gestiona la creación del PR hacia `develop` y su fusión/aceptación (mediante GitHub MCP/API o squash merge), tras la confirmación correspondiente del usuario.
+5. **Sincronización a Producción (`main`)**:
+   - Tras fusionar el PR en `develop`, se sincroniza `develop` localmente (`git checkout develop && git pull origin develop`).
+   - Se fusiona `develop` directamente en `main` y se publica (`git checkout main && git merge develop && git push origin main`), sin abrir PR intermedio entre `develop` y `main`.
+   - Se retorna inmediatamente a `develop` (`git checkout develop`).
+6. **Cláusula de Salvaguarda para Eliminación de Ramas**:
+   - Una vez integrada con éxito en `develop` y `main`, la rama temática debe eliminarse tanto localmente (`git branch -d`) como en el repositorio remoto (`git push origin --delete`).
+   - **REGLA ESTRICTA**: Queda terminantemente prohibido borrar cualquier rama (local o remota) sin formular la pregunta y obtener la autorización explícita previa del usuario.
 
 ---
 
@@ -138,3 +143,4 @@ Los requisitos funcionales de cada spec deben redactarse en español empleando l
 - **v1.1.0**: Incorporación de reglas de auditoría y seguridad de dependencias en producción.
 - **v1.2.0**: Estandarización del ciclo de vida Git mediante Pull Requests remotos (PR rama temática $\rightarrow$ `develop` $\rightarrow$ `main`, sincronización local y borrado remoto/local con salvaguarda).
 - **v1.3.0**: Enmienda a los Artículos 5 y 7: Trazabilidad y auditoría dinámica de presentaciones en Fase B (prohibición de 1L/2L fijos), segregación estricta de entregas y salidas exclusivamente en Fase B, y flujo proactivo de alerta de fidelización desde pedidos hacia CRM con auditoría visible en la fracción envasada.
+- **v1.4.0**: Actualización de la Directiva de Flujo de Trabajo en Git (Feature Branch & PR): aislamiento estricto en ramas dedicadas, prohibición categórica de merges locales directos a ramas base, sincronización pre-integración con `origin/develop`, protocolo de consultas obligatorias al usuario para abrir y aceptar PRs (salvo instrucción explícita contraria), y preservación de la salvaguarda mandatoria para eliminación de ramas locales y remotas.
