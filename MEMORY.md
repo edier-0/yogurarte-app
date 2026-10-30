@@ -3,7 +3,8 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 
 ## Estado actual
 - ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
-- Spec 009 completada e implementada en rama `feat/registro-cliente-chat-unificacion-whatsapp`.
+- Spec 009 finalizada, integrada en `develop` y `main`, y desplegada.
+- Rama `feat/registro-cliente-chat-unificacion-whatsapp` eliminada en local y remoto tras autorización.
 - Tareas completadas:
   - T1: Autovinculación preventiva de chats huérfanos al crear/actualizar clientes.
   - T2: Prevención de bifurcación de chats en `whatsappService.sendMessage`.
@@ -24,4 +25,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - En Baileys, los mensajes requieren JIDs válidos (@s.whatsapp.net o @lid); los @usuarios de WhatsApp deben resolverse contra la conversación existente en base de datos o abrirse en WhatsApp oficial.
 
 ## Próximos pasos
-- Realizar commit de las tareas finalizadas y proceder con el ciclo Git (push, PR a `develop`, merge a `main`).
+- Monitorear el flujo de registro directo desde chat y mensajería en producción.
