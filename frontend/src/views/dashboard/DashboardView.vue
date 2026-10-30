@@ -943,6 +943,7 @@ onMounted(() => {
       v-if="isOrderModalOpen"
       :open="isOrderModalOpen"
       @update:open="isOrderModalOpen = $event"
+      @saved="loadDashboard"
       @order-created="loadDashboard"
     />
 

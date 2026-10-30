@@ -354,6 +354,14 @@ export const getOrders = async (query: OrdersQueryInput) => {
         select: {
           id: true,
           batchId: true,
+          packagingId: true,
+          packaging: {
+            select: {
+              id: true,
+              packagingCode: true,
+              flavor: true,
+            },
+          },
           bottleSize: true,
           flavor: true,
           quantity: true,
@@ -455,6 +463,13 @@ export const getOrderById = async (id: number) => {
       customer: true,
       items: {
         include: {
+          packaging: {
+            select: {
+              id: true,
+              packagingCode: true,
+              flavor: true,
+            },
+          },
           batch: {
             select: {
               id: true,
