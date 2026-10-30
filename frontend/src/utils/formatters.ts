@@ -53,3 +53,12 @@ export function formatStockWithUnit(qty: number | string | null | undefined, uni
   const formatted = formatStockQuantity(qty, unit);
   return unit ? `${formatted} ${unit}` : formatted;
 }
+
+/**
+ * Formatea un valor monetario en pesos colombianos ($ COP)
+ */
+export function formatCurrency(amount: number | string | null | undefined): string {
+  const num = typeof amount === 'number' ? amount : Number(amount);
+  if (isNaN(num)) return '$ 0';
+  return `$ ${num.toLocaleString('es-CO')}`;
+}

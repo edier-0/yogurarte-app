@@ -153,6 +153,15 @@ export const getLoyaltyQuerySchema = z.object({
 
 export const redeemLoyaltySchema = z.object({
   customerId: z.coerce.number().int().positive('ID de cliente inválido'),
+  packagingId: z.coerce.number().int().positive().optional().nullable(),
+  items: z
+    .array(
+      z.object({
+        bottleSize: z.string().min(1, 'La presentación es requerida'),
+        quantity: z.coerce.number().int().positive('La cantidad debe ser positiva'),
+      })
+    )
+    .optional(),
 });
 
 export const getRecurringQuerySchema = z.object({

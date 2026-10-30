@@ -379,6 +379,24 @@ export interface ProductFlavor {
   updatedAt?: string;
 }
 
+export interface ProductPresentation {
+  id: number;
+  name: string;
+  label: string;
+  capacityLiters: number;
+  defaultPrice: number;
+  isActive: boolean;
+  rawMaterialId?: number | null;
+  rawMaterial?: {
+    id: number;
+    name: string;
+    unit: string;
+    stock: number;
+  } | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface DynamicBatchItem {
   rawMaterialId: number;
   quantityUsed: number;
@@ -447,6 +465,10 @@ export const useProductionStore = defineStore('production', () => {
   const flavors = ref<ProductFlavor[]>([]);
   const isLoadingFlavors = ref<boolean>(false);
   const activeFlavors = computed(() => flavors.value.filter((f) => f.isActive));
+
+  const presentations = ref<ProductPresentation[]>([]);
+  const isLoadingPresentations = ref<boolean>(false);
+  const activePresentations = computed(() => presentations.value.filter((p) => p.isActive));
 
   // Filtros
   const activeChip = ref<BatchChip>('ALL');
@@ -938,6 +960,96 @@ export const useProductionStore = defineStore('production', () => {
     }
   }
 
+  // Catálogo de Presentaciones Dinámicas
+  async function fetchPresentations(activeOnly = false) {
+    isLoadingPresentations.value = true;
+    try {
+      const data = await http.get<ProductPresentation[]>('/production/presentations', {
+        params: activeOnly ? { activeOnly: true } : undefined,
+      });
+      presentations.value = data;
+      return data;
+    } catch {
+      return [];
+    } finally {
+      isLoadingPresentations.value = false;
+    }
+  }
+
+  async function createPresentation(payload: {
+    name: string;
+    label: string;
+    capacityLiters: number;
+    defaultPrice: number;
+    rawMaterialId?: number | null;
+  }) {
+    try {
+      const created = await http.post<ProductPresentation>('/production/presentations', payload);
+      toast.success('Presentación Registrada', {
+        description: `La presentación "${created.label || created.name}" ha sido agregada al catálogo.`,
+      });
+      await fetchPresentations();
+      return created;
+    } catch {
+      return null;
+    }
+  }
+
+  async function updatePresentation(
+    id: number,
+    payload: Partial<{
+      label: string;
+      capacityLiters: number;
+      defaultPrice: number;
+      rawMaterialId: number | null;
+      isActive: boolean;
+    }>
+  ) {
+    try {
+      const updated = await http.put<ProductPresentation>(`/production/presentations/${id}`, payload);
+      toast.success('Presentación Actualizada', {
+        description: `La presentación "${updated.label || updated.name}" ha sido actualizada.`,
+      });
+      await fetchPresentations();
+      return updated;
+    } catch {
+      return null;
+    }
+  }
+
+  async function togglePresentation(id: number) {
+    try {
+      const updated = await http.patch<ProductPresentation>(`/production/presentations/${id}/toggle`);
+      const statusText = updated.isActive ? 'activada' : 'pausada';
+      toast.success('Estado Actualizado', {
+        description: `La presentación "${updated.label || updated.name}" ahora está ${statusText}.`,
+      });
+      await fetchPresentations();
+      return updated;
+    } catch {
+      return null;
+    }
+  }
+
+  async function deletePresentation(id: number) {
+    try {
+      const res = await http.delete<{ message: string; deactivated?: boolean }>(`/production/presentations/${id}`);
+      if (res?.deactivated) {
+        toast.info('Presentación Desactivada', {
+          description: res.message || 'La presentación tiene historial en lotes o pedidos, por lo que fue desactivada.',
+        });
+      } else {
+        toast.success('Presentación Eliminada', {
+          description: res?.message || 'La presentación ha sido eliminada del catálogo.',
+        });
+      }
+      await fetchPresentations();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ==========================================
   // 📦 ACCIONES FASE B: LOTES FRACCIONADOS
   // ==========================================
@@ -1138,6 +1250,14 @@ export const useProductionStore = defineStore('production', () => {
     createFlavor,
     toggleFlavor,
     deleteFlavor,
+    presentations,
+    isLoadingPresentations,
+    activePresentations,
+    fetchPresentations,
+    createPresentation,
+    updatePresentation,
+    togglePresentation,
+    deletePresentation,
   };
 });
 

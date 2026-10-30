@@ -1,3 +1,23 @@
+/**
+ * Resolver la capacidad en litros de una presentación según su nombre o etiqueta
+ */
+export function resolvePresentationLiters(sizeName: string, fallbackCapacity?: number): number {
+  if (fallbackCapacity && fallbackCapacity > 0) return fallbackCapacity;
+  const clean = (sizeName || '').trim().toLowerCase();
+  if (clean === '2l' || clean.includes('2 litro') || clean.includes('2 l')) return 2.0;
+  if (clean === '1l' || clean.includes('1 litro') || clean.includes('1 l')) return 1.0;
+  if (clean === '500ml' || clean.includes('500 ml') || clean.includes('0.5l')) return 0.5;
+  if (clean === '250ml' || clean.includes('250 ml') || clean.includes('0.25l')) return 0.25;
+  if (clean.includes('galon') || clean.includes('galón') || clean.includes('3.8l')) return 3.8;
+
+  const mlMatch = clean.match(/(\d+)\s*ml/);
+  if (mlMatch) return Number(mlMatch[1]) / 1000;
+  const lMatch = clean.match(/(\d+(\.\d+)?)\s*l/);
+  if (lMatch) return Number(lMatch[1]);
+
+  return 1.0;
+}
+
 import prisma from '../../prisma.js';
 import { getAllSettingsMap } from '../../controllers/settings.controller.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.utils.js';
@@ -522,8 +542,26 @@ export const createOrder = async (data: CreateOrderInput) => {
       throw new BadRequestError('Se requiere información del cliente para registrar el pedido');
     }
 
-    // 2. Procesar ítems múltiples del pedido
+    // 2. Procesar ítems múltiples del pedido con presentaciones dinámicas
     let parsedBatchId = batchId ? Number(batchId) : null;
+
+    // Cargar catálogo de presentaciones para resolución exacta de capacidades y precios
+    const catalogPresentations = await tx.productPresentation.findMany();
+    const presMap = new Map<string, { capacityLiters: number; defaultPrice: number }>();
+    for (const p of catalogPresentations) {
+      presMap.set(p.name.toLowerCase().trim(), { capacityLiters: p.capacityLiters, defaultPrice: p.defaultPrice });
+    }
+
+    const resolveItemPresentation = (bottleSizeName: string, customPrice?: number) => {
+      const sizeClean = (bottleSizeName || '1L').trim();
+      const pInfo = presMap.get(sizeClean.toLowerCase());
+      const capacity = pInfo?.capacityLiters ?? resolvePresentationLiters(sizeClean);
+      const defaultPrice = pInfo?.defaultPrice ?? (capacity === 2.0 ? 24000 : (capacity === 0.5 ? 8000 : 12000));
+      const price = customPrice !== undefined && !isNaN(Number(customPrice)) && Number(customPrice) >= 0
+        ? Number(customPrice)
+        : defaultPrice;
+      return { sizeClean, capacity, price };
+    };
 
     let parsedItems: Array<{
       batchId?: number | null;
@@ -539,12 +577,10 @@ export const createOrder = async (data: CreateOrderInput) => {
 
     if (Array.isArray(items) && items.length > 0) {
       const rawParsed = items.map((item) => {
-        const size = item.bottleSize || '1L';
+        const { sizeClean, capacity, price: itemUnitPrice } = resolveItemPresentation(item.bottleSize || '1L', item.unitPrice);
+        const size = sizeClean;
         const qty = Number(item.quantity) || 1;
-        const litersPerUnit = size === '2L' ? 2.0 : 1.0;
-        const itemUnitPrice = item.unitPrice !== undefined && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) >= 0
-          ? Number(item.unitPrice)
-          : (size === '2L' ? 24000 : 12000);
+        const litersPerUnit = capacity;
 
         let itemPackagingId: number | null = null;
         if (item.packagingId !== undefined && item.packagingId !== null && !isNaN(Number(item.packagingId))) {
@@ -644,21 +680,17 @@ export const createOrder = async (data: CreateOrderInput) => {
         }
       }
     } else {
-      // Fallback a ítem único
-      const size = bottleSize || '1L';
+      // Fallback a ítem único con presentación dinámica
+      const { sizeClean, capacity, price } = resolveItemPresentation(bottleSize || '1L', unitPrice);
       const qty = Number(quantityBottles) || 1;
-      const litersPerUnit = size === '2L' ? 2.0 : 1.0;
-      const price = unitPrice !== undefined && !isNaN(Number(unitPrice)) && Number(unitPrice) >= 0
-        ? Number(unitPrice)
-        : (size === '2L' ? 24000 : 12000);
       parsedItems = [
         {
           batchId: parsedBatchId,
-          bottleSize: size,
+          bottleSize: sizeClean,
           flavor: (flavor || 'Natural').trim(),
           quantity: qty,
-          litersPerUnit,
-          totalLiters: qty * litersPerUnit,
+          litersPerUnit: capacity,
+          totalLiters: qty * capacity,
           unitPrice: price,
           totalPrice: qty * price,
         },
@@ -720,20 +752,24 @@ export const createOrder = async (data: CreateOrderInput) => {
           orderBy: { preparationDate: 'desc' },
         });
 
-        for (const b of activeBatchesForFlavor) {
-          const soldFromItems = b.orderItems.reduce((sum, it) => sum + it.totalLiters, 0);
-          const legacyOrdersSold = b.orders
-            .filter((o) => !b.orderItems.some((it) => it.orderId === o.id))
-            .reduce((sum, o) => sum + o.totalLiters, 0);
-          const sold = soldFromItems + legacyOrdersSold;
-          const discharges = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
-          const available = Math.max(0, b.totalLitersProduced - sold - discharges);
-          if (available >= totalLitersCalculated) {
-            parsedBatchId = b.id;
-            parsedItems.forEach((it) => {
-              if (!it.batchId) it.batchId = b.id;
-            });
-            break;
+        for (const it of parsedItems) {
+          if (it.batchId) continue;
+          const itemFlavor = (it.flavor || 'Natural').trim();
+          const batchesForThisFlavor = activeBatchesForFlavor.filter(
+            (b) => b.flavor.toLowerCase().trim() === itemFlavor.toLowerCase().trim()
+          );
+          for (const b of batchesForThisFlavor) {
+            const soldFromItems = b.orderItems.reduce((sum, oIt) => sum + oIt.totalLiters, 0);
+            const legacyOrdersSold = b.orders
+              .filter((o) => !b.orderItems.some((oIt) => oIt.orderId === o.id))
+              .reduce((sum, o) => sum + o.totalLiters, 0);
+            const sold = soldFromItems + legacyOrdersSold;
+            const discharges = (b.discharges || []).reduce((sum, d) => sum + d.totalLiters, 0);
+            const available = Math.max(0, b.totalLitersProduced - (b.packagedLiters || 0) - sold - discharges);
+            if (available >= it.totalLiters) {
+              it.batchId = b.id;
+              break;
+            }
           }
         }
       }
@@ -1013,13 +1049,28 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
 
     let parsedItemsList: any[] | null = null;
     if (Array.isArray(items) && items.length > 0) {
+      const updateCatalogPres = await tx.productPresentation.findMany();
+      const updatePresMap = new Map<string, { capacityLiters: number; defaultPrice: number }>();
+      for (const p of updateCatalogPres) {
+        updatePresMap.set(p.name.toLowerCase().trim(), { capacityLiters: p.capacityLiters, defaultPrice: p.defaultPrice });
+      }
+
+      const resolveUpdateItemPres = (bottleSizeName: string, customPrice?: number) => {
+        const sizeClean = (bottleSizeName || '1L').trim();
+        const pInfo = updatePresMap.get(sizeClean.toLowerCase());
+        const capacity = pInfo?.capacityLiters ?? resolvePresentationLiters(sizeClean);
+        const defaultPrice = pInfo?.defaultPrice ?? (capacity === 2.0 ? 24000 : (capacity === 0.5 ? 8000 : 12000));
+        const price = customPrice !== undefined && !isNaN(Number(customPrice)) && Number(customPrice) >= 0
+          ? Number(customPrice)
+          : defaultPrice;
+        return { sizeClean, capacity, price };
+      };
+
       const rawParsed = items.map((item) => {
-        const size = item.bottleSize || '1L';
+        const { sizeClean, capacity, price: itemUnitPrice } = resolveUpdateItemPres(item.bottleSize || '1L', item.unitPrice);
+        const size = sizeClean;
         const qty = Number(item.quantity) || 1;
-        const litersPerUnit = size === '2L' ? 2.0 : 1.0;
-        const itemUnitPrice = item.unitPrice !== undefined && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) >= 0
-          ? Number(item.unitPrice)
-          : (size === '2L' ? 24000 : 12000);
+        const litersPerUnit = capacity;
 
         let itemPackagingId: number | null = null;
         if (item.packagingId !== undefined && item.packagingId !== null && !isNaN(Number(item.packagingId))) {

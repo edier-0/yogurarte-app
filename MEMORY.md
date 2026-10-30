@@ -4,30 +4,26 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 ## Estado actual
 - App ERP/CRM en producción: Fase A/B, inventario, pedidos/domicilio, caja bimonetaria, créditos, personal y CRM WhatsApp.
 - API canónica en `src/modules/` montada desde `src/app.ts`. `src/controllers|routes|schemas` son restos legacy.
-- Spec 001 completada (T1 a T8): Rendimiento real en fraccionamiento (`baseLitersUsed`, `yieldPercentage`) y costeo neto de mermeladas implementados y verificados al 100% en backend y frontend.
-- Auditoría de dependencias: 0 vulnerabilidades en producción tras blindar overrides (`body-parser`, `zod`, `follow-redirects`, `qs`, `nodemailer`).
-- Auditoría de Fracciones (Fase B): visualización de base consumida, volumen comercial, rendimiento %, costo unitario real por botella y recaudo/cartera.
-- Tesorería y Nequi en Neon: restaurado abono de $12.000 COP en pedido #PED-20261005-002 (Arieth Robles), restableciendo saldo Nequi a $99.400 COP. Spec 002 completada y fusionada en develop y main vía PRs #9 y #10.
-- Reversión de Elaboración en Neon: anulada preparación errónea PREP-20261029-01; stock de Azúcar restablecido a 2.1 Kg (+0.4 Kg) y Mermelada devuelta a 0 Kg.
-- Spec 003 completada (T1 a T7): Búsqueda predictiva con `SearchableSelect` en 5 modales de inventario/producción; pestaña "Elaboraciones" en Inventario con anulación transaccional (salvaguarda RF-10) y edición de metadatos.
-- Ciclo Git y PRs remotos: formalizado en Constitución v1.2.0 y AGENTS.md el ciclo obligatorio de integración vía Pull Requests en GitHub y borrado seguro con confirmación.
+- Spec 001, 002 y 003 completadas y verificadas al 100%. Auditoría de dependencias: 0 vulnerabilidades en producción.
+- Spec 004 completada al 100% en `feat/dynamic-product-presentations`: tareas T1 a T9 finalizadas y verificadas (typecheck limpio, frontend build limpio y 100% pruebas en verde).
+- Se implementaron presentaciones dinámicas (1L $12k, 2L $24k, 500ml $8k), modal administrativo, pedidos reactivos, fraccionamiento en Fase B y fidelización proporcional con canje flexible hasta 1.0L a $0 COP.
 
 ## Decisiones (y por qué)
-- SDD y Rendimiento Real (Spec 001): `baseLitersUsed` desacopla los litros consumidos del tanque de los litros comerciales envasados. Fraccionamiento con almíbar o pulpa rinde más sin falsos bloqueos de capacidad.
-- Costeo unitario exacto: la fracción calcula el costo lácteo solo sobre la base extraída (`baseLitersUsed * costPerLiter`) y suma envases y pulpas; el costo unitario por botella prorratea según capacidad.
-- Mermeladas netas: la elaboración con fruta cruda y azúcar rinde una cantidad neta final mayor; el costo unitario por gramo se calcula dividiendo la inversión total entre el rendimiento real obtenido.
-- Prisma en Neon DB: usar `findFirst` en vez de `findUnique` en operaciones críticas dentro de transacciones para evitar deadlocks de 20s y desconexiones `ConnectionReset` (error 10054 / P1017) del DataLoader.
-- SDD y Constitución v1.2.0: fija supremacía de la spec, invariantes y ciclo Git con PRs remotos (rama temática -> develop -> main, sincronización local y borrado seguro).
-- Zona Horaria y Hora del Dispositivo: formulaciones envían `getDeviceTimestamp` y unifican filtros en Colombia (`America/Bogota`), eliminando saltos nocturnos tras las 7:00 PM.
+- Catálogo en DB `ProductPresentation`: permite agregar formatos nuevos (ej. 500 ml a $8.000) con envase opcional sin modificar código.
+- Fidelización proporcional: botellas de 500 ml aportan 0.5 botellas equivalentes; canje flexible de hasta 1.0 L con salida $0 COP y descargo en lote (`PREMIO_FIDELIZACION`).
+- Fase A puramente líquida; el envasado y presentaciones operan exclusivamente en Fase B.
+- Plantillas de WhatsApp diferidas a Spec 005 para mantener entregas atómicas según SDD.
+- Prisma en Neon DB: usar `select` específico en vez de `include` anidado para evitar timeouts con pooler PgBouncer.
 - Deuda calculada, no columna: evita saldos desfasados respecto a pagos. Excluye pedidos `CANCELLED`.
-- Canales de pago unificados: solo Efectivo y Nequi en toda la interfaz para conciliar con arqueos físicos.
 
 ## Aprendizajes y errores a evitar
-- Prisma DataLoader con `findUnique` en transacciones contra Neon: usar `findFirst` para evitar timeouts y conexión rota.
+- Prisma DataLoader con `findUnique` en transacciones contra Neon: usar `select` puntual para evitar timeouts y conexión rota.
 - En mensajes de validación de volumen, conservar el prefijo `Volumen insuficiente:` para mantener compatibilidad con las aserciones de la suite de pruebas.
-- En `updateBatchPackaging`: si no se envía `baseLitersUsed` explícito, mantener la proporción de rendimiento previo o 1:1 para evitar congelar la base en un valor estático si se agregan más botellas.
+- En `updateBatchPackaging`: si no se envía `baseLitersUsed` explícito, mantener la proporción de rendimiento previo o 1:1.
 - `vue-tsc` corre con `noUnusedLocals: true`: variables o imports no utilizados botan error y rompen el build.
-- Auditoría de seguridad: parches de dependencias transitivas en producción se blindan mediante `overrides` en `package.json`.
 
 ## Próximos pasos
-- Publicar cambios de Spec 003, abrir PR a develop y main siguiendo el flujo constitucional de integración.
+- Realizar commit de los cambios con Conventional Commits en español.
+- Publicar rama remota `feat/dynamic-product-presentations` e iniciar ciclo de integración PR (`develop` y `main`).
+- Pedir confirmación explícita al usuario antes de borrar la rama temática.
+- Iniciar Spec 005 (Plantillas Centralizadas y Automatizadas de WhatsApp).
