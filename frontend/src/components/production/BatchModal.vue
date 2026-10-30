@@ -496,7 +496,7 @@ async function handleSubmit() {
               <div>
                 <p class="font-extrabold text-xs">Fase A · Fermentación del Lote Base</p>
                 <p class="mt-0.5 text-[11px] leading-relaxed opacity-90">
-                  Descuenta únicamente la leche e insumos base seleccionados. El fraccionamiento por sabores, botellas (1L y 2L), tapas y etiquetas se realiza en la Fase B al envasar.
+                  Descuenta únicamente la leche e insumos base seleccionados. El fraccionamiento por sabores, envases (1L y 2L), tapas y etiquetas se realiza en la Fase B al envasar.
                 </p>
               </div>
             </div>
@@ -828,7 +828,7 @@ async function handleSubmit() {
                 <span>Proyección Financiera Base (Fase A)</span>
               </span>
               <span class="rounded bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 text-[10px] font-black text-emerald-800 dark:text-emerald-200">
-                $0 en Botellas / Tapas
+                $0 en Envases / Tapas
               </span>
             </div>
 

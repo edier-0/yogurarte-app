@@ -409,7 +409,7 @@ async function handleSubmit() {
               </span>
             </div>
             <p class="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              Tope físico disponible para fraccionar y envasar en botellas de 1L y 2L.
+              Tope físico disponible para fraccionar y envasar en envases de 1L, 2L y otras presentaciones.
             </p>
           </div>
 

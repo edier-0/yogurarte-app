@@ -145,7 +145,7 @@ export const updateBatchPackagingSchema = z.object({
 
 export const partnerWithdrawalSchema = z.object({
   bottleSize: z.string().optional().default('1L'),
-  quantityBottles: z.coerce.number().int().min(1, 'La cantidad de botellas debe ser al menos 1').default(1),
+  quantityBottles: z.coerce.number().int().min(1, 'La cantidad de envases debe ser al menos 1').default(1),
   totalLiters: z.coerce.number().positive().optional(),
   unitPrice: z.coerce.number().optional(),
   staffMemberId: z.coerce.number().int().positive('Debes seleccionar el socio que realiza el retiro'),
@@ -209,7 +209,7 @@ export const packagingsQuerySchema = z.object({
 
 export const packagingDischargeSchema = z.object({
   bottleSize: z.string().min(1, 'La presentación o tamaño es obligatoria'),
-  quantityBottles: z.coerce.number().int().min(1, 'La cantidad de botellas debe ser al menos 1').default(1),
+  quantityBottles: z.coerce.number().int().min(1, 'La cantidad de envases debe ser al menos 1').default(1),
   totalLiters: z.coerce.number().positive().optional(),
   unitPrice: z.coerce.number().optional(),
   staffMemberId: z.coerce.number().int().positive('Debes seleccionar el socio que realiza el retiro'),

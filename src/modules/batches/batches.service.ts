@@ -790,7 +790,7 @@ export const createBatch = async (data: CreateBatchInput) => {
   const effectiveStatus = isFermenting ? 'EN_FERMENTACION' : (status || 'COMPLETADO');
 
   if (totalLitersProduced <= 0 && b1L <= 0 && b2L <= 0 && !isFermenting) {
-    throw new BadRequestError('Debe ingresar los litros de yogur obtenidos o las botellas envasadas');
+    throw new BadRequestError('Debe ingresar los litros de yogur obtenidos o los envases producidos');
   }
 
   const yieldPercentage = Math.round((totalLitersProduced / milkUsed) * 10000) / 100;
@@ -831,7 +831,7 @@ export const createBatch = async (data: CreateBatchInput) => {
     const currentB1Stock = bottle1L ? bottle1L.currentStock : 0;
     if (!bottle1L || currentB1Stock < b1L) {
       throw new BadRequestError(
-        `Stock insuficiente de botellas de 1L. Tienes ${currentB1Stock} und en inventario y requieres ${b1L} und. Registra compra de envases primero.`
+        `Stock insuficiente de envases de 1L. Tienes ${currentB1Stock} und en inventario y requieres ${b1L} und. Registra compra de envases primero.`
       );
     }
   }
@@ -852,7 +852,7 @@ export const createBatch = async (data: CreateBatchInput) => {
     const currentB2Stock = bottle2L ? bottle2L.currentStock : 0;
     if (!bottle2L || currentB2Stock < b2L) {
       throw new BadRequestError(
-        `Stock insuficiente de botellas de 2L. Tienes ${currentB2Stock} und en inventario y requieres ${b2L} und. Registra compra de envases primero.`
+        `Stock insuficiente de envases de 2L. Tienes ${currentB2Stock} und en inventario y requieres ${b2L} und. Registra compra de envases primero.`
       );
     }
   }
@@ -1977,7 +1977,7 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
     const currentStock = bottle1LMat ? bottle1LMat.currentStock : 0;
     if (!bottle1LMat || currentStock < b1L) {
       throw new BadRequestError(
-        `Stock insuficiente de botellas 1L. Tienes ${currentStock} y requieres ${b1L}.`
+        `Stock insuficiente de envases 1L. Tienes ${currentStock} y requieres ${b1L}.`
       );
     }
   }
@@ -2006,7 +2006,7 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
     const currentStock = bottle2LMat ? bottle2LMat.currentStock : 0;
     if (!bottle2LMat || currentStock < b2L) {
       throw new BadRequestError(
-        `Stock insuficiente de botellas 2L. Tienes ${currentStock} y requieres ${b2L}.`
+        `Stock insuficiente de envases 2L. Tienes ${currentStock} y requieres ${b2L}.`
       );
     }
   }
@@ -2527,7 +2527,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       }
       if (newB1L > 0) {
         if (b1Mat.currentStock < newB1L) {
-          throw new BadRequestError(`Stock insuficiente de botellas 1L "${b1Mat.name}". Tienes ${b1Mat.currentStock} y requieres ${newB1L}.`);
+          throw new BadRequestError(`Stock insuficiente de envases 1L "${b1Mat.name}". Tienes ${b1Mat.currentStock} y requieres ${newB1L}.`);
         }
         await tx.rawMaterial.update({
           where: { id: b1Mat.id },
@@ -2539,7 +2539,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       const delta1L = newB1L - oldB1L;
       if (delta1L !== 0) {
         if (delta1L > 0 && b1Mat.currentStock < delta1L) {
-          throw new BadRequestError(`Stock insuficiente de botellas 1L. Tienes ${b1Mat.currentStock} y requieres ${delta1L} adicionales.`);
+          throw new BadRequestError(`Stock insuficiente de envases 1L. Tienes ${b1Mat.currentStock} y requieres ${delta1L} adicionales.`);
         }
         await tx.rawMaterial.update({
           where: { id: b1Mat.id },
@@ -2578,7 +2578,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       }
       if (newB2L > 0) {
         if (b2Mat.currentStock < newB2L) {
-          throw new BadRequestError(`Stock insuficiente de botellas 2L "${b2Mat.name}". Tienes ${b2Mat.currentStock} y requieres ${newB2L}.`);
+          throw new BadRequestError(`Stock insuficiente de envases 2L "${b2Mat.name}". Tienes ${b2Mat.currentStock} y requieres ${newB2L}.`);
         }
         await tx.rawMaterial.update({
           where: { id: b2Mat.id },
@@ -2590,7 +2590,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       const delta2L = newB2L - oldB2L;
       if (delta2L !== 0) {
         if (delta2L > 0 && b2Mat.currentStock < delta2L) {
-          throw new BadRequestError(`Stock insuficiente de botellas 2L. Tienes ${b2Mat.currentStock} y requieres ${delta2L} adicionales.`);
+          throw new BadRequestError(`Stock insuficiente de envases 2L. Tienes ${b2Mat.currentStock} y requieres ${delta2L} adicionales.`);
         }
         await tx.rawMaterial.update({
           where: { id: b2Mat.id },

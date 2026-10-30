@@ -139,7 +139,7 @@ function handleConfirmUnlink() {
             </h4>
           </div>
           <span class="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-black text-brand-800 dark:bg-brand-900/50 dark:text-brand-darkText">
-            {{ loyalty.currentCycleBottles }} / 10 Botellas
+            {{ loyalty.currentCycleBottles }} / 10 Envases (1L)
           </span>
         </div>
 
@@ -164,20 +164,20 @@ function handleConfirmUnlink() {
         >
           <Sparkles class="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span class="text-[11px] font-extrabold">
-            ¡{{ loyalty.rewardsAvailable }} botella(s) gratis disponible(s) para canje!
+            ¡{{ loyalty.rewardsAvailable }} premio(s) de 1L gratis disponible(s) para canje!
           </span>
         </div>
         <div
           v-else
           class="mt-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 leading-snug"
         >
-          Faltan <strong class="text-brand-800 dark:text-brand-darkText font-black">{{ loyalty.bottlesNeeded }} botellas</strong> para reclamar la botella de yogur gratis.
+          Faltan <strong class="text-brand-800 dark:text-brand-darkText font-black">{{ loyalty.bottlesNeeded }} envases (1L)</strong> para reclamar el litro de yogur gratis.
         </div>
 
         <!-- Mini Métricas Acumuladas -->
         <div class="mt-3 grid grid-cols-2 gap-2 pt-2 border-t border-brand-100 dark:border-brand-900/40 text-[11px]">
           <div>
-            <span class="text-[10px] text-slate-400 block font-bold">Total Botellas:</span>
+            <span class="text-[10px] text-slate-400 block font-bold">Total Envases (1L):</span>
             <span class="font-extrabold text-slate-800 dark:text-slate-200">{{ loyalty.totalBottles }}</span>
           </div>
           <div>

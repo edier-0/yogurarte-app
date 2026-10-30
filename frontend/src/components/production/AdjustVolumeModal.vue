@@ -278,7 +278,7 @@ async function handleSubmit() {
                 La inversión total en leche se absorbe en menos litros finales, elevando el costo unitario de cada litro fraccionado.
               </span>
               <span v-else-if="volumeVariation === 'EXPANSION'">
-                El almíbar o adición expande el rendimiento y amplía el tope máximo disponible para envasar botellas de 1L y 2L.
+                El almíbar o adición expande el rendimiento y amplía el tope máximo disponible para envasar envases de 1L, 2L y otras presentaciones.
               </span>
               <span v-else>
                 El rendimiento final es idéntico a la cantidad de leche inoculada.

@@ -393,7 +393,7 @@ async function handleSave() {
                   Su costo se calcula automáticamente según el PMP de los ingredientes y <strong>no genera egresos de caja al fabricarse</strong>.
                 </template>
                 <template v-else>
-                  <strong>Insumo Simple:</strong> Materia prima directa adquirida a proveedores externos (ej. Leche cruda, azúcar, botellas, etiquetas).
+                  <strong>Insumo Simple:</strong> Materia prima directa adquirida a proveedores externos (ej. Leche cruda, azúcar, envases, etiquetas).
                 </template>
               </p>
             </div>

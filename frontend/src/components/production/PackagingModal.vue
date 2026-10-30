@@ -1100,7 +1100,7 @@ async function handleSubmit() {
             </div>
           </div>
 
-          <!-- Botellas a Envasar (1L y 2L) -->
+          <!-- Envases a Llenar (1L y 2L) -->
           <div class="space-y-3 rounded-2xl border border-surface-light-border bg-surface-light-card p-4 dark:border-surface-dark-border dark:bg-surface-dark-card">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 dark:text-white">
@@ -1122,7 +1122,7 @@ async function handleSubmit() {
               <div>
                 <div class="flex items-center justify-between mb-1">
                   <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Botellas de 1 Litro
+                    Envases de 1 Litro
                   </label>
                   <span
                     class="text-[11px]"
@@ -1157,7 +1157,7 @@ async function handleSubmit() {
               <div>
                 <div class="flex items-center justify-between mb-1">
                   <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Botellas de 2 Litros
+                    Envases de 2 Litros
                   </label>
                   <span
                     class="text-[11px]"
@@ -1382,13 +1382,13 @@ async function handleSubmit() {
                 <Tag class="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 <span>Precios de Venta de Esta Fracción ($ COP)</span>
               </div>
-              <span class="text-[11px] font-bold text-slate-400">Precios por botella terminada</span>
+              <span class="text-[11px] font-bold text-slate-400">Precios por envase terminado</span>
             </div>
 
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Precio de Venta Botella 1L
+                  Precio de Venta Envase 1L
                 </label>
                 <div class="relative">
                   <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">$</span>
@@ -1405,7 +1405,7 @@ async function handleSubmit() {
 
               <div>
                 <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Precio de Venta Botella 2L
+                  Precio de Venta Envase 2L
                 </label>
                 <div class="relative">
                   <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">$</span>

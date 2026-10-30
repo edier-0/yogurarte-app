@@ -183,7 +183,7 @@ async function handleUnlinkOrder(order: any) {
                 </span>
               </div>
               <DialogDescription class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Balance lácteo, desglose de botellas, fracciones por sabor y pedidos vinculados
+                Balance lácteo, desglose de envases, fracciones por sabor y pedidos vinculados
               </DialogDescription>
             </div>
           </div>
@@ -629,7 +629,7 @@ async function handleUnlinkOrder(order: any) {
                           {{ order.totalLiters }} L
                         </span>
                         <span class="block text-[10px] text-slate-400">
-                          {{ order.quantityBottles }} botellas
+                          {{ order.quantityBottles }} envases
                         </span>
                       </td>
                       <td class="px-4 py-3 text-right font-black">
@@ -699,7 +699,7 @@ async function handleUnlinkOrder(order: any) {
                   Historial Consolidado de Retiros y Consumo de Socios
                 </h4>
                 <p class="text-[11px] text-slate-400">
-                  Consolidado de botellas y litros retirados por socios en las fracciones de este lote madre
+                  Consolidado de envases y litros retirados por socios en las fracciones de este lote madre
                 </p>
               </div>
 
