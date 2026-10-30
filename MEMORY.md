@@ -8,16 +8,17 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
   - T1: Autovinculación preventiva de chats huérfanos al crear/actualizar clientes.
   - T2: Prevención de bifurcación de chats en `whatsappService.sendMessage`.
   - T3: Resolución de JID canónico para `@usuario` y robustecimiento de `mergeChats` y `linkCustomer`.
-- Todas las pruebas de backend pasando en verde en `tests/crm_chat_customer_sync.test.ts` y `tests/crm.test.ts`.
+  - T4: Propagación de cliente guardado en `CustomerModal.vue` y `customerId` en despachos.
+- Pruebas y compilación en verde: vitest pasando y build frontend verificado.
 
 ## Decisiones (y por qué)
 - Botón directo en chat: incorporar botón `[+ Registrar cliente]` en encabezado y barra lateral del chat para precargar modal y vincular atómicamente la conversación.
 - Autovinculación preventiva: `createOrUpdateCustomer` y `sendMessage` asociarán automáticamente chats existentes no vinculados por número o @usuario para evitar bifurcación al despachar mensajes predeterminados.
-- Resolución híbrida @usuario: si el cliente con @usuario tiene chat en el CRM, despachar internamente con su JID activo; si es nuevo sin chat previo, abrir WhatsApp oficial sin bloqueo de popups.
+- Reutilización estricta: `resolveOrCreateConversationForOutgoing` reutiliza cualquier conversación existente del cliente o con terminación de 10 dígitos antes de crear un nuevo registro.
 
 ## Aprendizajes y errores a evitar
 - No intentar `window.open` tras una promesa asíncrona rechazada; el navegador bloquea la ventana emergente por expiración del contexto de usuario.
 - En Baileys, los mensajes requieren JIDs válidos (@s.whatsapp.net o @lid); los @usuarios de WhatsApp deben resolverse contra la conversación existente en base de datos.
 
 ## Próximos pasos
-- Proceder con la Tarea T4: Propagación del cliente guardado en `CustomerModal.vue` y `customerId` en `operations.store.ts`.
+- Proceder con la Tarea T5: Botón `[+ Registrar cliente]` directo en el chat y panel lateral con vinculación atómica.

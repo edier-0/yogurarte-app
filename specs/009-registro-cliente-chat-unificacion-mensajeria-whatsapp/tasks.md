@@ -9,7 +9,7 @@
 - [x] **T3. Backend: Resolución de JID canónico para `@usuario` y robustecimiento de `mergeChats`.** RF-8, RF-9, RF-10
   - Hecho cuando: pruebas automatizadas verifiquen que `resolveRecipientJid` resuelva el JID canónico de WhatsApp para clientes registrados con `@usuario` que posean conversación previa, y que `mergeChats` traslade los mensajes y consolide hilos sin fallos por restricción única en `remoteJid`.
 
-- [ ] **T4. Frontend: Propagación del cliente guardado en `CustomerModal.vue` y `customerId` en `operations.store.ts`.** RF-2, RF-6, RF-9
+- [x] **T4. Frontend: Propagación del cliente guardado en `CustomerModal.vue` y `customerId` en `operations.store.ts`.** RF-2, RF-6, RF-9
   - Hecho cuando: `CustomerModal.vue` emita el cliente resultante en el evento `@saved`, y `dispatchWhatsApp` en `operations.store.ts` envíe `customerId` a `openMessagePreview` para asegurar la correcta resolución del canal.
 
 - [ ] **T5. Frontend: Botón `[+ Registrar cliente]` directo en el chat y panel lateral con vinculación atómica.** RF-1, RF-2, RF-3, RF-4
