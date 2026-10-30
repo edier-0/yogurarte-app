@@ -3765,8 +3765,18 @@ export const getBatchSummary = async (batchId: number) => {
             include: { rawMaterial: true },
           },
           orderItems: {
+            where: { order: { deliveryStatus: { not: 'CANCELLED' } } },
             include: {
-              order: { select: { id: true, deliveryStatus: true } },
+              order: {
+                include: {
+                  customer: { select: { id: true, fullName: true, phone: true } },
+                  items: {
+                    include: {
+                      packaging: { select: { id: true, packagingCode: true, flavor: true } },
+                    },
+                  },
+                },
+              },
             },
           },
           discharges: true,
@@ -3792,7 +3802,12 @@ export const getBatchSummary = async (batchId: number) => {
         include: {
           order: {
             include: {
-              customer: { select: { id: true, fullName: true } },
+              customer: { select: { id: true, fullName: true, phone: true } },
+              items: {
+                include: {
+                  packaging: { select: { id: true, packagingCode: true, flavor: true } },
+                },
+              },
             },
           },
           packaging: { select: { id: true, packagingCode: true, flavor: true } },
@@ -3817,16 +3832,32 @@ export const getBatchSummary = async (batchId: number) => {
     throw new NotFoundError('Lote no encontrado');
   }
 
-  const soldFromItems = batch.orderItems.reduce((sum, it) => sum + it.totalLiters, 0);
+  // Consolidar todos los ítems de órdenes vinculadas directa o indirectamente (vía fracciones envasadas)
+  const allOrderItemsMap = new Map<number, any>();
+  for (const it of batch.orderItems) {
+    allOrderItemsMap.set(it.id, it);
+  }
+  for (const p of batch.packagings) {
+    for (const it of p.orderItems || []) {
+      if (it.order && it.order.deliveryStatus !== 'CANCELLED') {
+        if (!allOrderItemsMap.has(it.id)) {
+          allOrderItemsMap.set(it.id, it);
+        }
+      }
+    }
+  }
+  const allOrderItems = Array.from(allOrderItemsMap.values());
+
+  const soldFromItems = allOrderItems.reduce((sum, it) => sum + it.totalLiters, 0);
   const legacySold = batch.orders
-    .filter((o) => !batch.orderItems.some((it) => it.orderId === o.id))
+    .filter((o) => !allOrderItems.some((it) => it.orderId === o.id))
     .reduce((sum, o) => sum + o.totalLiters, 0);
   const totalSoldLiters = soldFromItems + legacySold;
 
-  const totalSoldBottles1L = batch.orderItems
+  const totalSoldBottles1L = allOrderItems
     .filter((it) => it.bottleSize === '1L')
     .reduce((sum, it) => sum + it.quantity, 0);
-  const totalSoldBottles2L = batch.orderItems
+  const totalSoldBottles2L = allOrderItems
     .filter((it) => it.bottleSize === '2L')
     .reduce((sum, it) => sum + it.quantity, 0);
 
@@ -3879,7 +3910,33 @@ export const getBatchSummary = async (batchId: number) => {
     };
   });
 
-  const linkedOrdersList = batch.orders;
+  // Consolidar todas las órdenes únicas vinculadas (directas por order.batchId, por orderItems directos o por fracciones de Fase B)
+  const consolidatedOrdersMap = new Map<number, any>();
+  for (const o of batch.orders) {
+    if (o.deliveryStatus !== 'CANCELLED') {
+      consolidatedOrdersMap.set(o.id, o);
+    }
+  }
+  for (const it of batch.orderItems) {
+    if (it.order && it.order.deliveryStatus !== 'CANCELLED') {
+      if (!consolidatedOrdersMap.has(it.order.id)) {
+        consolidatedOrdersMap.set(it.order.id, it.order);
+      }
+    }
+  }
+  for (const p of batch.packagings) {
+    for (const it of p.orderItems || []) {
+      if (it.order && it.order.deliveryStatus !== 'CANCELLED') {
+        if (!consolidatedOrdersMap.has(it.order.id)) {
+          consolidatedOrdersMap.set(it.order.id, it.order);
+        }
+      }
+    }
+  }
+
+  const linkedOrdersList = Array.from(consolidatedOrdersMap.values());
+  linkedOrdersList.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+
   const totalRevenueFromOrders = linkedOrdersList.reduce((sum: number, o: any) => {
     const deliveryFee = Number(o.deliveryFee) || 0;
     const netOrderAmount = Math.max(0, (Number(o.totalAmount) || 0) - deliveryFee);
@@ -3957,7 +4014,7 @@ export const getBatchSummary = async (batchId: number) => {
       remainingAvailable: remainingAvailableLiters,
     },
     packagings: enrichedPackagings,
-    linkedOrders: batch.orders.map((o) => ({
+    linkedOrders: linkedOrdersList.map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
       customer: o.customer,

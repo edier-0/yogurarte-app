@@ -4,6 +4,7 @@ import { refDebounced } from '@vueuse/core';
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import { useCrmStore } from './crm.store';
+import { useProductionStore } from './production.store';
 
 export type DeliveryStatus =
   | 'PENDING'
@@ -425,6 +426,18 @@ export const useOperationsStore = defineStore('operations', () => {
     }
   }
 
+  function refreshProductionStock() {
+    try {
+      const productionStore = useProductionStore();
+      productionStore.fetchAvailablePackagings().catch(() => {});
+      if (productionStore.packagings.length > 0) {
+        productionStore.fetchPackagings(productionStore.packagingCurrentPage).catch(() => {});
+      }
+    } catch {
+      // Ignorar si se invoca antes de inicializar Pinia
+    }
+  }
+
   async function createOrder(payload: any): Promise<Order> {
     const newOrder = await http.post<Order>('/orders', payload);
     orders.value.unshift(newOrder);
@@ -432,6 +445,7 @@ export const useOperationsStore = defineStore('operations', () => {
       description: `Pedido ${newOrder.orderCode || ''} creado exitosamente.`,
     });
     fetchOrdersMetrics();
+    refreshProductionStock();
     return newOrder;
   }
 
@@ -445,6 +459,7 @@ export const useOperationsStore = defineStore('operations', () => {
       description: `Los datos del pedido fueron guardados.`,
     });
     fetchOrdersMetrics();
+    refreshProductionStock();
     return updated;
   }
 
@@ -456,6 +471,7 @@ export const useOperationsStore = defineStore('operations', () => {
         description: res?.message || 'El pedido ha sido eliminado del sistema y se liberaron sus envases.',
       });
       fetchOrdersMetrics();
+      refreshProductionStock();
       return true;
     } catch (err: any) {
       toast.error('Error al Eliminar Pedido', {
@@ -484,6 +500,7 @@ export const useOperationsStore = defineStore('operations', () => {
       description: `Nuevo estado de entrega: ${payload.deliveryStatus}`,
     });
     fetchOrdersMetrics();
+    refreshProductionStock();
     return updated;
   }
 
