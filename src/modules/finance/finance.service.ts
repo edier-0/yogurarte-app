@@ -5,7 +5,7 @@ import {
   getColombiaStartOfDay,
   getColombiaEndOfDay,
 } from '../../utils/date.utils.js';
-import { formatLitersVolume } from '../../utils/volume.utils.js';
+import { formatLitersVolume, cleanPresentationLabel, formatPresentationChip } from '../../utils/volume.utils.js';
 import { computePackagingPresentations } from '../batches/batches.service.js';
 import { resolvePresentationLiters } from '../orders/orders.service.js';
 import {
@@ -1998,7 +1998,8 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
 
       for (const pres of computed.presentations) {
         if (pres.free > 0) {
-          const key = pres.containerName || `${pres.capacityLiters}L`;
+          const rawName = pres.containerName || `${pres.capacityLiters}L`;
+          const key = cleanPresentationLabel(rawName, pres.capacityLiters);
           const existing = stockPresentationsMap.get(key) || {
             name: key,
             quantity: 0,
@@ -2053,11 +2054,12 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
     for (const o of orderList) {
       if (o.items && o.items.length > 0) {
         for (const it of o.items) {
-          const name = it.bottleSize || '1L';
+          const rawName = it.bottleSize || '1L';
           const qty = Number(it.quantity) || 1;
-          const cap = it.litersPerUnit || resolvePresentationLiters(name);
+          const cap = it.litersPerUnit || resolvePresentationLiters(rawName);
           const vol = it.totalLiters || (qty * cap);
           totalUnits += qty;
+          const name = cleanPresentationLabel(rawName, cap);
 
           const ex = map.get(name) || { name, quantity: 0, capacityLiters: cap, totalLiters: 0 };
           ex.quantity += qty;
@@ -2065,11 +2067,12 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
           map.set(name, ex);
         }
       } else {
-        const name = o.bottleSize || '1L';
+        const rawName = o.bottleSize || '1L';
         const qty = Number(o.quantityBottles) || 1;
-        const cap = resolvePresentationLiters(name);
+        const cap = resolvePresentationLiters(rawName);
         const vol = o.totalLiters || (qty * cap);
         totalUnits += qty;
+        const name = cleanPresentationLabel(rawName, cap);
 
         const ex = map.get(name) || { name, quantity: 0, capacityLiters: cap, totalLiters: 0 };
         ex.quantity += qty;
@@ -2097,11 +2100,12 @@ export const getDashboardSummary = async (query: DashboardSummaryQueryInput) => 
   for (const d of batchDischarges || []) {
     const isPartner = d.reasonType === 'CONSUMO_SOCIO' || d.staffMember?.type === 'SOCIO' || d.staffMember?.fullName;
     if (isPartner) {
-      const name = d.bottleSize || '1L';
+      const rawName = d.bottleSize || '1L';
       const qty = Number(d.quantityBottles) || 1;
-      const vol = Number(d.totalLiters) || (qty * resolvePresentationLiters(name));
-      const cap = qty > 0 ? Math.round((vol / qty) * 1000) / 1000 : resolvePresentationLiters(name);
+      const vol = Number(d.totalLiters) || (qty * resolvePresentationLiters(rawName));
+      const cap = qty > 0 ? Math.round((vol / qty) * 1000) / 1000 : resolvePresentationLiters(rawName);
       totalPartnerUnits += qty;
+      const name = cleanPresentationLabel(rawName, cap);
 
       const ex = partnerMap.get(name) || { name, quantity: 0, capacityLiters: cap, totalLiters: 0 };
       ex.quantity += qty;
