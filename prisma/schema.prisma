@@ -66,6 +66,7 @@ model RawMaterial {
   packagingUsages            BatchPackagingItem[]
   recipeIngredients          CompoundRecipeItem[]    @relation("CompoundMaterial")
   usedInRecipes              CompoundRecipeItem[]    @relation("IngredientMaterial")
+  presentations              ProductPresentation[]
 
   @@index([category])
   @@index([isCompound])
@@ -638,5 +639,18 @@ model ProductFlavor {
   @@index([name])
 }
 
+model ProductPresentation {
+  id             Int          @id @default(autoincrement())
+  name           String       @unique
+  label          String
+  capacityLiters Float
+  defaultPrice   Float
+  rawMaterialId  Int?
+  rawMaterial    RawMaterial? @relation(fields: [rawMaterialId], references: [id], onDelete: SetNull)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
 
-
+  @@index([isActive])
+  @@index([name])
+}

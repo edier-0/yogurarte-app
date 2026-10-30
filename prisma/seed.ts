@@ -138,6 +138,21 @@ async function main() {
   }
   console.log('   ✓ 8 Sabores institucionales y 6 parámetros de sistema activos.');
 
+  const initialPresentations = [
+    { name: '1L', label: '1 Litro (1L)', capacityLiters: 1.0, defaultPrice: 12000, isActive: true },
+    { name: '2L', label: '2 Litros (2L)', capacityLiters: 2.0, defaultPrice: 24000, isActive: true },
+    { name: '500ml', label: '500 ml (Medio Litro)', capacityLiters: 0.5, defaultPrice: 8000, isActive: true },
+  ];
+  for (const pres of initialPresentations) {
+    await prisma.productPresentation.upsert({
+      where: { name: pres.name },
+      update: { label: pres.label, capacityLiters: pres.capacityLiters, defaultPrice: pres.defaultPrice, isActive: pres.isActive },
+      create: pres,
+    });
+  }
+  console.log('   ✓ 3 Presentaciones estándar de producto inicializadas (1L, 2L, 500ml).');
+
+
   // --------------------------------------------------------------------------
   // 3. COLABORADORES (STAFF)
   // --------------------------------------------------------------------------

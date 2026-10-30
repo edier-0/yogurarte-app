@@ -435,4 +435,118 @@ describe('Orders Endpoints and Atomic Operations', () => {
       where: { phone: '3118887766' },
     });
   });
+  // =========================================================================
+  // Spec 004: Presentaciones Dinámicas (500ml a $8.000, 1L, 2L, MIXTO)
+  // =========================================================================
+
+  it('POST /api/orders con presentación 500ml a $8.000 debe calcular 0.5L por unidad y litros exactos', async () => {
+    const res = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerName: 'Cliente 500ml Test',
+        customerPhone: '3125554433',
+        customerAddress: 'Calle 15 # 4-20',
+        items: [
+          { bottleSize: '500ml', flavor: 'Fresa', quantity: 2, unitPrice: 8000 },
+        ],
+        paymentMethod: 'EFECTIVO',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.quantityBottles).toBe(2);
+    expect(res.body.totalLiters).toBe(1.0); // 2 * 0.5L
+    expect(res.body.totalAmount).toBe(16000); // 2 * 8000
+    expect(res.body.bottleSize).toBe('500ml');
+
+    const createdItem = res.body.items?.[0];
+    expect(createdItem).toBeDefined();
+    expect(createdItem.bottleSize).toBe('500ml');
+    expect(createdItem.litersPerUnit).toBe(0.5);
+    expect(createdItem.totalLiters).toBe(1.0);
+    expect(createdItem.unitPrice).toBe(8000);
+    expect(createdItem.totalPrice).toBe(16000);
+
+    // Limpiar
+    if (res.body?.id) {
+      const cust = await prisma.customer.findFirst({ where: { phone: '3125554433' } });
+      if (cust) {
+        await prisma.orderPayment.deleteMany({ where: { order: { customerId: cust.id } } });
+        await prisma.orderItem.deleteMany({ where: { order: { customerId: cust.id } } });
+        await prisma.order.deleteMany({ where: { customerId: cust.id } });
+        await prisma.chatConversation.deleteMany({ where: { customerId: cust.id } });
+        await prisma.customer.deleteMany({ where: { id: cust.id } });
+      }
+    }
+  });
+
+  it('POST /api/orders con presentación 500ml sin unitPrice explícito debe auto-asignar $8.000 desde el catálogo', async () => {
+    const res = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerName: 'Cliente AutoPrecio 500ml',
+        customerPhone: '3125554434',
+        customerAddress: 'Carrera 10 # 5-30',
+        items: [
+          { bottleSize: '500ml', flavor: 'Melocotón', quantity: 3 },
+        ],
+        paymentMethod: 'EFECTIVO',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.quantityBottles).toBe(3);
+    expect(res.body.totalLiters).toBe(1.5); // 3 * 0.5L
+    expect(res.body.totalAmount).toBe(24000); // 3 * 8000
+    expect(res.body.items[0].unitPrice).toBe(8000);
+    expect(res.body.items[0].totalPrice).toBe(24000);
+
+    // Limpiar
+    if (res.body?.id) {
+      const cust = await prisma.customer.findFirst({ where: { phone: '3125554434' } });
+      if (cust) {
+        await prisma.orderPayment.deleteMany({ where: { order: { customerId: cust.id } } });
+        await prisma.orderItem.deleteMany({ where: { order: { customerId: cust.id } } });
+        await prisma.order.deleteMany({ where: { customerId: cust.id } });
+        await prisma.chatConversation.deleteMany({ where: { customerId: cust.id } });
+        await prisma.customer.deleteMany({ where: { id: cust.id } });
+      }
+    }
+  });
+
+  it('POST /api/orders con ítems mixtos (1L y 500ml) debe computar totalLiters exacto y marcar bottleSize MIXTO', async () => {
+    const res = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerName: 'Cliente Mixto Test',
+        customerPhone: '3125554435',
+        customerAddress: 'Barrio El Carmen',
+        items: [
+          { bottleSize: '1L', flavor: 'Natural', quantity: 1, unitPrice: 12000 },
+          { bottleSize: '500ml', flavor: 'Fresa', quantity: 2, unitPrice: 8000 },
+        ],
+        deliveryFee: 2000,
+        paymentMethod: 'EFECTIVO',
+      });
+
+        expect(res.status).toBe(201);
+    expect(res.body.quantityBottles).toBe(3); // 1 + 2
+    expect(res.body.totalLiters).toBe(2.0); // 1.0 + (2 * 0.5)
+    expect(res.body.totalAmount).toBe(30000); // 12000 + 16000 + 2000
+    expect(res.body.bottleSize).toBe('MIXTO');
+
+    // Limpiar
+    if (res.body?.id) {
+      const cust = await prisma.customer.findFirst({ where: { phone: '3125554435' } });
+      if (cust) {
+        await prisma.orderPayment.deleteMany({ where: { order: { customerId: cust.id } } });
+        await prisma.orderItem.deleteMany({ where: { order: { customerId: cust.id } } });
+        await prisma.order.deleteMany({ where: { customerId: cust.id } });
+        await prisma.chatConversation.deleteMany({ where: { customerId: cust.id } });
+        await prisma.customer.deleteMany({ where: { id: cust.id } });
+      }
+    }
+  });
 });
+

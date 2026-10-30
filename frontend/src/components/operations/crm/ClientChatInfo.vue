@@ -59,13 +59,13 @@ const loyalty = computed(() => {
   if (!c) return null;
   if (c.loyaltySummary) return c.loyaltySummary;
 
-  const totalBottles = c.orders?.reduce((sum: number, o: any) => sum + (o.quantityBottles || 1), 0) || 0;
+  const totalBottles = Math.round((c.orders?.reduce((sum: number, o: any) => sum + (Number(o.totalLiters) || o.quantityBottles || 1), 0) || 0) * 10) / 10;
   const redeemed = c.loyaltyRedeemedCount || 0;
   const netBottles = Math.max(0, totalBottles - redeemed * 10);
-  const currentCycle = netBottles % 10;
+  const currentCycle = Math.round((netBottles % 10) * 10) / 10;
   const rewardsAvailable = Math.floor(netBottles / 10);
   const progressPercent = Math.min(100, Math.round((currentCycle / 10) * 100));
-  const bottlesNeeded = Math.max(0, 10 - currentCycle);
+  const bottlesNeeded = Math.max(0, Math.round((10 - currentCycle) * 10) / 10);
 
   return {
     totalBottles,

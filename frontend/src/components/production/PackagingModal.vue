@@ -72,6 +72,7 @@ export interface CustomContainerRow {
   capacityLiters: number | '';
   quantity: number | '';
   price: number | '';
+  containerName?: string;
 }
 const customContainers = ref<CustomContainerRow[]>([]);
 
@@ -150,6 +151,29 @@ function addCustomContainer() {
 
 function removeCustomContainer(index: number) {
   customContainers.value.splice(index, 1);
+}
+
+const nonStandardActivePresentations = computed(() => {
+  return productionStore.activePresentations.filter(
+    (p) => p.name !== '1L' && p.name !== '2L'
+  );
+});
+
+function addPresentationFromCatalog(pres: any) {
+  customContainers.value.push({
+    rawMaterialId: pres.rawMaterialId || '',
+    capacityLiters: pres.capacityLiters,
+    quantity: '',
+    price: pres.defaultPrice,
+    containerName: pres.name,
+  });
+}
+
+function formatOrderItemsBreakdown(order: any): string {
+  if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+    return order.items.map((it: any) => `${it.quantity}x ${it.bottleSize}`).join(', ');
+  }
+  return `${order.quantityBottles || 1}x ${order.bottleSize || '1L'}`;
 }
 
 function getCustomContainerCalc(row: CustomContainerRow) {
@@ -1168,18 +1192,34 @@ async function handleSubmit() {
 
             <!-- Otras Presentaciones de Envase Opcionales -->
             <div class="border-t border-slate-100 pt-2.5 dark:border-slate-800">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-slate-600 dark:text-slate-400">
-                  Otras Presentaciones de Envase (Opcional)
-                </span>
-                <button
-                  type="button"
-                  @click="addCustomContainer"
-                  class="inline-flex items-center gap-1 text-[11px] font-bold text-brand-800 hover:underline dark:text-brand-darkText"
-                >
-                  <Plus class="h-3 w-3" />
-                  <span>Agregar Presentación</span>
-                </button>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold text-slate-600 dark:text-slate-400">
+                    Otras Presentaciones de Envase (Opcional)
+                  </span>
+                  <button
+                    type="button"
+                    @click="addCustomContainer"
+                    class="inline-flex items-center gap-1 text-[11px] font-bold text-brand-800 hover:underline dark:text-brand-darkText"
+                  >
+                    <Plus class="h-3 w-3" />
+                    <span>Agregar Personalizada</span>
+                  </button>
+                </div>
+
+                <div v-if="nonStandardActivePresentations.length > 0" class="flex flex-wrap items-center gap-1.5">
+                  <span class="text-[10px] font-bold uppercase text-slate-400">Desde catálogo:</span>
+                  <button
+                    v-for="pres in nonStandardActivePresentations"
+                    :key="pres.id"
+                    type="button"
+                    @click="addPresentationFromCatalog(pres)"
+                    class="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/80 px-2 py-0.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 transition-colors"
+                  >
+                    <Plus class="h-3 w-3" />
+                    <span>{{ pres.label || pres.name }} ({{ pres.capacityLiters }}L)</span>
+                  </button>
+                </div>
               </div>
 
               <div v-if="customContainers.length > 0" class="mt-2.5 space-y-2">
@@ -1680,7 +1720,10 @@ async function handleSubmit() {
                         {{ order.customer?.fullName || 'Cliente' }}
                       </span>
                     </div>
-                    <p class="text-[11px] text-slate-400">
+                    <p class="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
+                      {{ formatOrderItemsBreakdown(order) }}
+                    </p>
+                    <p class="text-[10px] text-slate-400">
                       {{ order.customer?.phone || 'Sin teléfono' }}
                     </p>
                   </div>

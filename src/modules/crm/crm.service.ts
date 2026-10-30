@@ -2,6 +2,7 @@ import prisma from '../../prisma.js';
 import whatsappService, { normalizeColombianJid } from '../../services/whatsapp.service.js';
 import { BadRequestError, NotFoundError } from '../../shared/errors/appError.js';
 import { getLocalDateString } from '../../shared/utils/dateUtils.js';
+import { resolvePresentationLiters } from '../orders/orders.service.js';
 import {
   SendCrmMessageInput,
   MergeChatInput,
@@ -114,12 +115,14 @@ export async function getConversations(query: GetConversationsQuery) {
       },
       _sum: {
         quantityBottles: true,
+        totalLiters: true,
       },
     });
 
     for (const agg of ordersAgg) {
       if (agg.customerId) {
-        bottleCountMap.set(agg.customerId, agg._sum.quantityBottles || 0);
+        const total = agg._sum.totalLiters != null ? Number(agg._sum.totalLiters) : (agg._sum.quantityBottles || 0);
+        bottleCountMap.set(agg.customerId, Math.round(total * 100) / 100);
       }
     }
   }
@@ -128,7 +131,7 @@ export async function getConversations(query: GetConversationsQuery) {
     if (conv.customer) {
       const totalBottles = bottleCountMap.has(conv.customer.id)
         ? bottleCountMap.get(conv.customer.id)!
-        : (conv.customer.orders?.reduce((sum, o) => sum + (o.quantityBottles || 1), 0) || 0);
+        : (conv.customer.orders?.reduce((sum, o) => sum + (Number((o as any).totalLiters) || o.quantityBottles || 1), 0) || 0);
       const redeemed = conv.customer.loyaltyRedeemedCount || 0;
       const netBottles = Math.max(0, totalBottles - redeemed * 10);
       const currentCycle = netBottles % 10;
@@ -806,6 +809,7 @@ export async function getLoyaltyOverview(query: GetLoyaltyQuery) {
         select: {
           id: true,
           quantityBottles: true,
+          totalLiters: true,
           totalAmount: true,
           orderDate: true,
         },
@@ -815,12 +819,15 @@ export async function getLoyaltyOverview(query: GetLoyaltyQuery) {
   });
 
   const loyaltyData = customers.map((cust) => {
-    const totalBottles = cust.orders.reduce((sum, o) => sum + (o.quantityBottles || 1), 0);
+    const totalBottles = Math.round(
+      cust.orders.reduce((sum, o) => sum + (Number((o as any).totalLiters) || o.quantityBottles || 1), 0) * 100
+    ) / 100;
     const redeemed = cust.loyaltyRedeemedCount || 0;
-    const netBottles = Math.max(0, totalBottles - redeemed * 10);
-    const currentCycle = netBottles % 10;
+    const netBottles = Math.max(0, Math.round((totalBottles - redeemed * 10) * 100) / 100);
+    const currentCycle = Math.round((netBottles % 10) * 100) / 100;
     const rewardsAvailable = Math.floor(netBottles / 10);
     const progressPercent = Math.min(100, Math.round((currentCycle / 10) * 100));
+    const bottlesNeeded = Math.max(0, Math.round((10 - currentCycle) * 100) / 100);
 
     return {
       id: cust.id,
@@ -833,6 +840,7 @@ export async function getLoyaltyOverview(query: GetLoyaltyQuery) {
       currentCycleBottles: currentCycle,
       rewardsAvailable,
       progressPercent,
+      bottlesNeeded,
       hasAvailableReward: rewardsAvailable > 0,
     };
   });
@@ -861,8 +869,9 @@ export async function getLoyaltyOverview(query: GetLoyaltyQuery) {
   };
 }
 
-export async function redeemLoyaltyReward(customerId: number) {
-  const targetCustId = Number(customerId);
+export async function redeemLoyaltyReward(rawInput: any) {
+  const input = typeof rawInput === 'number' ? { customerId: rawInput } : rawInput;
+  const targetCustId = Number(input.customerId);
   if (!targetCustId || isNaN(targetCustId)) {
     throw new BadRequestError('ID de cliente inválido');
   }
@@ -872,7 +881,7 @@ export async function redeemLoyaltyReward(customerId: number) {
     include: {
       orders: {
         where: { deliveryStatus: { not: 'CANCELLED' } },
-        select: { quantityBottles: true },
+        select: { quantityBottles: true, totalLiters: true },
       },
     },
   });
@@ -881,14 +890,66 @@ export async function redeemLoyaltyReward(customerId: number) {
     throw new NotFoundError('Cliente no encontrado');
   }
 
-  const totalBottles = customer.orders.reduce((sum, o) => sum + (o.quantityBottles || 1), 0);
+  const totalBottles = Math.round(
+    customer.orders.reduce((sum, o) => sum + (Number(o.totalLiters) || o.quantityBottles || 1), 0) * 100
+  ) / 100;
   const redeemed = customer.loyaltyRedeemedCount || 0;
-  const netBottles = Math.max(0, totalBottles - redeemed * 10);
+  const netBottles = Math.max(0, Math.round((totalBottles - redeemed * 10) * 100) / 100);
 
   if (netBottles < 10) {
     throw new BadRequestError(
-      `El cliente solo tiene ${netBottles % 10} botellas acumuladas en este ciclo. Requiere 10 para canjear 1L gratis.`
+      `El cliente solo tiene ${(netBottles % 10).toFixed(1)} botellas equivalentes acumuladas. Requiere 10 para canjear su premio.`
     );
+  }
+
+  let totalRedeemLiters = 0;
+  let totalBottlesRedeemed = 0;
+  let presentationSummary = '1L';
+
+  if (input.items && Array.isArray(input.items) && input.items.length > 0) {
+    for (const item of input.items) {
+      const unitLiters = resolvePresentationLiters(item.bottleSize);
+      const qty = Number(item.quantity) || 1;
+      totalRedeemLiters += unitLiters * qty;
+      totalBottlesRedeemed += qty;
+    }
+    if (totalRedeemLiters > 1.05) {
+      throw new BadRequestError(
+        `El premio de fidelización permite hasta 1.0 Litro. Volumen seleccionado: ${totalRedeemLiters.toFixed(2)}L`
+      );
+    }
+    presentationSummary = input.items.map((i: any) => `${i.quantity}x ${i.bottleSize}`).join(', ');
+  } else {
+    totalRedeemLiters = 1.0;
+    totalBottlesRedeemed = 1;
+    presentationSummary = '1L';
+  }
+
+  let dischargeId = undefined;
+  if (input.packagingId) {
+    const packaging = await prisma.batchPackaging.findUnique({
+      where: { id: Number(input.packagingId) },
+      select: { id: true, batchId: true },
+    });
+    if (!packaging) {
+      throw new NotFoundError('Fracción de lote envasado no encontrada');
+    }
+
+    const discharge = await prisma.batchDischarge.create({
+      data: {
+        batchId: packaging.batchId,
+        packagingId: packaging.id,
+        bottleSize: presentationSummary,
+        quantityBottles: totalBottlesRedeemed,
+        totalLiters: totalRedeemLiters,
+        unitPrice: 0,
+        totalAmount: 0,
+        reasonType: 'PREMIO_FIDELIZACION',
+        notes: `Premio fidelización 10+1 entregado a ${customer.fullName} (${presentationSummary})`,
+        registeredBy: input.registeredBy || 'Sistema',
+      },
+    });
+    dischargeId = discharge.id;
   }
 
   const updatedCustomer = await prisma.customer.update({
@@ -900,8 +961,10 @@ export async function redeemLoyaltyReward(customerId: number) {
 
   return {
     success: true,
-    message: `¡Premio de 1L gratis canjeado exitosamente para ${customer.fullName}!`,
+    message: `¡Premio de fidelización (${presentationSummary}) canjeado exitosamente para ${customer.fullName}!`,
     loyaltyRedeemedCount: updatedCustomer.loyaltyRedeemedCount,
+    dischargeId,
+    redeemedLiters: totalRedeemLiters,
   };
 }
 
