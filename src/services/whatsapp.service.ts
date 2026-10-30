@@ -769,6 +769,106 @@ class WhatsAppService {
   }
 
   /**
+   * Resuelve o reutiliza la conversación activa de un cliente para un mensaje saliente,
+   * previniendo de forma absoluta la bifurcación o creación de chats duplicados.
+   */
+  public async resolveOrCreateConversationForOutgoing(
+    cleanJid: string,
+    cleanNumber: string,
+    text: string,
+    optionalName?: string,
+    optionalCustomerId?: number,
+    now: Date = new Date()
+  ) {
+    let conversation = await prisma.chatConversation.findUnique({
+      where: { remoteJid: cleanJid },
+      include: { customer: true },
+    });
+
+    if (!conversation) {
+      const last10 = cleanNumber.slice(-10);
+      const matchingCustomer = optionalCustomerId
+        ? await prisma.customer.findUnique({ where: { id: optionalCustomerId } })
+        : await prisma.customer.findFirst({
+            where: {
+              OR: [
+                { phone: cleanNumber },
+                { phone: last10 },
+                { phone: { contains: last10 } },
+              ],
+            },
+          });
+
+      // 1. Si el cliente ya tiene CUALQUIER conversación previa, reutilizarla
+      let existingConv = null;
+      if (matchingCustomer) {
+        existingConv = await prisma.chatConversation.findFirst({
+          where: { customerId: matchingCustomer.id },
+          orderBy: { lastMessageTimestamp: 'desc' },
+          include: { customer: true },
+        });
+      }
+
+      // 2. Si no hay por customerId pero hay un chat huérfano con el mismo número o últimos 10 dígitos
+      if (!existingConv && last10 && last10.length >= 7) {
+        existingConv = await prisma.chatConversation.findFirst({
+          where: {
+            OR: [
+              { phoneNumber: cleanNumber },
+              { phoneNumber: { contains: last10 } },
+              { remoteJid: { contains: last10 } },
+            ],
+          },
+          orderBy: { lastMessageTimestamp: 'desc' },
+          include: { customer: true },
+        });
+      }
+
+      if (existingConv) {
+        conversation = await prisma.chatConversation.update({
+          where: { id: existingConv.id },
+          data: {
+            customerId: existingConv.customerId || matchingCustomer?.id || optionalCustomerId || null,
+            contactName: optionalName || existingConv.contactName || matchingCustomer?.fullName,
+            lastMessageText: text.trim(),
+            lastMessageTimestamp: now,
+            lastMessageFromMe: true,
+          },
+          include: { customer: true },
+        });
+      } else {
+        conversation = await prisma.chatConversation.create({
+          data: {
+            remoteJid: cleanJid,
+            phoneNumber: cleanNumber,
+            contactName: optionalName || matchingCustomer?.fullName || cleanNumber,
+            unreadCount: 0,
+            lastMessageText: text.trim(),
+            lastMessageTimestamp: now,
+            lastMessageFromMe: true,
+            customerId: matchingCustomer?.id || optionalCustomerId || null,
+          },
+          include: { customer: true },
+        });
+      }
+    } else {
+      conversation = await prisma.chatConversation.update({
+        where: { id: conversation.id },
+        data: {
+          contactName: optionalName && (!conversation.contactName || conversation.contactName === cleanNumber) ? optionalName : conversation.contactName,
+          customerId: optionalCustomerId || conversation.customerId,
+          lastMessageText: text.trim(),
+          lastMessageTimestamp: now,
+          lastMessageFromMe: true,
+        },
+        include: { customer: true },
+      });
+    }
+
+    return conversation;
+  }
+
+  /**
    * Envía un mensaje saliente a través de WhatsApp
    */
   public async sendMessage(remoteJid: string, text: string, optionalName?: string, optionalCustomerId?: number) {
@@ -812,75 +912,14 @@ class WhatsAppService {
     const messageId = sentMsg?.key?.id || `OUT-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     const now = new Date();
 
-    let conversation = await prisma.chatConversation.findUnique({
-      where: { remoteJid: cleanJid },
-      include: { customer: true },
-    });
-
-    if (!conversation) {
-      const last10 = cleanNumber.slice(-10);
-      const matchingCustomer = optionalCustomerId
-        ? await prisma.customer.findUnique({ where: { id: optionalCustomerId } })
-        : await prisma.customer.findFirst({
-            where: {
-              OR: [
-                { phone: cleanNumber },
-                { phone: last10 },
-                { phone: { contains: last10 } },
-              ],
-            },
-          });
-
-      // Si existe un chat previo con LID para este mismo cliente, reutilizarlo
-      let existingLidConv = null;
-      if (matchingCustomer) {
-        existingLidConv = await prisma.chatConversation.findFirst({
-          where: {
-            customerId: matchingCustomer.id,
-            remoteJid: { contains: '@lid' },
-          },
-          include: { customer: true },
-        });
-      }
-
-      if (existingLidConv) {
-        conversation = await prisma.chatConversation.update({
-          where: { id: existingLidConv.id },
-          data: {
-            lastMessageText: text.trim(),
-            lastMessageTimestamp: now,
-            lastMessageFromMe: true,
-          },
-          include: { customer: true },
-        });
-      } else {
-        conversation = await prisma.chatConversation.create({
-          data: {
-            remoteJid: cleanJid,
-            phoneNumber: cleanNumber,
-            contactName: optionalName || matchingCustomer?.fullName || cleanNumber,
-            unreadCount: 0,
-            lastMessageText: text.trim(),
-            lastMessageTimestamp: now,
-            lastMessageFromMe: true,
-            customerId: matchingCustomer?.id || optionalCustomerId || null,
-          },
-          include: { customer: true },
-        });
-      }
-    } else {
-      conversation = await prisma.chatConversation.update({
-        where: { id: conversation.id },
-        data: {
-          contactName: optionalName && (!conversation.contactName || conversation.contactName === cleanNumber) ? optionalName : conversation.contactName,
-          customerId: optionalCustomerId || conversation.customerId,
-          lastMessageText: text.trim(),
-          lastMessageTimestamp: now,
-          lastMessageFromMe: true,
-        },
-        include: { customer: true },
-      });
-    }
+    const conversation = await this.resolveOrCreateConversationForOutgoing(
+      cleanJid,
+      cleanNumber,
+      text,
+      optionalName,
+      optionalCustomerId,
+      now
+    );
 
     const savedMessage = await prisma.chatMessage.create({
       data: {

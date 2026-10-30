@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import {
   Gift,
   User,
+  UserPlus,
   Phone,
   MapPin,
   CalendarClock,
@@ -36,6 +37,7 @@ const props = defineProps<ClientChatInfoProps>();
 const emit = defineEmits<{
   (e: 'open-recurring', customer: any): void;
   (e: 'open-merge', conversation: any): void;
+  (e: 'register-customer', conversation: any): void;
   (e: 'unlink', conversation: any): void;
   (e: 'create-order', customer: any): void;
   (e: 'close'): void;
@@ -259,6 +261,18 @@ function handleConfirmUnlink() {
         </span>
 
         <div class="grid grid-cols-1 gap-2">
+          <!-- Botón Registrar como Cliente (cuando NO tiene cliente vinculado) -->
+          <button
+            v-if="!customer"
+            type="button"
+            @click="emit('register-customer', conversation)"
+            class="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-hero-gradient px-3.5 py-2.5 text-xs font-black text-white shadow-card transition-transform active:scale-95"
+            title="Registrar contacto como cliente oficial en el sistema y vincular conversación"
+          >
+            <UserPlus class="h-4 w-4 stroke-[2.5]" />
+            <span>Registrar como Cliente</span>
+          </button>
+
           <!-- Botón Abrir en WhatsApp Oficial -->
           <button
             type="button"

@@ -552,7 +552,7 @@ function handleSmartWhatsApp(customer: CustomerItem) {
     <CustomerModal
       v-model:open="isCustomerModalOpen"
       :customer-to-edit="customerToEdit"
-      @saved="directoryStore.fetchCustomers"
+      @saved="() => directoryStore.fetchCustomers()"
     />
 
     <!-- Modal Rápido de Creación de Pedido -->

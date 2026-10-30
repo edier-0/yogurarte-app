@@ -438,6 +438,57 @@ export const getCustomerById = async (id: number) => {
 };
 
 /**
+ * Autovinculación preventiva de conversaciones huérfanas en el CRM hacia el cliente recién creado o actualizado
+ */
+export const autoLinkConversationsForCustomer = async (
+  customerId: number,
+  phone: string,
+  fullName?: string | null
+) => {
+  const cleanDigits = phone ? phone.replace(/\D/g, '') : '';
+  const last10 = cleanDigits.length >= 7 ? cleanDigits.slice(-10) : null;
+  const username = phone && phone.startsWith('@')
+    ? phone.slice(1).trim()
+    : (!cleanDigits && phone && /[a-zA-Z]/.test(phone) ? phone.trim() : null);
+
+  const orConditions: any[] = [];
+  if (last10) {
+    orConditions.push(
+      { phoneNumber: cleanDigits },
+      { phoneNumber: { contains: last10 } },
+      { remoteJid: { contains: last10 } }
+    );
+  }
+  if (username && username.length >= 2) {
+    orConditions.push(
+      { contactName: { equals: username, mode: 'insensitive' } },
+      { contactName: { contains: username, mode: 'insensitive' } },
+      { phoneNumber: { equals: username, mode: 'insensitive' } },
+      { phoneNumber: { contains: username, mode: 'insensitive' } },
+      { remoteJid: { contains: username, mode: 'insensitive' } }
+    );
+  }
+
+  if (orConditions.length === 0) return;
+
+  const orphanConvs = await prisma.chatConversation.findMany({
+    where: {
+      customerId: null,
+      OR: orConditions,
+    },
+    select: { id: true },
+  });
+
+  if (orphanConvs.length > 0) {
+    const orphanIds = orphanConvs.map((c) => c.id);
+    await prisma.chatConversation.updateMany({
+      where: { id: { in: orphanIds } },
+      data: { customerId },
+    });
+  }
+};
+
+/**
  * Crear o actualizar cliente
  */
 export const createOrUpdateCustomer = async (data: CreateOrUpdateCustomerInput) => {
@@ -454,7 +505,7 @@ export const createOrUpdateCustomer = async (data: CreateOrUpdateCustomerInput) 
     const existing = await prisma.customer.findUnique({ where: { id: Number(id) } });
     if (!existing) throw new NotFoundError('Cliente no encontrado');
 
-    return prisma.customer.update({
+    const updated = await prisma.customer.update({
       where: { id: Number(id) },
       data: {
         fullName: fullName.trim(),
@@ -465,9 +516,12 @@ export const createOrUpdateCustomer = async (data: CreateOrUpdateCustomerInput) 
         isActive: true,
       },
     });
+
+    await autoLinkConversationsForCustomer(updated.id, updated.phone, updated.fullName).catch(() => {});
+    return updated;
   }
 
-  return prisma.customer.create({
+  const created = await prisma.customer.create({
     data: {
       fullName: fullName.trim(),
       phone: cleanPhone,
@@ -477,6 +531,9 @@ export const createOrUpdateCustomer = async (data: CreateOrUpdateCustomerInput) 
       isActive: true,
     },
   });
+
+  await autoLinkConversationsForCustomer(created.id, created.phone, created.fullName).catch(() => {});
+  return created;
 };
 
 /**
@@ -492,7 +549,7 @@ export const updateCustomer = async (id: number, data: UpdateCustomerInput) => {
   const cleanUsername = normalizeWhatsAppUsername(whatsappUsername);
   const cleanPhone = phone !== undefined ? phone.trim() : (cleanUsername ? `@${cleanUsername}` : undefined);
 
-  return prisma.customer.update({
+  const updated = await prisma.customer.update({
     where: { id },
     data: {
       fullName: fullName !== undefined ? fullName.trim() : undefined,
@@ -503,6 +560,12 @@ export const updateCustomer = async (id: number, data: UpdateCustomerInput) => {
       isActive: isActive !== undefined ? Boolean(isActive) : undefined,
     },
   });
+
+  if (updated.phone) {
+    await autoLinkConversationsForCustomer(updated.id, updated.phone, updated.fullName).catch(() => {});
+  }
+
+  return updated;
 };
 
 /**

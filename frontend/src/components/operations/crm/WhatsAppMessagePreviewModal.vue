@@ -20,21 +20,55 @@ import {
   Edit3,
   Sparkles,
   Smartphone,
+  Info,
 } from 'lucide-vue-next';
 import { useCrmStore } from '@/stores/crm.store';
-import { buildWhatsAppUrl } from '@/utils/whatsapp';
+import { buildWhatsAppUrl, isWhatsAppUsername } from '@/utils/whatsapp';
+import { toast } from 'vue-sonner';
 
 const crmStore = useCrmStore();
 
 const editableText = ref('');
 const isSubmitting = ref(false);
+const isCheckingServerChat = ref(false);
+const hasServerChat = ref<boolean | null>(null);
+
+const targetContact = computed(() =>
+  (crmStore.messagePreview.phone || crmStore.messagePreview.contactName || '').trim()
+);
+const isTargetUsername = computed(() => isWhatsAppUsername(targetContact.value));
 
 watch(
   () => crmStore.messagePreview.isOpen,
-  (isOpen) => {
+  async (isOpen) => {
     if (isOpen) {
       editableText.value = crmStore.messagePreview.text || '';
       isSubmitting.value = false;
+
+      // Evaluar si ya viene indicado explícitamente si existe chat activo
+      if (crmStore.messagePreview.hasActiveChat !== undefined && crmStore.messagePreview.hasActiveChat !== null) {
+        hasServerChat.value = crmStore.messagePreview.hasActiveChat;
+      } else if (isTargetUsername.value) {
+        // Para @usuario, consultar al backend si tiene conversación previa activa
+        isCheckingServerChat.value = true;
+        try {
+          hasServerChat.value = await crmStore.checkRecipientHasChat({
+            customerId: crmStore.messagePreview.customerId,
+            phone: crmStore.messagePreview.phone,
+            contactName: crmStore.messagePreview.contactName,
+          });
+        } catch {
+          hasServerChat.value = false;
+        } finally {
+          isCheckingServerChat.value = false;
+        }
+      } else {
+        // Destinatario numérico normal
+        hasServerChat.value = true;
+      }
+    } else {
+      hasServerChat.value = null;
+      isCheckingServerChat.value = false;
     }
   }
 );
@@ -47,15 +81,54 @@ const currentTime = computed(() => {
   return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 });
 
+/**
+ * Canal de despacho proyectado:
+ * - INTERNAL_BAILEYS: Baileys está conectado Y (es número telefónico O es @usuario con chat activo en el servidor)
+ * - EXTERNAL_OFFICIAL: Baileys desconectado O es @usuario sin chat en el servidor (RF-10, RF-11)
+ */
+const deliveryChannel = computed<'INTERNAL_BAILEYS' | 'EXTERNAL_OFFICIAL'>(() => {
+  if (!crmStore.isWhatsAppConnected) {
+    return 'EXTERNAL_OFFICIAL';
+  }
+  if (isTargetUsername.value && hasServerChat.value === false) {
+    return 'EXTERNAL_OFFICIAL';
+  }
+  return 'INTERNAL_BAILEYS';
+});
+
 function handleClose() {
   crmStore.closeMessagePreview();
 }
 
+/**
+ * Confirmación de envío inteligente:
+ * - Si es EXTERNAL_OFFICIAL: abre el enlace oficial de WhatsApp DE FORMA SÍNCRONA en el clic del usuario
+ *   para evitar que las políticas de seguridad del navegador bloqueen la ventana emergente (RNF-3).
+ * - Si es INTERNAL_BAILEYS: despacha por el backend vía Baileys.
+ */
 async function handleConfirm() {
-  if (!editableText.value.trim()) return;
+  const text = editableText.value.trim();
+  if (!text) return;
+
+  if (deliveryChannel.value === 'EXTERNAL_OFFICIAL') {
+    const contact = targetContact.value;
+    const url = crmStore.messagePreview.fallbackUrl || buildWhatsAppUrl(contact, text);
+
+    if (url) {
+      // Apertura síncrona inmediata en el contexto del clic
+      window.open(url, '_blank', 'noopener,noreferrer');
+      toast.info('Abriendo en la aplicación de WhatsApp...', {
+        description: `Destinatario: ${crmStore.messagePreview.contactName || contact}`,
+      });
+    }
+
+    await crmStore.confirmAndSendPreview(text, { skipExternalOpen: true });
+    return;
+  }
+
   isSubmitting.value = true;
   try {
-    await crmStore.confirmAndSendPreview(editableText.value.trim());
+    await crmStore.confirmAndSendPreview(text);
   } finally {
     isSubmitting.value = false;
   }
@@ -65,8 +138,8 @@ function handleSendFromPhone() {
   const text = editableText.value.trim();
   if (!text) return;
 
-  const phone = crmStore.messagePreview.phone || crmStore.messagePreview.contactName || '';
-  const url = buildWhatsAppUrl(phone, text);
+  const contact = targetContact.value;
+  const url = crmStore.messagePreview.fallbackUrl || buildWhatsAppUrl(contact, text);
 
   window.open(url, '_blank', 'noopener,noreferrer');
   handleClose();
@@ -127,10 +200,18 @@ function handleSendFromPhone() {
               </div>
             </div>
 
-            <!-- Canal de Envío (Baileys vs Externo) -->
+            <!-- Canal de Envío (Baileys vs Externo vs Verificando) -->
             <div>
               <span
-                v-if="crmStore.isWhatsAppConnected"
+                v-if="isCheckingServerChat"
+                class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-300/40"
+              >
+                <span class="h-2 w-2 animate-spin rounded-full border-2 border-slate-500 border-t-transparent"></span>
+                <span>Verificando canal...</span>
+              </span>
+
+              <span
+                v-else-if="deliveryChannel === 'INTERNAL_BAILEYS'"
                 class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-500/20"
               >
                 <span class="relative flex h-2 w-2">
@@ -140,6 +221,15 @@ function handleSendFromPhone() {
                 <Radio class="h-3 w-3" />
                 <span>Envío Directo (Baileys)</span>
               </span>
+
+              <span
+                v-else-if="isTargetUsername"
+                class="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-500/20"
+              >
+                <ExternalLink class="h-3 w-3" />
+                <span>WhatsApp Oficial (@usuario)</span>
+              </span>
+
               <span
                 v-else
                 class="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-500/20"
@@ -147,6 +237,20 @@ function handleSendFromPhone() {
                 <ExternalLink class="h-3 w-3" />
                 <span>WhatsApp Web / Enlace</span>
               </span>
+            </div>
+          </div>
+
+          <!-- Alerta informativa para @usuario sin chat en servidor (RF-11) -->
+          <div
+            v-if="isTargetUsername && hasServerChat === false"
+            class="rounded-2xl border border-amber-200/80 bg-amber-50/70 p-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200 flex items-start gap-2.5"
+          >
+            <Info class="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+            <div class="leading-relaxed">
+              <p class="font-bold">Canal: WhatsApp Oficial (@usuario)</p>
+              <p class="text-[11px] text-amber-800/90 dark:text-amber-300/90 mt-0.5">
+                El cliente está registrado con el usuario <span class="font-mono font-bold">{{ targetContact }}</span> y aún no tiene historial en el servidor. Al confirmar, se abrirá la aplicación oficial de WhatsApp con tu mensaje precargado de forma instantánea sin bloqueos del navegador.
+              </p>
             </div>
           </div>
 
@@ -211,11 +315,23 @@ function handleSendFromPhone() {
             <span>Enviar desde mi teléfono</span>
           </button>
 
-          <!-- Botón de Envío por el CRM -->
+          <!-- Botón de Envío por el CRM o WhatsApp Oficial -->
           <button
+            v-if="deliveryChannel === 'EXTERNAL_OFFICIAL'"
             type="button"
             @click="handleConfirm"
-            :disabled="!editableText.trim() || isSubmitting"
+            :disabled="!editableText.trim() || isSubmitting || isCheckingServerChat"
+            class="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
+          >
+            <ExternalLink class="h-4 w-4 stroke-[2.5]" />
+            <span>Abrir en WhatsApp Oficial</span>
+          </button>
+
+          <button
+            v-else
+            type="button"
+            @click="handleConfirm"
+            :disabled="!editableText.trim() || isSubmitting || isCheckingServerChat"
             class="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
           >
             <Send v-if="!isSubmitting" class="h-4 w-4 stroke-[2.5]" />

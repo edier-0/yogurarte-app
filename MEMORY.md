@@ -3,20 +3,25 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 
 ## Estado actual
 - ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
-- Spec 008 completada e implementada al 100%: Sincronización integral de pedidos, fracciones Fase B (`packagingId`) y consolidación en auditoría de lotes (`linkedOrders`).
-- Script de reconciliación `scripts/reconcile_orders_phase_b.ts` ejecutado en producción (Neon): comanda de Fresa y Natural asociadas a sus fracciones con balance de stock cuadrando a 0 discrepancias.
-- Typecheck (`npx tsc --noEmit`), build Vite (`npm --prefix frontend run build`) y tests de integración (`tests/orders_batch_sync.test.ts`, `tests/orders.test.ts`) 100% en verde (32/32 tests pasando).
-- Rama actual: `fix/sincronizacion-pedidos-lotes-auditoria-fase-b`.
+- Spec 009 completada e implementada en rama `feat/registro-cliente-chat-unificacion-whatsapp`.
+- Tareas completadas:
+  - T1: Autovinculación preventiva de chats huérfanos al crear/actualizar clientes.
+  - T2: Prevención de bifurcación de chats en `whatsappService.sendMessage`.
+  - T3: Resolución de JID canónico para `@usuario` y robustecimiento de `mergeChats` y `linkCustomer`.
+  - T4: Propagación de cliente guardado en `CustomerModal.vue` y `customerId` en despachos.
+  - T5: Botón `[+ Registrar cliente]` en barra de chat y panel lateral con vinculación atómica inmediata.
+  - T6: Enrutamiento inteligente de `@usuario` y prevención síncrona de bloqueo de popups en WhatsApp oficial.
+- Pruebas y compilación en verde: backend (`crm_chat_customer_sync.test.ts`, `crm.test.ts`) y frontend (`vue-tsc` + Vite build) 100% operativos.
 
 ## Decisiones (y por qué)
-- Proyección de `packagingId`: `getOrders` y `getOrderById` ahora proyectan siempre `packagingId` y `packaging: { select: { id, packagingCode, flavor } }` para que la UI nunca pierda la relación con Fase B al editar.
-- Consolidación en `getBatchSummary`: los pedidos vinculados al lote no solo se leen de `batch.orders`, sino de `orderItems` directos y de `packagings.orderItems`, sumando el 100% de botellas y litros vendidos.
-- Formulario de pedidos (`OrderFormModal`): filtrado de fracción por coincidencia estricta de sabor (`p.flavor.toLowerCase() === item.flavor.toLowerCase()`) y preservación de la fracción asignada aunque `freeLiters` sea 0.
-- Refresco reactivo: `operationsStore` llama a `productionStore.fetchAvailablePackagings()` en mutaciones de pedidos, y `DashboardView` escucha `@saved` para refrescar los chips de stock de inmediato.
+- Botón directo en chat: incorporar botón `[+ Registrar cliente]` en encabezado y barra lateral del chat para precargar modal y vincular atómicamente la conversación.
+- Autovinculación preventiva: `createOrUpdateCustomer` y `sendMessage` asocian automáticamente chats huérfanos para evitar bifurcación al despachar mensajes predeterminados.
+- Reutilización estricta: `resolveOrCreateConversationForOutgoing` reutiliza cualquier conversación existente del cliente o terminación de 10 dígitos antes de crear un nuevo registro.
+- Prevención síncrona de popup blocker: para destinatarios `@usuario` sin chat previo o con sesión desconectada, `window.open` se dispara de forma síncrona en el contexto del clic del usuario antes de cualquier resolución de promesas asíncronas.
 
 ## Aprendizajes y errores a evitar
-- Los pedidos multi-sabor no guardan `batchId` en la cabecera del pedido (es null); viven en los ítems de `OrderItem` y `BatchPackaging`. Cualquier consolidación de auditoría debe consultar ambas vías.
-- Al editar un pedido, si el selector de fracciones solo busca por `batchId` sin filtrar por sabor, asigna fracciones incorrectas cuando un lote madre tiene múltiples sabores envasados.
+- No intentar `window.open` tras una promesa asíncrona de red; el navegador bloquea la ventana emergente por expiración del contexto de usuario transitorio.
+- En Baileys, los mensajes requieren JIDs válidos (@s.whatsapp.net o @lid); los @usuarios de WhatsApp deben resolverse contra la conversación existente en base de datos o abrirse en WhatsApp oficial.
 
 ## Próximos pasos
-- Ejecutar ciclo Git de integración: commit, push de rama temática, Pull Request a `develop`, sincronización, merge directo a `main` y solicitud de confirmación para borrar la rama.
+- Realizar commit de las tareas finalizadas y proceder con el ciclo Git (push, PR a `develop`, merge a `main`).
