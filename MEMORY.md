@@ -7,7 +7,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
   - Presentaciones dinámicas y sin 1L/2L hardcodeados en Fase B.
   - Entregas, salidas y auditoría de botellas exclusivas de Fase B (`BatchPackaging`).
   - Alerta de fidelización 10+1 en toma de pedidos con acceso directo a CRM.
-- Spec 010 completada (T1 a T6) y fusionada en `develop` (PR #25) y `main`:
+- Spec 010 completada (T1 a T6), fusionada en `develop` (PR #25) y `main`, rama temática eliminada con autorización:
   - T1: Backend CRM `customerId` en `getLoyaltyOverview` para respuesta en milisegundos.
   - T2: Segregación dinámica de salidas de fidelización (`loyaltyDischarged` a $0 COP) en `batches.service.ts`.
   - T3: Suite automatizada de integración `tests/loyalty_phase_b_audit.test.ts` (4/4 verde).
@@ -28,4 +28,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - No eliminar ramas locales ni remotas sin autorización explícita previa del usuario.
 
 ## Próximos pasos
-- Consultar autorización explícita al usuario para eliminar la rama temática `feat/auditoria-fase-b-dinamica-y-alerta-fidelizacion` (local y remota).
+- Repositorio limpio y sincronizado en `develop` y `main` (rama temática Spec 010 eliminada). Listo para la siguiente spec o requerimiento.
