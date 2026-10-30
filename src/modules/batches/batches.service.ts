@@ -2949,9 +2949,11 @@ export function computePackagingPresentations(pkg: any) {
 
   const presentations = rawPresentations.map((p) => {
     // Determinar unidades vendidas
+    const s2 = (p.containerName || '').toLowerCase().replace(/\s+/g, '');
     const matchingOrderItems = orderItems.filter((it: any) => {
-      const sizeMatch = it.bottleSize?.toLowerCase().trim() === p.containerName?.toLowerCase().trim();
-      const capMatch = Math.abs((it.litersPerUnit || 1) - p.capacityLiters) < 0.01;
+      const s1 = (it.bottleSize || '').toLowerCase().replace(/\s+/g, '');
+      const sizeMatch = s1 === s2 || (s1 && s2 && (s1.includes(s2) || s2.includes(s1)));
+      const capMatch = Math.abs((Number(it.litersPerUnit) || 1) - p.capacityLiters) < 0.01;
       return sizeMatch || capMatch;
     });
     const sold = matchingOrderItems.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
@@ -2991,7 +2993,8 @@ export function computePackagingPresentations(pkg: any) {
 
     // Determinar unidades retiradas / dadas de baja
     const matchingDischarges = discharges.filter((d: any) => {
-      const sizeMatch = d.bottleSize?.toLowerCase().trim() === p.containerName?.toLowerCase().trim();
+      const dSize = (d.bottleSize || '').toLowerCase().replace(/\s+/g, '');
+      const sizeMatch = dSize === s2 || (dSize && s2 && (dSize.includes(s2) || s2.includes(dSize)));
       const unitLiters = d.quantityBottles > 0 ? d.totalLiters / d.quantityBottles : d.totalLiters;
       const capMatch = Math.abs(unitLiters - p.capacityLiters) < 0.01;
       return sizeMatch || capMatch;

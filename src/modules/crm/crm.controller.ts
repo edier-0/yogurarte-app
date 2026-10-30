@@ -126,7 +126,10 @@ export const getLoyaltyOverview = async (req: Request, res: Response, next: Next
 
 export const redeemLoyaltyReward = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await crmService.redeemLoyaltyReward(req.body.customerId);
+    const result = await crmService.redeemLoyaltyReward({
+      ...req.body,
+      registeredBy: (req as any).user?.username || (req as any).user?.name || 'Sistema',
+    });
     res.json(result);
   } catch (error) {
     next(error);

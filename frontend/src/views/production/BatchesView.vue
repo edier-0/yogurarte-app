@@ -11,6 +11,7 @@ import {
   Search,
   RefreshCw,
   Sparkles,
+  Layers,
   PackageCheck,
   Eye,
   ChevronLeft,
@@ -30,6 +31,7 @@ import { useConfirm } from '@/composables/useConfirm';
 import { http } from '@/api/client';
 import BatchModal from '@/components/production/BatchModal.vue';
 import FlavorsManagementModal from '@/components/production/FlavorsManagementModal.vue';
+import PresentationsManagementModal from '@/components/production/PresentationsManagementModal.vue';
 import PackagingModal from '@/components/production/PackagingModal.vue';
 import BatchSummaryModal from '@/components/production/BatchSummaryModal.vue';
 import PackagingSummaryModal from '@/components/production/PackagingSummaryModal.vue';
@@ -43,6 +45,7 @@ const activeMainTab = ref<'BASE' | 'PACKAGING'>('BASE');
 
 const isBatchModalOpen = ref(false);
 const isFlavorsModalOpen = ref(false);
+const isPresentationsModalOpen = ref(false);
 const selectedBatchToEdit = ref<BatchItem | null>(null);
 
 // Modal Finalizar Fermentación
@@ -66,6 +69,7 @@ onMounted(() => {
   productionStore.fetchBatchesMetrics();
   productionStore.fetchPackagings(1);
   productionStore.fetchFlavors();
+  productionStore.fetchPresentations();
 });
 
 // Formateador de fecha en Colombia
@@ -276,6 +280,17 @@ watch(activeMainTab, (newTab) => {
           <Sparkles class="h-4 w-4 stroke-[2]" />
           <span class="hidden sm:inline">Gestionar Sabores</span>
           <span class="sm:hidden">Sabores</span>
+        </button>
+
+        <button
+          type="button"
+          @click="isPresentationsModalOpen = true"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3.5 py-2.5 text-xs font-bold text-indigo-700 shadow-sm transition-all active:scale-95 hover:bg-indigo-100/80 dark:border-indigo-800/40 dark:bg-indigo-950/30 dark:text-indigo-300 dark:hover:bg-indigo-900/40"
+          title="Gestionar catálogo de presentaciones y precios"
+        >
+          <Layers class="h-4 w-4 stroke-[2]" />
+          <span class="hidden sm:inline">Presentaciones</span>
+          <span class="sm:hidden">Formatos</span>
         </button>
 
         <button
@@ -1066,6 +1081,8 @@ watch(activeMainTab, (newTab) => {
     />
 
     <FlavorsManagementModal v-model:open="isFlavorsModalOpen" />
+
+    <PresentationsManagementModal v-model:open="isPresentationsModalOpen" />
 
     <PackagingModal
       v-model:open="isPackagingModalOpen"

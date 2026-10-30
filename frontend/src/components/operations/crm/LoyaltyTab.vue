@@ -17,6 +17,7 @@ import {
 import { http } from '@/api/client';
 import { toast } from 'vue-sonner';
 import { useCrmStore } from '@/stores/crm.store';
+import RedeemRewardModal from './RedeemRewardModal.vue';
 
 export interface LoyaltyCustomerItem {
   id: number;
@@ -59,6 +60,8 @@ const searchQuery = ref('');
 const debouncedSearch = refDebounced(searchQuery, 350);
 const isLoading = ref(false);
 const isRedeemingId = ref<number | null>(null);
+const isRedeemModalOpen = ref(false);
+const selectedCustomerForRedeem = ref<LoyaltyCustomerItem | null>(null);
 
 // Resumen de Métricas Globales
 const metrics = computed(() => {
@@ -105,27 +108,10 @@ watch(debouncedSearch, () => {
 });
 
 // Canjear Premio de 1L Gratis
-async function handleRedeemReward(cust: LoyaltyCustomerItem) {
+function handleRedeemReward(cust: LoyaltyCustomerItem) {
   if (cust.rewardsAvailable <= 0) return;
-
-  const confirmed = window.confirm(
-    `¿Confirmas la redención de 1 Litro gratis para ${cust.fullName}? Se descontarán 10 botellas acumuladas del saldo promocional.`
-  );
-  if (!confirmed) return;
-
-  isRedeemingId.value = cust.id;
-  try {
-    const res = await http.post<{ success: boolean; message: string }>('/crm/loyalty/redeem', {
-      customerId: cust.id,
-    });
-
-    toast.success(res?.message || `Premio de 1L gratis redimido para ${cust.fullName}`);
-    await fetchLoyaltyData(pagination.value.page);
-  } catch (err: any) {
-    toast.error(err?.response?.data?.error || 'No se pudo redimir el premio');
-  } finally {
-    isRedeemingId.value = null;
-  }
+  selectedCustomerForRedeem.value = cust;
+  isRedeemModalOpen.value = true;
 }
 
 // Notificar por WhatsApp institucional
@@ -414,4 +400,9 @@ onMounted(() => {
       </div>
     </div>
   </div>
+  <RedeemRewardModal
+      v-model:open="isRedeemModalOpen"
+      :customer="selectedCustomerForRedeem"
+      @redeemed="fetchLoyaltyData(pagination.page)"
+    />
 </template>

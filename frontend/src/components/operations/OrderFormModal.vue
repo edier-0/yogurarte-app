@@ -63,10 +63,39 @@ const activeCatalogFlavors = computed(() => {
   ];
 });
 
-const BOTTLE_SIZES = [
-  { label: '1 Litro (1L)', value: '1L', defaultPrice: 12000 },
-  { label: '2 Litros (2L)', value: '2L', defaultPrice: 22000 },
-];
+const availableBottleSizes = computed(() => {
+  if (productionStore.activePresentations && productionStore.activePresentations.length > 0) {
+    return productionStore.activePresentations.map((p) => ({
+      label: p.label || `${p.name} (${p.capacityLiters}L)`,
+      value: p.name,
+      defaultPrice: p.defaultPrice,
+      capacityLiters: p.capacityLiters,
+    }));
+  }
+  return [
+    { label: '1 Litro (1L)', value: '1L', defaultPrice: 12000, capacityLiters: 1.0 },
+    { label: '2 Litros (2L)', value: '2L', defaultPrice: 24000, capacityLiters: 2.0 },
+    { label: '500 ml (Medio Litro)', value: '500ml', defaultPrice: 8000, capacityLiters: 0.5 },
+  ];
+});
+
+function getDefaultPriceForSize(sizeName?: string | null, pkg?: any): number {
+  if (!sizeName) return 12000;
+  if (pkg) {
+    if (sizeName === '1L' && pkg.price1L) return pkg.price1L;
+    if (sizeName === '2L' && pkg.price2L) return pkg.price2L;
+    if (Array.isArray(pkg.presentations)) {
+      const match = pkg.presentations.find((p: any) => p.containerName?.toLowerCase() === sizeName.toLowerCase());
+      if (match && match.price) return match.price;
+    }
+  }
+  const found = availableBottleSizes.value.find((s) => s.value.toLowerCase() === sizeName.toLowerCase());
+  if (found) return found.defaultPrice;
+  const clean = sizeName.trim().toLowerCase();
+  if (clean === '2l' || clean.includes('2l')) return 24000;
+  if (clean === '500ml' || clean.includes('500') || clean.includes('medio')) return 8000;
+  return 12000;
+}
 
 // Estado del formulario
 const customerId = ref<number | null>(null);
@@ -158,11 +187,7 @@ function setItemSelectionKey(item: OrderItem, key: string) {
       item.batchId = pkg.batchId;
       item.flavor = pkg.flavor;
       if (!isCustomUnitPrice(item)) {
-        if (item.bottleSize === '2L' && pkg.price2L) {
-          item.unitPrice = pkg.price2L;
-        } else if (item.bottleSize === '1L' && pkg.price1L) {
-          item.unitPrice = pkg.price1L;
-        }
+        item.unitPrice = getDefaultPriceForSize(item.bottleSize, pkg);
       }
       onItemChange(item);
     }
@@ -211,14 +236,16 @@ const selectCustomer = (c: { id: number; fullName: string; phone: string; addres
 // Items helpers
 const addItem = () => {
   const defaultPkg = activePackagings.value[0];
+  const initialSize = availableBottleSizes.value[0]?.value || '1L';
+  const initialPrice = getDefaultPriceForSize(initialSize, defaultPkg);
   items.value.push({
     batchId: defaultPkg ? defaultPkg.batchId : null,
     packagingId: defaultPkg ? defaultPkg.id : null,
-    bottleSize: '1L',
+    bottleSize: initialSize,
     flavor: defaultPkg ? defaultPkg.flavor : (activeCatalogFlavors.value[0] || 'Natural'),
     quantity: 1,
-    unitPrice: defaultPkg?.price1L || 12000,
-    totalPrice: defaultPkg?.price1L || 12000,
+    unitPrice: initialPrice,
+    totalPrice: initialPrice,
   });
 };
 
@@ -228,17 +255,24 @@ const removeItem = (idx: number) => {
   }
 };
 
+const onBottleSizeChange = (item: OrderItem) => {
+  const defaultPkg = item.packagingId ? activePackagings.value.find((p) => p.id === item.packagingId) : null;
+  item.unitPrice = getDefaultPriceForSize(item.bottleSize, defaultPkg);
+  onItemChange(item);
+};
+
 const onItemChange = (item: OrderItem) => {
-  const sizeObj = BOTTLE_SIZES.find((s) => s.value === item.bottleSize);
-  if (sizeObj && !item.unitPrice) {
-    item.unitPrice = sizeObj.defaultPrice;
+  if (item.unitPrice === undefined || item.unitPrice === null || (item.unitPrice as any) === '') {
+    const defaultPkg = item.packagingId ? activePackagings.value.find((p) => p.id === item.packagingId) : null;
+    item.unitPrice = getDefaultPriceForSize(item.bottleSize, defaultPkg);
   }
-  item.totalPrice = (item.quantity || 1) * (item.unitPrice || 0);
+  item.totalPrice = (item.quantity || 1) * (Number(item.unitPrice) || 0);
 };
 
 function isCustomUnitPrice(item: OrderItem): boolean {
-  const sizeObj = BOTTLE_SIZES.find((s) => s.value === item.bottleSize);
-  return sizeObj ? Number(item.unitPrice) !== sizeObj.defaultPrice : false;
+  const defaultPkg = item.packagingId ? activePackagings.value.find((p) => p.id === item.packagingId) : null;
+  const def = getDefaultPriceForSize(item.bottleSize, defaultPkg);
+  return Number(item.unitPrice) !== def;
 }
 
 // Control de modo de descuento
@@ -257,6 +291,14 @@ function setDiscountMode(mode: 'NONE' | 'PERCENTAGE' | 'FIXED') {
 // Totales automáticos
 const itemsSubtotal = computed(() => {
   return items.value.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0);
+});
+
+const totalOrderLiters = computed(() => {
+  return items.value.reduce((acc, it) => {
+    const sizeObj = availableBottleSizes.value.find((s) => s.value.toLowerCase() === (it.bottleSize || '').toLowerCase());
+    const cap = sizeObj ? sizeObj.capacityLiters : (it.bottleSize === '2L' ? 2.0 : it.bottleSize === '500ml' ? 0.5 : 1.0);
+    return acc + (Number(it.quantity) || 1) * cap;
+  }, 0);
 });
 
 const discountAmount = computed(() => {
@@ -287,6 +329,7 @@ watch(
       if (store.customers.length === 0) store.fetchCustomers();
       if (store.drivers.length === 0) store.fetchDrivers();
       if (productionStore.flavors.length === 0) productionStore.fetchFlavors();
+        productionStore.fetchPresentations();
 
       // Cargar fracciones envasadas disponibles en Fase B
       const availablePkgs = await productionStore.fetchAvailablePackagings();
@@ -435,7 +478,7 @@ const handleSubmit = async () => {
           bottleSize: it.bottleSize || '1L',
           flavor: it.flavor || 'Natural',
           quantity: Math.max(1, Number(it.quantity) || 1),
-          unitPrice: Math.max(0, Number(it.unitPrice) || (it.bottleSize === '2L' ? 22000 : 12000)),
+          unitPrice: Math.max(0, Number(it.unitPrice) || getDefaultPriceForSize(it.bottleSize)),
         };
       }),
     };
@@ -587,9 +630,14 @@ const formatCurrency = (val: number) => {
           <!-- 2. Sección Productos / Ítems vinculados a Lote o Pre-venta -->
           <div class="rounded-2xl bg-surface-light-canvas p-4 dark:bg-surface-dark-canvas space-y-4">
             <div class="flex items-center justify-between">
-              <span class="text-xs font-extrabold uppercase tracking-wide text-brand-800 dark:text-brand-darkText">
-                2. Productos y Sabores de Yogur
-              </span>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-extrabold uppercase tracking-wide text-brand-800 dark:text-brand-darkText">
+                  2. Productos y Sabores de Yogur
+                </span>
+                <span class="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+                  Total: {{ totalOrderLiters.toFixed(1) }} L
+                </span>
+              </div>
               <button
                 type="button"
                 @click="addItem"
@@ -663,10 +711,10 @@ const formatCurrency = (val: number) => {
                   <label class="block text-[10px] font-bold uppercase text-slate-400 mb-0.5">Presentación</label>
                   <select
                     v-model="item.bottleSize"
-                    @change="onItemChange(item)"
+                    @change="onBottleSizeChange(item)"
                     class="w-full rounded-lg border border-slate-200 bg-surface-light-canvas py-1.5 px-2 text-xs font-semibold dark:border-slate-700 dark:bg-surface-dark-canvas"
                   >
-                    <option v-for="sz in BOTTLE_SIZES" :key="sz.value" :value="sz.value">{{ sz.label }}</option>
+                    <option v-for="sz in availableBottleSizes" :key="sz.value" :value="sz.value">{{ sz.label }}</option>
                   </select>
                 </div>
 

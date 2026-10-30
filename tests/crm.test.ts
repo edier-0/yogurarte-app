@@ -295,6 +295,136 @@ describe('CRM & WhatsApp Endpoints', () => {
     });
   });
 
+  describe('Fidelización Proporcional y Canje Flexible (Spec 004)', () => {
+    it('GET /api/crm/loyalty debe acumular botellas equivalentes proporcionalmente según totalLiters (500ml = 0.5 botellas)', async () => {
+      const customer = await prisma.customer.create({
+        data: {
+          fullName: 'Cliente Fidelización Proporcional ' + Date.now(),
+          phone: `311${Date.now().toString().slice(-7)}`,
+          address: 'Fonseca, Calle 15',
+        },
+      });
+
+      const order = await prisma.order.create({
+        data: {
+          orderNumber: `TEST-LOYALTY-${Date.now()}`,
+          customerId: customer.id,
+          bottleSize: '500ml',
+          quantityBottles: 4,
+          totalLiters: 2.0,
+          flavor: 'Fresa',
+          unitPrice: 8000,
+          totalAmount: 32000,
+          paidAmount: 32000,
+          pendingAmount: 0,
+          paymentStatus: 'PAID',
+          deliveryStatus: 'DELIVERED',
+        },
+      });
+
+      const res = await request(app)
+        .get(`/api/crm/loyalty?search=${encodeURIComponent(customer.fullName)}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      const found = res.body.customers.find((c) => c.id === customer.id);
+      expect(found).toBeDefined();
+      expect(found.totalBottles).toBe(2.0);
+      expect(found.currentCycleBottles).toBe(2.0);
+      expect(found.progressPercent).toBe(20);
+      expect(found.bottlesNeeded).toBe(8.0);
+
+      await prisma.order.deleteMany({ where: { id: order.id } });
+      await prisma.customer.deleteMany({ where: { id: customer.id } });
+    });
+
+    it('POST /api/crm/loyalty/redeem debe validar que el canje no supere 1.0L y permitir fraccionamiento de lote', async () => {
+      const customer = await prisma.customer.create({
+        data: {
+          fullName: 'Cliente Canje Flexible ' + Date.now(),
+          phone: `312${Date.now().toString().slice(-7)}`,
+          address: 'Fonseca, Calle 18',
+        },
+      });
+
+      const order = await prisma.order.create({
+        data: {
+          orderNumber: `TEST-REDEEM-${Date.now()}`,
+          customerId: customer.id,
+          bottleSize: '500ml',
+          quantityBottles: 20,
+          totalLiters: 10.0,
+          flavor: 'Fresa',
+          unitPrice: 8000,
+          totalAmount: 160000,
+          paidAmount: 160000,
+          pendingAmount: 0,
+          paymentStatus: 'PAID',
+          deliveryStatus: 'DELIVERED',
+        },
+      });
+
+      const batch = await prisma.productionBatch.create({
+        data: {
+          batchCode: `TEST-BATCH-LOYALTY-${Date.now()}`,
+          milkUsedLiters: 10,
+          totalLitersProduced: 10,
+          yieldPercentage: 100,
+          flavor: 'Fresa',
+        },
+      });
+
+      const packaging = await prisma.batchPackaging.create({
+        data: {
+          batchId: batch.id,
+          flavor: 'Fresa',
+          bottles1L: 5,
+          totalLiters: 5,
+        },
+      });
+
+      const rejectRes = await request(app)
+        .post('/api/crm/loyalty/redeem')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customerId: customer.id,
+          packagingId: packaging.id,
+          items: [{ bottleSize: '1L', quantity: 2 }],
+        });
+
+      expect(rejectRes.status).toBe(400);
+
+      const successRes = await request(app)
+        .post('/api/crm/loyalty/redeem')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customerId: customer.id,
+          packagingId: packaging.id,
+          items: [{ bottleSize: '500ml', quantity: 2 }],
+        });
+
+      expect(successRes.status).toBe(200);
+      expect(successRes.body).toHaveProperty('success', true);
+      expect(successRes.body.loyaltyRedeemedCount).toBe(1);
+
+      const discharge = await prisma.batchDischarge.findFirst({
+        where: {
+          packagingId: packaging.id,
+          reasonType: 'PREMIO_FIDELIZACION',
+        },
+      });
+      expect(discharge).toBeDefined();
+      expect(discharge.totalAmount).toBe(0);
+      expect(discharge.totalLiters).toBe(1.0);
+
+      await prisma.batchDischarge.deleteMany({ where: { packagingId: packaging.id } });
+      await prisma.batchPackaging.deleteMany({ where: { id: packaging.id } });
+      await prisma.productionBatch.deleteMany({ where: { id: batch.id } });
+      await prisma.order.deleteMany({ where: { id: order.id } });
+      await prisma.customer.deleteMany({ where: { id: customer.id } });
+    });
+  });
+
   afterAll(async () => {
     if (createdQuickReplyId) {
       await prisma.crmQuickReply.deleteMany({
