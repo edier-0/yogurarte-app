@@ -3,20 +3,18 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 
 ## Estado actual
 - ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
-- Spec 008 completada e implementada al 100%: Sincronización integral de pedidos, fracciones Fase B (`packagingId`) y consolidación en auditoría de lotes (`linkedOrders`).
-- Script de reconciliación `scripts/reconcile_orders_phase_b.ts` ejecutado en producción (Neon): comanda de Fresa y Natural asociadas a sus fracciones con balance de stock cuadrando a 0 discrepancias.
-- Typecheck (`npx tsc --noEmit`), build Vite (`npm --prefix frontend run build`) y tests de integración (`tests/orders_batch_sync.test.ts`, `tests/orders.test.ts`) 100% en verde (32/32 tests pasando).
-- Rama actual: `fix/sincronizacion-pedidos-lotes-auditoria-fase-b`.
+- Spec 009 aprobada por el usuario: Registro de clientes desde el chat, unificación de hilos y mensajería WhatsApp por usuario.
+- Rama temática creada: `feat/registro-cliente-chat-unificacion-whatsapp`.
+- Plan de arquitectura (`plan.md`) y Desglose de tareas (`tasks.md`) elaborados (6 tareas atómicas ordenadas).
 
 ## Decisiones (y por qué)
-- Proyección de `packagingId`: `getOrders` y `getOrderById` ahora proyectan siempre `packagingId` y `packaging: { select: { id, packagingCode, flavor } }` para que la UI nunca pierda la relación con Fase B al editar.
-- Consolidación en `getBatchSummary`: los pedidos vinculados al lote no solo se leen de `batch.orders`, sino de `orderItems` directos y de `packagings.orderItems`, sumando el 100% de botellas y litros vendidos.
-- Formulario de pedidos (`OrderFormModal`): filtrado de fracción por coincidencia estricta de sabor (`p.flavor.toLowerCase() === item.flavor.toLowerCase()`) y preservación de la fracción asignada aunque `freeLiters` sea 0.
-- Refresco reactivo: `operationsStore` llama a `productionStore.fetchAvailablePackagings()` en mutaciones de pedidos, y `DashboardView` escucha `@saved` para refrescar los chips de stock de inmediato.
+- Botón directo en chat: incorporar botón `[+ Registrar cliente]` en encabezado y barra lateral del chat para precargar modal y vincular atómicamente la conversación.
+- Autovinculación preventiva: `createOrUpdateCustomer` y `sendMessage` asociarán automáticamente chats existentes no vinculados por número o @usuario para evitar bifurcación al despachar mensajes predeterminados.
+- Resolución híbrida @usuario: si el cliente con @usuario tiene chat en el CRM, despachar internamente con su JID activo; si es nuevo sin chat previo, abrir WhatsApp oficial sin bloqueo de popups.
 
 ## Aprendizajes y errores a evitar
-- Los pedidos multi-sabor no guardan `batchId` en la cabecera del pedido (es null); viven en los ítems de `OrderItem` y `BatchPackaging`. Cualquier consolidación de auditoría debe consultar ambas vías.
-- Al editar un pedido, si el selector de fracciones solo busca por `batchId` sin filtrar por sabor, asigna fracciones incorrectas cuando un lote madre tiene múltiples sabores envasados.
+- No intentar `window.open` tras una promesa asíncrona rechazada; el navegador bloquea la ventana emergente por expiración del contexto de usuario.
+- En Baileys, los mensajes requieren JIDs válidos (@s.whatsapp.net o @lid); los @usuarios de WhatsApp deben resolverse contra la conversación existente en base de datos.
 
 ## Próximos pasos
-- Ejecutar ciclo Git de integración: commit, push de rama temática, Pull Request a `develop`, sincronización, merge directo a `main` y solicitud de confirmación para borrar la rama.
+- Presentar el plan y las tareas al usuario para su aprobación e iniciar la implementación atómica TDD con la Tarea 1.
