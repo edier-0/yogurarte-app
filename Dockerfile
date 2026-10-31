@@ -1,59 +1,30 @@
 # ==============================================================================
-# STAGE 1: Builder
-# ==============================================================================
-FROM node:20-alpine AS builder
-
-# Instalar dependencias necesarias para compilar Prisma en Alpine y actualizar npm a v11
-RUN apk add --no-cache openssl libc6-compat && npm install -g npm@11
-
-WORKDIR /app
-
-# Copiar manifiestos de dependencias y configuración de TypeScript
-COPY package*.json ./
-COPY tsconfig.json ./
-COPY prisma ./prisma/
-COPY frontend/package*.json ./frontend/
-
-# Instalar dependencias completas de manera reproducible
-RUN npm ci
-RUN npm --prefix frontend ci
-
-# Generar cliente de Prisma
-RUN npx prisma generate
-
-# Copiar código fuente backend y frontend
-COPY src ./src/
-COPY frontend ./frontend/
-
-# Compilar frontend (genera public/index.html y public/assets/)
-RUN npm --prefix frontend run build
-
-# Compilar TypeScript a JavaScript limpio (dist/)
-RUN npx tsc
-
-# ==============================================================================
-# STAGE 2: Runner de Producción (Hardened & Lean)
+# STAGE: Runner de Producción (Hardened, Lean & Offline-Ready)
 # ==============================================================================
 FROM node:20-alpine AS runner
 
-# Instalar utilidades de runtime seguras (dumb-init para gestión PID 1) y actualizar npm a v11
-RUN apk add --no-cache openssl libc6-compat dumb-init dos2unix && npm install -g npm@11
+# Instalar utilidades de runtime seguras (dumb-init para gestión PID 1)
+RUN apk add --no-cache openssl libc6-compat dumb-init dos2unix
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV CHECKPOINT_DISABLE=1
+ENV PRISMA_HIDE_UPDATE_MESSAGE=true
 
-# Copiar manifiestos e instalar ÚNICAMENTE dependencias de producción
+# Copiar manifiestos y esquemas necesarios para runtime y migraciones
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm ci --omit=dev
-RUN npx prisma generate
+# Copiar dependencias (incluye cliente y motor nativo de Linux generado por Prisma)
+COPY node_modules ./node_modules
 
-# Copiar artefactos compilados desde el builder (tanto dist como public completo con assets)
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/public ./public
+# Copiar artefactos compilados del backend (dist/) y frontend (public/)
+COPY dist ./dist
+COPY public ./public
+
+# Copiar script de entrypoint
 COPY docker-entrypoint.sh ./
 
 # Crear carpetas de runtime y configurar permisos seguros para usuario no root

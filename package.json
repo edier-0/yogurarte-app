@@ -90,7 +90,6 @@
   "overrides": {
     "compression": "^1.8.2",
     "proxy-addr": "^2.0.8",
-    "sharp": "^0.35.5",
     "source-map-js": "^1.2.2",
     "ip-address": "^10.7.4",
     "music-metadata": "^11.16.1",
