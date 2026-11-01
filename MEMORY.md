@@ -7,26 +7,22 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
   - Directiva Git: aislamiento en ramas dedicadas, cero merges locales a ramas base, integración vía PR.
   - Protocolo de consultas: preguntar antes de abrir PR y antes de fusionarlo (salvo instrucción explícita de ejecutar todo).
   - El agente crea y fusiona el PR; confirmación obligatoria para eliminar ramas (local/remoto).
-  - Presentaciones dinámicas en Fase B, salidas exclusivas en Fase B y alerta de fidelización 10+1.
 - Spec 010 completada (T1 a T6), fusionada en `develop` y `main`.
-- Spec 011 completada (T1 a T5): optimización build Docker. Contenedores en estado `healthy`.
+- Spec 011: optimización Docker Multi-Stage híbrida verificada con simulación CI completa. Contenedores `healthy` y tests 27/27 pasando.
 - Rama activa: `fix/docker-build-optimization`.
 
 ## Decisiones (y por qué)
-- Flujo Git gobernado por PR: nunca fusionar feature branches localmente en `develop` o `main`; el PR remoto garantiza trazabilidad, CI y orden.
-- Consultas de PR: el agente crea y fusiona los PRs previa aprobación del usuario en cada paso (abrir y fusionar), evitando ejecuciones no autorizadas salvo mandato expreso.
-- Salvaguarda permanente de ramas: jamás borrar ramas sin consentimiento explícito.
-- Dockerfile Lean con artefactos locales: empaqueta `dist/`, `public/` y `node_modules` precompilados; `docker compose up --build` pasa de >30 min a ~15s evitando cuelgues de red WSL2.
+- Dockerfile Multi-Stage Autónomo e Híbrido:
+  - Usa `--mount=type=cache,target=/root/.npm` y `--ignore-scripts` para acelerar instalaciones y evitar descargas lentas en WSL2.
+  - Generación de Prisma condicional: si el host proveyó `node_modules/.prisma` lo reutiliza; si es CI en limpio (GitHub Actions), genera de forma autónoma.
+  - Poda limpia con `npm prune --omit=dev` para generar imagen final hardened sin devDependencies.
 - Eliminación de `sharp` de overrides: dependencia C++ huérfana de 35MB que congelaba la descarga.
-- Entrypoint sin `db push` forzado: evita bloqueos de runtime; migraciones vía host o variable `RUN_MIGRATIONS=true`.
+- Entrypoint sin `db push` forzado: evita bloqueos de runtime; migraciones controladas.
 
 ## Aprendizajes y errores a evitar
-- NUNCA usar cadenas de conexión reales como fallback (`|| 'postgresql://...'`) en scripts o pruebas; todo acceso a BD remota debe requerir obligatoriamente su variable en `.env`.
-- Prohibición estricta de commitear claves de bases de datos o secretos en repositorios públicos.
-- No hacer merge manual local de ramas temáticas a develop/main.
+- NUNCA usar cadenas de conexión reales como fallback en scripts o pruebas; requerir variables en `.env`.
+- No ejecutar scripts de postinstall descontrolados (`@prisma/engines` intentaba descargar binarios al vuelo en npm ci; solucionado con `--ignore-scripts`).
 - Siempre preguntar antes de abrir PR, antes de fusionar y antes de borrar ramas.
-- No ejecutar `npm ci` masivo dentro de WSL2 si hay inestabilidad de red en Hyper-V.
-- Asegurar `binaryTargets` en Prisma para `linux-musl-openssl-3.0.x`.
 
 ## Próximos pasos
 - Solicitar aprobación del usuario para abrir PR de `fix/docker-build-optimization` contra `develop`.

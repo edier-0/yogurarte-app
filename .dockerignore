@@ -1,3 +1,7 @@
+node_modules/*
+!node_modules/.prisma
+!node_modules/.prisma/**
+dist
 frontend/node_modules
 frontend/dist
 .env
