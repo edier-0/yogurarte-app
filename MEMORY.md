@@ -5,7 +5,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
 - Constitución (v1.5.0) y AGENTS.md consagran el principio de rendimiento volumétrico por adición de mermeladas en Fase B y elaboraciones compuestas de inventario.
 - Spec 011 completada al 100% y fusionada en develop y main (modal dinámico mono-presentación de Fase B, cálculo de kg por gramsPerBottle, ajuste diferencial en Kardex).
-- Spec 012 en curso: optimización Docker Multi-Stage híbrida verificada con simulación CI completa. Contenedores `healthy` y tests en verde.
+- Spec 012 completada al 100%: optimización Docker Multi-Stage híbrida verificada con simulación CI completa. Contenedores `healthy` y tests en verde.
 - Rama activa: `fix/docker-build-optimization`.
 
 ## Decisiones (y por qué)
