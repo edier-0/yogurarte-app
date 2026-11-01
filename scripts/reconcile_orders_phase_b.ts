@@ -1,19 +1,24 @@
+// ==============================================================================
+// 🚨 ADVERTENCIA DE SEGURIDAD (DIRECTIVA ESTRICTA YOGURARTE):
+// QUEDA TERMINANTEMENTE PROHIBIDO COLOCAR CREDENCIALES O STRINGS DE CONEXIÓN
+// HARDCODEADOS EN ESTE ARCHIVO (INCLUYENDO VALORES POR DEFECTO O FALLBACKS '||').
+// Todas las conexiones deben suministrarse ÚNICAMENTE mediante variables de
+// entorno (.env / NEON_DATABASE_URL / DATABASE_URL) que NUNCA deben subirse a Git.
+// ==============================================================================
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { syncBatchStatusBidirectional } from '../src/modules/batches/batches.service.js';
 
-// Si se pasa flag --remote o --neon, usar NEON_DATABASE_URL o la URL de producción de Neon
-const neonDefault = 'postgresql://neondb_owner:npg_MdRA0BL9FvQS@ep-delicate-haze-axco5iq8-pooler.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require';
 const isRemote = process.argv.includes('--remote') || process.argv.includes('--neon');
-const dbUrl = isRemote
-  ? (process.env.NEON_DATABASE_URL || neonDefault)
-  : (process.env.DATABASE_URL || neonDefault);
+const dbUrl = isRemote ? process.env.NEON_DATABASE_URL : process.env.DATABASE_URL;
 
-console.log(`\n======================================================`);
-console.log(`   RECONCILIACIÓN DE PEDIDOS Y LOTES FASE B`);
-console.log(`   Modo: ${isRemote ? 'REMOTA / NEON' : 'LOCAL'}`);
-console.log(`   Target DB: ${dbUrl.replace(/:[^:@]+@/, ':****@')}`);
-console.log(`======================================================\n`);
+if (!dbUrl) {
+  console.error('\n❌ ERROR DE CONFIGURACIÓN Y SEGURIDAD:');
+  console.error('   No se encontró la variable ' + (isRemote ? 'NEON_DATABASE_URL' : 'DATABASE_URL') + ' en su archivo .env.');
+  console.error('   Está terminantemente prohibido hardcodear credenciales en el código fuente.');
+  console.error('   Por favor configure la variable correspondiente en su archivo .env local.\n');
+  process.exit(1);
+}
 
 const prisma = new PrismaClient({
   datasources: { db: { url: dbUrl } },
