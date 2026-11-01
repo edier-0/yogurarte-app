@@ -50,6 +50,7 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
 - El README (árbol `src/controllers`) está desactualizado; fiarse de `app.ts` y `modules/`.
 - Transacciones Prisma cuando stock, caja y pagos deban coincidir. No editar el cliente generado.
 - `User` ≠ `StaffMember`: `User` = cuentas de acceso/login al sistema (sin dependencias FK). `StaffMember` = nómina, colaboradores y liquidaciones de jornales/socios.
+- **Prohibición Total de Fallbacks de Credenciales**: Está terminantemente prohibido hardcodear cadenas de conexión o credenciales reales como valor por defecto/fallback (`||'postgresql://...'`) en scripts de utilidad, tests o migraciones. Todo script debe requerir estrictamente la variable de entorno correspondiente (`NEON_DATABASE_URL`, `DATABASE_URL`) desde `.env` y fallar de inmediato si no está definida.
 
 ## Metodología y Forma de trabajar (Skill SDD)
 - Para cualquier cambio, nueva funcionalidad o refactorización en el aplicativo, usar obligatoriamente la skill `sdd` (`.agent/skills/sdd/SKILL.md`).
@@ -131,7 +132,7 @@ git push origin --delete <tipo>/<nombre-tarea>
 - 🚫 Nunca: eliminar ramas locales o remotas sin previa confirmación del usuario.
 - 🚫 Nunca: implementar código sin spec, plan y tareas aprobados por el usuario según la metodología de la skill `sdd`.
 - 🚫 Nunca: pasar a la siguiente fase de SDD sin aprobación explícita del usuario.
-- 🚫 Nunca: credenciales/tokens en docs o código; features en carpetas legacy; mezclar canales de caja; persistir deuda en `Customer`; lint/format inventados; wipe de auth WhatsApp sin pedirlo; commitear directo a `main` o `develop`.
+- 🚫 Nunca: credenciales/tokens en docs, scripts o código (incluyendo fallbacks `||'postgresql://...'`); features en carpetas legacy; mezclar canales de caja; persistir deuda en `Customer`; lint/format inventados; wipe de auth WhatsApp sin pedirlo; commitear directo a `main` o `develop`.
 
 ## Verificación
 - Backend: `npx tsc --noEmit` y `npx vitest run tests/<dominio>.test.ts` (o `npm test`). Golden-master de costeo/lotes: `tests/golden_master.test.ts`.

@@ -7,7 +7,19 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-const neonUrl = process.env.NEON_DATABASE_URL || 'postgresql://neondb_owner:npg_MdRA0BL9FvQS@ep-delicate-haze-axco5iq8-pooler.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require';
+// ==============================================================================
+// 🚨 ADVERTENCIA DE SEGURIDAD (DIRECTIVA ESTRICTA YOGURARTE):
+// QUEDA TERMINANTEMENTE PROHIBIDO COLOCAR CREDENCIALES O STRINGS DE CONEXIÓN
+// HARDCODEADOS EN ESTE ARCHIVO (INCLUYENDO VALORES POR DEFECTO O FALLBACKS '||').
+// Todas las conexiones deben suministrarse ÚNICAMENTE mediante variables de
+// entorno (.env / NEON_DATABASE_URL) que NUNCA deben subirse a Git.
+// ==============================================================================
+const neonUrl = process.env.NEON_DATABASE_URL;
+if (!neonUrl) {
+  console.error('\n❌ ERROR DE SEGURIDAD: La variable NEON_DATABASE_URL no está configurada en .env.');
+  console.error('   Está terminantemente prohibido hardcodear credenciales en el código fuente.\n');
+  process.exit(1);
+}
 
 const prisma = new PrismaClient({
   datasources: {

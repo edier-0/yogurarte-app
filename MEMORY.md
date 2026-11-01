@@ -17,6 +17,8 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Salvaguarda permanente de ramas: jamás borrar ramas sin consentimiento explícito.
 
 ## Aprendizajes y errores a evitar
+- NUNCA usar cadenas de conexión reales como fallback (`|| 'postgresql://...'`) en scripts o pruebas; todo acceso a BD remota debe requerir obligatoriamente su variable en `.env`.
+- Prohibición estricta de commitear claves de bases de datos o secretos en repositorios públicos.
 - No hacer merge manual local de ramas temáticas a develop/main.
 - Siempre preguntar antes de abrir PR, antes de fusionar y antes de borrar ramas.
 - Conectar siempre redención desde la comanda sin reiniciar el formulario de pedido.
