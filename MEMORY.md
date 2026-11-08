@@ -24,4 +24,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Cumplir estrictamente git-pr-workflow: nunca mergear directo a develop/main; pedir autorización antes de abrir PR, fusionar PR y borrar ramas.
 
 ## Próximos pasos
-- Limpieza post-merge: solicitar autorización explícita al usuario para eliminar la rama feat/modal-dinamico-envasado-fase-b (local y remota).
+- Spec 011 finalizada y cerrada al 100%. Sistema listo en develop y main para nuevas características o requerimientos de negocio.
