@@ -16,21 +16,12 @@ COPY tsconfig.json ./
 COPY prisma ./prisma/
 COPY frontend/package*.json ./frontend/
 
-# Instalar dependencias completas de manera reproducible ignorando scripts no controlados
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts --legacy-peer-deps
-RUN --mount=type=cache,target=/root/.npm \
-    npm --prefix frontend ci --ignore-scripts --legacy-peer-deps
+# Instalar dependencias completas de manera reproducible
+RUN npm ci --no-audit --no-fund --legacy-peer-deps
+RUN npm --prefix frontend ci --no-audit --no-fund --legacy-peer-deps
 
-# Si el host proveyó el motor nativo de Linux en .prisma, se incorpora para evitar esperas de red en WSL2
-COPY node_modules/.prism[a]* ./node_modules/.prisma/
-
-# Generar cliente de Prisma si no vino preinstalado por el host (autónomo en CI)
-RUN if [ ! -f ./node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node ]; then \
-        npx prisma generate; \
-    else \
-        echo "✅ Motor nativo de Linux y cliente de Prisma detectados. Omitiendo descarga."; \
-    fi
+# Generar cliente de Prisma de forma 100% autónoma en cualquier entorno (CI, Render, local)
+RUN npx prisma generate
 
 # Copiar código fuente backend y frontend
 COPY src ./src/
@@ -43,7 +34,7 @@ RUN npm --prefix frontend run build
 RUN npx tsc
 
 # Podar dependencias de desarrollo para dejar solo las necesarias de producción
-RUN npm prune --omit=dev --legacy-peer-deps --ignore-scripts
+RUN npm prune --omit=dev --legacy-peer-deps --ignore-scripts --no-audit --no-fund
 
 # ==============================================================================
 # STAGE 2: Runner de Producción (Hardened, Lean & Autónomo)
