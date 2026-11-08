@@ -50,9 +50,12 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
 - El README (árbol `src/controllers`) está desactualizado; fiarse de `app.ts` y `modules/`.
 - Transacciones Prisma cuando stock, caja y pagos deban coincidir. No editar el cliente generado.
 - `User` ≠ `StaffMember`: `User` = cuentas de acceso/login al sistema (sin dependencias FK). `StaffMember` = nómina, colaboradores y liquidaciones de jornales/socios.
-- **Prohibición Total de Fallbacks de Credenciales**: Está terminantemente prohibido hardcodear cadenas de conexión o credenciales reales como valor por defecto/fallback (`||'postgresql://...'`) en scripts de utilidad, tests o migraciones. Todo script debe requerir estrictamente la variable de entorno correspondiente (`NEON_DATABASE_URL`, `DATABASE_URL`) desde `.env` y fallar de inmediato si no está definida.
+- **Prohibición Total de Fallbacks de Credenciales**: Está terminantemente prohibido hardcodear cadenas de conexión o credenciales reales como valor por defecto/fallback (`||'postgresql://...'`) en scripts de utilidad, tests o migraciones. Todo script debe requerir estrictamente la variable de entorno correspondiente (`NEON_DATABASE_URL`, `DATABASE_URL`) desde `.env` y fallar de inmediato si no está definida (Skill canónica: `.agent/skills/devsecops/SKILL.md`).
 
-## Metodología y Forma de trabajar (Skill SDD)
+## Metodología y Forma de trabajar (Skills SDD + TDD y Enrutador using-agent-skills)
+- **Orquestación de flujos:** Para cualquier requerimiento amplio, nueva funcionalidad o flujo multifase, consultar obligatoriamente el enrutador maestro `using-agent-skills` (`.agent/skills/using-agent-skills/SKILL.md`) para determinar la secuencia de skills a encadenar. Para tareas puntuales y acotadas, consultar directamente la skill especializada correspondiente.
+- **Metodología Dual SDD + TDD:** Toda funcionalidad se especifica con `sdd` (`.agent/skills/sdd/SKILL.md`) y cada una de sus tareas de implementación se ejecuta obligatoriamente bajo la disciplina de `test-driven-development` (`.agent/skills/test-driven-development/SKILL.md`).
+- **Regla Innegociable de TDD:** Escribir siempre el test primero que falle en rojo (Patrón Prove-It), implementar el código mínimo necesario para ponerlo en verde (`vitest`), y refactorizar. Queda terminantemente prohibido escribir código de negocio o corregir bugs sin su prueba previa que falle por la razón esperada.
 - Para cualquier cambio, nueva funcionalidad o refactorización en el aplicativo, usar obligatoriamente la skill `sdd` (`.agent/skills/sdd/SKILL.md`).
 - Flujo canónico: **Constitución → Spec → Clarificación → Plan → Tareas → Implementación → Validación → Cambio**.
 - Reglas mandatorias del flujo SDD:
@@ -64,8 +67,8 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
   - **Implementación atómica**: Una sola tarea a la vez (~20-30 min): tests primero en rojo, código, verificar en verde (`vitest` / pruebas del módulo), marcar la tarea y parar para feedback.
   - **Actualización continua**: Al terminar cada fase o tarea, actualizar `MEMORY.md`.
 
-## Directiva de Flujo de Trabajo en Git (Feature Branch & PR)
-El agente debe adherirse estrictamente al siguiente protocolo para cualquier ciclo de desarrollo, modificación de código o actualización de documentación. Queda terminantemente prohibido fusionar directamente ramas de características en ramas base locales sin un Pull Request mediador.
+## Directiva de Flujo de Trabajo en Git (Skill git-pr-workflow)
+El agente debe adherirse estrictamente a la skill canónica `git-pr-workflow` (`.agent/skills/git-pr-workflow/SKILL.md`) para cualquier ciclo de desarrollo, modificación de código o actualización de documentación. Queda terminantemente prohibido fusionar directamente ramas de características en ramas base locales sin un Pull Request mediador.
 
 ### Reglas Clave
 1. **Aislamiento Total:** Todo desarrollo, corrección o tarea ocurre exclusivamente en su propia rama dedicada (`feature/*`, `fix/*`, `chore/*`, `refactor/*`, `docs/*`).
@@ -123,14 +126,18 @@ git push origin --delete <tipo>/<nombre-tarea>
 
 ## Límites
 - ✅ Siempre: seguir la skill `sdd` para realizar cambios en el aplicativo (especificar y validar antes de codificar).
+- ✅ Siempre: aplicar la skill `test-driven-development` (`.agent/skills/test-driven-development/SKILL.md`) en cada tarea: escribir el test en rojo antes del código, verificar en verde y refactorizar.
 - ✅ Siempre: actualizar `MEMORY.md` al terminar cada tarea o fase de SDD.
 - ✅ Siempre: seguir `src/modules/` + `app.ts`; typecheck/pruebas del dominio tocado; no commitear `.env` ni secretos.
-- ✅ Siempre: crear rama desde `develop`, integrar exclusivamente vía PR a `develop`, sincronizar a `main`, y pedir confirmación antes de abrir PR, fusionar PR y borrar ramas (salvo orden expresa de ejecutar todo sin aprobación).
+- ✅ Siempre: seguir la skill `git-pr-workflow` para crear rama desde `develop`, integrar exclusivamente vía PR a `develop`, sincronizar a `main`, y pedir confirmación antes de abrir PR, fusionar PR y borrar ramas (salvo orden expresa de ejecutar todo sin aprobación).
+- ✅ Siempre: seguir la skill `docker-hardening` (`.agent/skills/docker-hardening/SKILL.md`) para empaquetado multi-stage, caché segura y optimización en local (WSL2) y CI.
+- ✅ Siempre: seguir la skill `devsecops` (`.agent/skills/devsecops/SKILL.md`) para política estricta de cero credenciales y auditoría de seguridad.
 - ⚠️ Pregunta antes: dependencias nuevas, archivos/módulos nuevos, migraciones Prisma, cambiar formato de datos, romper alias de API, **abrir PR, fusionar PR o eliminar cualquier rama local o remota**.
 - 🚫 Nunca: fusionar directamente ramas temáticas en `develop` o `main` localmente sin un Pull Request mediador en GitHub.
 - 🚫 Nunca: abrir o fusionar PRs sin previa confirmación del usuario, salvo que haya indicado explícitamente ejecutar todos los pasos sin requerir aprobación.
 - 🚫 Nunca: eliminar ramas locales o remotas sin previa confirmación del usuario.
 - 🚫 Nunca: implementar código sin spec, plan y tareas aprobados por el usuario según la metodología de la skill `sdd`.
+- 🚫 Nunca: escribir código de negocio o correcciones de bugs sin su prueba previa en rojo ni saltarse el ciclo Red-Green-Refactor de TDD.
 - 🚫 Nunca: pasar a la siguiente fase de SDD sin aprobación explícita del usuario.
 - 🚫 Nunca: credenciales/tokens en docs, scripts o código (incluyendo fallbacks `||'postgresql://...'`); features en carpetas legacy; mezclar canales de caja; persistir deuda en `Customer`; lint/format inventados; wipe de auth WhatsApp sin pedirlo; commitear directo a `main` o `develop`.
 

@@ -1,192 +1,172 @@
 ---
 name: using-agent-skills
-description: Discovers and invokes agent skills. Use when starting a session, or when you need to decide which skill or workflow applies to the piece of work at hand. This is the meta-skill that governs how all other skills are discovered and invoked.
+description: Enrutador y meta-skill maestro. Gobierna cómo los agentes descubren, secuencian y aplican todas las skills del proyecto YogurArte según la fase del ciclo de vida de desarrollo.
 ---
 
-# Using Agent Skills
+# Using Agent Skills — Enrutador Maestro de YogurArte
 
-## Overview
+Colección orquestada de flujos de trabajo de ingeniería organizados por fases de desarrollo. Cada skill codifica un proceso riguroso que siguen los ingenieros de software senior y DevOps. Esta meta-skill guía a los agentes de IA para descubrir, secuenciar y aplicar la habilidad adecuada para cada tarea, evitando la improvisación y garantizando el cumplimiento de la Constitución de YogurArte.
 
-Agent Skills is a collection of engineering workflow skills organized by development phase. Each skill encodes a specific process that senior engineers follow. This meta-skill helps you discover and apply the right skill for your current task.
+---
 
-## Skill Discovery
+## 1. Árbol de Decisión y Descubrimiento de Skills
 
-When a task arrives, identify the development phase and apply the corresponding skill:
+Cuando llegue una solicitud o tarea, identifica la fase de desarrollo y activa la skill correspondiente:
 
-```
-Task arrives
+```text
+Llega una Tarea o Requerimiento
     │
-    ├── Don't know what you want yet? ──────→ interview-me
-    ├── Have a rough concept, need variants? → idea-refine
-    ├── New project/feature/change? ──→ sdd (Spec-Driven Development)
-    ├── No quality bar written down? ──→ constraint-driven-development
-    ├── Have a spec, need tasks? ──────→ planning-and-task-breakdown
-    ├── Implementing code? ────────────→ incremental-implementation
-    │   ├── UI work? ─────────────────→ frontend-ui-engineering
-    │   ├── API work? ────────────────→ api-and-interface-design
-    │   ├── Need better context? ─────→ context-engineering
-    │   ├── Need doc-verified code? ───→ source-driven-development
-    │   └── Stakes high / unfamiliar code? ──→ doubt-driven-development
-    ├── Writing/running tests? ────────→ test-driven-development
-    │   └── Browser-based? ───────────→ browser-testing-with-devtools
-    ├── Something broke? ──────────────→ debugging-and-error-recovery
-    ├── Reviewing code? ───────────────→ code-review-and-quality
-    │   ├── Too complex? ─────────────→ code-simplification
-    │   ├── Security concerns? ───────→ security-and-hardening
-    │   └── Performance concerns? ────→ performance-optimization
-    ├── Committing/branching? ─────────→ git-workflow-and-versioning
-    ├── CI/CD pipeline work? ──────────→ ci-cd-and-automation
-    ├── Deprecating/migrating? ────────→ deprecation-and-migration
-    ├── Writing docs/ADRs? ───────────→ documentation-and-adrs
-    ├── Adding logs/metrics/alerts? ───→ observability-and-instrumentation
-    └── Deploying/launching? ─────────→ shipping-and-launch
+    ├── ¿La petición es ambigua o falta contexto de negocio? ──► interview-me
+    ├── ¿Idea incipiente y necesitas explorar alternativas? ────► idea-refine
+    ├── ¿Nueva funcionalidad, cambio o refactor mayor? ─────────► sdd (Spec-Driven Development)
+    ├── ¿Falta fijar la barra de calidad o reglas técnicas? ────► constraint-driven-development
+    ├── ¿Tienes la spec aprobada y requieres tareas? ───────────► planning-and-task-breakdown
+    │
+    ├── IMPLEMENTACIÓN DE CÓDIGO
+    │   ├── ¿Estrategia de entrega en rebanadas delgadas? ──────► incremental-implementation
+    │   ├── ¿Cargar contexto y afinar archivos relevantes? ──────► context-engineering
+    │   ├── ¿Validar sintaxis contra versión en package.json? ──► source-driven-development
+    │   ├── ¿Diseño de UI, vistas, modales y accesibilidad? ────► frontend-ui-engineering
+    │   ├── ¿Catálogo de estilos, paletas o gráficos UI/UX? ────► ui-ux-pro-max
+    │   ├── ¿Endpoints REST, esquemas Zod o contratos de API? ──► api-and-interface-design
+    │   ├── ¿Decisiones de alto riesgo o lógica contable? ───────► doubt-driven-development
+    │   └── ¿Instrumentar logs estructurados o auditoría? ──────► observability-and-instrumentation
+    │
+    ├── PRUEBAS Y VERIFICACIÓN
+    │   ├── ¿Nueva lógica, cambio de regla o bugfix? ───────────► test-driven-development
+    │   ├── ¿Inspección del DOM, consola o viewport móvil? ─────► browser-testing-with-devtools
+    │   └── ¿Falló un test, build roto o bug en runtime? ────────► debugging-and-error-recovery
+    │
+    ├── REVISIÓN Y AFINAMIENTO
+    │   ├── ¿Auditoría multiaxial antes de integrar? ───────────► code-review-and-quality
+    │   ├── ¿Código denso o con anidamientos excesivos? ────────► code-simplification
+    │   ├── ¿Secretos, cero fallbacks y auditoría de paquetes? ──► devsecops
+    │   └── ¿Problemas de lentitud, queries N+1 o bundle? ──────► performance-optimization
+    │
+    └── CONTROL DE VERSIONES Y DESPLIEGUE
+        ├── ¿Ramas dedicadas, commits y ciclo de PR remoto? ────► git-pr-workflow
+        ├── ¿Contenedores multi-stage, BuildKit y Alpine? ──────► docker-hardening
+        ├── ¿Compuertas de CI/CD en GitHub Actions? ─────────────► ci-cd-and-automation
+        ├── ¿Retiro de código legacy o migración de esquema? ────► deprecation-and-migration
+        ├── ¿Registrar el porqué de una decisión técnica? ──────► documentation-and-adrs
+        └── ¿Checklist pre-lanzamiento y pase a producción? ────► shipping-and-launch
 ```
 
-## Core Operating Behaviors
+---
 
-These behaviors apply at all times, across all skills. They are non-negotiable.
+## 2. Comportamientos Operativos No Negociables
 
-### 1. Surface Assumptions
+Estos principios aplican en todo momento para cualquier agente en YogurArte:
 
-Before implementing anything non-trivial, explicitly state your assumptions:
-
+### 1. Hacer Explícitas las Suposiciones (*Surface Assumptions*)
+Antes de implementar cualquier tarea no trivial, explicita tus asunciones:
+```text
+SUPOSICIONES QUE ESTOY ASUMIENDO:
+1. [Suposición sobre reglas de negocio]
+2. [Suposición sobre arquitectura o base de datos]
+3. [Suposición sobre alcance]
+→ Si alguna es incorrecta, corrígeme antes de proceder.
 ```
-ASSUMPTIONS I'M MAKING:
-1. [assumption about requirements]
-2. [assumption about architecture]
-3. [assumption about scope]
-→ Correct me now or I'll proceed with these.
-```
+Rellenar silenciosamente requisitos ambiguos es la causa principal de retrabajo.
 
-Don't silently fill in ambiguous requirements. The most common failure mode is making wrong assumptions and running with them unchecked. Surface uncertainty early — it's cheaper than rework.
+### 2. Gestionar la Confusión Activamente
+Si encuentras contradicciones entre la spec, la Constitución o el código existente:
+1. **DETENTE.** No avances conjeturando.
+2. Identifica con exactitud la discrepancia.
+3. Plantea la pregunta de clarificación al usuario y espera su respuesta.
 
-### 2. Manage Confusion Actively
+### 3. Cuestionar cuando Sea Necesario (*Push Back*)
+No seas una máquina complaciente que dice *"¡Por supuesto!"* a todo. Si un enfoque solicitado introduce vulnerabilidades de seguridad, rompe la caja bimonetaria o viola los invariantes de Fase B:
+- Señala el riesgo técnico de forma directa.
+- Cuantifica el impacto negativo.
+- Propón una alternativa sólida alineada con la Constitución de YogurArte.
 
-When you encounter inconsistencies, conflicting requirements, or unclear specifications:
+### 4. Imponer Simplicidad (*Enforce Simplicity*)
+La tendencia natural es sobrecomplicar. Resístela activamente:
+- ¿Se puede resolver en menos líneas de código?
+- ¿Estas abstracciones justifican su costo de mantenimiento?
+- Prefiere la solución obvia, robusta y testeable.
 
-1. **STOP.** Do not proceed with a guess.
-2. Name the specific confusion.
-3. Present the tradeoff or ask the clarifying question.
-4. Wait for resolution before continuing.
+### 5. Disciplina Quirúrgica de Alcance
+Modifica exclusivamente los archivos requeridos para la tarea en curso. **Prohibido:**
+- Borrar comentarios que no entiendas.
+- "Limpiar" o refactorizar archivos no relacionados con la tarea.
+- Agregar funcionalidades no solicitadas en la spec porque "parecen útiles".
 
-**Bad:** Silently picking one interpretation and hoping it's right.
-**Good:** "I see X in the spec but Y in the existing code. Which takes precedence?"
+### 6. Verificar con Pruebas, Jamás Asumir
+Una tarea no está terminada hasta que la verificación automatizada aprueba. "Parece que funciona" no es evidencia; se requieren pruebas pasando en verde (`vitest`), compilación limpia (`tsc --noEmit`) y empaquetado exitoso.
 
-### 3. Push Back When Warranted
+---
 
-You are not a yes-machine. When an approach has clear problems:
+## 3. Secuencia Típica del Ciclo de Vida de una Característica
 
-- Point out the issue directly
-- Explain the concrete downside (quantify when possible — "this adds ~200ms latency" not "this might be slower")
-- Propose an alternative
-- Accept the human's decision if they override with full information
+Para el desarrollo completo de una nueva funcionalidad en YogurArte, el orden canónico de invocación es:
 
-Sycophancy is a failure mode. "Of course!" followed by implementing a bad idea helps no one. Honest technical disagreement is more valuable than false agreement.
-
-### 4. Enforce Simplicity
-
-Your natural tendency is to overcomplicate. Actively resist it.
-
-Before finishing any implementation, ask:
-- Can this be done in fewer lines?
-- Are these abstractions earning their complexity?
-- Would a staff engineer look at this and say "why didn't you just..."?
-
-If you build 1000 lines and 100 would suffice, you have failed. Prefer the boring, obvious solution. Cleverness is expensive.
-
-### 5. Maintain Scope Discipline
-
-Touch only what you're asked to touch.
-
-Do NOT:
-- Remove comments you don't understand
-- "Clean up" code orthogonal to the task
-- Refactor adjacent systems as a side effect
-- Delete code that seems unused without explicit approval
-- Add features not in the spec because they "seem useful"
-
-Your job is surgical precision, not unsolicited renovation.
-
-### 6. Verify, Don't Assume
-
-Every skill includes a verification step. A task is not complete until verification passes. "Seems right" is never sufficient — there must be evidence (passing tests, build output, runtime data).
-
-Per-skill verification is the local check. The project-wide bar that applies to *every* change, regardless of which skill is active, is the Definition of Done: tests pass, no regressions, behavior verified at runtime, docs updated. See `../../references/definition-of-done.md`. It complements each task's acceptance criteria rather than replacing them.
-
-## Failure Modes to Avoid
-
-These are the subtle errors that look like productivity but create problems:
-
-1. Making wrong assumptions without checking
-2. Not managing your own confusion — plowing ahead when lost
-3. Not surfacing inconsistencies you notice
-4. Not presenting tradeoffs on non-obvious decisions
-5. Being sycophantic ("Of course!") to approaches with clear problems
-6. Overcomplicating code and APIs
-7. Modifying code or comments orthogonal to the task
-8. Removing things you don't fully understand
-9. Building without a spec because "it's obvious"
-10. Skipping verification because "it looks right"
-
-## Skill Rules
-
-1. **Check for an applicable skill before starting work.** Skills encode processes that prevent common mistakes.
-
-2. **Skills are workflows, not suggestions.** Follow the steps in order. Don't skip verification steps.
-
-3. **Multiple skills can apply.** A feature implementation might involve `idea-refine` → `sdd` → `planning-and-task-breakdown` → `incremental-implementation` → `test-driven-development` → `code-review-and-quality` → `code-simplification` → `shipping-and-launch` in sequence.
-
-4. **When in doubt, start with a spec.** If the task is non-trivial and there's no spec, begin with `sdd` (`.agent/skills/sdd/SKILL.md`).
-
-## Lifecycle Sequence
-
-For a complete feature, the typical skill sequence is:
-
-```
-1.  interview-me                → Extract what the user actually wants
-2.  idea-refine                 → Refine vague ideas
-3.  sdd                         → Define what we're building (Spec-Driven Development)
-4.  planning-and-task-breakdown → Break into verifiable chunks
-5.  context-engineering         → Load the right context
-6.  source-driven-development   → Verify against official docs
-7.  incremental-implementation  → Build slice by slice
-8.  observability-and-instrumentation → Instrument as you build (runs parallel with 7-9, not after)
-9.  doubt-driven-development    → Cross-examine non-trivial decisions in-flight
-10. test-driven-development     → Prove each slice works
-11. code-review-and-quality     → Review before merge
-12. code-simplification         → Reduce unnecessary complexity while preserving behavior
-13. git-workflow-and-versioning → Clean commit history
-14. documentation-and-adrs      → Document decisions
-15. deprecation-and-migration   → Retire old systems and move users safely when needed
-16. shipping-and-launch         → Deploy safely
+```text
+1.  interview-me                → Clarificar la necesidad real de negocio
+2.  idea-refine                 → Evaluar alternativas y definir el alcance inicial
+3.  constraint-driven-development → Establecer la barra de calidad e invariantes
+4.  sdd                         → Redactar la especificación en EARS (specs/NNN/spec.md)
+5.  planning-and-task-breakdown → Diseñar plan.md y descomponer en tareas tasks.md
+6.  context-engineering         → Cargar el contexto quirúrgico del módulo
+7.  source-driven-development   → Validar contratos contra las versiones de package.json
+8.  incremental-implementation  → Construir rebanada vertical por rebanada
+9.  ui-ux-pro-max               → Aplicar paletas y componentes visuales consistentes
+10. frontend-ui-engineering     → Construir vistas y modales de 3 capas fijas
+11. api-and-interface-design    → Diseñar endpoints REST y esquemas Zod
+12. observability-and-instrumentation → Instrumentar logs estructurados y trazabilidad
+13. doubt-driven-development    → Someter decisiones financieras y críticas a examen
+14. test-driven-development     → Ciclo Red-Green-Refactor con Vitest
+15. browser-testing-with-devtools → Validar el renderizado en navegador y viewport móvil
+16. code-review-and-quality     → Auditoría multiaxial antes de integrar
+17. code-simplification         → Purgar complejidad manteniendo comportamiento exacto
+18. devsecops                   → Escaneo de secretos, cero fallbacks y npm audit
+19. git-pr-workflow             → Rama temática, Quality Gates y ciclo de PR remoto
+20. docker-hardening            → Validar build de contenedor multi-stage híbrido
+21. documentation-and-adrs      → Registrar el porqué de la solución en MEMORY.md o ADR
+22. deprecation-and-migration   → Retirar endpoints o columnas legacy de forma segura
+23. shipping-and-launch         → Checklist final pre-lanzamiento y sincronización a main
 ```
 
-Not every task needs every skill. A bug fix might only need: `debugging-and-error-recovery` → `test-driven-development` → `code-review-and-quality`.
+---
 
-## Quick Reference
+## 4. Tabla de Referencia Rápida de las 26 Skills
 
-| Phase | Skill | One-Line Summary |
-|-------|-------|-----------------|
-| Define | interview-me | Surface what the user actually wants before any plan, spec, or code exists |
-| Define | idea-refine | Refine ideas through structured divergent and convergent thinking |
-| Define | sdd | Requirements and acceptance criteria before code (estándar en YogurArte vía `.agent/skills/sdd/SKILL.md`) |
-| Plan | planning-and-task-breakdown | Decompose into small, verifiable tasks |
-| Build | incremental-implementation | Thin vertical slices, test each before expanding |
-| Build | source-driven-development | Verify against official docs before implementing |
-| Build | doubt-driven-development | Adversarial fresh-context review of every non-trivial decision |
-| Build | context-engineering | Right context at the right time |
-| Build | frontend-ui-engineering | Production-quality UI with accessibility |
-| Build | api-and-interface-design | Stable interfaces with clear contracts |
-| Verify | test-driven-development | Failing test first, then make it pass |
-| Verify | browser-testing-with-devtools | Chrome DevTools MCP for runtime verification |
-| Verify | debugging-and-error-recovery | Reproduce → localize → fix → guard |
-| Review | code-review-and-quality | Five-axis review with quality gates |
-| Review | code-simplification | Preserve behavior while reducing unnecessary complexity |
-| Review | security-and-hardening | OWASP prevention, input validation, least privilege |
-| Review | performance-optimization | Measure first, optimize only what matters |
-| Ship | git-workflow-and-versioning | Atomic commits, clean history |
-| Ship | ci-cd-and-automation | Automated quality gates on every change |
-| Ship | deprecation-and-migration | Remove old systems and migrate users safely |
-| Ship | documentation-and-adrs | Document the why, not just the what |
-| Ship | observability-and-instrumentation | Structured logs, RED metrics, traces, symptom-based alerts |
-| Ship | shipping-and-launch | Pre-launch checklist, monitoring, rollback plan |
+| Fase | Skill | Resumen Operativo de una Línea |
+| :--- | :--- | :--- |
+| **Definir** | `interview-me` | Entrevista socrática de 1 pregunta a la vez hasta 95% de certeza. |
+| **Definir** | `idea-refine` | Expande y converge ideas incipientes en propuestas concretas. |
+| **Definir** | `constraint-driven-development` | Establece y defiende invariantes y restricciones técnicas. |
+| **Definir** | `sdd` | Metodología oficial de YogurArte (EARS, specs, planes y tareas). |
+| **Planear** | `planning-and-task-breakdown` | Descompone en `plan.md` y tareas atómicas de 20–30 min. |
+| **Construir**| `incremental-implementation` | Construye en rebanadas verticales delgadas y testeables. |
+| **Construir**| `context-engineering` | Carga el contexto preciso en el momento exacto; evita saturación. |
+| **Construir**| `source-driven-development` | Fundamenta el código en documentación oficial y versiones reales. |
+| **Construir**| `frontend-ui-engineering` | Componentes Vue 3, Tailwind y modales de 3 capas fijas. |
+| **Construir**| `ui-ux-pro-max` | Catálogo de diseño, paletas de color y directrices UX. |
+| **Construir**| `api-and-interface-design` | Endpoints REST, controladores delgados y esquemas Zod. |
+| **Construir**| `doubt-driven-development` | Examen adversarial de decisiones críticas y financieras. |
+| **Construir**| `observability-and-instrumentation` | Logs estructurados JSON y trazabilidad de Kardex y caja. |
+| **Verificar**| `test-driven-development` | Escribe el test que falla antes de implementar (Patrón Prove-It). |
+| **Verificar**| `browser-testing-with-devtools` | Verificación en vivo del DOM, consola y móvil con Chrome MCP. |
+| **Verificar**| `debugging-and-error-recovery` | Triaje en 5 pasos y regla innegociable de Parar la Línea. |
+| **Revisar**  | `code-review-and-quality` | Auditoría en 5 ejes (corrección, estilo, capas, seguridad, BD). |
+| **Revisar**  | `code-simplification` | Reduce carga cognitiva y anidamientos preservando comportamiento. |
+| **Revisar**  | `devsecops` | Prohibición total de fallbacks, escaneo de secretos y npm audit. |
+| **Revisar**  | `performance-optimization` | Erradicación de N+1 en Prisma, agregaciones SQL y lazy loading. |
+| **Publicar** | `git-pr-workflow` | Ramas temáticas, 3 checkpoints humanos y PR remoto exclusivo. |
+| **Publicar** | `docker-hardening` | Contenedores multi-stage híbridos (WSL2/CI), Alpine y dumb-init. |
+| **Publicar** | `ci-cd-and-automation` | Pipeline de GitHub Actions (`ci.yml`) con validación en 2 jobs. |
+| **Publicar** | `documentation-and-adrs` | Registra el *por qué* de las decisiones en ADRs y `MEMORY.md`. |
+| **Publicar** | `deprecation-and-migration` | Retiro seguro de código legacy y patrón Expand & Contract. |
+| **Publicar** | `shipping-and-launch` | Checklist pre-lanzamiento, rollback y sincronización a `main`. |
+
+---
+
+## 5. Descubrimiento de Capacidades Externas Bajo Demanda (`find-skills`)
+
+Para evitar saturar el repositorio instalando paquetes prescindibles, cualquier requerimiento especializado futuro se consulta al vuelo mediante el CLI de `skills.sh`:
+
+1. **Búsqueda interactiva:** `npx skills find <término>` (ej. `npx skills find redis`, `npx skills find playwright`).
+2. **Evaluación de madurez:** Solo considerar skills con **más de 1.000 instalaciones** y de fuentes oficiales/reconocidas.
+3. **Uso efímero:** `npx skills use <paquete>@<skill>` para ejecuciones puntuales sin alterar la estructura local de archivos.
