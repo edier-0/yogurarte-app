@@ -29,4 +29,5 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Cumplir estrictamente `git-pr-workflow`: nunca mergear directo a develop/main; pedir autorización antes de abrir y antes de fusionar PRs.
 
 ## Próximos pasos
-- Solicitar autorización del usuario para abrir el Pull Request hacia `develop` conforme a `git-pr-workflow`.
+- Pull Request #29 abierto hacia `develop` (https://github.com/edier-0/yogurarte-app/pull/29).
+- Solicitar autorización del usuario para fusionar el PR #29 hacia `develop` y sincronizar con `main`.
