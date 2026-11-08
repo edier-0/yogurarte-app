@@ -3,13 +3,19 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 
 ## Estado actual
 - ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
-- Constitución (v1.4.0) y `AGENTS.md` actualizados:
+- Constitución (v1.4.0) y `AGENTS.md` consagran el binomio innegociable SDD + TDD y el enrutador maestro `using-agent-skills`:
+  - Metodología y Calidad: `sdd` (especificación) + `test-driven-development` (test en rojo obligatorio antes de código).
+  - Infraestructura y Despliegue: `git-pr-workflow`, `docker-hardening` y `devsecops`.
   - Directiva Git: aislamiento en ramas dedicadas, cero merges locales a ramas base, integración vía PR.
   - Protocolo de consultas: preguntar antes de abrir PR y antes de fusionarlo (salvo instrucción explícita de ejecutar todo).
   - El agente crea y fusiona el PR; confirmación obligatoria para eliminar ramas (local/remoto).
   - Presentaciones dinámicas en Fase B, salidas exclusivas en Fase B y alerta de fidelización 10+1.
 - Spec 010 completada (T1 a T6), fusionada en `develop` y `main`.
-- Rama activa: `develop`.
+- Localización de Skills en español adaptadas al stack de YogurArte:
+  - Fase 1 (Código diario): TDD, Incremental, Code Review, Simplification y Debugging.
+  - Fase 2 (Arquitectura & Datos): API Design (Zod/REST), Frontend UI (Vue 3/Modales 3 capas), Performance (N+1/Prisma) y CI/CD (GitHub Actions).
+  - Fase 3 (Inception & Soporte): Las 27 skills del repositorio 100% en español con slugs en inglés, sin archivos sueltos y adaptadas al stack de YogurArte.
+- Rama activa: `docs/git-pr-workflow-skill`.
 
 ## Decisiones (y por qué)
 - Flujo Git gobernado por PR: nunca fusionar feature branches localmente en `develop` o `main`; el PR remoto garantiza trazabilidad, CI y orden.
