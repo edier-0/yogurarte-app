@@ -5,8 +5,9 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
 - Constitución (v1.5.0) y AGENTS.md consagran el principio de rendimiento volumétrico por adición de mermeladas en Fase B y elaboraciones compuestas de inventario.
 - Spec 011 y Spec 012 completadas al 100% y fusionadas en develop y main.
-- Pull Request #31 fusionado exitosamente en `develop` y sincronizado a producción (`main`).
-- Despliegue de Render y pipeline de GitHub Actions corregidos: Dockerfile 100% autónomo y aislado sin dependencias de directorios del host (`node_modules`), sin cache mounts propensos a deadlocks en WSL2 y con flags de aceleración `--no-audit --no-fund`.
+- PR #31 fusionado, `main` sincronizado y validado en CI (Type Check + Docker Build en verde).
+- Rama de trabajo `fix/render-docker-build-clean-context` eliminada en local y remoto.
+- Despliegue de Render y pipeline de GitHub Actions corregidos: Dockerfile 100% autónomo y aislado sin dependencias del host (`node_modules`), sin cache mounts propensos a deadlocks en WSL2 y con flags de aceleración `--no-audit --no-fund`.
 - Local: PostgreSQL healthy en Docker (`docker compose up -d postgres`), typecheck (tsc), build de frontend y suite completa de Vitest (39/39 integración + 12/12 golden master) en verde.
 
 ## Decisiones (y por qué)
@@ -26,4 +27,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Siempre preguntar antes de abrir PR, antes de fusionar y antes de borrar ramas.
 
 ## Próximos pasos
-- Solicitar autorización al usuario para eliminar la rama de trabajo `fix/render-docker-build-clean-context` (local y remota).
+- Continuar con el roadmap del aplicativo o nuevas especificaciones SDD según requerimientos del usuario.
