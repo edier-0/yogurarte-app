@@ -1,249 +1,91 @@
 ---
 name: incremental-implementation
-description: Delivers changes incrementally in thin, verifiable slices. Use when implementing any feature or change that touches more than one file, or when picking up the next task from a plan. Use when rolling a change out behind a feature flag, when you're about to write a large amount of code at once, or when a task feels too big to land in one step.
+description: Entrega cambios de forma incremental en rebanadas verticales delgadas y verificables. Usar al implementar features multifile, refactorizaciones o tareas de una spec en YogurArte.
 ---
 
-# Incremental Implementation
+# Incremental Implementation — YogurArte
 
-## Overview
+Construye mediante rebanadas verticales delgadas (*thin vertical slices*): implementa una pieza mínima, pruébala, verifícala y solo entonces continúa con la siguiente. Queda terminantemente prohibido implementar una característica completa de extremo a extremo en una sola pasada masiva. Cada incremento debe dejar el sistema en un estado funcional, compilable y testeable.
 
-Build in thin vertical slices — implement one piece, test it, verify it, then expand. Avoid implementing an entire feature in one pass. Each increment should leave the system in a working, testable state. This is the execution discipline that makes large features manageable.
+---
 
-## When to Use
+## 1. Cuándo Usar la Implementación Incremental
 
-- Implementing any multi-file change
-- Building a new feature from a task breakdown
-- Refactoring existing code
-- Any time you're tempted to write more than ~100 lines before testing
+- Al abordar cualquier tarea (`Tn`) resultante de una especificación SDD (`specs/NNN-nombre/tasks.md`).
+- Al realizar cambios que afecten a más de un archivo simultáneamente.
+- En refactorizaciones de módulos existentes.
+- Cada vez que sientas la tentación de escribir más de 80–100 líneas de código antes de ejecutar una prueba o compilar.
 
-**When NOT to use:** Single-file, single-function changes where the scope is already minimal.
+> **Cuándo NO usar:** Cambios atómicos de una sola función en un único archivo donde el alcance ya es microscópico.
 
-## The Increment Cycle
+---
 
-```
-┌──────────────────────────────────────┐
-│                                      │
-│   Implement ──→ Test ──→ Verify ──┐  │
-│       ▲                           │  │
-│       └───── Commit ◄─────────────┘  │
-│              │                       │
-│              ▼                       │
-│          Next slice                  │
-│                                      │
-└──────────────────────────────────────┘
-```
-
-For each slice:
-
-1. **Implement** the smallest complete piece of functionality
-2. **Test** — run the test suite (or write a test if none exists)
-3. **Verify** — confirm the slice works as expected (tests pass, build succeeds, manual check)
-4. **Commit** -- save your progress with a descriptive message (see `git-workflow-and-versioning` for atomic commit guidance)
-5. **Move to the next slice** — carry forward, don't restart
-
-## Slicing Strategies
-
-### Vertical Slices (Preferred)
-
-Build one complete path through the stack:
+## 2. El Ciclo del Incremento
 
 ```
-Slice 1: Create a task (DB + API + basic UI)
-    → Tests pass, user can create a task via the UI
-
-Slice 2: List tasks (query + API + UI)
-    → Tests pass, user can see their tasks
-
-Slice 3: Edit a task (update + API + UI)
-    → Tests pass, user can modify tasks
-
-Slice 4: Delete a task (delete + API + UI + confirmation)
-    → Tests pass, full CRUD complete
+┌────────────────────────────────────────────────────────┐
+│                                                        │
+│   Implementar ──► Probar (Vitest) ──► Verificar (tsc)  │
+│        ▲                                   │           │
+│        │                                   ▼           │
+│        └────── Siguiente Rebanada ◄─── Commit          │
+│                (Llevar adelante)      Atómico          │
+│                                                        │
+└────────────────────────────────────────────────────────┘
 ```
 
-Each slice delivers working end-to-end functionality.
+Para cada rebanada delgada:
+1. **Implementar:** Escribe el cambio más pequeño posible que agregue valor comprobable.
+2. **Probar:** Ejecuta las pruebas del dominio (`npx vitest run tests/<modulo>.test.ts`).
+3. **Verificar:** Confirma que el tipado de TypeScript se mantenga impoluto (`npx tsc --noEmit`).
+4. **Commit:** Guarda el avance con un commit semántico en español siguiendo `git-pr-workflow` (`feat(ordenes): validar stock minimo en endpoint`).
+5. **Avanzar:** Pasa a la siguiente rebanada sin reiniciar el contexto ni dejar cabos sueltos.
 
-### Contract-First Slicing
+---
 
-When backend and frontend need to develop in parallel:
+## 3. Estrategia de Rebanadas Verticales en YogurArte
 
-```
-Slice 0: Define the API contract (types, interfaces, OpenAPI spec)
-Slice 1a: Implement backend against the contract + API tests
-Slice 1b: Implement frontend against mock data matching the contract
-Slice 2: Integrate and test end-to-end
-```
-
-### Risk-First Slicing
-
-Tackle the riskiest or most uncertain piece first:
+En nuestro stack (Express + Prisma + Vue 3), la mejor estrategia es construir un camino vertical completo a través de las capas del sistema:
 
 ```
-Slice 1: Prove the WebSocket connection works (highest risk)
-Slice 2: Build real-time task updates on the proven connection
-Slice 3: Add offline support and reconnection
+Paso 1: Esquema Zod & Contrato de Entrada (src/modules/<modulo>/<modulo>.schema.ts)
+   │
+   ▼
+Paso 2: Lógica de Servicio & Persistencia Prisma (src/modules/<modulo>/<modulo>.service.ts)
+   │
+   ▼
+Paso 3: Controlador Delgado & Rutas Express (src/modules/<modulo>/<modulo>.controller.ts)
+   │
+   ▼
+Paso 4: Pruebas de Integración con Vitest (tests/<modulo>.test.ts)
+   │
+   ▼
+Paso 5: Vista UI o Modal en Vue 3 (frontend/src/views/ o frontend/src/components/)
 ```
 
-If Slice 1 fails, you discover it before investing in Slices 2 and 3.
+### Ejemplo Práctico: Agregar Fraccionamiento de Presentación en Fase B
 
-## Implementation Rules
+- **Rebanada 1 (Validación Zod):**
+  Definir el schema `packagingBatchSchema` con Zod en `src/modules/batches/batches.schema.ts`. Validar tipos y rangos de presentación (500 ml, 1 L, 2 L).
+  *Verificación:* Test unitario de validación Zod pasando.
 
-### Rule 0: Simplicity First
+- **Rebanada 2 (Servicio & Transacción Prisma):**
+  Implementar la función `createPackagingFraction()` dentro de `batches.service.ts` con transacción interactiva `prisma.$transaction`. Descontar la base fermentada del lote madre y crear el registro de fracción.
+  *Verificación:* Prueba de integración en `tests/batches.test.ts`.
 
-Before writing any code, ask: "What is the simplest thing that could work?"
+- **Rebanada 3 (Controlador & Ruta HTTP):**
+  Exponer `POST /api/batches/:id/packaging` utilizando el middleware `validateBody(packagingBatchSchema)`.
+  *Verificación:* Prueba HTTP con `supertest` verificando respuesta 201 y manejo de `AppError` en 400.
 
-After writing code, review it against these checks:
-- Can this be done in fewer lines?
-- Are these abstractions earning their complexity?
-- Would a staff engineer look at this and say "why didn't you just..."?
-- Am I building for hypothetical future requirements, or the current task?
+- **Rebanada 4 (Integración UI):**
+  Conectar el modal de fraccionamiento en el frontend Vue 3 usando `apiClient` (`frontend/src/api/client.ts`).
+  *Verificación:* Compilación de frontend (`npm --prefix frontend run build`).
 
-```
-SIMPLICITY CHECK:
-✗ Generic EventBus with middleware pipeline for one notification
-✓ Simple function call
+---
 
-✗ Abstract factory pattern for two similar components
-✓ Two straightforward components with shared utilities
+## 4. Reglas Innegociables de Alcance y Disciplina
 
-✗ Config-driven form builder for three forms
-✓ Three form components
-```
-
-Three similar lines of code is better than a premature abstraction. Implement the naive, obviously-correct version first. Optimize only after correctness is proven with tests.
-
-### Rule 0.5: Scope Discipline
-
-Touch only what the task requires.
-
-Do NOT:
-- "Clean up" code adjacent to your change
-- Refactor imports in files you're not modifying
-- Remove comments you don't fully understand
-- Add features not in the spec because they "seem useful"
-- Modernize syntax in files you're only reading
-
-If you notice something worth improving outside your task scope, note it — don't fix it:
-
-```
-NOTICED BUT NOT TOUCHING:
-- src/utils/format.ts has an unused import (unrelated to this task)
-- The auth middleware could use better error messages (separate task)
-→ Want me to create tasks for these?
-```
-
-### Rule 1: One Thing at a Time
-
-Each increment changes one logical thing. Don't mix concerns:
-
-**Bad:** One commit that adds a new component, refactors an existing one, and updates the build config.
-
-**Good:** Three separate commits — one for each change.
-
-### Rule 2: Keep It Compilable
-
-After each increment, the project must build and existing tests must pass. Don't leave the codebase in a broken state between slices.
-
-### Rule 3: Feature Flags for Incomplete Features
-
-If a feature isn't ready for users but you need to merge increments:
-
-```typescript
-// Feature flag for work-in-progress
-const ENABLE_TASK_SHARING = process.env.FEATURE_TASK_SHARING === 'true';
-
-if (ENABLE_TASK_SHARING) {
-  // New sharing UI
-}
-```
-
-This lets you merge small increments to the main branch without exposing incomplete work.
-
-### Rule 4: Safe Defaults
-
-New code should default to safe, conservative behavior:
-
-```typescript
-// Safe: disabled by default, opt-in
-export function createTask(data: TaskInput, options?: { notify?: boolean }) {
-  const shouldNotify = options?.notify ?? false;
-  // ...
-}
-```
-
-### Rule 5: Rollback-Friendly
-
-Each increment should be independently revertable:
-
-- Additive changes (new files, new functions) are easy to revert
-- Modifications to existing code should be minimal and focused
-- Database migrations should have corresponding rollback migrations
-- Avoid deleting something in one commit and replacing it in the same commit — separate them
-
-## Working with Agents
-
-When directing an agent to implement incrementally:
-
-```
-"Let's implement Task 3 from the plan.
-
-Start with just the database schema change and the API endpoint.
-Don't touch the UI yet — we'll do that in the next increment.
-
-After implementing, run the repository's test and build commands to
-verify nothing is broken."
-```
-
-Be explicit about what's in scope and what's NOT in scope for each increment.
-
-## Increment Checklist
-
-After each increment, verify with the repository's own commands (see the test-driven-development skill's Discover the Stack First section):
-
-- [ ] The change does one thing and does it completely
-- [ ] All existing tests still pass (the repository's test command: `npm test`, `./gradlew test`, `pytest`, ...)
-- [ ] The build succeeds (the repository's build command)
-- [ ] Type checking passes, where the stack has one (`npx tsc --noEmit`, `mypy`, ...)
-- [ ] Linting passes (the repository's lint command)
-- [ ] The new functionality works as expected
-- [ ] The change is committed with a descriptive message
-
-**Note:** Run each verification command after a change that could affect it. After a successful run, don't repeat the same command unless the code has changed since — re-running on unchanged code adds no information.
-
-## Common Rationalizations
-
-| Rationalization | Reality |
-|---|---|
-| "I'll test it all at the end" | Bugs compound. A bug in Slice 1 makes Slices 2-5 wrong. Test each slice. |
-| "It's faster to do it all at once" | It *feels* faster until something breaks and you can't find which of 500 changed lines caused it. |
-| "These changes are too small to commit separately" | Small commits are free. Large commits hide bugs and make rollbacks painful. |
-| "I'll add the feature flag later" | If the feature isn't complete, it shouldn't be user-visible. Add the flag now. |
-| "This refactor is small enough to include" | Refactors mixed with features make both harder to review and debug. Separate them. |
-| "Let me run the build command again just to be sure" | After a successful run, repeating the same command adds nothing unless the code has changed since. Run it again after subsequent edits, not as reassurance. |
-
-## Red Flags
-
-- More than 100 lines of code written without running tests
-- Multiple unrelated changes in a single increment
-- "Let me just quickly add this too" scope expansion
-- Skipping the test/verify step to move faster
-- Build or tests broken between increments
-- Large uncommitted changes accumulating
-- Building abstractions before the third use case demands it
-- Touching files outside the task scope "while I'm here"
-- Creating new utility files for one-time operations
-- Running the same build/test command twice in a row without any intervening code change
-
-## Verification
-
-After completing all increments for a task:
-
-- [ ] Each increment was individually tested and committed
-- [ ] The full test suite passes
-- [ ] The build is clean
-- [ ] The feature works end-to-end as specified
-- [ ] No uncommitted changes remain
-
-## See Also
-
-Per-increment verification is the local check. Before declaring a task done, apply the project-wide Definition of Done as the final gate, the standing bar every increment clears regardless of the task. See `../../references/definition-of-done.md`.
+1. **Cirugía de Precisión:** Modifica exclusivamente los archivos necesarios para la tarea actual. Prohibido "aprovechar" para refactorizar módulos adyacentes o borrar comentarios que no comprendas.
+2. **Cero Código Huérfano:** No introduzcas flags booleanas, interfaces o endpoints "por si acaso se necesitan mañana". Si no está en la spec actual, no se implementa.
+3. **Preservación del Build Verde:** Si un incremento rompe una suite existente, no continúes hacia la siguiente rebanada. Detén el trabajo y aplica `debugging-and-error-recovery`.
+4. **Sincronización con `MEMORY.md`:** Al finalizar cada rebanada o tarea clave de la spec, actualiza el estado en `MEMORY.md`.

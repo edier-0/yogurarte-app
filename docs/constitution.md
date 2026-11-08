@@ -103,7 +103,7 @@ Los requisitos funcionales de cada spec deben redactarse en español empleando l
 
 ### Artículo 15: Implementación Atómica y Pruebas
 1. Las tareas se implementan una a la vez, con un alcance estimado de 20 a 30 minutos por tarea.
-2. Se sigue el ciclo Red-Green-Refactor: pruebas primero en rojo, código de implementación, verificación en verde (`vitest` / `npx tsc --noEmit`), actualización de la tarea y parada para revisión.
+2. Se sigue estrictamente el ciclo Red-Green-Refactor regido por la skill `test-driven-development` (`.agent/skills/test-driven-development/SKILL.md`): prueba primero en rojo (Patrón Prove-It), código de implementación mínimo, verificación en verde (`vitest` / `npx tsc --noEmit`), actualización de la tarea y parada para revisión. Queda prohibido escribir código de negocio sin su prueba previa que falle por la razón correcta.
 3. Al finalizar cada fase o tarea, se actualiza obligatoriamente `MEMORY.md`.
 
 ---
@@ -127,6 +127,7 @@ Los requisitos funcionales de cada spec deben redactarse en español empleando l
 6. **Cláusula de Salvaguarda para Eliminación de Ramas**:
    - Una vez integrada con éxito en `develop` y `main`, la rama temática debe eliminarse tanto localmente (`git branch -d`) como en el repositorio remoto (`git push origin --delete`).
    - **REGLA ESTRICTA**: Queda terminantemente prohibido borrar cualquier rama (local o remota) sin formular la pregunta y obtener la autorización explícita previa del usuario.
+7. **Operación canónica mediante la skill `git-pr-workflow`**: Todo el procedimiento técnico, comandos de sincronización, Quality Gates y matriz de recuperación de contingencias de Git y PR se rigen formalmente por la skill `.agent/skills/git-pr-workflow/SKILL.md`.
 
 ---
 
