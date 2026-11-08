@@ -68,6 +68,7 @@ export const packagingExtraItemSchema = z.object({
   rawMaterialId: z.coerce.number().int().positive('ID de insumo inválido'),
   quantityUsed: z.coerce.number().min(0, 'La cantidad consumida no puede ser negativa'),
   dosagePerLiter: z.coerce.number().min(0).optional(),
+  gramsPerBottle: z.coerce.number().min(0).optional(),
   dosageUnit: z.string().optional(),
   unitCost: z.coerce.number().optional(),
 });

@@ -228,6 +228,7 @@ export interface BatchPackagingPayload {
     rawMaterialId: number;
     quantityUsed: number;
     dosagePerLiter?: number;
+    gramsPerBottle?: number;
     dosageUnit?: string;
     unitCost?: number;
   }>;
@@ -257,6 +258,7 @@ export interface UpdateBatchPackagingPayload {
     rawMaterialId: number;
     quantityUsed: number;
     dosagePerLiter?: number;
+    gramsPerBottle?: number;
     dosageUnit?: string;
     unitCost?: number;
   }>;
