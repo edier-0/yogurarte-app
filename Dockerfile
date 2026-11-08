@@ -9,6 +9,7 @@ RUN apk add --no-cache openssl libc6-compat && npm install -g npm@11
 WORKDIR /app
 
 ENV CHECKPOINT_DISABLE=1
+ENV PRISMA_ENGINES_CACHE_DIR=/root/.cache/prisma
 
 # Copiar manifiestos de dependencias, configuración de npm y TypeScript
 COPY package*.json .npmrc* ./
@@ -22,15 +23,9 @@ RUN --mount=type=cache,target=/root/.npm \
 RUN --mount=type=cache,target=/root/.npm \
     npm --prefix frontend ci --ignore-scripts --legacy-peer-deps
 
-# Si el host proveyó el motor nativo de Linux en .prisma, se incorpora para evitar esperas de red en WSL2
-COPY node_modules/.prism[a]* ./node_modules/.prisma/
-
-# Generar cliente de Prisma si no vino preinstalado por el host (autónomo en CI)
-RUN if [ ! -f ./node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node ]; then \
-        npx prisma generate; \
-    else \
-        echo "✅ Motor nativo de Linux y cliente de Prisma detectados. Omitiendo descarga."; \
-    fi
+# Generar cliente de Prisma de forma 100% autónoma en cualquier entorno (CI, Render, local)
+RUN --mount=type=cache,target=/root/.cache/prisma \
+    npx prisma generate
 
 # Copiar código fuente backend y frontend
 COPY src ./src/
