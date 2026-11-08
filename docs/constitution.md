@@ -1,7 +1,7 @@
 # Constitución del Software — YogurArte
 
 > **Documento Rector del Sistema Operativo, Contable y CRM**  
-> **Versión:** 1.4.0  
+> **Versión:** 1.5.0  
 > **Ámbito:** Todos los módulos, specs, planes y cambios de código en YogurArte.  
 > **Principio de Supremacía:** Ninguna especificación (`spec.md`), plan de arquitectura (`plan.md`) o línea de código puede contradecir los artículos de esta Constitución sin una enmienda explícita aprobada por el usuario.
 
@@ -46,6 +46,7 @@ YogurArte es un sistema integral de misión crítica para la digitalización ope
 3. **Descuento de inventario en envasado**: El consumo de envases, tapas, etiquetas y mermeladas se ejecuta atómicamente en la Fase B. Ningún lote puede considerarse terminado sin el correspondiente descargo de insumos de almacén.
 4. **Auditoría Dinámica de Presentaciones en Fase B**: Las fracciones envasadas operan sobre un catálogo dinámico y extensible de presentaciones comerciales (500 ml, 1 L, 2 L o cualquier formato futuro). Queda prohibido hardcodear columnas fijas de botellas en los balances de stock, rentabilidad o auditorías de Fase B.
 5. **Segregación Estricta de Entregas y Salidas**: Las entregas a clientes, ventas y salidas de producto terminado (incluyendo premios de fidelización y consumo de socios) pertenecen y se auditan exclusivamente a nivel de **Fase B** (`BatchPackaging`). La auditoría del Lote Madre (Fase A) permanece estrictamente reservada para el balance de materia prima cruda (leche/cultivo) y base láctea fermentada a granel consumida por las fracciones.
+6. **Rendimiento Volumétrico por Adición de Insumos (Fase B y Elaboraciones de Inventario)**: La base láctea consumida de Fase A (`baseLitersUsed`) representa estrictamente el volumen líquido extraído del tanque de fermentación. El volumen comercial final envasado puede ser legítimamente superior a la base láctea debido a la adición de mermeladas, frutas, almíbares o endulzantes que aportan masa y volumen físico al producto terminado. Por tanto, el rendimiento volumétrico ($\text{Litros Envasados} / \text{Base Láctea}$) puede superar el 100% sin constituir error ni sobrecupo, y el sistema no debe sobrescribir arbitrariamente la base láctea fijada por el maestro yogurtero. Este mismo principio de balance rige en el inventario para la preparación de mermeladas e insumos compuestos (`SupplyPreparation`), donde la combinación de materias primas genera un rendimiento físico propio.
 
 ### Artículo 6: Inventario, Kardex y Costeo Promedio
 1. **Trazabilidad atómica**: Cada entrada, salida o ajuste en el inventario debe generar un movimiento auditable en el Kardex.
@@ -145,3 +146,4 @@ Los requisitos funcionales de cada spec deben redactarse en español empleando l
 - **v1.2.0**: Estandarización del ciclo de vida Git mediante Pull Requests remotos (PR rama temática $\rightarrow$ `develop` $\rightarrow$ `main`, sincronización local y borrado remoto/local con salvaguarda).
 - **v1.3.0**: Enmienda a los Artículos 5 y 7: Trazabilidad y auditoría dinámica de presentaciones en Fase B (prohibición de 1L/2L fijos), segregación estricta de entregas y salidas exclusivamente en Fase B, y flujo proactivo de alerta de fidelización desde pedidos hacia CRM con auditoría visible en la fracción envasada.
 - **v1.4.0**: Actualización de la Directiva de Flujo de Trabajo en Git (Feature Branch & PR): aislamiento estricto en ramas dedicadas, prohibición categórica de merges locales directos a ramas base, sincronización pre-integración con `origin/develop`, protocolo de consultas obligatorias al usuario para abrir y aceptar PRs (salvo instrucción explícita contraria), y preservación de la salvaguarda mandatoria para eliminación de ramas locales y remotas.
+- **v1.5.0**: Enmienda al Artículo 5 (Numeral 6): Consagración del principio de rendimiento y expansión volumétrica en Fase B y elaboraciones compuestas de inventario (el volumen comercial envasado puede legítimamente superar la base láctea debido al aporte volumétrico de frutas, mermeladas y almíbares; prohibición de sobrescribir arbitrariamente la base láctea definida por el operario).

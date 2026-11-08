@@ -2072,8 +2072,21 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
         throw new NotFoundError(`Insumo adicional con ID ${item.rawMaterialId} no encontrado`);
       }
 
+      const totalBottles = b1L + b2L + customContainersToConsume.reduce((sum, c) => sum + c.quantity, 0);
       let qty = Number(item.quantityUsed) || 0;
-      if (qty <= 0 && item.dosagePerLiter && Number(item.dosagePerLiter) > 0) {
+      let effectiveDosagePerLiter = item.dosagePerLiter !== undefined ? Number(item.dosagePerLiter) : undefined;
+
+      if (qty <= 0 && item.gramsPerBottle !== undefined && Number(item.gramsPerBottle) > 0 && totalBottles > 0) {
+        const grams = Number(item.gramsPerBottle) * totalBottles;
+        if (isKgUnit(mat.unit)) {
+          qty = Math.round(grams) / 1000;
+        } else {
+          qty = grams;
+        }
+        if (effectiveDosagePerLiter === undefined && totalPackagingLiters > 0) {
+          effectiveDosagePerLiter = Math.round((grams / totalPackagingLiters) * 100) / 100;
+        }
+      } else if (qty <= 0 && item.dosagePerLiter && Number(item.dosagePerLiter) > 0) {
         if (isKgUnit(mat.unit)) {
           const totalGrams = Math.round(Number(item.dosagePerLiter) * totalPackagingLiters);
           qty = Math.round(totalGrams) / 1000;
@@ -2094,7 +2107,7 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
           rawMaterialId: mat.id,
           rawMaterial: mat,
           quantityUsed: qty,
-          dosagePerLiter: item.dosagePerLiter,
+          dosagePerLiter: effectiveDosagePerLiter,
           dosageUnit: item.dosageUnit || (isKgUnit(mat.unit) ? 'g/L' : mat.unit),
           unitCost,
           totalCost,
@@ -2363,13 +2376,28 @@ export const createBatchPackaging = async (batchId: number, input: BatchPackagin
           data: { batchId },
         });
 
+        const packagingCapacity = customContainersToConsume.length > 0
+          ? customContainersToConsume[0].capacityLiters
+          : (b1L > 0 ? 1.0 : (b2L > 0 ? 2.0 : null));
+
+        const packagingFormat = customContainersToConsume.length > 0
+          ? customContainersToConsume[0].rawMaterial.name
+          : (b1L > 0 ? '1L' : (b2L > 0 ? '2L' : ''));
+
         await tx.orderItem.updateMany({
           where: {
             orderId: { in: validOrderIds },
-            OR: [
-              { flavor: { contains: flavor.trim(), mode: 'insensitive' } },
-              { batchId: null },
-            ],
+            packagingId: null,
+            flavor: { contains: flavor.trim(), mode: 'insensitive' },
+            ...(packagingCapacity ? {
+              OR: [
+                { litersPerUnit: packagingCapacity },
+                ...(packagingFormat ? [{ bottleSize: { contains: packagingFormat, mode: 'insensitive' as const } }] : []),
+                ...(packagingCapacity === 1.0 ? [{ bottleSize: { in: ['1L', '1000ml', '1 Litro'] } }] : []),
+                ...(packagingCapacity === 2.0 ? [{ bottleSize: { in: ['2L', '2000ml', '2 Litros'] } }] : []),
+                ...(packagingCapacity === 0.5 ? [{ bottleSize: { in: ['500ml', '0.5L', '500 ml'] } }] : []),
+              ],
+            } : {}),
           },
           data: { batchId, packagingId: packaging.id },
         });
@@ -2423,10 +2451,59 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       packagedAt,
     } = data;
 
+    // 1. Inmutabilidad de la presentación en fracciones mono-presentación (RF-12)
+    const oldContainers = Array.isArray(pkg.containers) ? (pkg.containers as any[]) : [];
+    const isMonoPresentation = oldContainers.length === 1;
+    let origCap: number | null = null;
+    let origRawId: number | null = null;
+
+    if (isMonoPresentation) {
+      const orig = oldContainers[0];
+      origCap = Number(orig.capacityLiters) || (pkg.bottles1L > 0 ? 1.0 : (pkg.bottles2L > 0 ? 2.0 : null));
+      origRawId = orig.rawMaterialId ? Number(orig.rawMaterialId) : (pkg.bottles1L > 0 ? pkg.bottle1LRawMaterialId : pkg.bottle2LRawMaterialId);
+
+      if (origCap === 1.0) {
+        if (bottles2L !== undefined && Number(bottles2L) > 0) {
+          throw new BadRequestError('No se puede cambiar el tipo de presentación de una fracción existente');
+        }
+        if (customContainers !== undefined && customContainers.length > 0) {
+          throw new BadRequestError('No se puede cambiar el tipo de presentación de una fracción existente');
+        }
+      } else if (origCap === 2.0) {
+        if (bottles1L !== undefined && Number(bottles1L) > 0) {
+          throw new BadRequestError('No se puede cambiar el tipo de presentación de una fracción existente');
+        }
+        if (customContainers !== undefined && customContainers.length > 0) {
+          throw new BadRequestError('No se puede cambiar el tipo de presentación de una fracción existente');
+        }
+      } else if (origCap) {
+        if (bottles1L !== undefined && Number(bottles1L) > 0) {
+          throw new BadRequestError('No se puede cambiar el tipo de presentación de una fracción existente');
+        }
+        if (bottles2L !== undefined && Number(bottles2L) > 0) {
+          throw new BadRequestError('No se puede cambiar el tipo de presentación de una fracción existente');
+        }
+        if (customContainers !== undefined) {
+          if (customContainers.length !== 1) {
+            throw new BadRequestError('No se puede cambiar el tipo de presentación de una fracción existente');
+          }
+          const c = customContainers[0];
+          if (Math.abs(Number(c.capacityLiters) - origCap) > 0.001) {
+            throw new BadRequestError('No se puede cambiar el tipo de presentación de una fracción existente');
+          }
+          if (origRawId && c.rawMaterialId && Number(c.rawMaterialId) !== origRawId) {
+            throw new BadRequestError('No se puede cambiar el tipo de presentación de una fracción existente');
+          }
+        }
+      }
+    }
+
     const oldB1L = pkg.bottles1L;
     const oldB2L = pkg.bottles2L;
-    const newB1L = bottles1L !== undefined ? Number(bottles1L) : oldB1L;
-    const newB2L = bottles2L !== undefined ? Number(bottles2L) : oldB2L;
+    // Si la fracción es personalizada (no 1L ni 2L), newB1L y newB2L se fuerzan a 0
+    const isCustomMono = isMonoPresentation && origCap !== 1.0 && origCap !== 2.0;
+    const newB1L = isCustomMono ? 0 : (bottles1L !== undefined ? Number(bottles1L) : oldB1L);
+    const newB2L = isCustomMono ? 0 : (bottles2L !== undefined ? Number(bottles2L) : oldB2L);
 
     let customContainersLiters = 0;
     const containersData: any[] = [];
@@ -2449,12 +2526,14 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       });
     }
 
+    let customContainersBottles = 0;
     if (customContainers !== undefined && Array.isArray(customContainers)) {
       for (const c of customContainers) {
         const qty = Math.max(0, Number(c.quantity) || 0);
         const cap = Number(c.capacityLiters) || 1;
         if (qty > 0) {
           customContainersLiters += qty * cap;
+          customContainersBottles += qty;
           containersData.push({
             containerName: c.containerName || `${cap}L`,
             capacityLiters: cap,
@@ -2467,10 +2546,30 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
     } else if (Array.isArray(pkg.containers)) {
       for (const c of pkg.containers as any[]) {
         if (c.containerName !== 'Botella 1L' && c.containerName !== 'Botella 2L' && c.capacityLiters !== 1 && c.capacityLiters !== 2) {
-          customContainersLiters += (Number(c.quantity) || 0) * (Number(c.capacityLiters) || 1);
+          const q = Number(c.quantity) || 0;
+          const cap = Number(c.capacityLiters) || 1;
+          customContainersLiters += q * cap;
+          customContainersBottles += q;
           containersData.push(c);
         }
       }
+    }
+
+    const newTotalBottles = newB1L + newB2L + customContainersBottles;
+
+    // 2. Validación de integridad contra órdenes entregadas (RF-12)
+    const deliveredAgg = await tx.orderItem.aggregate({
+      where: {
+        packagingId,
+        order: { is: { deliveryStatus: 'DELIVERED' } },
+      },
+      _sum: { quantity: true },
+    });
+    const deliveredBottles = deliveredAgg._sum.quantity || 0;
+    if (newTotalBottles < deliveredBottles) {
+      throw new BadRequestError(
+        `No se puede reducir la cantidad a ${newTotalBottles} botellas porque ya se han entregado ${deliveredBottles} botellas a clientes.`
+      );
     }
 
     const oldPkgLiters = pkg.totalLiters;
@@ -2498,7 +2597,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
 
     let deltaPackagingCost = 0;
 
-    // Delta Botellas 1L
+    // 3. Delta Botellas 1L
     const targetB1LMatId = bottle1LRawMaterialId !== undefined
       ? (bottle1LRawMaterialId ? Number(bottle1LRawMaterialId) : null)
       : pkg.bottle1LRawMaterialId;
@@ -2549,7 +2648,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       }
     }
 
-    // Delta Botellas 2L
+    // 4. Delta Botellas 2L
     const targetB2LMatId = bottle2LRawMaterialId !== undefined
       ? (bottle2LRawMaterialId ? Number(bottle2LRawMaterialId) : null)
       : pkg.bottle2LRawMaterialId;
@@ -2600,7 +2699,40 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       }
     }
 
-    // Delta Etiquetas Adhesivas Dinámicas (sin tapas)
+    // 5. Delta Presentaciones Personalizadas (customContainers)
+    if (customContainers !== undefined && Array.isArray(customContainers)) {
+      for (const c of customContainers) {
+        const cQty = Math.max(0, Number(c.quantity) || 0);
+        const prevC = oldContainers.find((pc: any) => pc.rawMaterialId === Number(c.rawMaterialId) || Math.abs((Number(pc.capacityLiters) || 0) - (Number(c.capacityLiters) || 0)) < 0.001);
+        const oldQty = prevC ? (Number(prevC.quantity) || 0) : 0;
+        const deltaCustom = cQty - oldQty;
+
+        if (deltaCustom !== 0) {
+          const cMat = await tx.rawMaterial.findUnique({ where: { id: Number(c.rawMaterialId) } });
+          if (!cMat) {
+            throw new NotFoundError(`Insumo de envase con ID ${c.rawMaterialId} no encontrado`);
+          }
+          if (deltaCustom > 0) {
+            if (cMat.currentStock < deltaCustom) {
+              throw new BadRequestError(`Stock insuficiente de envases "${cMat.name}". Tienes ${cMat.currentStock} y requieres ${deltaCustom} adicionales.`);
+            }
+            await tx.rawMaterial.update({
+              where: { id: cMat.id },
+              data: { currentStock: Math.max(0, cMat.currentStock - deltaCustom) },
+            });
+            deltaPackagingCost += deltaCustom * (cMat.avgCost || 0);
+          } else if (deltaCustom < 0) {
+            await tx.rawMaterial.update({
+              where: { id: cMat.id },
+              data: { currentStock: { increment: Math.abs(deltaCustom) } },
+            });
+            deltaPackagingCost -= Math.abs(deltaCustom) * (cMat.avgCost || 0);
+          }
+        }
+      }
+    }
+
+    // 6. Delta Etiquetas Adhesivas
     let targetLabelMatId: number | null = null;
     if (labelRawMaterialId !== undefined) {
       targetLabelMatId = labelRawMaterialId ? Number(labelRawMaterialId) : null;
@@ -2624,7 +2756,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       if (labelQuantity !== undefined) {
         targetLabelQty = labelQuantity !== null ? Math.max(0, Number(labelQuantity)) : 0;
       } else {
-        targetLabelQty = pkg.labelQuantity !== null && pkg.labelQuantity !== undefined ? pkg.labelQuantity : (newB1L + newB2L);
+        targetLabelQty = pkg.labelQuantity !== null && pkg.labelQuantity !== undefined ? pkg.labelQuantity : newTotalBottles;
       }
     }
 
@@ -2672,22 +2804,30 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
       }
     }
 
-    // Delta Insumos Extras (array extraItems si viene definido)
+    // 7. Delta Insumos Extras
     let targetFruitId = fruitRawMaterialId !== undefined ? (fruitRawMaterialId ? Number(fruitRawMaterialId) : null) : pkg.fruitRawMaterialId;
     let targetFruitQty = fruitQuantityUsed !== undefined ? Number(fruitQuantityUsed) : (pkg.fruitQuantityUsed || 0);
     let fruitUnitCost = pkg.fruitUnitCost || 0;
 
     if (Array.isArray(extraItems)) {
-      // 1. Revertir y borrar insumos previos
+      // 1. Revertir y borrar insumos previos no envases
       const existingItems = await tx.batchPackagingItem.findMany({ where: { packagingId } });
       for (const oldIt of existingItems) {
-        await tx.rawMaterial.update({
-          where: { id: oldIt.rawMaterialId },
-          data: { currentStock: { increment: oldIt.quantityUsed } },
-        });
-        deltaPackagingCost -= oldIt.totalCost;
+        const mat = await tx.rawMaterial.findUnique({ where: { id: oldIt.rawMaterialId } });
+        if (mat && mat.category !== 'EMPAQUE') {
+          await tx.rawMaterial.update({
+            where: { id: oldIt.rawMaterialId },
+            data: { currentStock: { increment: oldIt.quantityUsed } },
+          });
+          deltaPackagingCost -= oldIt.totalCost;
+        }
       }
-      await tx.batchPackagingItem.deleteMany({ where: { packagingId } });
+      await tx.batchPackagingItem.deleteMany({
+        where: {
+          packagingId,
+          rawMaterial: { category: { not: 'EMPAQUE' } },
+        },
+      });
 
       // 2. Procesar nuevos insumos extras
       for (const it of extraItems) {
@@ -2696,7 +2836,19 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
           throw new NotFoundError(`Insumo adicional con ID ${it.rawMaterialId} no encontrado`);
         }
         let qty = Number(it.quantityUsed) || 0;
-        if (qty <= 0 && it.dosagePerLiter && Number(it.dosagePerLiter) > 0) {
+        let effectiveDosagePerLiter = it.dosagePerLiter !== undefined ? Number(it.dosagePerLiter) : undefined;
+
+        if (qty <= 0 && it.gramsPerBottle !== undefined && Number(it.gramsPerBottle) > 0 && newTotalBottles > 0) {
+          const grams = Number(it.gramsPerBottle) * newTotalBottles;
+          if (isKgUnit(mat.unit)) {
+            qty = Math.round(grams) / 1000;
+          } else {
+            qty = grams;
+          }
+          if (effectiveDosagePerLiter === undefined && newPkgLiters > 0) {
+            effectiveDosagePerLiter = Math.round((grams / newPkgLiters) * 100) / 100;
+          }
+        } else if (qty <= 0 && it.dosagePerLiter && Number(it.dosagePerLiter) > 0) {
           if (isKgUnit(mat.unit)) {
             const totalGrams = Math.round(Number(it.dosagePerLiter) * newPkgLiters);
             qty = Math.round(totalGrams) / 1000;
@@ -2704,6 +2856,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
             qty = Number(it.dosagePerLiter) * newPkgLiters;
           }
         }
+
         if (qty > 0) {
           if (mat.currentStock < qty) {
             throw new BadRequestError(`Stock insuficiente de insumo "${mat.name}". Tienes ${mat.currentStock} ${mat.unit} y requieres ${qty}.`);
@@ -2722,7 +2875,7 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
               quantityUsed: qty,
               unitCost,
               totalCost,
-              dosagePerLiter: it.dosagePerLiter,
+              dosagePerLiter: effectiveDosagePerLiter,
               dosageUnit: it.dosageUnit || (isKgUnit(mat.unit) ? 'g/L' : mat.unit),
             },
           });
@@ -2770,6 +2923,35 @@ export const updateBatchPackaging = async (packagingId: number, data: UpdateBatc
           targetFruitId = null;
           targetFruitQty = 0;
           fruitUnitCost = 0;
+        }
+      }
+    }
+
+    // Actualizar itemsUsed de envases personalizados si cambiaron
+    if (customContainers !== undefined && Array.isArray(customContainers)) {
+      await tx.batchPackagingItem.deleteMany({
+        where: {
+          packagingId,
+          rawMaterial: { category: 'EMPAQUE' },
+        },
+      });
+      for (const c of customContainers) {
+        const qty = Math.max(0, Number(c.quantity) || 0);
+        if (qty > 0) {
+          const cMat = await tx.rawMaterial.findUnique({ where: { id: Number(c.rawMaterialId) } });
+          if (cMat) {
+            const uCost = cMat.avgCost || 0;
+            await tx.batchPackagingItem.create({
+              data: {
+                packagingId,
+                rawMaterialId: cMat.id,
+                quantityUsed: qty,
+                unitCost: uCost,
+                totalCost: qty * uCost,
+                dosageUnit: 'und',
+              },
+            });
+          }
         }
       }
     }
