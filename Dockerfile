@@ -9,7 +9,6 @@ RUN apk add --no-cache openssl libc6-compat && npm install -g npm@11
 WORKDIR /app
 
 ENV CHECKPOINT_DISABLE=1
-ENV PRISMA_ENGINES_CACHE_DIR=/root/.cache/prisma
 
 # Copiar manifiestos de dependencias, configuración de npm y TypeScript
 COPY package*.json .npmrc* ./
@@ -17,15 +16,12 @@ COPY tsconfig.json ./
 COPY prisma ./prisma/
 COPY frontend/package*.json ./frontend/
 
-# Instalar dependencias completas de manera reproducible ignorando scripts no controlados
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts --legacy-peer-deps
-RUN --mount=type=cache,target=/root/.npm \
-    npm --prefix frontend ci --ignore-scripts --legacy-peer-deps
+# Instalar dependencias completas de manera reproducible
+RUN npm ci --no-audit --no-fund --legacy-peer-deps
+RUN npm --prefix frontend ci --no-audit --no-fund --legacy-peer-deps
 
 # Generar cliente de Prisma de forma 100% autónoma en cualquier entorno (CI, Render, local)
-RUN --mount=type=cache,target=/root/.cache/prisma \
-    npx prisma generate
+RUN npx prisma generate
 
 # Copiar código fuente backend y frontend
 COPY src ./src/
@@ -38,7 +34,7 @@ RUN npm --prefix frontend run build
 RUN npx tsc
 
 # Podar dependencias de desarrollo para dejar solo las necesarias de producción
-RUN npm prune --omit=dev --legacy-peer-deps --ignore-scripts
+RUN npm prune --omit=dev --legacy-peer-deps --ignore-scripts --no-audit --no-fund
 
 # ==============================================================================
 # STAGE 2: Runner de Producción (Hardened, Lean & Autónomo)
