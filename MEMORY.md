@@ -15,7 +15,7 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
   - Fase 1 (Código diario): TDD, Incremental, Code Review, Simplification y Debugging.
   - Fase 2 (Arquitectura & Datos): API Design (Zod/REST), Frontend UI (Vue 3/Modales 3 capas), Performance (N+1/Prisma) y CI/CD (GitHub Actions).
   - Fase 3 (Inception & Soporte): Las 27 skills del repositorio 100% en español con slugs en inglés, sin archivos sueltos y adaptadas al stack de YogurArte.
-- Rama activa: `docs/git-pr-workflow-skill`.
+- Rama activa: `develop`.
 
 ## Decisiones (y por qué)
 - Flujo Git gobernado por PR: nunca fusionar feature branches localmente en `develop` o `main`; el PR remoto garantiza trazabilidad, CI y orden.
