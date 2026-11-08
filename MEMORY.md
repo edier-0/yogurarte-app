@@ -4,24 +4,24 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 ## Estado actual
 - ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
 - Constitución (v1.5.0) y AGENTS.md consagran el principio de rendimiento volumétrico por adición de mermeladas en Fase B y elaboraciones compuestas de inventario.
-- Rama activa: develop (sincronizada con main tras merge del PR #29).
-- Spec 011 completada al 100%: modal dinámico mono-presentación de Fase B, cálculo de kg por gramsPerBottle, ajuste diferencial en Kardex, pre-ventas con saldo remanente y modo edición seguro.
-- 12/12 tests de Spec 011 en verde, 41/41 tests de regresión en verde, tsc con 0 errores y build Vite limpio en 5.78s.
+- Spec 011 completada al 100% y fusionada en develop y main (modal dinámico mono-presentación de Fase B, cálculo de kg por gramsPerBottle, ajuste diferencial en Kardex).
+- Spec 012 completada al 100%: optimización Docker Multi-Stage híbrida verificada con simulación CI completa. Contenedores `healthy` y tests en verde.
+- Rama activa: `fix/docker-build-optimization`.
 
 ## Decisiones (y por qué)
-- Mono-presentación por fraccionamiento de Fase B: cada lote de Fase B (BatchPackaging) se envasa en un solo formato activo (100% 500ml, 1L, etc.) para simplificar costos unitarios, trazabilidad de lote y empaque.
-- Rendimiento volumétrico por mermeladas (Constitución Art. 5.6): la base láctea queda fija según lo extraído del tanque de Fase A, pero el volumen envasado en botellas puede ser mayor por el aporte de mermeladas y almíbares (rendimiento > 100%). Prohibido forzar igualdad o sobrescribir la base del operario.
-- Edición con pedidos entregados: se permite editar botellas producidas siempre que nuevasBotellas >= botellasEntregadas, emitiendo advertencia si se afecta la cobertura de pedidos en preparación o integridad de inventario.
-- Pre-ventas: saldo dinámico remanente; se bloquea vincular pedidos acumulados que superen las botellas libres del lote; cambiar de pestaña reinicia la selección; en pedidos mixtos solo se vincula la presentación activa.
-- Preselección de 1 Litro (1L): activo por defecto al abrir el modal por rotación histórica (o la de menor capacidad si 1L estuviese inactiva).
-- Bloqueo estricto por falta de stock: no permitir guardar si envases, etiquetas o fruta superan el stock registrado en inventario, protegiendo Kardex contra saldos negativos.
-- Permitir precio $0 COP: válido para lotes destinados a degustación, muestras comerciales o donación.
-- Cumplimiento constitucional: Art. 5.4 (containers como fuente única de verdad), Art. 6.2 (ajuste diferencial neto en Kardex; delta = 0 no exige stock adicional), Art. 9.2 (transacción atómica) y Art. 10.2 (modal de 3 capas fijas).
+- Mono-presentación por fraccionamiento de Fase B: cada lote de Fase B (BatchPackaging) se envasa en un solo formato activo (100% 500ml, 1L, etc.) para simplificar costos unitarios, trazabilidad y empaque.
+- Rendimiento volumétrico por mermeladas (Constitución Art. 5.6): base láctea fija, rendimiento comercial > 100%.
+- Dockerfile Multi-Stage Autónomo e Híbrido:
+  - Usa BuildKit cache mounts y `--ignore-scripts` para acelerar instalaciones y evitar descargas lentas en WSL2.
+  - Generación de Prisma condicional: si el host proveyó `node_modules/.prisma` lo reutiliza (0.3s); si es CI en limpio (GitHub Actions), genera de forma autónoma.
+  - Poda limpia con `npm prune --omit=dev` para generar imagen final hardened sin devDependencies.
+- Eliminación de `sharp` de overrides: dependencia C++ huérfana de 35MB que congelaba la descarga.
+- Entrypoint sin `db push` forzado: evita bloqueos de runtime; migraciones controladas.
 
 ## Aprendizajes y errores a evitar
-- No forzar que los litros envasados sean iguales a la base láctea cuando se adicionan mermeladas o fruta (balance de masa).
-- Respetar siempre el valor fijado por el operario en baseLitersUsed.
-- Cumplir estrictamente git-pr-workflow: nunca mergear directo a develop/main; pedir autorización antes de abrir PR, fusionar PR y borrar ramas.
+- NUNCA usar cadenas de conexión reales como fallback en scripts o pruebas; requerir variables en `.env`.
+- No ejecutar scripts de postinstall descontrolados (`@prisma/engines` intentaba descargar binarios al vuelo en npm ci; solucionado con `--ignore-scripts`).
+- Siempre preguntar antes de abrir PR, antes de fusionar y antes de borrar ramas.
 
 ## Próximos pasos
-- Spec 011 finalizada y cerrada al 100%. Sistema listo en develop y main para nuevas características o requerimientos de negocio.
+- Solicitar aprobación del usuario para abrir PR de `fix/docker-build-optimization` contra `develop`.

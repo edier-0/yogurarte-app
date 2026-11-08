@@ -1,25 +1,36 @@
 # ==============================================================================
-# STAGE 1: Builder
+# STAGE 1: Builder (Compilación autónoma de Backend, Frontend y Prisma)
 # ==============================================================================
 FROM node:20-alpine AS builder
 
-# Instalar dependencias necesarias para compilar Prisma en Alpine y actualizar npm a v11
+# Instalar utilidades necesarias para compilar dependencias nativas y Prisma en Alpine
 RUN apk add --no-cache openssl libc6-compat && npm install -g npm@11
 
 WORKDIR /app
 
-# Copiar manifiestos de dependencias y configuración de TypeScript
-COPY package*.json ./
+ENV CHECKPOINT_DISABLE=1
+
+# Copiar manifiestos de dependencias, configuración de npm y TypeScript
+COPY package*.json .npmrc* ./
 COPY tsconfig.json ./
 COPY prisma ./prisma/
 COPY frontend/package*.json ./frontend/
 
-# Instalar dependencias completas de manera reproducible
-RUN npm ci
-RUN npm --prefix frontend ci
+# Instalar dependencias completas de manera reproducible ignorando scripts no controlados
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --ignore-scripts --legacy-peer-deps
+RUN --mount=type=cache,target=/root/.npm \
+    npm --prefix frontend ci --ignore-scripts --legacy-peer-deps
 
-# Generar cliente de Prisma
-RUN npx prisma generate
+# Si el host proveyó el motor nativo de Linux en .prisma, se incorpora para evitar esperas de red en WSL2
+COPY node_modules/.prism[a]* ./node_modules/.prisma/
+
+# Generar cliente de Prisma si no vino preinstalado por el host (autónomo en CI)
+RUN if [ ! -f ./node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node ]; then \
+        npx prisma generate; \
+    else \
+        echo "✅ Motor nativo de Linux y cliente de Prisma detectados. Omitiendo descarga."; \
+    fi
 
 # Copiar código fuente backend y frontend
 COPY src ./src/
@@ -31,29 +42,36 @@ RUN npm --prefix frontend run build
 # Compilar TypeScript a JavaScript limpio (dist/)
 RUN npx tsc
 
+# Podar dependencias de desarrollo para dejar solo las necesarias de producción
+RUN npm prune --omit=dev --legacy-peer-deps --ignore-scripts
+
 # ==============================================================================
-# STAGE 2: Runner de Producción (Hardened & Lean)
+# STAGE 2: Runner de Producción (Hardened, Lean & Autónomo)
 # ==============================================================================
 FROM node:20-alpine AS runner
 
-# Instalar utilidades de runtime seguras (dumb-init para gestión PID 1) y actualizar npm a v11
-RUN apk add --no-cache openssl libc6-compat dumb-init dos2unix && npm install -g npm@11
+# Instalar utilidades de runtime seguras (dumb-init para gestión PID 1)
+RUN apk add --no-cache openssl libc6-compat dumb-init dos2unix
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV CHECKPOINT_DISABLE=1
+ENV PRISMA_HIDE_UPDATE_MESSAGE=true
 
-# Copiar manifiestos e instalar ÚNICAMENTE dependencias de producción
-COPY package*.json ./
+# Copiar manifiestos y esquemas necesarios para runtime y migraciones
+COPY package*.json .npmrc* ./
 COPY prisma ./prisma/
 
-RUN npm ci --omit=dev
-RUN npx prisma generate
+# Copiar dependencias de producción limpias desde el builder (sin descargas adicionales)
+COPY --from=builder /app/node_modules ./node_modules
 
-# Copiar artefactos compilados desde el builder (tanto dist como public completo con assets)
+# Copiar artefactos compilados desde el builder (dist del backend y public del frontend)
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
+
+# Copiar script de entrypoint
 COPY docker-entrypoint.sh ./
 
 # Crear carpetas de runtime y configurar permisos seguros para usuario no root

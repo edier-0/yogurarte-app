@@ -1,5 +1,9 @@
-node_modules
+node_modules/*
+!node_modules/.prisma
+!node_modules/.prisma/**
 dist
+frontend/node_modules
+frontend/dist
 .env
 .env.*
 *.log
@@ -17,3 +21,7 @@ temp
 baileys_auth_info
 scripts/backup_db.bat
 README.md
+specs
+docs
+scratch
+backups
