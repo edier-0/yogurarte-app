@@ -175,6 +175,99 @@ const items = ref<OrderItem[]>([
 ]);
 
 // Lotes fraccionados y envasados (Fase B) activos y con saldo disponible
+
+function matchPresentation(containerName: string, bottleSize: string): boolean {
+  if (!containerName || !bottleSize) return false;
+  const c = containerName.toLowerCase().replace(/\s+/g, '');
+  const b = bottleSize.toLowerCase().replace(/\s+/g, '');
+  if (c === b) return true;
+  const extractCode = (str: string) => {
+    if (str.includes('500')) return '500ml';
+    if (str.includes('250')) return '250ml';
+    if (str.includes('150')) return '150ml';
+    if (str.includes('80')) return '80ml';
+    if (str.includes('2l') || str.includes('2litro')) return '2l';
+    if (str.includes('1l') || str.includes('1litro')) return '1l';
+    return str;
+  };
+  return extractCode(c) === extractCode(b);
+}
+
+function getPackagingPresentationInfo(pkg: any, bottleSize: string) {
+  if (!pkg) return null;
+  if (Array.isArray(pkg.presentations) && pkg.presentations.length > 0) {
+    const matched = pkg.presentations.find((p: any) => matchPresentation(p.containerName, bottleSize));
+    if (matched) return matched;
+  }
+  if (Array.isArray(pkg.containers) && pkg.containers.length > 0) {
+    const matched = pkg.containers.find((c: any) => matchPresentation(c.containerName, bottleSize));
+    if (matched) {
+      return {
+        containerName: matched.containerName,
+        free: matched.quantity || 0,
+        price: matched.price || 0,
+      };
+    }
+  }
+  // Retrocompatibilidad legacy
+  const clean = (bottleSize || '').toLowerCase();
+  if (clean.includes('1l') || clean === '1l') {
+    return {
+      containerName: '1L',
+      free: pkg.bottles1L !== undefined ? pkg.bottles1L : Math.round(pkg.freeLiters || 0),
+      price: pkg.price1L || 12000,
+    };
+  }
+  if (clean.includes('2l') || clean === '2l') {
+    return {
+      containerName: '2L',
+      free: pkg.bottles2L !== undefined ? pkg.bottles2L : Math.floor((pkg.freeLiters || 0) / 2),
+      price: pkg.price2L || 24000,
+    };
+  }
+  if (clean.includes('500')) {
+    return {
+      containerName: '500ml',
+      free: Math.floor((pkg.freeLiters || 0) / 0.5),
+      price: 8000,
+    };
+  }
+  return null;
+}
+
+function getPackagingFreeUnitsForSize(pkg: any, bottleSize: string): number {
+  const info = getPackagingPresentationInfo(pkg, bottleSize);
+  return info ? Math.max(0, info.free) : 0;
+}
+
+function getFilteredPackagings(item: OrderItem) {
+  return activePackagings.value.filter((p) => {
+    const freeUnits = getPackagingFreeUnitsForSize(p, item.bottleSize);
+    return freeUnits >= 1;
+  });
+}
+
+function getItemFreeUnits(item: OrderItem): number | null {
+  if (!item.packagingId) return null;
+  const source = productionStore.packagings.length > 0
+    ? productionStore.packagings
+    : productionStore.availablePackagings;
+  const pkg = source.find((p) => p.id === item.packagingId);
+  if (!pkg) return null;
+  return getPackagingFreeUnitsForSize(pkg, item.bottleSize);
+}
+
+function isItemStockInsufficient(item: OrderItem): boolean {
+  if (!item.packagingId) return false;
+  const freeUnits = getItemFreeUnits(item);
+  if (freeUnits === null) return false;
+  return item.quantity > freeUnits;
+}
+
+const hasStockInsufficient = computed(() => {
+  return items.value.some((it) => isItemStockInsufficient(it));
+});
+
 const activePackagings = computed(() => {
   const source = productionStore.availablePackagings.length > 0
     ? productionStore.availablePackagings
@@ -781,14 +874,14 @@ const formatCurrency = (val: number) => {
                     @change="setItemSelectionKey(item, ($event.target as HTMLSelectElement).value)"
                     class="w-full rounded-lg border border-slate-200 bg-surface-light-canvas py-1.5 px-2 text-xs font-semibold text-slate-900 focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-surface-dark-canvas dark:text-slate-100"
                   >
-                    <!-- Grupo 1: Lotes Envasados Disponibles (Fase B) -->
-                    <optgroup v-if="activePackagings.length > 0" label="Lotes Envasados Disponibles (Fase B)">
+                    <!-- Grupo 1: Lotes Envasados Disponibles (Fase B) filtrados por presentación -->
+                    <optgroup v-if="getFilteredPackagings(item).length > 0" label="Lotes Envasados Disponibles">
                       <option
-                        v-for="p in activePackagings"
+                        v-for="p in getFilteredPackagings(item)"
                         :key="`pkg_${p.id}`"
                         :value="`pkg_${p.id}`"
                       >
-                        {{ p.flavor }} — {{ p.packagingCode || `Lote #${p.id}` }} ({{ p.freeLiters }}L disp. · {{ p.bottles1L }} de 1L / {{ p.bottles2L }} de 2L)
+                        {{ p.flavor }} — {{ p.packagingCode || `Lote #${p.id}` }} ({{ getPackagingFreeUnitsForSize(p, item.bottleSize) }} unds disp.)
                       </option>
                     </optgroup>
 
@@ -833,7 +926,15 @@ const formatCurrency = (val: number) => {
                     v-model.number="item.quantity"
                     @input="onItemChange(item)"
                     class="w-full rounded-lg border border-slate-200 bg-surface-light-canvas py-1.5 px-2 text-center text-xs font-bold dark:border-slate-700 dark:bg-surface-dark-canvas"
+                    :class="{ 'border-rose-500 text-rose-600 focus:border-rose-500': isItemStockInsufficient(item) }"
                   />
+                  <span
+                    v-if="isItemStockInsufficient(item)"
+                    class="block text-[9px] font-bold text-rose-500 dark:text-rose-400 leading-tight mt-0.5 text-center"
+                    title="La cantidad solicitada supera el stock disponible del lote"
+                  >
+                    Máx. {{ getItemFreeUnits(item) }}
+                  </span>
                 </div>
 
                 <!-- Precio Unitario (Modo C: Manual por ítem) -->
@@ -1205,7 +1306,7 @@ const formatCurrency = (val: number) => {
             </button>
             <button
               type="submit"
-              :disabled="isSubmitting"
+              :disabled="isSubmitting || hasStockInsufficient" :title="hasStockInsufficient ? 'Hay ítems con cantidad que excede el stock libre del lote' : ''"
               class="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-6 py-2.5 text-xs font-extrabold text-white shadow-accent transition-transform active:scale-95 hover:bg-accent-600 disabled:opacity-50"
             >
               <Sparkles class="h-4 w-4" />

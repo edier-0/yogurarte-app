@@ -31,6 +31,7 @@ export interface LoyaltyCustomerItem {
   rewardsAvailable: number;
   progressPercent: number;
   hasAvailableReward: boolean;
+  pendingDebt?: number;
 }
 
 export interface LoyaltyResponse {

@@ -1,3 +1,22 @@
+
+export function matchPresentationFormat(containerName: string, bottleSize: string): boolean {
+  const c = (containerName || '').toLowerCase().replace(/\s+/g, '');
+  const b = (bottleSize || '').toLowerCase().replace(/\s+/g, '');
+  if (c === b) return true;
+  const extractCode = (str: string) => {
+    if (str.includes('500')) return '500ml';
+    if (str.includes('250')) return '250ml';
+    if (str.includes('150')) return '150ml';
+    if (str.includes('80')) return '80ml';
+    if (str.includes('2l') || str.includes('2litro')) return '2l';
+    if (str.includes('1l') || str.includes('1litro')) return '1l';
+    return str;
+  };
+  const codeC = extractCode(c);
+  const codeB = extractCode(b);
+  return codeC === codeB;
+}
+
 /**
  * Resolver la capacidad en litros de una presentación según su nombre o etiqueta
  */
@@ -806,16 +825,19 @@ export const createOrder = async (data: CreateOrderInput) => {
       }
     }
 
-    // 5. Validar capacidad de cada lote fraccionado (Fase B) y lote madre (Fase A)
-    const pkgLitersMap = new Map<number, number>();
+    // 5. Validar coincidencia de presentación y capacidad física en lote fraccionado (Fase B)
+    const pkgUnitsMap = new Map<string, number>(); // key: `${pId}_${sizeNorm}`
     for (const item of parsedItems) {
       if (item.packagingId) {
-        const cur = pkgLitersMap.get(item.packagingId) || 0;
-        pkgLitersMap.set(item.packagingId, cur + item.totalLiters);
+        const sizeNorm = (item.bottleSize || '').toLowerCase().replace(/\s+/g, '');
+        const key = `${item.packagingId}_${sizeNorm}`;
+        pkgUnitsMap.set(key, (pkgUnitsMap.get(key) || 0) + item.quantity);
       }
     }
 
-    for (const [pId, requestedLiters] of pkgLitersMap.entries()) {
+    for (const [key, requestedUnits] of pkgUnitsMap.entries()) {
+      const [pIdStr, sizeNorm] = key.split('_');
+      const pId = Number(pIdStr);
       const pkgObj = await tx.batchPackaging.findFirst({
         where: { id: pId },
         include: {
@@ -826,9 +848,17 @@ export const createOrder = async (data: CreateOrderInput) => {
 
       if (pkgObj) {
         const computed = computePackagingPresentations(pkgObj);
-        if (requestedLiters > computed.freeLiters + 0.001) {
+        const targetPres = computed.presentations.find((p: any) => matchPresentationFormat(p.containerName, sizeNorm));
+
+        if (!targetPres) {
           throw new BadRequestError(
-            `Capacidad excedida: El lote envasado "${pkgObj.packagingCode || pkgObj.flavor}" solo tiene ${computed.freeLiters.toFixed(1)}L libres disponibles, pero este pedido requiere ${requestedLiters.toFixed(1)}L.`
+            `Discrepancia de presentación: El lote envasado "${pkgObj.packagingCode || pkgObj.flavor}" no contiene la presentación seleccionada.`
+          );
+        }
+
+        if (requestedUnits > targetPres.free) {
+          throw new BadRequestError(
+            `Capacidad excedida: El lote envasado "${pkgObj.packagingCode || pkgObj.flavor}" solo tiene ${targetPres.free} unidades libres de ${targetPres.containerName}, pero este pedido requiere ${requestedUnits} unidades.`
           );
         }
       }
@@ -1240,16 +1270,19 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
         ? parsedItems[0].bottleSize
         : 'MIXTO';
 
-      // Validar capacidad de cada lote fraccionado (Fase B) y lote madre (Fase A)
-      const pkgLitersMap = new Map<number, number>();
+      // Validar coincidencia de presentación y capacidad física en lote fraccionado (Fase B)
+      const pkgUnitsMap = new Map<string, number>();
       for (const item of parsedItems) {
         if (item.packagingId) {
-          const cur = pkgLitersMap.get(item.packagingId) || 0;
-          pkgLitersMap.set(item.packagingId, cur + item.totalLiters);
+          const sizeNorm = (item.bottleSize || '').toLowerCase().replace(/\s+/g, '');
+          const key = `${item.packagingId}_${sizeNorm}`;
+          pkgUnitsMap.set(key, (pkgUnitsMap.get(key) || 0) + item.quantity);
         }
       }
 
-      for (const [pId, requestedLiters] of pkgLitersMap.entries()) {
+      for (const [key, requestedUnits] of pkgUnitsMap.entries()) {
+        const [pIdStr, sizeNorm] = key.split('_');
+        const pId = Number(pIdStr);
         const pkgObj = await tx.batchPackaging.findFirst({
           where: { id: pId },
           include: {
@@ -1261,9 +1294,17 @@ export const updateOrder = async (id: number, data: UpdateOrderInput) => {
         if (pkgObj) {
           const otherOrderItems = pkgObj.orderItems.filter((it: any) => it.orderId !== id);
           const computed = computePackagingPresentations({ ...pkgObj, orderItems: otherOrderItems });
-          if (requestedLiters > computed.freeLiters + 0.001) {
+          const targetPres = computed.presentations.find((p: any) => matchPresentationFormat(p.containerName, sizeNorm));
+
+          if (!targetPres) {
             throw new BadRequestError(
-              `Capacidad excedida: El lote envasado "${pkgObj.packagingCode || pkgObj.flavor}" solo tiene ${computed.freeLiters.toFixed(1)}L libres disponibles, pero el pedido requiere ${requestedLiters.toFixed(1)}L.`
+              `Discrepancia de presentación: El lote envasado "${pkgObj.packagingCode || pkgObj.flavor}" no contiene la presentación seleccionada.`
+            );
+          }
+
+          if (requestedUnits > targetPres.free) {
+            throw new BadRequestError(
+              `Capacidad excedida: El lote envasado "${pkgObj.packagingCode || pkgObj.flavor}" solo tiene ${targetPres.free} unidades libres de ${targetPres.containerName}, pero el pedido requiere ${requestedUnits} unidades.`
             );
           }
         }
