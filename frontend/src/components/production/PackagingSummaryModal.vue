@@ -301,7 +301,11 @@ async function loadUnlinkedOrders() {
   isLoadingUnlinked.value = true;
   try {
     const flavorParam = unlinkedFilter.value === 'MATCH' ? summary.value.packaging.flavor : undefined;
-    const res = await productionStore.fetchPendingOrders(flavorParam);
+    const presParam =
+      unlinkedFilter.value === 'MATCH' && summary.value.presentations?.[0]?.containerName
+        ? summary.value.presentations[0].containerName
+        : undefined;
+    const res = await productionStore.fetchPendingOrders(flavorParam, presParam);
     unlinkedOrders.value = res?.orders || [];
     selectedOrderIds.value = selectedOrderIds.value.filter((id) =>
       unlinkedOrders.value.some((o) => o.id === id)

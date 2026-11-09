@@ -14,8 +14,6 @@ import {
   Save,
   User,
   Calendar,
-  Package,
-  Milk,
   FileText,
   Check,
 } from 'lucide-vue-next';
@@ -23,6 +21,12 @@ import { http } from '@/api/client';
 import { useProductionStore } from '@/stores/production.store';
 import { getDeviceLocalDate, toInputDateFormat, getDeviceTimestamp } from '@/utils/dateUtils';
 import { toast } from 'vue-sonner';
+
+export interface RecurringItemData {
+  flavor: string;
+  bottleSize: string;
+  quantity: number;
+}
 
 export interface RecurringScheduleData {
   id?: number;
@@ -35,8 +39,9 @@ export interface RecurringScheduleData {
   } | null;
   frequencyDays: number;
   preferredFlavor: string;
-  bottleSize: '1L' | '2L';
+  bottleSize: string;
   quantity: number;
+  items?: RecurringItemData[] | null;
   nextDate: string;
   notes?: string | null;
   isActive?: boolean;
@@ -66,9 +71,7 @@ const form = ref<{
   customerId: number | null;
   customerName: string;
   frequencyDays: number;
-  preferredFlavor: string;
-  bottleSize: '1L' | '2L';
-  quantity: number;
+  items: RecurringItemData[];
   nextDate: string;
   notes: string;
   isActive: boolean;
@@ -76,13 +79,42 @@ const form = ref<{
   customerId: null,
   customerName: '',
   frequencyDays: 15,
-  preferredFlavor: 'Fresa',
-  bottleSize: '1L',
-  quantity: 1,
+  items: [{ flavor: 'Fresa', bottleSize: '1L', quantity: 1 }],
   nextDate: getDeviceLocalDate(),
   notes: '',
   isActive: true,
 });
+
+
+const availablePresentations = computed(() => {
+  if (productionStore.activePresentations.length > 0) {
+    return productionStore.activePresentations.map((p) => ({
+      name: p.name,
+      label: `${p.name} (${p.capacityLiters}L)`,
+    }));
+  }
+  return [
+    { name: '1L', label: '1 Litro (1L)' },
+    { name: '2L', label: '2 Litros (2L)' },
+    { name: '500ml', label: '500 ml' },
+  ];
+});
+
+function addItem() {
+  const defaultFlavor = availableFlavors.value[0] || 'Fresa';
+  const defaultSize = availablePresentations.value[0]?.name || '1L';
+  form.value.items.push({
+    flavor: defaultFlavor,
+    bottleSize: defaultSize,
+    quantity: 1,
+  });
+}
+
+function removeItem(index: number) {
+  if (form.value.items.length > 1) {
+    form.value.items.splice(index, 1);
+  }
+}
 
 const isSaving = ref(false);
 const customerSearch = ref('');
@@ -143,20 +175,38 @@ watch(
       if (productionStore.flavors.length === 0) {
         productionStore.fetchFlavors();
       }
+      if (productionStore.presentations.length === 0) {
+        productionStore.fetchPresentations();
+      }
       loadCustomers();
 
       if (props.scheduleToEdit) {
         const d = props.scheduleToEdit;
         const formattedDate = d.nextDate ? toInputDateFormat(d.nextDate) : '';
 
+        let parsedItems: RecurringItemData[] = [];
+        if (d.items && Array.isArray(d.items) && d.items.length > 0) {
+          parsedItems = d.items.map((it: any) => ({
+            flavor: it.flavor || 'Fresa',
+            bottleSize: it.bottleSize || '1L',
+            quantity: Number(it.quantity) || 1,
+          }));
+        } else {
+          parsedItems = [
+            {
+              flavor: d.preferredFlavor || 'Fresa',
+              bottleSize: d.bottleSize || '1L',
+              quantity: d.quantity || 1,
+            },
+          ];
+        }
+
         form.value = {
           id: d.id,
           customerId: d.customerId,
           customerName: d.customer?.fullName ? `${d.customer.fullName} (${d.customer.phone})` : '',
           frequencyDays: d.frequencyDays || 15,
-          preferredFlavor: d.preferredFlavor || 'Fresa',
-          bottleSize: d.bottleSize || '1L',
-          quantity: d.quantity || 1,
+          items: parsedItems,
           nextDate: formattedDate,
           notes: d.notes || '',
           isActive: d.isActive !== false,
@@ -169,9 +219,13 @@ watch(
           customerId: null,
           customerName: '',
           frequencyDays: 15,
-          preferredFlavor: availableFlavors.value[0] || 'Fresa',
-          bottleSize: '1L',
-          quantity: 1,
+          items: [
+            {
+              flavor: availableFlavors.value[0] || 'Fresa',
+              bottleSize: availablePresentations.value[0]?.name || '1L',
+              quantity: 1,
+            },
+          ],
           nextDate: getDeviceLocalDate(nextWeek),
           notes: '',
           isActive: true,
@@ -192,19 +246,30 @@ async function handleSave() {
     toast.error('La fecha de la próxima entrega es requerida');
     return;
   }
-  if (form.value.quantity < 1) {
-    toast.error('La cantidad mínima de envases es 1');
+  if (!form.value.items || form.value.items.length === 0) {
+    toast.error('Debes incluir al menos un producto en la suscripción');
     return;
+  }
+  for (const it of form.value.items) {
+    if (!it.quantity || it.quantity < 1) {
+      toast.error('La cantidad mínima de cada envase es 1');
+      return;
+    }
   }
 
   isSaving.value = true;
   try {
+    const totalQty = form.value.items.reduce((sum: number, i: RecurringItemData) => sum + (Number(i.quantity) || 1), 0);
+    const firstItem = form.value.items[0];
+    const isSingle = form.value.items.length === 1;
+
     const payload = {
       customerId: form.value.customerId,
       frequencyDays: Number(form.value.frequencyDays),
-      preferredFlavor: form.value.preferredFlavor,
-      bottleSize: form.value.bottleSize,
-      quantity: Number(form.value.quantity),
+      preferredFlavor: isSingle ? firstItem.flavor : 'MIXTO',
+      bottleSize: isSingle ? firstItem.bottleSize : 'MIXTO',
+      quantity: totalQty,
+      items: form.value.items,
       nextDate: getDeviceTimestamp(form.value.nextDate),
       notes: form.value.notes.trim() || undefined,
       isActive: form.value.isActive,
@@ -299,80 +364,75 @@ async function handleSave() {
             </div>
           </div>
 
-          <!-- Sabor Preferido y Presentación -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Sabor Preferido
+          <!-- Canasta de Productos (Suscripción Mixta) -->
+          <div class="rounded-2xl border border-surface-light-border bg-surface-light-canvas/60 p-3.5 dark:border-surface-dark-border dark:bg-surface-dark-canvas/60 space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="block text-xs font-black uppercase text-slate-700 dark:text-slate-300">
+                Productos de la Suscripción
               </label>
-              <div class="relative">
-                <Milk class="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <select
-                  v-model="form.preferredFlavor"
-                  class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 pl-9 pr-3 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-                >
-                  <option v-for="flv in availableFlavors" :key="flv" :value="flv">
-                    {{ flv }}
-                  </option>
-                </select>
-              </div>
+              <button
+                type="button"
+                @click="addItem"
+                class="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2 py-1 text-[11px] font-bold text-brand-800 hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-darkText dark:hover:bg-brand-900/60 transition-colors"
+              >
+                + Agregar Producto
+              </button>
             </div>
 
-            <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Presentación del Envase
-              </label>
-              <div class="grid grid-cols-2 gap-2">
+            <div class="space-y-2">
+              <div
+                v-for="(item, idx) in form.items"
+                :key="idx"
+                class="flex items-center gap-2 bg-surface-light-card p-2 rounded-xl border border-surface-light-border dark:bg-surface-dark-card dark:border-surface-dark-border"
+              >
+                <!-- Sabor -->
+                <div class="flex-1">
+                  <select
+                    v-model="item.flavor"
+                    class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas py-1.5 px-2 text-xs font-semibold dark:border-surface-dark-border dark:bg-surface-dark-canvas"
+                  >
+                    <option v-for="fl in availableFlavors" :key="fl" :value="fl">{{ fl }}</option>
+                  </select>
+                </div>
+
+                <!-- Presentación -->
+                <div class="w-32">
+                  <select
+                    v-model="item.bottleSize"
+                    class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas py-1.5 px-2 text-xs font-semibold dark:border-surface-dark-border dark:bg-surface-dark-canvas"
+                  >
+                    <option v-for="sz in availablePresentations" :key="sz.name" :value="sz.name">{{ sz.name }}</option>
+                  </select>
+                </div>
+
+                <!-- Cantidad -->
+                <div class="w-20">
+                  <input
+                    type="number"
+                    min="1"
+                    v-model.number="item.quantity"
+                    class="w-full rounded-lg border border-surface-light-border bg-surface-light-canvas py-1.5 px-2 text-center text-xs font-bold dark:border-surface-dark-border dark:bg-surface-dark-canvas"
+                  />
+                </div>
+
+                <!-- Eliminar -->
                 <button
+                  v-if="form.items.length > 1"
                   type="button"
-                  @click="form.bottleSize = '1L'"
-                  class="rounded-xl border py-2 text-xs font-extrabold transition-all"
-                  :class="
-                    form.bottleSize === '1L'
-                      ? 'border-brand-800 bg-brand-800 text-white shadow-xs'
-                      : 'border-surface-light-border bg-surface-light-canvas text-slate-600 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300'
-                  "
+                  @click="removeItem(idx)"
+                  class="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40"
+                  title="Eliminar producto"
                 >
-                  1 Litro ($12k)
-                </button>
-                <button
-                  type="button"
-                  @click="form.bottleSize = '2L'"
-                  class="rounded-xl border py-2 text-xs font-extrabold transition-all"
-                  :class="
-                    form.bottleSize === '2L'
-                      ? 'border-brand-800 bg-brand-800 text-white shadow-xs'
-                      : 'border-surface-light-border bg-surface-light-canvas text-slate-600 hover:bg-slate-100 dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-slate-300'
-                  "
-                >
-                  2 Litros ($22k)
+                  <X class="h-4 w-4" />
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Cantidad y Frecuencia -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Cantidad de Envases
-              </label>
-              <div class="relative">
-                <Package class="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  v-model.number="form.quantity"
-                  type="number"
-                  min="0"
-                  step="any"
-                  class="w-full rounded-xl border border-surface-light-border bg-surface-light-canvas py-2 pl-9 pr-3 text-xs font-semibold text-slate-900 focus:border-brand-800 focus:outline-none dark:border-surface-dark-border dark:bg-surface-dark-canvas dark:text-white"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Frecuencia de Pedido
+          <!-- Frecuencia de Pedido -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Frecuencia de Pedido
               </label>
               <select
                 v-model.number="form.frequencyDays"
@@ -385,7 +445,6 @@ async function handleSave() {
                 <option :value="30">Mensual (Cada 30 días)</option>
               </select>
             </div>
-          </div>
 
           <!-- Próxima Fecha y Estado Activo -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

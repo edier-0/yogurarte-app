@@ -490,12 +490,19 @@ async function handleUnlinkOrder(order: any) {
                               <span class="text-slate-400 font-normal">({{ formatCOP(pres.price) }})</span>
                             </span>
                           </template>
-                          <template v-else>
-                            <span v-if="pkg.bottles1L > 0" class="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                              1L: {{ pkg.bottles1L }} unds ({{ formatCOP(pkg.price1L || 12000) }})
+                          <template v-else-if="pkg.containers && pkg.containers.length > 0">
+                            <span
+                              v-for="(c, cIdx) in pkg.containers"
+                              :key="cIdx"
+                              class="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                            >
+                              {{ c.containerName || `${c.capacityLiters}L` }}: {{ c.quantity }} unds
+                              <span class="text-slate-400 font-normal">({{ formatCOP(c.price) }})</span>
                             </span>
-                            <span v-if="pkg.bottles2L > 0" class="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                              2L: {{ pkg.bottles2L }} unds ({{ formatCOP(pkg.price2L || 24000) }})
+                          </template>
+                          <template v-else>
+                            <span class="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                              {{ pkg.totalLiters }} L a granel
                             </span>
                           </template>
                         </div>

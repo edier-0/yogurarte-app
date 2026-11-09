@@ -67,6 +67,12 @@ export const updateConversationTagSchema = z.object({
 /**
  * Esquema para crear compras frecuentes programadas
  */
+export const recurringItemSchema = z.object({
+  flavor: z.string().min(2, 'Ingresa un sabor válido'),
+  bottleSize: z.string().min(1, 'La presentación es obligatoria'),
+  quantity: z.coerce.number().int().min(1, 'La cantidad mínima es 1'),
+});
+
 export const createRecurringScheduleSchema = z.object({
   customerId: z.coerce
     .number()
@@ -79,16 +85,24 @@ export const createRecurringScheduleSchema = z.object({
     .max(365, 'La frecuencia máxima es de 365 días')
     .optional()
     .default(15),
-  preferredFlavor: z.string().min(2, 'Ingresa un sabor válido'),
-  bottleSize: z.enum(['1L', '2L']),
+  preferredFlavor: z.string().min(2, 'Ingresa un sabor válido').optional(),
+  bottleSize: z.string().min(1, 'Presentación requerida').optional(),
   quantity: z.coerce
     .number()
     .int('La cantidad debe ser entera')
-    .min(1, 'La cantidad mínima es 1'),
+    .min(1, 'La cantidad mínima es 1')
+    .optional(),
+  items: z.array(recurringItemSchema).min(1, 'Debe incluir al menos un ítem').optional(),
   nextDate: z.string().min(4, 'La fecha de recordatorio es obligatoria'),
   notes: z.string().max(500, 'Las notas no pueden superar 500 caracteres').optional().nullable(),
   isActive: z.boolean().optional(),
-});
+}).refine(
+  (data) => (data.preferredFlavor && data.bottleSize && data.quantity) || (data.items && data.items.length > 0),
+  {
+    message: 'Debe especificar el producto preferido o una canasta de ítems',
+    path: ['preferredFlavor'],
+  }
+);
 
 /**
  * Esquema para actualizar compras frecuentes programadas
@@ -96,8 +110,9 @@ export const createRecurringScheduleSchema = z.object({
 export const updateRecurringScheduleSchema = z.object({
   frequencyDays: z.coerce.number().int().min(1).max(365).optional(),
   preferredFlavor: z.string().min(2).optional(),
-  bottleSize: z.enum(['1L', '2L']).optional(),
+  bottleSize: z.string().min(1).optional(),
   quantity: z.coerce.number().int().min(1).optional(),
+  items: z.array(recurringItemSchema).min(1).optional(),
   nextDate: z.string().optional(),
   notes: z.string().max(500).optional().nullable(),
   isActive: z.boolean().optional(),
@@ -159,8 +174,10 @@ export const redeemLoyaltySchema = z.object({
   items: z
     .array(
       z.object({
+        packagingId: z.coerce.number().int().positive().optional().nullable(),
         bottleSize: z.string().min(1, 'La presentación es requerida'),
         quantity: z.coerce.number().int().positive('La cantidad debe ser positiva'),
+        flavor: z.string().optional(),
       })
     )
     .optional(),
