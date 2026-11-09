@@ -812,15 +812,18 @@ export const useProductionStore = defineStore('production', () => {
   }
 
   // Consultar pedidos en pre-venta pendientes por sabor
-  async function fetchPendingOrders(flavor?: string) {
+  async function fetchPendingOrders(flavor?: string, presentation?: string) {
     try {
+      const params: any = {};
+      if (flavor && flavor !== 'ALL') params.flavor = flavor;
+      if (presentation && presentation !== 'ALL') params.presentation = presentation;
       const res = await http.get<{
         count: number;
         totalLiters: number;
         totalAmount: number;
         orders: any[];
       }>('/batches/pending-orders', {
-        params: flavor && flavor !== 'ALL' ? { flavor } : undefined,
+        params: Object.keys(params).length > 0 ? params : undefined,
       });
       return res;
     } catch {

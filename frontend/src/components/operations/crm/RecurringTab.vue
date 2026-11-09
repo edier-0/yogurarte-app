@@ -21,6 +21,7 @@ import {
   AlertCircle,
 } from 'lucide-vue-next';
 import { http } from '@/api/client';
+import { useProductionStore } from '@/stores/production.store';
 import { toast } from 'vue-sonner';
 import RecurringEditModal, { RecurringScheduleData } from './RecurringEditModal.vue';
 import OrderFormModal from '@/components/operations/OrderFormModal.vue';
@@ -39,14 +40,37 @@ export interface RecurringScheduleItem {
   };
   frequencyDays: number;
   preferredFlavor: string;
-  bottleSize: '1L' | '2L';
+  bottleSize: string;
   quantity: number;
+  items?: Array<{ flavor: string; bottleSize: string; quantity: number }> | null;
   nextDate: string;
   lastOrderDate?: string | null;
   notes?: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+
+const productionStore = useProductionStore();
+
+function getScheduleItems(sch: RecurringScheduleItem) {
+  if (sch.items && Array.isArray(sch.items) && sch.items.length > 0) {
+    return sch.items;
+  }
+  return [{ flavor: sch.preferredFlavor || 'Fresa', bottleSize: sch.bottleSize || '1L', quantity: sch.quantity || 1 }];
+}
+
+function isScheduleDiscontinued(sch: RecurringScheduleItem): boolean {
+  const items = getScheduleItems(sch);
+  const activeFlavors = productionStore.activeFlavors.map((f) => f.name.toLowerCase());
+  const activePres = productionStore.activePresentations.map((p) => p.name.toLowerCase());
+  return items.some((it: { flavor: string; bottleSize: string; quantity: number }) => {
+    const fMatch = activeFlavors.length === 0 || activeFlavors.includes((it.flavor || '').trim().toLowerCase());
+    const pMatch = activePres.length === 0 || activePres.includes((it.bottleSize || '').trim().toLowerCase()) ||
+                   ['1l', '2l', '500ml'].includes((it.bottleSize || '').trim().toLowerCase());
+    return !fMatch || !pMatch;
+  });
 }
 
 const schedules = ref<RecurringScheduleItem[]>([]);
@@ -62,23 +86,28 @@ const isOrderModalOpen = ref(false);
 const orderToPrefill = ref<any>(null);
 
 function handleQuickCreateOrder(schedule: RecurringScheduleItem) {
-  const unitPrice = schedule.bottleSize === '2L' ? 22000 : 12000;
-  const quantity = schedule.quantity || 1;
+  const itemsToOrder = getScheduleItems(schedule).map((it: { flavor: string; bottleSize: string; quantity: number }) => {
+    const foundPres = productionStore.presentations.find(
+      (p) => p.name.toLowerCase() === (it.bottleSize || '').toLowerCase()
+    );
+    const unitPrice = foundPres?.defaultPrice || (it.bottleSize === '2L' ? 24000 : it.bottleSize === '500ml' ? 8000 : 12000);
+    return {
+      batchId: null,
+      packagingId: null,
+      bottleSize: it.bottleSize || '1L',
+      flavor: it.flavor || 'Natural',
+      quantity: it.quantity || 1,
+      unitPrice,
+      totalPrice: (it.quantity || 1) * unitPrice,
+    };
+  });
+
   orderToPrefill.value = {
-    customerId: schedule.customerId,
+    customerId: schedule.customer.id,
     customerName: schedule.customer.fullName,
     customerPhone: schedule.customer.phone,
     customerAddress: schedule.customer.address || '',
-    items: [
-      {
-        batchId: null,
-        bottleSize: schedule.bottleSize || '1L',
-        flavor: schedule.preferredFlavor || 'Natural',
-        quantity,
-        unitPrice,
-        totalPrice: quantity * unitPrice,
-      },
-    ],
+    items: itemsToOrder,
     notes: schedule.notes ? `Cliente Frecuente: ${schedule.notes}` : 'Pedido programado recurrente',
   };
   isOrderModalOpen.value = true;
@@ -438,9 +467,13 @@ onMounted(() => {
                 <Milk class="h-3.5 w-3.5 text-brand-800 dark:text-brand-darkText" />
                 <span>Producto Habitual:</span>
               </span>
-              <span class="font-black text-slate-900 dark:text-white">
-                {{ sch.quantity }}x {{ sch.preferredFlavor }} ({{ sch.bottleSize }})
-              </span>
+              <div class="flex flex-col gap-1 items-end">
+                <div v-for="(it, idx) in getScheduleItems(sch)" :key="idx" class="text-right">
+                  <span class="font-black text-slate-900 dark:text-white">
+                    {{ it.quantity }}x {{ it.flavor }} ({{ it.bottleSize }})
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div class="flex items-center justify-between text-xs">
@@ -480,7 +513,15 @@ onMounted(() => {
           </p>
         </div>
 
-        <!-- Acciones Inferiores -->
+        <!-- Alerta si hay productos descontinuados -->
+          <div
+            v-if="isScheduleDiscontinued(sch)"
+            class="mt-2.5 rounded-xl bg-rose-50 p-2 text-[10px] font-bold text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/60"
+          >
+            ⚠️ Contiene productos inactivos en catálogo (suscripción pausada)
+          </div>
+
+          <!-- Acciones Inferiores -->
         <div class="mt-4 space-y-2 border-t border-surface-light-border pt-3.5 dark:border-surface-dark-border">
           <!-- Fila 1: Crear Pedido y Cobrar Deuda en proporción simétrica -->
           <div class="grid gap-2" :class="(sch.customer.pendingDebt || 0) > 0 ? 'grid-cols-2' : 'grid-cols-1'">

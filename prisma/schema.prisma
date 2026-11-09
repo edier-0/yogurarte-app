@@ -603,6 +603,7 @@ model RecurringSchedule {
   preferredFlavor String    @default("Fresa")
   bottleSize      String    @default("1L") // 1L, 2L
   quantity        Int       @default(1)
+  items           Json?     // Canasta mixta: Array<{ flavor: string, bottleSize: string, quantity: number }>
   nextDate        DateTime
   lastOrderDate   DateTime?
   notes           String?

@@ -1,4 +1,5 @@
 import prisma from '../../prisma.js';
+import { matchPresentationFormat } from '../orders/orders.service.js';
 import {
   getColombiaDateStr,
   parseColombiaDate,
@@ -1595,7 +1596,7 @@ export const deactivateBatch = async (id: number, data: DeactivateBatchInput) =>
 /**
  * Consultar pedidos preventa pendientes sin lote por sabor
  */
-export const getPendingOrdersByFlavor = async (flavor?: string) => {
+export const getPendingOrdersByFlavor = async (flavor?: string, presentation?: string) => {
   const allUnassigned = await prisma.order.findMany({
     where: {
       deliveryStatus: { not: 'CANCELLED' },
@@ -1624,14 +1625,24 @@ export const getPendingOrdersByFlavor = async (flavor?: string) => {
       ? flavor.trim().toLowerCase()
       : null;
 
+  const targetPresentation =
+    presentation && typeof presentation === 'string' && presentation.trim() !== '' && presentation.toUpperCase() !== 'ALL'
+      ? presentation.trim()
+      : null;
+
   const pendingOrders = allUnassigned.filter((o) => {
     if (o.items && o.items.length > 0) {
       return o.items.some(
-        (it) => (!it.batchId || !it.packagingId) && (!targetFlavor || (it.flavor || '').toLowerCase().includes(targetFlavor))
+        (it) =>
+          (!it.batchId || !it.packagingId) &&
+          (!targetFlavor || (it.flavor || '').toLowerCase().includes(targetFlavor)) &&
+          (!targetPresentation || matchPresentationFormat(it.bottleSize, targetPresentation))
       );
     }
     if (o.batchId === null) {
-      return !targetFlavor || (o.flavor || '').toLowerCase().includes(targetFlavor);
+      const matchesFlavor = !targetFlavor || (o.flavor || '').toLowerCase().includes(targetFlavor);
+      const matchesPres = !targetPresentation || matchPresentationFormat(o.bottleSize, targetPresentation);
+      return matchesFlavor && matchesPres;
     }
     return false;
   });
@@ -3105,22 +3116,37 @@ export function computePackagingPresentations(pkg: any) {
     }));
   } else {
     if (pkg.bottles1L > 0 || (!pkg.bottles2L && (!pkg.containers || (pkg.containers as any[]).length === 0))) {
+      const derived1L = pkg.bottles1L || (pkg.totalLiters && !pkg.bottles2L ? Math.round(pkg.totalLiters) : (pkg.totalLiters ? Math.round(pkg.totalLiters) : 0));
       rawPresentations.push({
         containerName: 'Botella 1L',
         capacityLiters: 1.0,
-        quantity: pkg.bottles1L || 0,
+        quantity: derived1L,
         price: pkg.price1L || 12000,
         rawMaterialId: pkg.bottle1LRawMaterialId,
       });
     }
-    if (pkg.bottles2L > 0) {
+    if (pkg.bottles2L > 0 || (!pkg.bottles1L && (!pkg.containers || (pkg.containers as any[]).length === 0) && (pkg.totalLiters || 0) > 0)) {
+      const derived2L = pkg.bottles2L || (pkg.totalLiters ? Math.floor(pkg.totalLiters / 2) : 0);
       rawPresentations.push({
         containerName: 'Botella 2L',
         capacityLiters: 2.0,
-        quantity: pkg.bottles2L || 0,
+        quantity: derived2L,
         price: pkg.price2L || 24000,
         rawMaterialId: pkg.bottle2LRawMaterialId,
       });
+    }
+    if (!pkg.containers || (pkg.containers as any[]).length === 0) {
+      const baseLit = pkg.totalLiters || ((pkg.bottles1L || 0) * 1.0) || ((pkg.bottles2L || 0) * 2.0) || 0;
+      const derived500 = Math.floor(baseLit / 0.5);
+      if (derived500 > 0) {
+        rawPresentations.push({
+          containerName: 'Botella 500ml',
+          capacityLiters: 0.5,
+          quantity: derived500,
+          price: 8000,
+          rawMaterialId: null,
+        });
+      }
     }
   }
 
@@ -3868,12 +3894,14 @@ export const unlinkOrderFromPackaging = async (packagingId: number, orderId: num
 export const linkOrdersToPackaging = async (packagingId: number, data: LinkOrdersToBatchInput) => {
   const pkg = await prisma.batchPackaging.findFirst({
     where: { id: packagingId },
-    include: { batch: true },
+    include: { batch: true, orderItems: true, discharges: true },
   });
 
   if (!pkg) {
     throw new NotFoundError('Fracción no encontrada');
   }
+
+  const { presentations } = computePackagingPresentations(pkg);
 
   const { orderIds, autoAll } = data;
   let targetOrderIds: number[] = [];
@@ -3912,37 +3940,75 @@ export const linkOrdersToPackaging = async (packagingId: number, data: LinkOrder
   }
 
   await prisma.$transaction(async (tx) => {
-    // 1. Vincular orden a nivel cabecera con el batchId del lote madre
-    await tx.order.updateMany({
-      where: { id: { in: targetOrderIds } },
-      data: { batchId: pkg.batchId },
-    });
-
-    // 2. Vincular items que coincidan con el sabor de la fracción
-    await tx.orderItem.updateMany({
+    // 1. Obtener todos los items de las órdenes objetivo
+    const candidateItems = await tx.orderItem.findMany({
       where: {
         orderId: { in: targetOrderIds },
-        flavor: { contains: pkg.flavor.trim(), mode: 'insensitive' },
-      },
-      data: {
-        packagingId: pkg.id,
-        batchId: pkg.batchId,
       },
     });
 
-    // 3. Vincular cualquier item restante sin packagingId de estas órdenes seleccionadas explícitamente
-    await tx.orderItem.updateMany({
+    // 2. Filtrar items que coincidan estrictamente con el sabor y presentación de la fracción
+    const pkgFlavorNorm = pkg.flavor.trim().toLowerCase();
+    const matchingItemIds: number[] = [];
+
+    for (const it of candidateItems) {
+      const itFlavorNorm = (it.flavor || '').trim().toLowerCase();
+      const matchesFlavor = itFlavorNorm.includes(pkgFlavorNorm) || pkgFlavorNorm.includes(itFlavorNorm);
+      const matchesPresentation = (presentations || []).some((p: any) =>
+        matchPresentationFormat(p.containerName, it.bottleSize)
+      );
+
+      if (matchesFlavor && matchesPresentation) {
+        matchingItemIds.push(it.id);
+      }
+    }
+
+    // 3. Vincular solo los items con coincidencia estricta (RF-12, RF-13)
+    if (matchingItemIds.length > 0) {
+      await tx.orderItem.updateMany({
+        where: { id: { in: matchingItemIds } },
+        data: {
+          packagingId: pkg.id,
+          batchId: pkg.batchId,
+        },
+      });
+    }
+
+    // 4. Vincular la cabecera de la orden al lote madre si al menos uno de sus items pertenece a este lote
+    const ordersWithMatchingItems = candidateItems
+      .filter((it) => matchingItemIds.includes(it.id))
+      .map((it) => it.orderId);
+
+    const ordersToUpdate = Array.from(new Set(ordersWithMatchingItems));
+    if (ordersToUpdate.length > 0) {
+      await tx.order.updateMany({
+        where: { id: { in: ordersToUpdate } },
+        data: { batchId: pkg.batchId },
+      });
+    }
+
+    // Para pedidos legacy sin items que coincidan en sabor y presentación
+    const legacyOrders = await tx.order.findMany({
       where: {
-        orderId: { in: targetOrderIds },
-        packagingId: null,
-      },
-      data: {
-        packagingId: pkg.id,
-        batchId: pkg.batchId,
+        id: { in: targetOrderIds },
+        items: { none: {} },
       },
     });
+    for (const leg of legacyOrders) {
+      const legFlavorNorm = (leg.flavor || '').trim().toLowerCase();
+      const matchesFlavor = legFlavorNorm.includes(pkgFlavorNorm) || pkgFlavorNorm.includes(legFlavorNorm);
+      const matchesPresentation = (presentations || []).some((p: any) =>
+        matchPresentationFormat(p.containerName, leg.bottleSize)
+      );
+      if (matchesFlavor && matchesPresentation) {
+        await tx.order.update({
+          where: { id: leg.id },
+          data: { batchId: pkg.batchId },
+        });
+      }
+    }
 
-    // 4. Sincronizar estado bidireccional del lote madre
+    // 5. Sincronizar estado bidireccional del lote madre
     await syncBatchStatusBidirectional(tx, pkg.batchId);
   });
 

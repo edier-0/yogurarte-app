@@ -57,8 +57,8 @@ export const deactivateBatch = async (req: Request, res: Response, next: NextFun
 
 export const getPendingOrdersByFlavor = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { flavor } = req.query;
-    const result = await batchesService.getPendingOrdersByFlavor(flavor as string | undefined);
+    const { flavor, presentation } = req.query;
+    const result = await batchesService.getPendingOrdersByFlavor(flavor as string | undefined, presentation as string | undefined);
     res.json(result);
   } catch (error) {
     next(error);

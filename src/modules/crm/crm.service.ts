@@ -2,7 +2,8 @@ import prisma from '../../prisma.js';
 import whatsappService, { normalizeColombianJid } from '../../services/whatsapp.service.js';
 import { BadRequestError, NotFoundError } from '../../shared/errors/appError.js';
 import { getLocalDateString } from '../../shared/utils/dateUtils.js';
-import { resolvePresentationLiters } from '../orders/orders.service.js';
+import { resolvePresentationLiters, matchPresentationFormat } from '../orders/orders.service.js';
+import { computePackagingPresentations } from '../batches/batches.service.js';
 import {
   SendCrmMessageInput,
   MergeChatInput,
@@ -940,13 +941,34 @@ export async function redeemLoyaltyReward(rawInput: any) {
     include: {
       orders: {
         where: { deliveryStatus: { not: 'CANCELLED' } },
-        select: { quantityBottles: true, totalLiters: true },
+        select: {
+          id: true,
+          quantityBottles: true,
+          totalLiters: true,
+          totalAmount: true,
+          paidAmount: true,
+          pendingAmount: true,
+          deliveryStatus: true,
+          paymentStatus: true,
+        },
       },
     },
   });
 
   if (!customer) {
     throw new NotFoundError('Cliente no encontrado');
+  }
+
+  // Control de cartera pendiente (RF-15)
+  const pendingDebt = customer.orders.reduce((sum, o) => {
+    const p = o.pendingAmount > 0 ? o.pendingAmount : Math.max(0, o.totalAmount - (o.paidAmount || 0));
+    return sum + p;
+  }, 0);
+
+  if (pendingDebt > 0) {
+    throw new BadRequestError(
+      `El cliente tiene una cartera pendiente de pago por $${pendingDebt.toLocaleString('es-CO')} COP. Debe estar a paz y salvo con sus pedidos para redimir premios de fidelización.`
+    );
   }
 
   const totalBottles = Math.round(
@@ -961,74 +983,117 @@ export async function redeemLoyaltyReward(rawInput: any) {
     );
   }
 
-  let totalRedeemLiters = 0;
-  let totalBottlesRedeemed = 0;
-  let presentationSummary = '1L';
+  let itemsToRedeem: Array<{ packagingId?: number; bottleSize: string; quantity: number; flavor?: string }> = [];
 
   if (input.items && Array.isArray(input.items) && input.items.length > 0) {
-    for (const item of input.items) {
-      const unitLiters = resolvePresentationLiters(item.bottleSize);
-      const qty = Number(item.quantity) || 1;
-      totalRedeemLiters += unitLiters * qty;
-      totalBottlesRedeemed += qty;
-    }
-    if (totalRedeemLiters > 1.05) {
-      throw new BadRequestError(
-        `El premio de fidelización permite hasta 1.0 Litro. Volumen seleccionado: ${totalRedeemLiters.toFixed(2)}L`
-      );
-    }
-    presentationSummary = input.items.map((i: any) => `${i.quantity}x ${i.bottleSize}`).join(', ');
+    itemsToRedeem = input.items.map((it: any) => ({
+      packagingId: it.packagingId || input.packagingId,
+      bottleSize: it.bottleSize || '1L',
+      quantity: Number(it.quantity) || 1,
+      flavor: it.flavor,
+    }));
+  } else if (input.packagingId) {
+    itemsToRedeem = [
+      {
+        packagingId: Number(input.packagingId),
+        bottleSize: '1L',
+        quantity: 1,
+        flavor: input.flavor,
+      },
+    ];
   } else {
-    totalRedeemLiters = 1.0;
-    totalBottlesRedeemed = 1;
-    presentationSummary = '1L';
+    itemsToRedeem = [
+      {
+        packagingId: undefined,
+        bottleSize: '1L',
+        quantity: 1,
+        flavor: input.flavor,
+      },
+    ];
   }
 
-  let dischargeId = undefined;
-  if (input.packagingId) {
-    const packaging = await prisma.batchPackaging.findUnique({
-      where: { id: Number(input.packagingId) },
-      select: { id: true, batchId: true },
-    });
-    if (!packaging) {
-      throw new NotFoundError('Fracción de lote envasado no encontrada');
+  let totalRedeemLiters = 0;
+  let totalBottlesRedeemed = 0;
+
+  for (const it of itemsToRedeem) {
+    const unitLiters = resolvePresentationLiters(it.bottleSize);
+    totalRedeemLiters += unitLiters * it.quantity;
+    totalBottlesRedeemed += it.quantity;
+  }
+
+  if (totalRedeemLiters > 1.05) {
+    throw new BadRequestError(
+      `El premio de fidelización permite hasta 1.0 Litro. Volumen seleccionado: ${totalRedeemLiters.toFixed(2)}L`
+    );
+  }
+
+  const presentationSummary = itemsToRedeem.map((i) => `${i.quantity}x ${i.bottleSize}`).join(', ');
+  const dischargeIds: number[] = [];
+
+  // Transacción atómica para verificar stock de cada fracción y registrar descargos a $0 COP (RF-18, RF-19)
+  await prisma.$transaction(async (tx) => {
+    for (const item of itemsToRedeem) {
+      if (item.packagingId) {
+        const packaging = await tx.batchPackaging.findUnique({
+          where: { id: Number(item.packagingId) },
+          include: {
+            batch: true,
+            orderItems: true,
+            discharges: true,
+          },
+        });
+
+        if (!packaging) {
+          throw new NotFoundError(`Fracción de lote envasado (${item.packagingId}) no encontrada`);
+        }
+
+        const { presentations } = computePackagingPresentations(packaging);
+        const targetPres = presentations.find((p: any) => matchPresentationFormat(p.containerName, item.bottleSize));
+        const freeUnits = targetPres ? targetPres.free : 0;
+
+        if (freeUnits < item.quantity) {
+          throw new BadRequestError(
+            `Stock insuficiente en el lote ${packaging.packagingCode} (${packaging.flavor}) para la presentación ${item.bottleSize}. Disponibles: ${freeUnits}, requeridas: ${item.quantity}`
+          );
+        }
+
+        const itemUnitLiters = resolvePresentationLiters(item.bottleSize);
+        const discharge = await tx.batchDischarge.create({
+          data: {
+            batchId: packaging.batchId,
+            packagingId: packaging.id,
+            bottleSize: item.bottleSize,
+            quantityBottles: item.quantity,
+            totalLiters: itemUnitLiters * item.quantity,
+            unitPrice: 0,
+            totalAmount: 0,
+            reasonType: 'PREMIO_FIDELIZACION',
+            notes: `Premio fidelización 10+1 entregado a ${customer.fullName} (${item.quantity}x ${item.bottleSize} ${item.flavor || packaging.flavor})`,
+            registeredBy: input.registeredBy || 'Sistema',
+          },
+        });
+        dischargeIds.push(discharge.id);
+      }
     }
 
-    const discharge = await prisma.batchDischarge.create({
+    await tx.customer.update({
+      where: { id: targetCustId },
       data: {
-        batchId: packaging.batchId,
-        packagingId: packaging.id,
-        bottleSize: presentationSummary,
-        quantityBottles: totalBottlesRedeemed,
-        totalLiters: totalRedeemLiters,
-        unitPrice: 0,
-        totalAmount: 0,
-        reasonType: 'PREMIO_FIDELIZACION',
-        notes: `Premio fidelización 10+1 entregado a ${customer.fullName} (${presentationSummary})`,
-        registeredBy: input.registeredBy || 'Sistema',
+        loyaltyRedeemedCount: { increment: 1 },
       },
     });
-    dischargeId = discharge.id;
-  }
-
-  const updatedCustomer = await prisma.customer.update({
-    where: { id: targetCustId },
-    data: {
-      loyaltyRedeemedCount: { increment: 1 },
-    },
   });
 
   return {
     success: true,
     message: `¡Premio de fidelización (${presentationSummary}) canjeado exitosamente para ${customer.fullName}!`,
-    loyaltyRedeemedCount: updatedCustomer.loyaltyRedeemedCount,
-    dischargeId,
+    loyaltyRedeemedCount: (customer.loyaltyRedeemedCount || 0) + 1,
+    dischargeId: dischargeIds[0],
+    dischargeIds,
     redeemedLiters: totalRedeemLiters,
   };
 }
 
-// ==========================================
-// 4. COMPRAS FRECUENTES Y RECORDATORIOS
 // ==========================================
 
 export async function getRecurringSchedules(query: GetRecurringQuery) {
@@ -1150,7 +1215,7 @@ export async function getRecurringSchedules(query: GetRecurringQuery) {
 
 
 export async function createRecurringSchedule(data: CreateRecurringScheduleInput) {
-  const { customerId, frequencyDays, preferredFlavor, bottleSize, quantity, nextDate, notes } = data;
+  const { customerId, frequencyDays, preferredFlavor, bottleSize, quantity, items, nextDate, notes } = data;
 
   const customer = await prisma.customer.findUnique({
     where: { id: Number(customerId) },
@@ -1160,13 +1225,21 @@ export async function createRecurringSchedule(data: CreateRecurringScheduleInput
     throw new NotFoundError('Cliente no encontrado');
   }
 
+  const itemsList = Array.isArray(items) && items.length > 0 ? items : undefined;
+  const firstItem = itemsList ? itemsList[0] : null;
+
+  const resolvedFlavor = firstItem ? firstItem.flavor : (preferredFlavor || 'Fresa');
+  const resolvedSize = firstItem ? firstItem.bottleSize : (bottleSize || '1L');
+  const resolvedQuantity = firstItem ? firstItem.quantity : (Number(quantity) || 1);
+
   return prisma.recurringSchedule.create({
     data: {
       customerId: Number(customerId),
       frequencyDays: Number(frequencyDays) || 15,
-      preferredFlavor: preferredFlavor || 'Fresa',
-      bottleSize: bottleSize || '1L',
-      quantity: Number(quantity) || 1,
+      preferredFlavor: resolvedFlavor,
+      bottleSize: resolvedSize,
+      quantity: resolvedQuantity,
+      items: itemsList ? (itemsList as any) : undefined,
       nextDate: new Date(nextDate),
       notes,
     },
@@ -1192,6 +1265,14 @@ export async function updateRecurringSchedule(id: number, data: UpdateRecurringS
   if (data.preferredFlavor !== undefined) updateData.preferredFlavor = data.preferredFlavor;
   if (data.bottleSize !== undefined) updateData.bottleSize = data.bottleSize;
   if (data.quantity !== undefined) updateData.quantity = Number(data.quantity);
+  if (data.items !== undefined) {
+    updateData.items = data.items as any;
+    if (Array.isArray(data.items) && data.items.length > 0) {
+      updateData.preferredFlavor = data.items[0].flavor;
+      updateData.bottleSize = data.items[0].bottleSize;
+      updateData.quantity = data.items[0].quantity;
+    }
+  }
   if (data.nextDate !== undefined) updateData.nextDate = new Date(data.nextDate);
   if (data.notes !== undefined) updateData.notes = data.notes;
   if (data.isActive !== undefined) updateData.isActive = Boolean(data.isActive);
@@ -1237,11 +1318,106 @@ export async function triggerRecurringOrder(scheduleId: number, registeredByName
     throw new NotFoundError('Programación no encontrada');
   }
 
-  // Precios oficiales
-  const unitPrice = schedule.bottleSize === '2L' ? 22000 : 12000;
-  const litersPerUnit = schedule.bottleSize === '2L' ? 2.0 : 1.0;
-  const totalLiters = schedule.quantity * litersPerUnit;
-  const totalAmount = schedule.quantity * unitPrice;
+  // 1. Extraer ítems de la canasta o recurrencia mono-ítem
+  const itemsList: Array<{ flavor: string; bottleSize: string; quantity: number }> =
+    Array.isArray(schedule.items) && (schedule.items as any[]).length > 0
+      ? (schedule.items as any[])
+      : [
+          {
+            flavor: schedule.preferredFlavor || 'Fresa',
+            bottleSize: schedule.bottleSize || '1L',
+            quantity: schedule.quantity || 1,
+          },
+        ];
+
+  // 2. Consultar catálogo oficial de presentaciones y sabores
+  const [allFlavors, allPresentations] = await Promise.all([
+    prisma.productFlavor.findMany(),
+    prisma.productPresentation.findMany(),
+  ]);
+
+  // Validar vigencia de productos (CL-10, RF-13)
+  for (const it of itemsList) {
+    const flavorRecord = allFlavors.find(
+      (f) => f.name.toLowerCase().trim() === (it.flavor || '').toLowerCase().trim()
+    );
+    if (flavorRecord && !flavorRecord.isActive) {
+      throw new BadRequestError(
+        `Generación detenida: El sabor "${it.flavor}" se encuentra descontinuado o inactivo en el catálogo. Por favor actualiza la suscripción en CRM.`
+      );
+    }
+
+    const presRecord = allPresentations.find((p) => {
+      const pNorm = (p.name || '').toLowerCase().replace(/\s+/g, '');
+      const pLabelNorm = (p.label || '').toLowerCase().replace(/\s+/g, '');
+      const itNorm = (it.bottleSize || '').toLowerCase().replace(/\s+/g, '');
+      return pNorm === itNorm || pLabelNorm === itNorm;
+    });
+    if (presRecord && !presRecord.isActive) {
+      throw new BadRequestError(
+        `Generación detenida: La presentación "${it.bottleSize}" se encuentra descontinuada o inactiva en el catálogo. Por favor actualiza la suscripción en CRM.`
+      );
+    }
+  }
+
+  // 3. Resolver precios oficiales y volúmenes dinámicos de catálogo
+  const resolvedItems = itemsList.map((it) => {
+    const itNorm = (it.bottleSize || '').toLowerCase().replace(/\s+/g, '');
+    const presRecord = allPresentations.find((p) => {
+      const pNorm = (p.name || '').toLowerCase().replace(/\s+/g, '');
+      const pLabelNorm = (p.label || '').toLowerCase().replace(/\s+/g, '');
+      return pNorm === itNorm || pLabelNorm === itNorm;
+    });
+
+    let capacityLiters = 1.0;
+    let unitPrice = 12000;
+
+    if (presRecord) {
+      capacityLiters = presRecord.capacityLiters || 1.0;
+      unitPrice = presRecord.defaultPrice || 12000;
+    } else {
+      if (itNorm.includes('500')) {
+        capacityLiters = 0.5;
+        unitPrice = 8000;
+      } else if (itNorm.includes('2l')) {
+        capacityLiters = 2.0;
+        unitPrice = 24000;
+      } else if (itNorm.includes('250')) {
+        capacityLiters = 0.25;
+        unitPrice = 5000;
+      } else if (itNorm.includes('150')) {
+        capacityLiters = 0.15;
+        unitPrice = 3500;
+      } else if (itNorm.includes('80')) {
+        capacityLiters = 0.08;
+        unitPrice = 2000;
+      }
+    }
+
+    const qty = Math.max(1, Number(it.quantity) || 1);
+    const itemTotalLiters = Math.round(qty * capacityLiters * 100) / 100;
+    const itemTotalPrice = qty * unitPrice;
+
+    return {
+      bottleSize: presRecord?.name || it.bottleSize,
+      flavor: it.flavor,
+      quantity: qty,
+      litersPerUnit: capacityLiters,
+      totalLiters: itemTotalLiters,
+      unitPrice,
+      totalPrice: itemTotalPrice,
+      packagingId: null,
+      batchId: null,
+    };
+  });
+
+  const totalAmount = resolvedItems.reduce((sum, i) => sum + i.totalPrice, 0);
+  const totalLiters = Math.round(resolvedItems.reduce((sum, i) => sum + i.totalLiters, 0) * 100) / 100;
+  const totalQuantity = resolvedItems.reduce((sum, i) => sum + i.quantity, 0);
+  const distinctSizes = new Set(resolvedItems.map((i) => i.bottleSize));
+  const distinctFlavors = new Set(resolvedItems.map((i) => i.flavor));
+  const orderBottleSize = distinctSizes.size > 1 ? 'MIXTO' : resolvedItems[0].bottleSize;
+  const orderFlavor = distinctFlavors.size > 1 ? 'MIXTO' : resolvedItems[0].flavor;
 
   // Generar consecutivo de pedido correlativo (PED-YYYYMMDD-001) usando zona horaria de Colombia
   const todayStr = getLocalDateString().replace(/-/g, '');
@@ -1272,31 +1448,21 @@ export async function triggerRecurringOrder(scheduleId: number, registeredByName
     data: {
       orderNumber,
       customerId: schedule.customerId,
-      bottleSize: schedule.bottleSize,
-      flavor: schedule.preferredFlavor,
-      quantityBottles: schedule.quantity,
+      bottleSize: orderBottleSize,
+      flavor: orderFlavor,
+      quantityBottles: totalQuantity,
       totalLiters,
-      unitPrice,
+      unitPrice: resolvedItems[0].unitPrice,
       totalAmount,
       paidAmount: 0,
       pendingAmount: totalAmount,
       paymentStatus: 'PENDING',
       deliveryStatus: 'PENDING',
       deliveryAddress: schedule.customer.address,
-      notes: `Generado automáticamente desde Compra Frecuente (${schedule.frequencyDays} días). ${schedule.notes || ''}`,
+      notes: `Generado automáticamente desde Compra Frecuente (${schedule.frequencyDays} días). ${schedule.notes || ''}`.trim(),
       registeredBy: registeredByName || 'CRM YogurArte',
       items: {
-        create: [
-          {
-            bottleSize: schedule.bottleSize,
-            flavor: schedule.preferredFlavor,
-            quantity: schedule.quantity,
-            litersPerUnit,
-            totalLiters,
-            unitPrice,
-            totalPrice: totalAmount,
-          },
-        ],
+        create: resolvedItems,
       },
     },
     include: {
