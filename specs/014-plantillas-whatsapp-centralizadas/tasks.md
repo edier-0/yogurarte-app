@@ -6,7 +6,7 @@
 - [x] **T2. Tests primero (TDD Rojo): Pruebas de integración de API, seguridad RBAC y compilación.** RF-2, RF-3, RF-9, RF-10, RF-11, RF-12, RF-18, RF-19, RF-20, RF-21, RF-22, RF-23, RF-25, RF-27, RNF-1
   - Hecho cuando: Exista `tests/system_templates.test.ts` con aserciones para autenticación (401), RBAC (403 para no admin), validación de contenido vacío (400), actualización (200), restablecimiento a fábrica (200) e interpolación con fallback; las pruebas deben fallar inicialmente (en rojo).
 
-- [ ] **T3. Backend: Endpoints REST, controlador y servicio CRUD en CRM.** RF-2, RF-3, RF-8, RF-9, RF-10, RF-11, RF-12, RF-13, RF-14, RNF-1, RNF-6
+- [x] **T3. Backend: Endpoints REST, controlador y servicio CRUD en CRM.** RF-2, RF-3, RF-8, RF-9, RF-10, RF-11, RF-12, RF-13, RF-14, RNF-1, RNF-6
   - Hecho cuando: Se implementen las rutas protegidas `/api/crm/system-templates` (`GET`, `PUT /:id`, `POST /:id/reset`), el esquema Zod y el controlador/servicio en `src/modules/crm/`, pasando en verde las pruebas CRUD de `tests/system_templates.test.ts`.
 
 - [ ] **T4. Backend: Motor de compilación, interpolación pura e integración en `orders.service.ts`.** RF-1, RF-18, RF-19, RF-20, RF-21, RF-22, RF-23, RF-24, RF-25, RF-27, RNF-2

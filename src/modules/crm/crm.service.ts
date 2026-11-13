@@ -4,6 +4,7 @@ import { BadRequestError, NotFoundError } from '../../shared/errors/appError.js'
 import { getLocalDateString } from '../../shared/utils/dateUtils.js';
 import { resolvePresentationLiters, matchPresentationFormat } from '../orders/orders.service.js';
 import { computePackagingPresentations } from '../batches/batches.service.js';
+import { CANONICAL_SYSTEM_TEMPLATES } from './system-templates.constants.js';
 import {
   SendCrmMessageInput,
   MergeChatInput,
@@ -12,6 +13,7 @@ import {
   UpdateRecurringScheduleInput,
   CreateQuickReplyInput,
   UpdateQuickReplyInput,
+  UpdateSystemTemplateInput,
   GetConversationsQuery,
   GetMessagesQuery,
   GetLoyaltyQuery,
@@ -1640,4 +1642,179 @@ export async function deleteQuickReply(id: number) {
   });
 
   return { success: true, message: 'Respuesta rápida eliminada exitosamente' };
+}
+
+// ==========================================
+// 6. PLANTILLAS CANÓNICAS DEL SISTEMA (Spec 014)
+// ==========================================
+
+export const ORDER_STATUS_LABELS: Record<string, string> = {
+  PENDING: '🕒 Pendiente por preparar',
+  PREPARING: '🥣 En preparación',
+  READY_FOR_DISPATCH: '📦 Listo para despacho',
+  IN_ROUTE: '🛵 En camino',
+  DELIVERED: '✅ Entregado',
+  CANCELLED: '❌ Cancelado',
+};
+
+function formatCop(val: any): string {
+  if (val === undefined || val === null || val === '') return '$ 0 COP';
+  if (typeof val === 'number') {
+    return `$ ${val.toLocaleString('es-CO')} COP`;
+  }
+  const num = Number(val);
+  if (!isNaN(num)) {
+    return `$ ${num.toLocaleString('es-CO')} COP`;
+  }
+  return String(val);
+}
+
+function formatBottles(val: any): string {
+  if (val === undefined || val === null || val === '') return '0';
+  const num = Number(val);
+  if (isNaN(num)) return String(val);
+  if (Number.isInteger(num)) return String(num);
+  return num.toFixed(1);
+}
+
+function formatSaldoPendiente(val: any): string {
+  if (val === undefined || val === null || val === '') return '$0 COP (Paz y Salvo)';
+  const num = typeof val === 'number' ? val : Number(val);
+  if (!isNaN(num)) {
+    if (num <= 0) return '$0 COP (Paz y Salvo)';
+    return `$ ${num.toLocaleString('es-CO')} COP`;
+  }
+  if (String(val).trim() === '0' || String(val).toLowerCase().includes('paz y salvo')) {
+    return '$0 COP (Paz y Salvo)';
+  }
+  return String(val);
+}
+
+export function interpolateTemplate(rawTemplate: string, data: Record<string, any>): string {
+  if (!rawTemplate) return '';
+
+  const values: Record<string, string> = {
+    cliente: data.cliente || data.customerName || 'Cliente',
+    pedido: data.pedido !== undefined && data.pedido !== null ? String(data.pedido) : '',
+    estado: data.estado ? (ORDER_STATUS_LABELS[data.estado] || String(data.estado)) : '',
+    productos: data.productos || '',
+    total: formatCop(data.total),
+    saldo_pendiente: formatSaldoPendiente(data.saldo_pendiente),
+    abono: formatCop(data.abono),
+    direccion:
+      data.direccion ||
+      data.deliveryAddress ||
+      'Entrega en punto de venta / Sin dirección registrada',
+    nequi: data.nequi || '3024581882',
+    banco: data.banco || 'Nequi / Bancolombia',
+    instagram: data.instagram || 'https://www.instagram.com/yogurartesanalfonseca',
+    botellas_acumuladas: formatBottles(data.botellas_acumuladas),
+    botellas_restantes: formatBottles(data.botellas_restantes),
+    premios_disponibles: String(data.premios_disponibles ?? 0),
+  };
+
+  return rawTemplate.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
+    if (Object.prototype.hasOwnProperty.call(values, key)) {
+      return values[key];
+    }
+    return match;
+  });
+}
+
+export async function renderSystemTemplate(
+  code: string,
+  data: Record<string, any>
+): Promise<string> {
+  let templateContent: string | null = null;
+
+  try {
+    const tpl = await prisma.systemWhatsAppTemplate.findUnique({
+      where: { code },
+    });
+    if (tpl && tpl.content) {
+      templateContent = tpl.content;
+    }
+  } catch (err) {
+    // Fallback en memoria si DB falla o está desconectada (RF-20)
+  }
+
+  if (!templateContent) {
+    const canonical = CANONICAL_SYSTEM_TEMPLATES.find((c) => c.code === code);
+    templateContent = canonical ? canonical.defaultContent : '';
+  }
+
+  return interpolateTemplate(templateContent, data);
+}
+
+export async function listSystemTemplates() {
+  const templates = await prisma.systemWhatsAppTemplate.findMany({
+    orderBy: { id: 'asc' },
+  });
+
+  return templates.map((tpl) => ({
+    ...tpl,
+    availableVariables:
+      typeof tpl.availableVariables === 'string'
+        ? JSON.parse(tpl.availableVariables)
+        : tpl.availableVariables,
+  }));
+}
+
+export async function updateSystemTemplate(id: number, data: UpdateSystemTemplateInput) {
+  if (!id || isNaN(id)) {
+    throw new BadRequestError('ID de plantilla inválido');
+  }
+
+  const existing = await prisma.systemWhatsAppTemplate.findUnique({
+    where: { id },
+  });
+
+  if (!existing) {
+    throw new NotFoundError('Plantilla de sistema no encontrada');
+  }
+
+  const updated = await prisma.systemWhatsAppTemplate.update({
+    where: { id },
+    data: {
+      ...(data.content !== undefined ? { content: data.content } : {}),
+      ...(data.autoTrigger !== undefined ? { autoTrigger: data.autoTrigger } : {}),
+    },
+  });
+
+  return {
+    ...updated,
+    availableVariables:
+      typeof updated.availableVariables === 'string'
+        ? JSON.parse(updated.availableVariables)
+        : updated.availableVariables,
+  };
+}
+
+export async function resetSystemTemplate(id: number) {
+  if (!id || isNaN(id)) {
+    throw new BadRequestError('ID de plantilla inválido');
+  }
+
+  const existing = await prisma.systemWhatsAppTemplate.findUnique({
+    where: { id },
+  });
+
+  if (!existing) {
+    throw new NotFoundError('Plantilla de sistema no encontrada');
+  }
+
+  const reset = await prisma.systemWhatsAppTemplate.update({
+    where: { id },
+    data: {
+      content: existing.defaultContent,
+    },
+  });
+
+  return {
+    ...reset,
+    availableVariables:
+      typeof reset.availableVariables === 'string'
+        ? JSON.parse(reset.availableVariables)
+        : reset.availableVariables,
+  };
 }
