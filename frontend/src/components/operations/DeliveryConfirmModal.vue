@@ -199,9 +199,12 @@ const handleConfirm = async () => {
       }
     }
 
-    const updated = await store.updateDeliveryStatus(props.order.id, payload);
+    const orderId = props.order.id;
+    const updated = await store.updateDeliveryStatus(orderId, payload);
     emit('confirmed', updated);
     emit('update:open', false);
+    // Disparo asistido tras cerrar modal de entrega (RF-16)
+    store.dispatchWhatsApp(orderId, { autoOnly: true });
   } catch (err) {
     console.error('Error al confirmar entrega:', err);
   } finally {

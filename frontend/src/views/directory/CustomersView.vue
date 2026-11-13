@@ -108,8 +108,8 @@ function openEditModal(customer: CustomerItem) {
   isCustomerModalOpen.value = true;
 }
 
-// WhatsApp inteligente: Previsualización editable antes de enviar
-function handleSmartWhatsApp(customer: CustomerItem) {
+// WhatsApp inteligente: Previsualización editable antes de enviar (Spec 014: PAYMENT_REMINDER)
+async function handleSmartWhatsApp(customer: CustomerItem) {
   const contact = (customer.phone || '').trim();
   if (!contact) {
     toast.error('El cliente no tiene un teléfono válido registrado');
@@ -126,7 +126,13 @@ function handleSmartWhatsApp(customer: CustomerItem) {
 
   if (deliveredDebt > 0) {
     title = `Recordatorio de Deuda: ${name}`;
-    generatedText = `¡Hola ${name}! 🥛✨ Te saludamos con mucho cariño desde *YogurArte*.\n\nEsperamos que estés disfrutando mucho tus yogures artesanales.\n\nTe recordamos amablemente que presentas un saldo pendiente de *${formatCurrency(deliveredDebt)}* de tu entrega anterior.\n\nPuedes transferir a nuestro Nequi al *3024581882* y compartirnos tu comprobante por este medio. ¡Muchísimas gracias por tu apoyo continuo a nuestro emprendimiento artesanal! 🙌🐄`;
+    generatedText = await crmStore.renderTemplate('PAYMENT_REMINDER', {
+      cliente: name,
+      saldo_pendiente: deliveredDebt,
+      nequi: '3024581882',
+      banco: 'Nequi / Bancolombia',
+      instagram: 'https://www.instagram.com/yogurartesanalfonseca',
+    });
   } else if (inProcessPaidCount > 0 && inProcessPending <= 0) {
     title = `Aviso de Encargo Pago: ${name}`;
     generatedText = `¡Hola ${name}! 🥛✨ Te saludamos de parte del equipo de *YogurArte*.\n\n🎉 Te confirmamos que tu encargo ya se encuentra 100% pago y lo tenemos en proceso de preparación fresca. 🥣🍓\n\nTe avisaremos en cuanto nuestro domiciliario vaya en camino hacia tu dirección. 🛵💨 ¡Muchas gracias por tu confianza! 🙌✨`;

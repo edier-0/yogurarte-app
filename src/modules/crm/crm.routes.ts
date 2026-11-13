@@ -22,6 +22,9 @@ import {
   createQuickReply,
   updateQuickReply,
   deleteQuickReply,
+  getSystemTemplates,
+  updateSystemTemplate,
+  resetSystemTemplate,
 } from './crm.controller.js';
 import {
   validateBody,
@@ -41,6 +44,7 @@ import {
   updateRecurringScheduleSchema,
   createQuickReplySchema,
   updateQuickReplySchema,
+  updateSystemTemplateSchema,
   getConversationsQuerySchema,
   getMessagesQuerySchema,
   getLoyaltyQuerySchema,
@@ -121,6 +125,24 @@ router.put(
   updateQuickReply
 );
 router.delete('/quick-replies/:id', validateParams(idParamSchema), deleteQuickReply);
+
+// ==========================================
+// 6. PLANTILLAS CANÓNICAS DEL SISTEMA (Spec 014)
+// ==========================================
+router.get('/system-templates', getSystemTemplates);
+router.put(
+  '/system-templates/:id',
+  requireRole(['ADMIN']),
+  validateParams(idParamSchema),
+  validateBody(updateSystemTemplateSchema),
+  updateSystemTemplate
+);
+router.post(
+  '/system-templates/:id/reset',
+  requireRole(['ADMIN']),
+  validateParams(idParamSchema),
+  resetSystemTemplate
+);
 
 export default router;
 export { router as crmRouter };

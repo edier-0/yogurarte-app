@@ -53,6 +53,8 @@ const deliveryChips = [
 const advanceStatus = async (order: Order) => {
   if (order.deliveryStatus === 'PENDING' || order.deliveryStatus === 'PREPARING' || order.deliveryStatus === 'READY_FOR_DISPATCH') {
     await store.updateDeliveryStatus(order.id, { deliveryStatus: 'IN_ROUTE' });
+    // Disparo asistido en Domicilios: DELIVERY_IN_ROUTE_SHORT (RF-16)
+    store.dispatchWhatsApp(order.id, { type: 'DELIVERY_SHORT', autoOnly: true });
   } else if (order.deliveryStatus === 'IN_ROUTE') {
     orderForDelivery.value = order;
     isDeliveryModalOpen.value = true;
@@ -306,12 +308,13 @@ const getDeliveryBadge = (status: DeliveryStatus) => {
               Sin Tel.
             </div>
 
-            <!-- 2. Botón WhatsApp Inteligente con MessageCircle -->
+            <!-- 2. Botón WhatsApp Inteligente con MessageCircle (Caso Límite 5: Deshabilitado en CANCELLED) -->
             <button
               type="button"
-              @click="store.dispatchWhatsApp(order.id)"
-              class="flex h-11 items-center justify-center gap-1.5 rounded-2xl bg-emerald-50 text-xs font-black text-emerald-700 transition-all active:scale-90 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
-              title="Enviar mensaje de entrega por WhatsApp"
+              @click="store.dispatchWhatsApp(order.id, { type: 'DELIVERY_SHORT' })"
+              :disabled="order.deliveryStatus === 'CANCELLED'"
+              class="flex h-11 items-center justify-center gap-1.5 rounded-2xl bg-emerald-50 text-xs font-black text-emerald-700 transition-all active:scale-90 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed dark:bg-emerald-950/40 dark:text-emerald-300"
+              :title="order.deliveryStatus === 'CANCELLED' ? 'Pedido anulado - Notificación deshabilitada' : 'Enviar mensaje de entrega por WhatsApp'"
             >
               <MessageCircle class="h-4 w-4 stroke-[1.75]" />
               <span>WhatsApp</span>

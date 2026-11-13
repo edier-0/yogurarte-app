@@ -192,6 +192,14 @@ export const getRecurringQuerySchema = z.object({
 });
 
 
+export const updateSystemTemplateSchema = z.object({
+  content: z
+    .string()
+    .trim()
+    .min(1, 'El contenido de la plantilla no puede estar vacío'),
+  autoTrigger: z.boolean().optional(),
+});
+
 export type SendCrmMessageInput = z.infer<typeof sendCrmMessageSchema>;
 export type LinkCustomerInput = z.infer<typeof linkCustomerSchema>;
 export type MergeChatInput = z.infer<typeof mergeChatSchema>;
@@ -201,6 +209,7 @@ export type CreateRecurringScheduleInput = z.infer<typeof createRecurringSchedul
 export type UpdateRecurringScheduleInput = z.infer<typeof updateRecurringScheduleSchema>;
 export type CreateQuickReplyInput = z.infer<typeof createQuickReplySchema>;
 export type UpdateQuickReplyInput = z.infer<typeof updateQuickReplySchema>;
+export type UpdateSystemTemplateInput = z.infer<typeof updateSystemTemplateSchema>;
 export type GetConversationsQuery = z.infer<typeof getConversationsQuerySchema>;
 export type GetMessagesQuery = z.infer<typeof getMessagesQuerySchema>;
 export type GetLoyaltyQuery = z.infer<typeof getLoyaltyQuerySchema>;
