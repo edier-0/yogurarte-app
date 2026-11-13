@@ -24,5 +24,5 @@
 - [x] **T8. Frontend: Integración de fidelización y cobranza (`LoyaltyTab.vue` y `CustomersView.vue`).** RF-1 (7, 8, 9), RF-23, RF-24, RF-26
   - Hecho cuando: `LoyaltyTab.vue` consuma `LOYALTY_PROGRESS` o `LOYALTY_REWARD_CLAIM` advirtiendo morosidad de cartera (Art. 7), y `CustomersView.vue` consuma `PAYMENT_REMINDER` con el cálculo dinámico de cartera (Art. 3).
 
-- [ ] **T9. Verificación integral, Typecheck y Build de producción.** RNF-1, RNF-2, RNF-3, RNF-4, RNF-5, RNF-6
+- [x] **T9. Verificación integral, Typecheck y Build de producción.** RNF-1, RNF-2, RNF-3, RNF-4, RNF-5, RNF-6
   - Hecho cuando: `npx tsc --noEmit` pase con 0 errores, `npm --prefix frontend run build` empaquete exitosamente sin errores de tipos, y la suite completa de pruebas en `vitest` se ejecute 100% en verde.
