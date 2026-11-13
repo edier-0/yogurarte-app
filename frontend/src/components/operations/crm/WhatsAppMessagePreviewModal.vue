@@ -21,6 +21,9 @@ import {
   Sparkles,
   Smartphone,
   Info,
+  AlertCircle,
+  Copy,
+  Check,
 } from 'lucide-vue-next';
 import { useCrmStore } from '@/stores/crm.store';
 import { buildWhatsAppUrl, isWhatsAppUsername } from '@/utils/whatsapp';
@@ -37,6 +40,25 @@ const targetContact = computed(() =>
   (crmStore.messagePreview.phone || crmStore.messagePreview.contactName || '').trim()
 );
 const isTargetUsername = computed(() => isWhatsAppUsername(targetContact.value));
+const hasContact = computed(() => {
+  const contact = targetContact.value;
+  return Boolean(contact && contact.length >= 3 && !contact.toLowerCase().includes('sin'));
+});
+const isCopied = ref(false);
+
+async function handleCopyText() {
+  if (!editableText.value.trim()) return;
+  try {
+    await navigator.clipboard.writeText(editableText.value.trim());
+    isCopied.value = true;
+    toast.success('Mensaje copiado al portapapeles');
+    setTimeout(() => {
+      isCopied.value = false;
+    }, 2000);
+  } catch {
+    toast.error('No se pudo copiar al portapapeles');
+  }
+}
 
 watch(
   () => crmStore.messagePreview.isOpen,
@@ -254,6 +276,20 @@ function handleSendFromPhone() {
             </div>
           </div>
 
+          <!-- Alerta informativa para cliente sin teléfono ni @usuario (Caso Límite 1) -->
+          <div
+            v-if="!hasContact"
+            class="rounded-2xl border border-rose-200/80 bg-rose-50/70 p-3 text-xs text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200 flex items-start gap-2.5"
+          >
+            <AlertCircle class="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+            <div class="leading-relaxed">
+              <p class="font-bold">Cliente sin teléfono registrado</p>
+              <p class="text-[11px] text-rose-800/90 dark:text-rose-300/90 mt-0.5">
+                Este cliente no cuenta con número de teléfono ni usuario de WhatsApp registrado. Los botones de envío directo están deshabilitados; puedes copiar el texto al portapapeles.
+              </p>
+            </div>
+          </div>
+
           <!-- Editor de Texto -->
           <div class="space-y-1.5">
             <div class="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
@@ -303,12 +339,25 @@ function handleSendFromPhone() {
             Cancelar
           </button>
 
+          <!-- Botón Copiar al Portapapeles (Caso Límite 1) -->
+          <button
+            type="button"
+            @click="handleCopyText"
+            :disabled="!editableText.trim()"
+            class="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 text-center"
+            title="Copiar texto al portapapeles"
+          >
+            <Check v-if="isCopied" class="h-4 w-4 text-emerald-600" />
+            <Copy v-else class="h-4 w-4" />
+            <span>{{ isCopied ? 'Copiado' : 'Copiar texto' }}</span>
+          </button>
+
           <!-- Botón de Envío desde Teléfono / App nativa -->
           <button
             type="button"
             @click="handleSendFromPhone"
-            :disabled="!editableText.trim() || isSubmitting"
-            class="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50/80 px-3.5 py-2.5 text-xs font-bold text-emerald-800 shadow-xs transition-all hover:bg-emerald-100 active:scale-95 disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+            :disabled="!hasContact || !editableText.trim() || isSubmitting"
+            class="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50/80 px-3.5 py-2.5 text-xs font-bold text-emerald-800 shadow-xs transition-all hover:bg-emerald-100 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
             title="Abrir la app oficial de WhatsApp en tu teléfono con este mensaje listo para enviar"
           >
             <Smartphone class="h-4 w-4 text-emerald-600 dark:text-emerald-400 stroke-[2.2]" />
@@ -320,8 +369,8 @@ function handleSendFromPhone() {
             v-if="deliveryChannel === 'EXTERNAL_OFFICIAL'"
             type="button"
             @click="handleConfirm"
-            :disabled="!editableText.trim() || isSubmitting || isCheckingServerChat"
-            class="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
+            :disabled="!hasContact || !editableText.trim() || isSubmitting || isCheckingServerChat"
+            class="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <ExternalLink class="h-4 w-4 stroke-[2.5]" />
             <span>Abrir en WhatsApp Oficial</span>
@@ -331,8 +380,8 @@ function handleSendFromPhone() {
             v-else
             type="button"
             @click="handleConfirm"
-            :disabled="!editableText.trim() || isSubmitting || isCheckingServerChat"
-            class="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
+            :disabled="!hasContact || !editableText.trim() || isSubmitting || isCheckingServerChat"
+            class="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Send v-if="!isSubmitting" class="h-4 w-4 stroke-[2.5]" />
             <span v-else class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>

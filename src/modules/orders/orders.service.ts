@@ -48,6 +48,7 @@ export function hasUnassignedItems(items?: Array<{ batchId?: number | null; pack
 import prisma from '../../prisma.js';
 import { getAllSettingsMap } from '../../controllers/settings.controller.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.utils.js';
+import { renderSystemTemplate } from '../crm/crm.service.js';
 import {
   getColombiaDateStr,
   getLocalDateString,
@@ -2123,17 +2124,6 @@ export const getWhatsAppLink = async (id: number, type?: string) => {
   const rawContact = (order.customer.phone || '').trim();
   const formatCurrency = (val: number) => `$${new Intl.NumberFormat('es-CO').format(val)} COP`;
 
-  let statusText = '🕒 Pendiente por preparar';
-  if (order.deliveryStatus === 'PREPARING') {
-    statusText = '🥣 En preparación';
-  } else if (order.deliveryStatus === 'READY_FOR_DISPATCH') {
-    statusText = '📦 Listo para despacho';
-  } else if (order.deliveryStatus === 'IN_ROUTE') {
-    statusText = '🛵 En camino';
-  } else if (order.deliveryStatus === 'DELIVERED') {
-    statusText = '✅ Entregado';
-  }
-
   let itemsBreakdown = '';
   if (order.items && order.items.length > 0) {
     itemsBreakdown = order.items
@@ -2146,99 +2136,46 @@ export const getWhatsAppLink = async (id: number, type?: string) => {
   const settings = await getAllSettingsMap();
   const nequiNum = settings.nequiNumber || '3024581882';
   const bankName = settings.bankName || 'Nequi / Bancolombia';
-  const instagramUrl = settings.instagramUrl || 'https://www.instagram.com/yogurartesanalfonseca?igsi=ZXNjM2dxZ3Z1dXg4&utm_source=qr';
-  const instagramLine = `\n\n📸 *Síguenos en Instagram:*\n${instagramUrl}`;
+  const instagramUrl =
+    settings.instagramUrl ||
+    'https://www.instagram.com/yogurartesanalfonseca?igsi=ZXNjM2dxZ3Z1dXg4&utm_source=qr';
 
-  // 1. Si el pedido ya está ENTREGADO
+  // Determinar la plantilla canónica de sistema correspondiente (Spec 014)
+  let templateCode = 'ORDER_STATUS_TRACKING';
+
   if (order.deliveryStatus === 'DELIVERED' && type !== 'ORDER_INFO') {
-    let deliveredMsg = '';
     if (order.pendingAmount <= 0 || order.paymentStatus === 'PAID') {
-      deliveredMsg = `🥛 *YogurArte | ¡Pago Recibido con Éxito! ✨*\n\n`;
-      deliveredMsg += `¡Hola *${order.customer.fullName}*! Confirmamos el recibido de tu pago para tu pedido *#${order.orderNumber}*:\n`;
-      deliveredMsg += `${itemsBreakdown}\n\n`;
-      deliveredMsg += `💰 *Total Pagado:* ${formatCurrency(order.totalAmount)} (✅ Paz y Salvo)\n`;
-      deliveredMsg += `📦 *Estado:* ✅ Entregado\n\n`;
-      deliveredMsg += `¡Muchísimas gracias por tu compra y cumplimiento! Esperamos que disfrutes al máximo tu delicioso yogur artesanal 100% natural. 🥛🍇🍓\n\n`;
-      deliveredMsg += `Estamos siempre a tu orden para tu próximo pedido. ✨`;
+      templateCode = 'DELIVERED_PAID';
     } else {
-      deliveredMsg = `🥛 *YogurArte | Pedido #${order.orderNumber}*\n\n`;
-      deliveredMsg += `¡Hola *${order.customer.fullName}*! Tu pedido ha sido *✅ Entregado con éxito*.\n`;
-      deliveredMsg += `${itemsBreakdown}\n\n`;
-      deliveredMsg += `🚨 *Saldo pendiente:* ${formatCurrency(order.pendingAmount)}\n`;
-      if (order.paidAmount > 0) {
-        deliveredMsg += `💵 *Abonado:* ${formatCurrency(order.paidAmount)}\n`;
-      }
-      deliveredMsg += `💳 *${bankName}:* ${nequiNum}\n\n`;
-      deliveredMsg += `¡Esperamos que disfrutes al máximo tu delicioso yogur artesanal 100% natural! Cualquier duda o para tu próximo pago estamos a tu orden. 🥛🍇🍓`;
+      templateCode = 'DELIVERED_UNPAID';
     }
-    deliveredMsg += instagramLine;
-
-    const whatsappUrl = buildWhatsAppUrl(rawContact, deliveredMsg);
-
-    return {
-      whatsappUrl,
-      rawMessage: deliveredMsg,
-      phone: rawContact,
-      customerName: order.customer.fullName,
-      customerId: order.customerId,
-    };
-  }
-
-  // 2. Si el pedido ya está PAGADO pero aún NO entregado
-  if (type !== 'ORDER_INFO' && order.deliveryStatus !== 'DELIVERED' && (order.paymentStatus === 'PAID' || order.pendingAmount <= 0)) {
-    let paidMsg = `🥛 *YogurArte | Pago Confirmado ✨*\n\n`;
-    paidMsg += `¡Hola *${order.customer.fullName}*! Confirmamos el pago de tu pedido *#${order.orderNumber}*:\n`;
-    paidMsg += `${itemsBreakdown}\n\n`;
-    paidMsg += `💰 *Total Pagado:* ${formatCurrency(order.totalAmount)} (✅ Paz y Salvo)\n`;
-    paidMsg += `📦 *Estado:* ${statusText}\n`;
-    if (order.deliveryAddress || order.customer.address) {
-      paidMsg += `📍 *Entrega:* ${order.deliveryAddress || order.customer.address}\n`;
-    }
-    paidMsg += `\n🥣 ¡Muchas gracias por tu compra y confianza! Tu yogur 100% natural está siendo preparado y te avisaremos apenas vaya en camino. 🍓🛵💨`;
-    paidMsg += instagramLine;
-
-    const whatsappUrl = buildWhatsAppUrl(rawContact, paidMsg);
-
-    return {
-      whatsappUrl,
-      rawMessage: paidMsg,
-      phone: rawContact,
-      customerName: order.customer.fullName,
-      customerId: order.customerId,
-    };
-  }
-
-  // 3. Estados previos a la entrega con pago pendiente o consulta
-  let message = `🥛 *YogurArte | Pedido #${order.orderNumber}*\n\n`;
-  message += `Hola *${order.customer.fullName}*, el estado de tu pedido es: *${statusText}*\n`;
-  message += `${itemsBreakdown}\n\n`;
-  message += `💰 *Total:* ${formatCurrency(order.totalAmount)}`;
-
-  if (order.pendingAmount > 0) {
-    message += `\n🚨 *Saldo pendiente:* ${formatCurrency(order.pendingAmount)}`;
-    if (order.paidAmount > 0) {
-      message += ` (💵 Abonado: ${formatCurrency(order.paidAmount)})`;
-    }
-    message += `\n💳 *${bankName}:* ${nequiNum}`;
-  } else {
-    message += ` (✅ Pagado)`;
-  }
-
-  if (order.deliveryAddress || order.customer.address) {
-    message += `\n📍 *Entrega:* ${order.deliveryAddress || order.customer.address}`;
-  }
-
-  let closingPhrase = '\n\n🥛 ¡Tu yogur artesanal entrará en preparación muy pronto! Cualquier duda estamos a tu disposición. 🥛🍇🍓';
-  if (order.deliveryStatus === 'PREPARING') {
-    closingPhrase = '\n\n🥣 ¡Tu yogur artesanal 100% natural está siendo preparado con todo el amor! Te avisaremos cuando salga a reparto. 🥛🍇🍓';
-  } else if (order.deliveryStatus === 'READY_FOR_DISPATCH') {
-    closingPhrase = '\n\n📦 ¡Tu yogur artesanal ya está empacado y refrigerado! Nuestro domiciliario saldrá pronto hacia tu dirección. 🥛🍇🍓';
+  } else if (
+    type !== 'ORDER_INFO' &&
+    order.deliveryStatus !== 'DELIVERED' &&
+    (order.paymentStatus === 'PAID' || order.pendingAmount <= 0)
+  ) {
+    templateCode = 'PAID_NOT_DELIVERED';
   } else if (order.deliveryStatus === 'IN_ROUTE') {
-    closingPhrase = '\n\n🛵 ¡Tu yogur artesanal ya va en camino hacia tu dirección! Atento para recibirlo. ¡Muchas gracias por tu compra! 🥛🍇🍓';
+    if (type === 'DELIVERY_SHORT') {
+      templateCode = 'DELIVERY_IN_ROUTE_SHORT';
+    } else {
+      templateCode = 'DELIVERY_IN_ROUTE_FULL';
+    }
   }
 
-  message += `${closingPhrase}`;
-  message += instagramLine;
+  const message = await renderSystemTemplate(templateCode, {
+    cliente: order.customer.fullName,
+    pedido: order.orderNumber,
+    estado: order.deliveryStatus,
+    productos: itemsBreakdown,
+    total: order.totalAmount,
+    saldo_pendiente: order.pendingAmount,
+    abono: order.paidAmount,
+    direccion: order.deliveryAddress || order.customer.address || '',
+    nequi: nequiNum,
+    banco: bankName,
+    instagram: instagramUrl,
+  });
 
   const whatsappUrl = buildWhatsAppUrl(rawContact, message);
 
@@ -2248,5 +2185,6 @@ export const getWhatsAppLink = async (id: number, type?: string) => {
     phone: rawContact,
     customerName: order.customer.fullName,
     customerId: order.customerId,
+    templateCode,
   };
 };

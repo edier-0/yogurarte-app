@@ -139,6 +139,10 @@ const onDeliveryStatusChange = async (order: Order, event: Event) => {
     isDeliveryModalOpen.value = true;
   } else {
     await store.updateDeliveryStatus(order.id, { deliveryStatus: newStatus });
+    if (newStatus === 'IN_ROUTE') {
+      // Disparo asistido en Pedidos: DELIVERY_IN_ROUTE_FULL (RF-16)
+      store.dispatchWhatsApp(order.id, { type: 'DELIVERY_FULL', autoOnly: true });
+    }
   }
 };
 
@@ -427,12 +431,13 @@ const getStatusBadge = (status: DeliveryStatus) => {
 
           <!-- Acciones directas por tarjeta (Touch targets >= 40px) -->
           <div class="grid grid-cols-4 gap-1.5 pt-1">
-            <!-- Botón Inteligente WhatsApp -->
+            <!-- Botón Inteligente WhatsApp (Caso Límite 5: Deshabilitado en CANCELLED) -->
             <button
               type="button"
               @click="store.dispatchWhatsApp(order.id)"
-              class="flex h-10 items-center justify-center gap-1 rounded-xl bg-emerald-50 px-1 text-xs font-bold text-emerald-700 transition-all active:scale-95 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
-              title="Notificar por WhatsApp"
+              :disabled="order.deliveryStatus === 'CANCELLED'"
+              class="flex h-10 items-center justify-center gap-1 rounded-xl bg-emerald-50 px-1 text-xs font-bold text-emerald-700 transition-all active:scale-95 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed dark:bg-emerald-950/40 dark:text-emerald-300"
+              :title="order.deliveryStatus === 'CANCELLED' ? 'Pedido anulado - Notificación deshabilitada' : 'Notificar por WhatsApp'"
             >
               <MessageCircle class="h-4 w-4 stroke-[1.75]" />
               <span class="hidden sm:inline">WhatsApp</span>

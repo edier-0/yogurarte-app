@@ -115,14 +115,29 @@ function handleRedeemReward(cust: LoyaltyCustomerItem) {
   isRedeemModalOpen.value = true;
 }
 
-// Notificar por WhatsApp institucional
-function handleNotifyWhatsApp(cust: LoyaltyCustomerItem) {
+// Notificar por WhatsApp institucional (Spec 014: LOYALTY_PROGRESS y LOYALTY_REWARD_CLAIM)
+async function handleNotifyWhatsApp(cust: LoyaltyCustomerItem) {
   let textMessage = '';
   if (cust.rewardsAvailable > 0) {
-    textMessage = `Estimado/a *${cust.fullName}*, le saludamos de *YogurArte*. Nos complace informarle que en nuestro Programa de Fidelización acumula ${cust.totalBottles} unidades (1L) y cuenta con *${cust.rewardsAvailable} premio(s) de 1 Litro GRATIS* listo(s) para reclamar en su próximo pedido. ¡Gracias por su preferencia!`;
+    textMessage = await crmStore.renderTemplate('LOYALTY_REWARD_CLAIM', {
+      cliente: cust.fullName,
+      botellas_acumuladas: cust.currentCycleBottles,
+      premios_disponibles: cust.rewardsAvailable,
+      instagram: 'https://www.instagram.com/yogurartesanalfonseca',
+    });
+
+    // RF-26: Advertencia si registra mora/deuda en cartera (Art. 7)
+    if ((cust.pendingDebt || 0) > 0) {
+      textMessage += `\n\n⚠️ *Nota importante:* Recuerda que para canjear premios de fidelización se requiere estar a paz y salvo con pedidos anteriores (Art. 7). Saldo pendiente actual: $${cust.pendingDebt?.toLocaleString('es-CO')} COP.`;
+    }
   } else {
-    const remaining = 10 - cust.currentCycleBottles;
-    textMessage = `Estimado/a *${cust.fullName}*, le saludamos de *YogurArte*. Le recordamos que en su tarjeta de fidelización lleva *${cust.currentCycleBottles}/10 envases*. Le faltan solo *${remaining} envase(s)* para recibir su próximo litro totalmente gratis.`;
+    const remaining = Math.max(0, 10 - cust.currentCycleBottles);
+    textMessage = await crmStore.renderTemplate('LOYALTY_PROGRESS', {
+      cliente: cust.fullName,
+      botellas_acumuladas: cust.currentCycleBottles,
+      botellas_restantes: remaining,
+      instagram: 'https://www.instagram.com/yogurartesanalfonseca',
+    });
   }
 
   crmStore.openMessagePreview({

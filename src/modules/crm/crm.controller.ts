@@ -231,3 +231,34 @@ export const deleteQuickReply = async (req: Request, res: Response, next: NextFu
     next(error);
   }
 };
+
+// ==========================================
+// 6. PLANTILLAS DEL SISTEMA (Spec 014)
+// ==========================================
+
+export const getSystemTemplates = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const templates = await crmService.listSystemTemplates();
+    res.json(templates);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateSystemTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const updated = await crmService.updateSystemTemplate(Number(req.params.id), req.body);
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resetSystemTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const reset = await crmService.resetSystemTemplate(Number(req.params.id));
+    res.json(reset);
+  } catch (error) {
+    next(error);
+  }
+};

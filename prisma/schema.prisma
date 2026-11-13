@@ -629,6 +629,23 @@ model CrmQuickReply {
   @@index([category])
 }
 
+model SystemWhatsAppTemplate {
+  id                 Int      @id @default(autoincrement())
+  code               String   @unique
+  title              String
+  category           String   // PEDIDOS, DOMICILIOS, CARTERA, FIDELIZACION
+  description        String   @db.Text
+  content            String   @db.Text
+  defaultContent     String   @db.Text
+  availableVariables String   @db.Text // JSON string: ["cliente", "pedido", ...]
+  autoTrigger        Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
+
+  @@index([category])
+  @@index([code])
+}
+
 model ProductFlavor {
   id        Int      @id @default(autoincrement())
   name      String   @unique

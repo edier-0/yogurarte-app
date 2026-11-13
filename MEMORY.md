@@ -3,24 +3,28 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 
 ## Estado actual
 - ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
-- Constitución (v1.5.0) y AGENTS.md consagran el principio de rendimiento volumétrico en Fase B e insumos compuestos.
-- Spec 013 (`specs/013-flexibilidad-integral-presentaciones/`): 100% implementada, probada e integrada.
-- PR #33 fusionado en `develop`, sincronizado directamente a `main` y publicado en producción. Rama temática eliminada limpiamente.
-- `README.md` actualizado al 100%: guía exhaustiva de despliegue local (Inner Loop con PostgreSQL vs Docker Compose Outer Loop vs Node nativo), despliegue remoto en Render + Neon DB, variables de entorno, arquitectura modular canónica (`src/modules/`) y estado productivo actual con 253 tests en Vitest.
-- Quality Gates en verde: `tsc --noEmit` (0 errores) y `vitest` (253 tests pasando).
-- Ramas `develop` y `main` sincronizadas y al día.
+- Specs 001 a 014 completadas y verificadas al 100%. Quality Gates en verde (`tsc`, build y vitest).
+- Spec 014 implementada:
+  - Base de datos con modelo `SystemWhatsAppTemplate` y precarga inmutable de 9 plantillas de fábrica.
+  - Endpoints REST en CRM protegidos con RBAC (`ADMIN` para modificar/restablecer).
+  - Motor de interpolación pura y compilación integrado en `orders.service.ts` (`getWhatsAppLink`).
+  - Frontend: sub-pestañas en CRM ("Plantillas del Sistema" vs "Respuestas Rápidas"), tarjetas con switch `autoTrigger` y modal interactivo de 3 capas (`SystemTemplateEditModal.vue`) con variables y previsualización WhatsApp en vivo.
+  - Disparo asistido tras eventos operativos en `DeliveryConfirmModal`, `DeliveryView`, `OrdersView` y `PaymentModal`, con guardas para pedidos anulados (`CANCELLED`) y clientes sin teléfono.
+  - Fidelización (`LoyaltyTab.vue`) y Directorio de clientes (`CustomersView.vue`) consumiendo plantillas centralizadas.
 
 ## Decisiones (y por qué)
-- Documentación integral en `README.md`:
-  1. Se actualizó el árbol de arquitectura reflejando la estructura canónica de `src/modules/<dominio>/` en lugar de las carpetas legacy.
-  2. Se detallaron las 3 opciones de despliegue local: Inner Loop (desarrollo rápido con HMR y Postgres en Docker), Outer Loop (Docker Compose con imagen multi-stage) y ejecución nativa en producción (`npm run build && npm start`).
-  3. Se documentó la arquitectura remota en Render PaaS + Neon Serverless PostgreSQL, flujo de CI/CD con GitHub Actions y variables de entorno requeridas.
-  4. Se incorporaron los principios vigentes de rendimiento volumétrico (Constitución Art. 5.6), flexibilidad multi-presentación (Spec 013) y fidelización 10+1 con bloqueo preventivo de cartera.
-- Git PR Workflow: PR #33 abierto, fusionado y sincronizado a `main`; rama `docs/actualizar-readme-despliegue-estado` eliminada tras autorización.
+- Spec 014 (Plantillas Centralizadas y Disparo Asistido):
+  1. Catálogo de 9 plantillas oficiales: 5 con evento operativo y 4 manuales.
+  2. Compilación segura de variables y fallback inmutable en memoria ante caídas de BD.
+  3. Disparo asistido (`autoTrigger`): apagado por defecto; al activarse, abre el modal de previsualización sin envíos silenciosos.
+  4. Doble canal de despacho: Baileys en la app o enlace a la app personal de WhatsApp.
+  5. Edición y restablecimiento restringidos a rol `ADMIN`.
 
 ## Aprendizajes y errores a evitar
-- El README canónico debe ser la fuente de verdad técnica para despliegues tanto de desarrolladores como de infraestructura en la nube.
-- Recordar siempre solicitar confirmación antes de abrir PR, antes de fusionarlo y antes de eliminar ramas (salvo orden expresa).
+- Sincronizar tanto `public` como `yogurarte_test` al aplicar cambios de esquema con `prisma db push`.
+- Nunca enviar mensajes en segundo plano sin la previsualización y confirmación del usuario.
+- Recordar siempre solicitar autorización explícita antes de abrir PR, antes de fusionarlo y antes de eliminar ramas.
 
 ## Próximos pasos
-- El sistema se encuentra en un estado 100% estable, documentado, probado y sincronizado en `develop` y `main`. A la espera de nuevos requerimientos.
+- Publicar la rama `feat/centralized-whatsapp-templates` al repositorio remoto.
+- Solicitar autorización al usuario para abrir el Pull Request hacia `develop`.

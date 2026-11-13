@@ -50,13 +50,23 @@ const handleSubmit = async () => {
 
   isSubmitting.value = true;
   try {
-    await store.addPayment(props.order.id, {
+    const orderId = props.order.id;
+    const isDelivered = props.order.deliveryStatus === 'DELIVERED';
+    const pendingBefore = store.getPendingBalance(props.order);
+    const leavesZeroDebt = pendingBefore - Number(amount.value) <= 0;
+
+    await store.addPayment(orderId, {
       amount: Number(amount.value),
       paymentMethod: paymentMethod.value,
       notes: notes.value.trim() || undefined,
     });
     emit('saved');
     handleClose();
+
+    // Disparo asistido tras registrar abono/pago (RF-16)
+    if (!isDelivered || leavesZeroDebt) {
+      store.dispatchWhatsApp(orderId, { autoOnly: true });
+    }
   } catch (err) {
     console.error(err);
   } finally {
