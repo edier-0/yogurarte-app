@@ -3,7 +3,7 @@
 - [x] **T1. Base de datos y Seed: Modelo Prisma `SystemWhatsAppTemplate` y precarga inmutable.** RF-1, RF-2, RF-5, RF-12
   - Hecho cuando: Se defina `SystemWhatsAppTemplate` en `prisma/schema.prisma`, se sincronice con `prisma db push` (tanto en `public` como en `yogurarte_test`), y `prisma/seed.ts` precargue fielmente las 9 plantillas de fábrica con sus categorías, variables y textos predeterminados sin errores.
 
-- [ ] **T2. Tests primero (TDD Rojo): Pruebas de integración de API, seguridad RBAC y compilación.** RF-2, RF-3, RF-9, RF-10, RF-11, RF-12, RF-18, RF-19, RF-20, RF-21, RF-22, RF-23, RF-25, RF-27, RNF-1
+- [x] **T2. Tests primero (TDD Rojo): Pruebas de integración de API, seguridad RBAC y compilación.** RF-2, RF-3, RF-9, RF-10, RF-11, RF-12, RF-18, RF-19, RF-20, RF-21, RF-22, RF-23, RF-25, RF-27, RNF-1
   - Hecho cuando: Exista `tests/system_templates.test.ts` con aserciones para autenticación (401), RBAC (403 para no admin), validación de contenido vacío (400), actualización (200), restablecimiento a fábrica (200) e interpolación con fallback; las pruebas deben fallar inicialmente (en rojo).
 
 - [ ] **T3. Backend: Endpoints REST, controlador y servicio CRUD en CRM.** RF-2, RF-3, RF-8, RF-9, RF-10, RF-11, RF-12, RF-13, RF-14, RNF-1, RNF-6
