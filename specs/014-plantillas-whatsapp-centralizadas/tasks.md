@@ -12,10 +12,10 @@
 - [x] **T4. Backend: Motor de compilación, interpolación pura e integración en `orders.service.ts`.** RF-1, RF-18, RF-19, RF-20, RF-21, RF-22, RF-23, RF-24, RF-25, RF-27, RNF-2
   - Hecho cuando: La función pura `interpolateTemplate` resuelva todas las variables con fallback seguro en memoria, `getWhatsAppLink` en `orders.service.ts` consuma las plantillas centralizadas en lugar de strings fijos, y todas las pruebas de backend en `tests/system_templates.test.ts` y `tests/orders.test.ts` queden en verde.
 
-- [ ] **T5. Frontend: Sub-pestañas en CRM y Tarjetas de Plantillas del Sistema (`TemplatesTab.vue`).** RF-3, RF-4, RF-13, RF-14
+- [x] **T5. Frontend: Sub-pestañas en CRM y Tarjetas de Plantillas del Sistema (`TemplatesTab.vue`).** RF-3, RF-4, RF-13, RF-14
   - Hecho cuando: La pestaña "Plantillas" del CRM divida la navegación entre "Plantillas del Sistema" y "Respuestas Rápidas", renderice las tarjetas organizadas por categoría con badges, textos, switches reactivos de `autoTrigger` y botones de acción.
 
-- [ ] **T6. Frontend: Modal interactivo de edición con variables y previsualización WhatsApp (`SystemTemplateEditModal.vue`).** RF-5, RF-6, RF-7, RF-8, RF-9, RF-10, RF-11, RF-12, RNF-4, RNF-5
+- [x] **T6. Frontend: Modal interactivo de edición con variables y previsualización WhatsApp (`SystemTemplateEditModal.vue`).** RF-5, RF-6, RF-7, RF-8, RF-9, RF-10, RF-11, RF-12, RNF-4, RNF-5
   - Hecho cuando: El modal cumpla con la estructura de 3 capas fijas (Art. 10 Constitución), inserte variables compatibles en la posición del cursor mediante chips, actualice la previsualización estilo WhatsApp con el mock determinista de RF-8, guarde cambios y permita restablecer a fábrica con confirmación.
 
 - [ ] **T7. Frontend: Orquestación de Disparo Asistido en Pedidos y Domicilios.** RF-15, RF-16, RF-17, RF-28, Casos Límite 1 y 5
