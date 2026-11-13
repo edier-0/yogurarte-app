@@ -5,25 +5,21 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - ERP/CRM en producción: Fase A/B, pedidos/domicilio, caja bimonetaria, créditos y WhatsApp.
 - Constitución (v1.5.0) y AGENTS.md consagran el principio de rendimiento volumétrico en Fase B e insumos compuestos.
 - Spec 013 (`specs/013-flexibilidad-integral-presentaciones/`): 100% implementada, probada e integrada.
-- PR #32 fusionado en `develop`, sincronizado a `main` y publicado en producción. Rama temática eliminada limpiamente.
-- Flexibilidad multi-presentación integral: pedidos, CRM compras frecuentes, fidelización 10+1 y vinculación masiva en Fase B libres de columnas fijas 1L/2L.
-- Quality Gates en verde: `tsc --noEmit` (0 errores), `npm --prefix frontend run build` (0 errores) y `vitest` (253/253 tests pasando en 24 suites).
-- Rama actual: `develop` limpia y sincronizada con `origin/develop`.
+- Rama actual: `docs/actualizar-readme-despliegue-estado` con actualización completa del `README.md`.
+- `README.md` actualizado: guía exhaustiva de despliegue local (Inner Loop con PostgreSQL vs Docker Compose Outer Loop vs Node nativo), despliegue remoto en Render + Neon DB, variables de entorno, arquitectura modular canónica (`src/modules/`) y estado productivo actual con 253 tests en Vitest.
+- Quality Gates en verde: `tsc --noEmit` (0 errores) y `vitest` (253 tests pasando).
 
 ## Decisiones (y por qué)
-- Spec 013 — Culminación integral:
-  1. T4 (Fidelización 10+1): bloqueo estricto con HTTP 400 si el cliente registra cartera pendiente de pago (`pendingDebt > 0`); canje acotado a 1x 1L o 2x 500ml multi-sabor con control atómico de stock por fracción y descargos a $0 COP (`PREMIO_FIDELIZACION`).
-  2. T5 (Vinculación Fase B): `linkOrdersToPackaging` y `getPendingOrdersByFlavor` filtran pedidos pendientes considerando simultáneamente sabor y presentación coincidente (`matchPresentationFormat`), impidiendo vinculaciones erróneas.
-  3. T6 (Selector Lotes Pedidos): lotes filtrados dinámicamente según la presentación del ítem (`freeUnits >= 1`), eliminación de pastillas 1L/2L, alerta reactiva y bloqueo ante stock insuficiente.
-  4. T7 (Suscripciones CRM): canasta mixta de productos (`items Json`), cotización oficial dinámica y pausa automática con aviso ante ítems descontinuados.
-  5. T8 (Modal Fidelización CRM): opciones limitadas a 1x 1L o 2x 500ml con selectores independientes multi-sabor y bloqueo visual si existe deuda pendiente.
-  6. T9 (Constitución Art. 5.5): segregación total en `BatchSummaryModal.vue`, auditando solo base láctea a granel en Fase A y presentaciones comerciales en Fase B.
-- Ciclo Git PR Workflow completado: PR #32 aprobado y fusionado en `develop`, sincronizado directamente a `main`, y rama eliminada tras autorización.
+- Documentación integral en `README.md`:
+  1. Se actualizó el árbol de arquitectura reflejando la estructura canónica de `src/modules/<dominio>/` en lugar de las carpetas legacy.
+  2. Se detallaron las 3 opciones de despliegue local: Inner Loop (desarrollo rápido con HMR y Postgres en Docker), Outer Loop (Docker Compose con imagen multi-stage) y ejecución nativa en producción (`npm run build && npm start`).
+  3. Se documentó la arquitectura remota en Render PaaS + Neon Serverless PostgreSQL, flujo de CI/CD con GitHub Actions y variables de entorno requeridas.
+  4. Se incorporaron los principios vigentes de rendimiento volumétrico (Constitución Art. 5.6), flexibilidad multi-presentación (Spec 013) y fidelización 10+1 con bloqueo preventivo de cartera.
+- Git PR Workflow: Rama dedicada `docs/actualizar-readme-despliegue-estado`.
 
 ## Aprendizajes y errores a evitar
-- Sincronizar tanto `public` como `yogurarte_test` (`schema=yogurarte_test`) al agregar columnas con `prisma db push`.
-- Si `npx prisma generate` arroja EPERM en Windows, verificar y detener procesos de desarrollo que tengan abierta la DLL (`query_engine-windows.dll.node`).
-- Git PR Workflow: El agente debe preguntar siempre al usuario antes de abrir el PR, antes de fusionarlo y antes de eliminar ramas.
+- El README canónico debe ser la fuente de verdad técnica para despliegues tanto de desarrolladores como de infraestructura en la nube.
+- Recordar siempre solicitar confirmación antes de abrir PR, antes de fusionarlo y antes de eliminar ramas.
 
 ## Próximos pasos
-- El sistema se encuentra en un estado 100% estable, probado y sincronizado en `develop` y `main`. A la espera de nuevas instrucciones o requerimientos del usuario.
+- Comitear cambios, publicar rama al remoto y solicitar autorización al usuario para abrir el Pull Request hacia `develop`.
