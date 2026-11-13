@@ -18,7 +18,7 @@
 - [x] **T6. Frontend: Modal interactivo de edición con variables y previsualización WhatsApp (`SystemTemplateEditModal.vue`).** RF-5, RF-6, RF-7, RF-8, RF-9, RF-10, RF-11, RF-12, RNF-4, RNF-5
   - Hecho cuando: El modal cumpla con la estructura de 3 capas fijas (Art. 10 Constitución), inserte variables compatibles en la posición del cursor mediante chips, actualice la previsualización estilo WhatsApp con el mock determinista de RF-8, guarde cambios y permita restablecer a fábrica con confirmación.
 
-- [ ] **T7. Frontend: Orquestación de Disparo Asistido en Pedidos y Domicilios.** RF-15, RF-16, RF-17, RF-28, Casos Límite 1 y 5
+- [x] **T7. Frontend: Orquestación de Disparo Asistido en Pedidos y Domicilios.** RF-15, RF-16, RF-17, RF-28, Casos Límite 1 y 5
   - Hecho cuando: Al confirmar entrega en `DeliveryConfirmModal.vue`, liquidar deuda en `PaymentModal.vue`, o pasar a en ruta en `DeliveryView.vue` y `OrdersView.vue`, el sistema abra automáticamente `WhatsAppMessagePreviewModal.vue` si `autoTrigger === true`, emita advertencia si Baileys está desconectado y mantenga deshabilitado el botón en pedidos cancelados (`CANCELLED`).
 
 - [ ] **T8. Frontend: Integración de fidelización y cobranza (`LoyaltyTab.vue` y `CustomersView.vue`).** RF-1 (7, 8, 9), RF-23, RF-24, RF-26

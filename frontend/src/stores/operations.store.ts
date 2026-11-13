@@ -558,17 +558,26 @@ export const useOperationsStore = defineStore('operations', () => {
     }
   }
 
-  async function dispatchWhatsApp(orderId: number) {
+  async function dispatchWhatsApp(orderId: number, options?: { type?: string; autoOnly?: boolean }) {
     try {
+      const url = options?.type ? `/orders/${orderId}/whatsapp?type=${options.type}` : `/orders/${orderId}/whatsapp`;
       const res = await http.get<{
         whatsappUrl: string | null;
         rawMessage: string;
         phone: string;
         customerName: string;
         customerId?: number;
-      }>(`/orders/${orderId}/whatsapp`);
+        templateCode?: string;
+      }>(url);
 
       const crmStore = useCrmStore();
+
+      if (options?.autoOnly) {
+        if (!res.templateCode) return;
+        const isEnabled = await crmStore.isTemplateAutoTriggerEnabled(res.templateCode);
+        if (!isEnabled) return;
+      }
+
       crmStore.openMessagePreview({
         phone: res.phone,
         text: res.rawMessage,
@@ -578,7 +587,9 @@ export const useOperationsStore = defineStore('operations', () => {
         title: `Confirmar Despacho a ${res.customerName}`,
       });
     } catch {
-      toast.error('No se pudo preparar el mensaje de WhatsApp');
+      if (!options?.autoOnly) {
+        toast.error('No se pudo preparar el mensaje de WhatsApp');
+      }
     }
   }
 

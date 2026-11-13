@@ -56,6 +56,28 @@ export const useCrmStore = defineStore('crm', () => {
     () => status.value === 'CONNECTED' || (!!connectedPhoneNumber.value && status.value !== 'DISCONNECTED')
   );
 
+  const systemTemplates = ref<any[]>([]);
+
+  async function fetchSystemTemplates(): Promise<any[]> {
+    try {
+      const data = await http.get<any[]>('/crm/system-templates');
+      if (Array.isArray(data)) {
+        systemTemplates.value = data;
+      }
+      return systemTemplates.value;
+    } catch {
+      return systemTemplates.value;
+    }
+  }
+
+  async function isTemplateAutoTriggerEnabled(code: string): Promise<boolean> {
+    if (systemTemplates.value.length === 0) {
+      await fetchSystemTemplates();
+    }
+    const found = systemTemplates.value.find((t) => t.code === code);
+    return Boolean(found?.autoTrigger);
+  }
+
   async function fetchStatus(): Promise<WhatsAppSessionStatus> {
     const rawToken =
       localStorage.getItem('yogurarte_token') ||
@@ -272,6 +294,9 @@ export const useCrmStore = defineStore('crm', () => {
     isLoadingStatus,
     isSendingMessage,
     isWhatsAppConnected,
+    systemTemplates,
+    fetchSystemTemplates,
+    isTemplateAutoTriggerEnabled,
     messagePreview,
     fetchStatus,
     initSocketListeners,
