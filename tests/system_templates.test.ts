@@ -201,6 +201,23 @@ describe('System WhatsApp Templates (Spec 014)', () => {
       });
       expect(refreshed?.content).toBe(tpl!.defaultContent);
     });
+
+    it('GET /api/orders/:id/whatsapp debe compilar el mensaje usando la plantilla canónica correspondiente (RF-1)', async () => {
+      const order = await prisma.order.findFirst({
+        include: { customer: true, items: true },
+      });
+      if (order) {
+        const res = await request(app)
+          .get(`/api/orders/${order.id}/whatsapp`)
+          .set('Authorization', `Bearer ${adminToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveProperty('whatsappUrl');
+        expect(res.body).toHaveProperty('rawMessage');
+        expect(res.body).toHaveProperty('templateCode');
+        expect(res.body.rawMessage).toContain('YogurArte');
+      }
+    });
   });
 
   describe('Motor de Compilación e Interpolación Pura (RF-19 a RF-27)', () => {

@@ -9,7 +9,7 @@
 - [x] **T3. Backend: Endpoints REST, controlador y servicio CRUD en CRM.** RF-2, RF-3, RF-8, RF-9, RF-10, RF-11, RF-12, RF-13, RF-14, RNF-1, RNF-6
   - Hecho cuando: Se implementen las rutas protegidas `/api/crm/system-templates` (`GET`, `PUT /:id`, `POST /:id/reset`), el esquema Zod y el controlador/servicio en `src/modules/crm/`, pasando en verde las pruebas CRUD de `tests/system_templates.test.ts`.
 
-- [ ] **T4. Backend: Motor de compilación, interpolación pura e integración en `orders.service.ts`.** RF-1, RF-18, RF-19, RF-20, RF-21, RF-22, RF-23, RF-24, RF-25, RF-27, RNF-2
+- [x] **T4. Backend: Motor de compilación, interpolación pura e integración en `orders.service.ts`.** RF-1, RF-18, RF-19, RF-20, RF-21, RF-22, RF-23, RF-24, RF-25, RF-27, RNF-2
   - Hecho cuando: La función pura `interpolateTemplate` resuelva todas las variables con fallback seguro en memoria, `getWhatsAppLink` en `orders.service.ts` consuma las plantillas centralizadas en lugar de strings fijos, y todas las pruebas de backend en `tests/system_templates.test.ts` y `tests/orders.test.ts` queden en verde.
 
 - [ ] **T5. Frontend: Sub-pestañas en CRM y Tarjetas de Plantillas del Sistema (`TemplatesTab.vue`).** RF-3, RF-4, RF-13, RF-14
