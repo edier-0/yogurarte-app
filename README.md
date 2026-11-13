@@ -1,4 +1,4 @@
-# 🥛 YogurArte - Sistema de Gestión Operativa, Trazabilidad y CRM
+# 🥛 YogurArte - Sistema de Gestión Operativa, Trazabilidad Láctea y CRM
 
 [![CI / CD Pipeline](https://github.com/edier-0/yogurarte-app/actions/workflows/ci.yml/badge.svg)](https://github.com/edier-0/yogurarte-app/actions/workflows/ci.yml)
 [![Node.js Version](https://img.shields.io/badge/Node.js-20.x-339933?logo=node.js&logoColor=white)](https://nodejs.org)
@@ -8,65 +8,80 @@
 [![Prisma ORM](https://img.shields.io/badge/Prisma-5.19-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Tests](https://img.shields.io/badge/Vitest-253%20Passing-brightgreen?logo=vitest&logoColor=white)](https://vitest.dev/)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
-Sistema integral de planeación de recursos y ejecución operativa (ERP artesanal & CRM) diseñado y construido a medida para **YogurArte** (Fonseca, La Guajira). La plataforma digitaliza y optimiza el ciclo de vida completo de la producción láctea artesanal: desde la recepción de materia prima cruda, fermentación térmica controlada y fraccionamiento por sabores, hasta la logística de rutas de entrega de última milla, CRM interactivo sobre WhatsApp oficial vía WebSockets y control financiero bimonetario con gestión flexible de obligaciones crediticias.
+Sistema integral de planeación de recursos y ejecución operativa (ERP artesanal & CRM) diseñado y construido a medida para **YogurArte** (Fonseca, La Guajira). La plataforma digitaliza y optimiza el ciclo de vida completo de la producción láctea artesanal: desde la recepción de materia prima cruda, fermentación térmica controlada y fraccionamiento multi-presentación, hasta la logística de reparto de última milla, CRM interactivo sobre WhatsApp oficial vía WebSockets y control financiero bimonetario con gestión flexible de obligaciones crediticias.
 
 ---
 
 ## 📑 Tabla de Contenidos
-1. [Visión General del Sistema](#-visión-general-del-sistema)
-2. [Stack Tecnológico de Vanguardia](#-stack-tecnológico-de-vanguardia)
-3. [Estructura del Proyecto y Módulos](#-estructura-del-proyecto-y-módulos)
+1. [Estado Actual del Proyecto](#-estado-actual-del-proyecto)
+2. [Stack Tecnológico](#-stack-tecnológico)
+3. [Estructura Canónica del Proyecto](#-estructura-canónica-del-proyecto)
 4. [Lógica de Negocio y Flujos Operativos](#-lógica-de-negocio-y-flujos-operativos)
-   - [Producción en Dos Fases (Fase A & Fase B)](#1-producción-en-dos-fases-fase-a--fase-b)
-   - [Ciclo de Vida de Pedidos y Cartera Dinámica](#2-ciclo-de-vida-de-pedidos-y-cartera-dinámica)
-   - [CRM WhatsApp con Baileys & Sockets](#3-crm-whatsapp-con-baileys--sockets-en-vivo)
-   - [Tesorería Bimonetaria y Créditos Flexibles](#4-tesorería-bimonetaria-y-compras-a-crédito-flexibles)
-   - [Programa de Fidelización 10+1](#5-programa-de-fidelización-101)
-5. [Guía de Puesta en Marcha (Local Onboarding)](#-guía-de-puesta-en-marcha-local-onboarding)
-6. [Credenciales Demo Preconfiguradas](#-credenciales-demo-preconfiguradas)
-7. [Variables de Entorno (.env)](#-variables-de-entorno-env)
-8. [Despliegue, CI/CD y Mantenimiento](#-despliegue-cicd-y-mantenimiento)
+   - [Producción en Dos Fases y Rendimiento Volumétrico](#1-producción-en-dos-fases-y-rendimiento-volumétrico)
+   - [Flexibilidad Multi-Presentación Dinámica](#2-flexibilidad-multi-presentación-dinámica)
+   - [Ciclo de Pedidos y Cartera Cero-Redundancia](#3-ciclo-de-pedidos-y-cartera-cero-redundancia)
+   - [Programa de Fidelización 10+1 Inteligente](#4-programa-de-fidelización-101-inteligente)
+   - [CRM WhatsApp con Baileys & Sockets](#5-crm-whatsapp-con-baileys--sockets)
+   - [Tesorería Bimonetaria y Créditos Flexibles](#6-tesorería-bimonetaria-y-créditos-flexibles)
+5. [Despliegue y Puesta en Marcha en Local](#-despliegue-y-puesta-en-marcha-en-local)
+   - [Prerrequisitos](#prerrequisitos)
+   - [Variables de Entorno (.env)](#variables-de-entorno-env)
+   - [Opción A: Entorno de Desarrollo Rápido (Inner Loop - Recomendado)](#opción-a-entorno-de-desarrollo-rápido-inner-loop---recomendado)
+   - [Opción B: Pila Completa en Docker Compose (Outer Loop)](#opción-b-pila-completa-en-docker-compose-outer-loop)
+   - [Opción C: Compilación y Ejecución Productiva Local (Node.js)](#opción-c-compilación-y-ejecución-productiva-local-nodejs)
+6. [Despliegue en Remoto y Producción (Render + Neon DB)](#-despliegue-en-remoto-y-producción-render--neon-db)
+   - [Arquitectura de Producción](#arquitectura-de-producción)
+   - [Flujo de Despliegue Continuo (CI/CD)](#flujo-de-despliegue-continuo-cicd)
+   - [Variables de Entorno en Render](#variables-de-entorno-en-render)
+   - [Dockerfile Multi-Stage Autónomo y Hardened](#dockerfile-multi-stage-autónomo-y-hardened)
+7. [Credenciales Demo Preconfiguradas](#-credenciales-demo-preconfiguradas)
+8. [Comandos de Verificación y Testing](#-comandos-de-verificación-y-testing)
+9. [Respaldos y Mantenimiento de Base de Datos](#-respaldos-y-mantenimiento-de-base-de-datos)
 
 ---
 
-## 🌟 Visión General del Sistema
+## 🌟 Estado Actual del Proyecto
 
-YogurArte opera con una arquitectura orientada a servicios ligeros y altamente reactiva:
-* **Trazabilidad Láctea de Precisión**: Monitoreo estricto del rendimiento lácteo (\(\%\)), consumo de cultivo termófilo, horas de fermentación y costeo unitario por presentación (1 Litro y 2 Litros).
-* **Gestión de Insumos Compuestos**: Soporte para recetas multinivel (ej. Mermeladas artesanales a base de fruta fresca y azúcar) con descuento automático de inventario al envasar.
-* **Cartera Cero-Redundancia**: Eliminación de campos estáticos desincronizados. La deuda de cada cliente y el saldo pendiente de cada pedido se computan matemáticamente en tiempo real a partir del historial atómico de pagos y abonos.
-* **Centro de Control CRM**: Terminal de mensajería bidireccional conectada a WhatsApp mediante la librería `@whiskeysockets/baileys`, con soporte para respuestas rápidas, detección de comprobantes bancarios, pedidos recurrentes y re-suscripción transparente de sockets sin pérdida de contexto.
-* **Finanzas Bimonetarias y Créditos Abiertos**: Control independiente de Efectivo físico (caja menor para vueltos y mostrador) y Bancos digitales (Nequi / Bancolombia), junto con un módulo de amortización para adquisiciones a crédito bajo la modalidad de **Abonos Libres (Frecuencia Flexible)**.
+El sistema se encuentra en **estado productivo y 100% operativo**, cubriendo todos los hitos y especificaciones de la arquitectura canónica:
+* **253 pruebas automatizadas pasando en Vitest** a través de 24 suites de pruebas de integración y pruebas Golden Master de costeo y lotes.
+* **Compilación TypeScript estricta** (`tsc --noEmit` y `vue-tsc`) sin errores de tipado.
+* **Docker Multi-Stage 100% Autónomo**: Desacoplado de las dependencias locales del host, eliminando fallos en clones limpios de Git (`lstat /node_modules`) y optimizado contra deadlocks en Docker Desktop / WSL2.
+* **Flexibilidad Multi-Presentación Completa (Spec 013)**: Operación sin columnas fijas (1L / 2L) en pedidos, lotes de Fase B, compras frecuentes CRM y fidelización.
+* **Principio de Rendimiento Volumétrico (Constitución Art. 5.6)**: Balance de masa y volumen que admite rendimientos comerciales superiores al 100% por adición de fruta, mermeladas y endulzantes sin alterar la base láctea consumida.
+* **Fidelización 10+1 con Cartera Cero**: Bloqueo preventivo de premios si el cliente presenta obligaciones crediticias o saldos pendientes de pago.
 
 ---
 
-## 🛠️ Stack Tecnológico de Vanguardia
+## 🛠️ Stack Tecnológico
 
 ### Backend
-* **Runtime**: [Node.js](https://nodejs.org/) (v20+ LTS) con soporte nativo para módulos ES.
-* **Framework Web**: [Express](https://expressjs.com/) v4.x con arquitectura de controladores desacoplados, middlewares y servicios de dominio.
-* **Base de Datos & ORM**: PostgreSQL (compatible con [Neon Serverless DB](https://neon.tech/)) gestionado mediante [Prisma ORM](https://www.prisma.io/) v5.19.
-* **Motor WhatsApp**: [@whiskeysockets/baileys](https://github.com/WhiskeySockets/Baileys) v7.x con persistencia de sesiones de autenticación multi-dispositivo y reconexión automática anti-desincronización (códigos 401 vs 440).
-* **Eventos en Tiempo Real**: [Socket.IO](https://socket.io/) v4.x para transmisión instantánea de chats, cambios de estado en pedidos y alertas de producción hacia el navegador.
-* **Seguridad y Validación**: [Zod](https://zod.dev/) v3/v4 para esquemas de validación de entrada, [Bcrypt.js](https://www.npmjs.com/package/bcryptjs) para hashing salteado de contraseñas y PINs, [JSON Web Tokens (JWT)](https://jwt.io/) para sesiones autenticadas stateless y [Helmet](https://helmetjs.github.io/) con Rate Limiting para protección perimetral.
+* **Runtime**: [Node.js](https://nodejs.org/) v20+ LTS con soporte ESM nativo (`"type": "module"`, `NodeNext`).
+* **Framework Web**: [Express 4](https://expressjs.com/) estructurado en módulos de dominio canónicos.
+* **Base de Datos & ORM**: PostgreSQL 16 (compatible con [Neon Serverless DB](https://neon.tech/)) gestionado mediante [Prisma ORM 5.19](https://www.prisma.io/).
+* **Motor WhatsApp**: [@whiskeysockets/baileys](https://github.com/WhiskeySockets/Baileys) v7.x con persistencia multi-dispositivo y recuperación de socket inteligente (errores 401 vs 440/515).
+* **Eventos en Tiempo Real**: [Socket.IO 4](https://socket.io/) para comunicación bidireccional inmediata.
+* **Seguridad y Validación**: [Zod 4](https://zod.dev/) para esquemas de entrada, [Bcrypt.js](https://www.npmjs.com/package/bcryptjs) para hashing de credenciales y PINs, [JWT](https://jwt.io/) para autenticación stateless y [Helmet](https://helmetjs.github.io/) para protección de cabeceras HTTP.
 
 ### Frontend
-* **Core & Reactividad**: [Vue 3](https://vuejs.org/) (Composition API, `<script setup lang="ts">`) y TypeScript 5.6.
-* **Bundler & Tooling**: [Vite 5](https://vitejs.dev/) con división de código (`code-splitting`) por rutas y compresión optimizada para producción.
-* **Componentes & UI**: [Tailwind CSS 3.4](https://tailwindcss.com/) para diseño utilitario y responsivo (optimizado para terminales móviles de domiciliarios y pantallas táctiles de planta), componentes accesibles sin estilo vía [Reka UI](https://reka-ui.com/), iconos vectoriales con [Lucide Icons](https://lucide.dev/) y notificaciones toast con [Vue Sonner](https://vue-sonner.vercel.app/).
-* **Estado Global y Enrutamiento**: [Pinia](https://pinia.vuejs.org/) con persistencia de tokens de sesión y [Vue Router 4](https://router.vuejs.org/) con navegación declarativa y guardas de seguridad (`Navigation Guards`).
+* **Core & Reactividad**: [Vue 3.5](https://vuejs.org/) (Composition API, `<script setup lang="ts">`) y TypeScript 5.6.
+* **Tooling & Bundler**: [Vite 5](https://vitejs.dev/) con división de código por rutas y proxy reverso local.
+* **Componentes & Estilos**: [Tailwind CSS 3.4](https://tailwindcss.com/) adaptativo para móviles de domiciliarios y pantallas de planta, componentes accesibles sin estilos con [Reka UI](https://reka-ui.com/), iconos con [Lucide Icons](https://lucide.dev/) y toasts con [Vue Sonner](https://vue-sonner.vercel.app/).
+* **Estado Global y Navegación**: [Pinia](https://pinia.vuejs.org/) y [Vue Router 4](https://router.vuejs.org/) con guardas de autenticación y normalización de roles RBAC.
 
 ### Infraestructura & DevOps
-* **Contenedores**: [Docker](https://www.docker.com/) con compilación multi-etapa (`multi-stage build`) reduciendo el peso de la imagen final a menos de 180 MB.
-* **Orquestación Local**: [Docker Compose](https://docs.docker.com/compose/) con aprovisionamiento automático de PostgreSQL y red aislada.
-* **Integración Continua (CI/CD)**: [GitHub Actions](https://github.com/features/actions) con verificación estricta de compilación TypeScript (`tsc --noEmit`), auditoría de seguridad de paquetes, pruebas unitarias e integración en [Vitest](https://vitest.dev/) sobre base de datos Postgres efímera, y validación de Docker build.
-* **Despliegue Productivo**: Alojado en Render PaaS conectado a Neon Serverless PostgreSQL en AWS `us-east-2`.
+* **Contenedores**: [Docker](https://www.docker.com/) con compilación multi-etapa en Alpine Linux, `dumb-init` (PID 1) y usuario no privilegiado `node`.
+* **Orquestación**: [Docker Compose](https://docs.docker.com/compose/) con red bridge y volúmenes nombrados persistentes.
+* **CI/CD**: [GitHub Actions](https://github.com/features/actions) con verificación de tipos, pruebas de integración en PostgreSQL efímero y test de Docker build.
+* **Hosting Productivo**: [Render PaaS](https://render.com/) sincronizado con [Neon Serverless PostgreSQL](https://neon.tech/) en AWS `us-east-2`.
 
 ---
 
-## 📂 Estructura del Proyecto y Módulos
+## 📂 Estructura Canónica del Proyecto
+
+La arquitectura backend se rige por el patrón modular canónico en `src/modules/<dominio>/`:
 
 ```text
 yogurarte-app/
@@ -75,47 +90,49 @@ yogurarte-app/
 │       └── ci.yml               # Pipeline de CI/CD automatizado en GitHub Actions
 ├── prisma/
 │   ├── migrations/              # Historial cronológico de migraciones relacionales
-│   ├── schema.prisma            # Definición canónica de modelos relacionales Prisma
-│   └── seed.ts                  # Semillero interactivo de onboarding local con datos demo
+│   ├── schema.prisma            # Modelado de datos canónico Prisma
+│   └── seed.ts                  # Semillero interactivo de onboarding con datos demo
 ├── scripts/
 │   ├── audit_neon_db.cjs        # Auditoría profunda de saldos y esquema en Neon DB
-│   ├── backup_cloud.cjs         # Extracción de volcados SQL y respaldos automáticos
+│   ├── backup_cloud.cjs         # Extracción de respaldos SQL comprimidos
 │   ├── backup_db.bat            # Respaldo rápido local para sistemas Windows
 │   └── sync_neon_to_local.cjs   # Sincronización selectiva entre nube y desarrollo local
-├── src/                         # Código fuente del Backend (Node.js + Express + TS)
-│   ├── controllers/             # Controladores REST para la capa HTTP
-│   ├── middlewares/             # Autenticación JWT, verificación de roles y rate limit
-│   ├── modules/                 # Módulos de dominio desacoplados (auth, crm, etc.)
-│   │   ├── auth/                # Lógica de login, hash bcrypt y emisión de tokens
-│   │   └── crm/                 # Gestor Baileys, sincronización y sockets WhatsApp
-│   ├── routes/                  # Definición y mapeo de endpoints REST
-│   ├── schemas/                 # Validación de payloads de entrada con Zod
-│   ├── services/                # Reglas de negocio (lotes, inventario, pedidos, caja)
-│   ├── shared/                  # Clases compartidas, helpers y manejador de errores
-│   ├── utils/                   # Formateadores, logger Pino y helpers auxiliares
+├── src/                         # Backend canónico (Node.js + Express + TypeScript ESM)
+│   ├── modules/                 # Capa de dominio desacoplada (Routes, Controller, Service, Schema)
+│   │   ├── auth/                # Autenticación JWT, login con PIN y gestión de usuarios
+│   │   ├── batches/             # Fase A (lotes madre) y Fase B (fraccionamiento dinámico)
+│   │   ├── crm/                 # CRM WhatsApp con Baileys, sockets y respuestas rápidas
+│   │   ├── customers/           # Cartera de clientes, saldo dinámico y fidelización
+│   │   ├── finance/             # Caja bimonetaria (Efectivo/Nequi), gastos y créditos
+│   │   ├── inventory/           # Stock de materias primas, envases y recetas de mermelada
+│   │   ├── orders/              # Pedidos, rutas de entrega y cartera dinámica
+│   │   ├── preparations/        # Elaboración de insumos compuestos (mermeladas artesanales)
+│   │   ├── production/          # Supervisión de fermentación láctea y costos
+│   │   ├── settings/            # Catálogo de sabores, precios y presentaciones
+│   │   └── staff/               # Nómina, colaboradores y liquidaciones de jornales
+│   ├── services/                # Servicios de integración externa (Baileys WhatsApp)
+│   ├── shared/                  # AppError, middlewares de auth/roles, logger Pino y utilidades
 │   ├── app.ts                   # Ensamblado del servidor Express, CORS y middlewares
 │   └── server.ts                # Entrypoint de arranque HTTP y enlace Socket.IO
-├── frontend/                    # Aplicación cliente SPA (Vue 3 + TypeScript + Vite)
-│   ├── public/                  # Favicon institucional, manifest y logos vectoriales
+├── frontend/                    # Cliente SPA (Vue 3 + TypeScript + Vite + Tailwind)
+│   ├── public/                  # Favicon institucional y logos vectoriales
 │   └── src/
-│       ├── api/                 # Clientes Axios tipados para consumir la API REST
+│       ├── api/                 # Cliente HTTP Axios centralizado (client.ts)
 │       ├── components/          # Componentes reutilizables (TopBar, BottomNav, Modales)
 │       ├── composables/         # Hooks reutilizables (useAuth, useSocket, useCurrency)
-│       ├── layouts/             # Plantilla visual con navegación adaptativa (Desktop/Móvil)
-│       ├── router/              # Configuración de rutas y guardas de autenticación
+│       ├── layouts/             # Plantilla visual responsiva (Desktop / Móvil)
+│       ├── router/              # Rutas declarativas y guardas de seguridad RBAC
 │       ├── stores/              # Stores Pinia (auth, batches, orders, crm, finance)
-│       ├── styles/              # Configuración base de Tailwind CSS y animaciones
-│       ├── types/               # Definiciones e interfaces TypeScript del cliente
-│       ├── utils/               # Formateador de moneda COP, fechas y helpers
-│       ├── views/               # Vistas principales: Dashboard, Lotes, Pedidos,
-│       │                        # Rutas de Reparto, CRM, Inventario, Caja y Gastos
+│       ├── views/               # Vistas: Dashboard, Lotes, Pedidos, Reparto, CRM, Caja
 │       ├── App.vue              # Componente raíz con contenedor de toasts
 │       └── main.ts              # Entrypoint de inicialización de la app Vue 3
-├── Dockerfile                   # Construcción multi-stage de producción optimizada
-├── docker-compose.yml           # Pila completa de contenedores para ejecución local
-├── package.json                 # Dependencias raíz, scripts de build y ejecución
-├── tsconfig.json                # Configuración del compilador TypeScript para backend
-└── vitest.config.ts             # Configuración del runner de pruebas unitarias/integración
+├── tests/                       # Pruebas automatizadas de integración y Golden Master
+├── Dockerfile                   # Construcción multi-stage autónoma y hardened
+├── docker-compose.yml           # Orquestación de base de datos y aplicación
+├── docker-entrypoint.sh         # Script de inicio resiliente en contenedor
+├── package.json                 # Dependencias raíz y scripts de automatización
+├── tsconfig.json                # Configuración de compilación TypeScript NodeNext
+└── vitest.config.ts             # Configuración del ejecutor de pruebas Vitest
 ```
 
 ---
@@ -124,76 +141,77 @@ yogurarte-app/
 
 ```mermaid
 flowchart TD
-    subgraph S1["1. Fase A: Fermentación"]
+    subgraph S1["1. Fase A: Fermentación Térmica"]
         A1["Recepción de Leche Cruda + Cultivo"] --> A2["Monitoreo Térmico 6 - 8h"]
-        A2 --> A3["Lote Base Completado (Batch)"]
+        A2 --> A3["Lote Madre Base (ProductionBatch)"]
     end
 
     subgraph S2["2. Fase B: Envasado y Fraccionamiento"]
-        A3 --> B1["Fracción Sabor Fresa (Mermelada + Botellas 1L)"]
-        A3 --> B2["Fracción Sabor Natural (Botellas 1L / 2L)"]
+        A3 --> B1["Fracción Fresa (Mermelada + Botellas 500ml / 1L)"]
+        A3 --> B2["Fracción Melocotón (Almíbar + Botellas 1L / 2L)"]
         B1 --> B3["Deducción Automática de Insumos y Empaques"]
         B2 --> B3
     end
 
-    subgraph S3["3. Comercialización y Pedidos"]
-        B3 --> C1["Pedido Registrado (Vía Web o CRM WhatsApp)"]
+    subgraph S3["3. Pedidos y Despacho"]
+        B3 --> C1["Pedido (Web o CRM WhatsApp con Selector Dinámico)"]
         C1 --> C2["Despacho: PREPARING ➔ IN_ROUTE ➔ DELIVERED"]
     end
 
-    subgraph S4["4. Tesorería Bimonetaria y Cartera"]
+    subgraph S4["4. Finanzas y Fidelización"]
         C2 --> D1{"¿Pago Inmediato?"}
-        D1 -- "Sí: Efectivo / Nequi" --> D2["Ingreso Directo a Caja Menor / Banco"]
-        D1 -- "No: Entrega a Crédito" --> D3["Cartera Dinámica Activa (Saldo Pendiente)"]
-        D3 --> D4["Cobro Posterior en CRM / Ruta de Domicilio"]
+        D1 -- "Sí: Efectivo / Nequi" --> D2["Asiento en Caja Menor o Banco"]
+        D1 -- "No: A Crédito" --> D3["Cartera Dinámica Activa (totalAmount - paidAmount)"]
+        D3 --> D4["Cobro en Ruta / CRM"]
         D4 --> D2
+        D2 --> E1{"¿Fidelización 10+1?"}
+        E1 -- "10 Unidades Cumplidas y Cartera = $0" --> E2["Canje 1x 1L o 2x 500ml a $0 COP"]
+        E1 -- "Tiene Deuda Pendiente" --> E3["Bloqueo Preventivo hasta Liquidar Cartera"]
     end
 ```
 
-### 1. Producción en Dos Fases (Fase A & Fase B)
-* **Fase A (Fermentación Térmica / `ProductionBatch`):**
-  Transforma la leche cruda fresca mediante pasteurización e inoculación de cultivo termófilo. Se supervisa el rendimiento térmico (\(\text{Rendimiento \%} = \frac{\text{Litros Producidos}}{\text{Leche Utilizada}} \times 100\)), las horas de fermentación y los costos indirectos.
-* **Fase B (Fraccionamiento y Envasado / `BatchPackaging`):**
-  Un lote base puede dividirse en múltiples fracciones independientes por sabor y presentación (ej. 15 Litros en sabor Fresa y 10 Litros en Natural). Al fraccionar, el sistema descuenta automáticamente los envases PET, tapas de seguridad, etiquetas y los insumos compuestos (como mermeladas artesanales calculadas a partir de sus recetas).
+### 1. Producción en Dos Fases y Rendimiento Volumétrico
+* **Fase A (Lote Base / `ProductionBatch`):** Transforma la leche cruda fresca mediante pasteurización e inoculación de cultivo termófilo. Se supervisa el rendimiento térmico, temperatura y horas de fermentación. El lote base representa exclusivamente base láctea a granel.
+* **Fase B (Fraccionamiento / `BatchPackaging`):** Un lote base se divide en fracciones por sabor y presentación. Al envasar, el sistema descuenta automáticamente los envases, tapas de seguridad, etiquetas y los insumos compuestos (mermeladas artesanales).
+* **Principio de Rendimiento Volumétrico (Constitución Art. 5.6):** La base láctea consumida (`baseLitersUsed`) permanece fija según lo extraído del tanque madre, pero el volumen comercial envasado puede legítimamente superar el 100% debido a la masa y volumen aportados por mermeladas, frutas y endulzantes.
 
-### 2. Ciclo de Vida de Pedidos y Cartera Dinámica
-* **Estados de Entrega:** `PREPARING` (en alistamiento en planta) $\rightarrow$ `IN_ROUTE` (asignado a domiciliario en ruta) $\rightarrow$ `DELIVERED` (entregado exitosamente al cliente) o `CANCELLED`.
-* **Cálculo Matemático de Deuda:** No existen columnas desincronizadas en la tabla `Customer`. La deuda de un cliente se evalúa dinámicamente sumando:
+### 2. Flexibilidad Multi-Presentación Dinámica
+* No existen columnas estáticas ni supuestos hardcodeados de 1L o 2L.
+* El sistema opera con presentaciones configurables (500 ml, 1 L, 2 L y futuros formatos), adaptando automáticamente el selector de lotes en pedidos, la vinculación masiva en Fase B (`linkOrdersToPackaging`) y las suscripciones frecuentes en CRM.
+
+### 3. Ciclo de Pedidos y Cartera Cero-Redundancia
+* **Flujo de Logística:** `PREPARING` (alistamiento en planta) $\rightarrow$ `IN_ROUTE` (asignado a domiciliario) $\rightarrow$ `DELIVERED` (entregado exitosamente) o `CANCELLED`.
+* **Cálculo Matemático de Deuda:** No existen columnas de saldo estático en `Customer`. La deuda se evalúa en tiempo real:
   $$\text{Deuda Total} = \sum_{\text{Pedidos Entregados}} (\text{totalAmount} - \text{paidAmount})$$
-  Cada pago registrado (`OrderPayment`) impacta de inmediato el balance del pedido y genera el correspondiente asiento en la caja seleccionada.
+  Cada pago registrado (`OrderPayment`) impacta el balance del pedido y genera el asiento contable en la caja seleccionada.
 
-### 3. CRM WhatsApp con Baileys & Sockets en Vivo
-* **Conexión Resistente:** Implementa `@whiskeysockets/baileys` con discriminación de errores de socket:
-  * Error `401 (loggedOut)`: Limpieza controlada de credenciales e invocación inmediata de un nuevo código QR.
-  * Error `440 / 515 (restartRequired)`: Reconexión transparente de socket sin invalidar la sesión existente.
-* **Omnicanalidad Reactiva:** Todo mensaje entrante o saliente, imagen o actualización de estado de lectura es emitido vía Socket.IO hacia la interfaz Vue 3, permitiendo una experiencia de atención al cliente fluida y en tiempo real.
+### 4. Programa de Fidelización 10+1 Inteligente
+* Cada botella comprada en pedidos entregados acumula unidades hacia la recompensa.
+* Al completar 10 unidades, el cliente tiene derecho a canjear **1 Litro o 2 unidades de 500 ml** de yogur de obsequio a $0 COP (`PREMIO_FIDELIZACION`).
+* **Bloqueo por Cartera:** Si el cliente tiene deudas pendientes (`pendingDebt > 0`), el sistema bloquea proactivamente el canje tanto en la interfaz como en el backend con HTTP 400 hasta que el saldo sea cancelado.
+
+### 5. CRM WhatsApp con Baileys & Sockets
+* **Discriminación de Errores:**
+  * Error `401 (loggedOut)`: Limpieza controlada de credenciales y regeneración de código QR.
+  * Error `440 / 515 (restartRequired)`: Reconexión transparente sin invalidar la sesión existente.
+* **Sincronización en Vivo:** Emisión inmediata de chats y estados de pedidos hacia la interfaz Vue 3 vía Socket.IO.
 * **Respuestas Rápidas (`QuickReplies`):** Atajos integrados para `/sabores`, `/precios`, `/pago` y `/domicilio`.
 
-### 4. Tesorería Bimonetaria y Compras a Crédito Flexibles
-* **Canales Bimonetarios:** Separación estricta entre **Efectivo** (dinero en caja física para gastos de ruta y cambio) y **Nequi / Bancolombia** (recaudos por transferencias digitales).
-* **Créditos con Frecuencia Flexible:** El sistema permite registrar compras de maquinaria, equipos o suministros mayores bajo obligaciones crediticias (`CreditObligation`) de tipo `FLEXIBLE` (abonos libres). En esta modalidad no se fuerzan cuotas periódicas fijas, permitiendo amortizar saldo variable conforme a la disponibilidad del flujo de caja diario.
-
-### 5. Programa de Fidelización 10+1
-* Cada cliente acumula botellas de 1L compradas en pedidos completados (`bottlesTowardsReward`).
-* Al acumular 10 botellas, la interfaz resalta el derecho a reclamar 1 Litro de yogur de obsequio, reiniciando el ciclo tras la redención sin alterar el histórico contable.
+### 6. Tesorería Bimonetaria y Créditos Flexibles
+* **Canales Separados:** **Efectivo** (dinero físico en caja menor para vueltos y mostrador) y **Nequi / Bancolombia** (transferencias bancarias digitales).
+* **Créditos con Frecuencia Flexible:** Registro de adquisiciones mayores bajo la modalidad `FLEXIBLE` (abonos libres según el flujo de caja diario, sin cuotas periódicas forzadas).
 
 ---
 
-## 🚀 Guía de Puesta en Marcha (Local Onboarding)
+## 🚀 Despliegue y Puesta en Marcha en Local
 
 ### Prerrequisitos
 * **Node.js**: v20.12.0 o superior ([Descargar Node.js](https://nodejs.org/)).
-* **npm**: v10.x o superior.
-* **PostgreSQL**: Instancia local instalada o servicio en Docker (puerto `5432`).
+* **npm**: v10.x / v11.x.
+* **Docker y Docker Desktop**: Opcional para desarrollo local nativo, mandatorio si se utiliza Docker Compose.
 
-### Paso 1: Clonar el Repositorio
-```bash
-git clone https://github.com/edier-0/yogurarte-app.git
-cd yogurarte-app
-```
-
-### Paso 2: Configurar Variables de Entorno
-Copia la plantilla preconfigurada para desarrollo:
+### Variables de Entorno (.env)
+Copia la plantilla preconfigurada en la raíz del proyecto:
 ```bash
 # En Windows PowerShell o CMD:
 copy .env.example .env
@@ -201,56 +219,163 @@ copy .env.example .env
 # En Linux o macOS:
 cp .env.example .env
 ```
-Asegúrate de que la variable `DATABASE_URL` apunte a tu PostgreSQL local (ej. `postgresql://postgres:postgrespassword@localhost:5432/yogurarte_db?schema=public`).
 
-### Paso 3: Instalar Dependencias del Backend y Frontend
+| Variable | Tipo | Descripción | Ejemplo / Valor por Defecto |
+| :--- | :--- | :--- | :--- |
+| `PORT` | `number` | Puerto de escucha del servidor HTTP Express. | `3000` |
+| `NODE_ENV` | `string` | Modo de entorno (`development`, `production`, `test`). | `development` |
+| `DATABASE_URL` | `string` | Cadena de conexión PostgreSQL para Prisma. | `postgresql://postgres:postgrespassword@localhost:5432/yogurarte_db?schema=public` |
+| `JWT_SECRET` | `string` | Secreto criptográfico para firma de tokens JWT (mínimo 32 caracteres). | `clave_secreta_aleatoria_super_segura_123456789` |
+| `JWT_EXPIRES_IN` | `string` | Tiempo de expiración del token JWT. | `1d` |
+| `CORS_ORIGIN` | `string` | Orígenes autorizados para peticiones cruzadas. | `http://localhost:5173,http://localhost:3000` |
+| `RUN_MIGRATIONS` | `boolean` | Sincroniza el esquema con `prisma db push` al arrancar el contenedor. | `false` |
+| `SMTP_HOST` | `string` | Servidor SMTP para envío de correos (opcional). | `smtp.gmail.com` |
+| `SMTP_PORT` | `number` | Puerto seguro del servidor SMTP. | `465` (SSL) o `587` (TLS) |
+| `SMTP_USER` | `string` | Cuenta de correo emisora de notificaciones. | `seguridad@yogurarte.com` |
+| `SMTP_PASS` | `string` | Contraseña de aplicación SMTP. | `token_de_aplicacion` |
+
+---
+
+### Opción A: Entorno de Desarrollo Rápido (Inner Loop - Recomendado)
+Este es el flujo diario recomendado para programadores: aprovecha la recarga en caliente instantánea (HMR de Vite en frontend y reinicio rápido de Express con TypeScript) manteniendo la base de datos aislada en Docker.
+
 ```bash
-# Instalar dependencias raíz del Backend
+# 1. Levantar únicamente el contenedor de PostgreSQL en segundo plano
+docker compose up -d postgres
+
+# 2. Instalar dependencias del backend y frontend
 npm install
-
-# Instalar dependencias de la SPA Frontend
 npm --prefix frontend install
-```
 
-### Paso 4: Sincronizar Esquema de Base de Datos
-Genera el cliente Prisma y crea la estructura relacional en tu base de datos:
-```bash
+# 3. Generar cliente de Prisma y sincronizar el esquema relacional
 npx prisma generate
 npx prisma db push
-```
 
-### Paso 5: Poblar con el Semillero Demo (`prisma/seed.ts`)
-Ejecuta el script de demostración interactiva:
-```bash
+# 4. Poblar la base de datos con datos de demostración
 npx prisma db seed
-```
-> **¿Qué crea este comando?**
-> * 4 Usuarios con roles RBAC (Admin, Operario de Planta, Repartidor, Socio) con credenciales seguras hasheadas con Bcrypt.
-> * 8 Sabores institucionales y catálogo de insumos base (Leche, Azúcar, Cultivo, Envases PET, Tapas, Etiquetas).
-> * Receta Maestra de insumo compuesto: **Mermelada de Fresa Artesanal** (con proporciones automáticas de fruta y azúcar).
-> * 2 Lotes de producción: 1 lote en incubación térmica (`LOTE-DEMO-INCUBATING`) y 1 lote completado (`LOTE-DEMO-COMPLETED`) fraccionado en 15L Fresa y 10L Natural.
-> * 6 Clientes estratégicos: clientes al día, clientes con deudas por cobrar ($24.000 COP), clientes con abonos parciales ($12.000 COP abonados y $12.000 COP pendientes) y cliente con fidelización 8/10.
-> * 6 Pedidos demo abarcando todo el ciclo de entrega (`PREPARING`, `IN_ROUTE`, `DELIVERED`).
-> * Movimientos de apertura de caja bimonetaria (Efectivo y Nequi), gasto operativo y compra de maquinaria a crédito con **frecuencia flexible (abonos libres)**.
-> * Conversaciones de prueba en CRM WhatsApp con plantillas de respuestas rápidas y pedidos recurrentes.
 
-### Paso 6: Iniciar la Aplicación en Modo Desarrollo
-En terminales separadas (o utilizando los scripts del proyecto):
-
-```bash
-# Terminal 1 - Servidor Backend (API Express + WebSockets en http://localhost:3000)
+# 5. Iniciar servidores de desarrollo en dos terminales separadas:
+# Terminal 1 - Backend Express en http://localhost:3000
 npm run dev
 
-# Terminal 2 - Servidor Frontend (Vite HMR en http://localhost:5173)
+# Terminal 2 - Frontend Vite HMR en http://localhost:5173
 npm run dev:client
 ```
-Abre tu navegador en **http://localhost:5173** (o en **http://localhost:3000** si compilaste para producción).
+Accede a la aplicación en **http://localhost:5173** (con proxy automático hacia la API en el puerto 3000).
+
+---
+
+### Opción B: Pila Completa en Docker Compose (Outer Loop)
+Ideal para verificar el empaquetado multi-stage, probar la aplicación sin instalar Node.js en la máquina anfitriona o realizar pruebas de aceptación integrales.
+
+```bash
+# 1. Construir la imagen multi-stage y levantar la pila completa
+docker compose up --build -d
+
+# 2. Monitorear el estado de salud de los contenedores
+docker compose ps
+
+# 3. Visualizar los logs de la aplicación en tiempo real
+docker compose logs -f app
+```
+
+* **Servicios desplegados:**
+  * `yogurarte_postgres`: PostgreSQL 16 Alpine en el puerto `5432` con volumen persistente `yogurarte_postgres_data`.
+  * `yogurarte_app`: Imagen de producción optimizada en Node 20 Alpine en el puerto `3000` con `dumb-init` y usuario `node`.
+* **Para aplicar el semillero demo dentro del contenedor:**
+  ```bash
+  docker compose exec app npx prisma db seed
+  ```
+* **Para detener los contenedores:**
+  ```bash
+  docker compose down
+  ```
+* **Resolución de problemas en Windows (WSL2):** Si un build previo fue cancelado abruptamente y BuildKit presenta demoras por candados de caché huérfanos, ejecuta:
+  ```bash
+  docker builder prune -f
+  ```
+
+---
+
+### Opción C: Compilación y Ejecución Productiva Local (Node.js)
+Para probar el comportamiento idéntico a producción de forma nativa sin Docker:
+
+```bash
+# 1. Compilar frontend (Vite en public/) y backend (tsc en dist/)
+npm run build
+
+# 2. Iniciar el servidor unificado de producción
+npm start
+```
+El servidor servirá la API REST, los WebSockets y la SPA en **http://localhost:3000**.
+
+---
+
+## 🚢 Despliegue en Remoto y Producción (Render + Neon DB)
+
+### Arquitectura de Producción
+* **Base de Datos**: [Neon Serverless PostgreSQL](https://neon.tech/) alojada en AWS `us-east-2`, con escalado a cero, pooling de conexiones integrado y encriptación obligatoria con SSL (`sslmode=require`).
+* **Servidor de Aplicación**: [Render PaaS](https://render.com/) desplegado como un **Web Service** basado en Docker.
+* **Integración Continua (CI/CD)**: Pipeline automatizado en [GitHub Actions](https://github.com/edier-0/yogurarte-app/actions) (`.github/workflows/ci.yml`).
+
+### Flujo de Despliegue Continuo (CI/CD)
+El flujo estricto del proyecto opera mediante la directiva `git-pr-workflow`:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Desarrollador / Agente
+    participant GH as GitHub (develop)
+    participant CI as GitHub Actions (CI)
+    participant Main as GitHub (main)
+    participant Render as Render Webhook (PaaS)
+    participant Neon as Neon Serverless DB
+
+    Dev->>GH: Publica rama y abre Pull Request a develop
+    GH->>CI: Ejecuta TypeCheck, Vitest (253 tests) y Docker Build
+    CI-->>GH: Quality Gates aprobados (Verde)
+    Dev->>GH: Fusión del PR en develop (Squash Merge)
+    Dev->>Main: Sincronización directa develop ➔ main
+    Main->>CI: Validación final en main
+    Main->>Render: Disparo automático de Webhook de despliegue
+    Render->>Render: Construcción multi-stage autónoma con Dockerfile
+    Render->>Neon: Conexión persistente mediante DATABASE_URL con SSL
+    Render-->>Dev: Despliegue exitoso con cero tiempo de inactividad
+```
+
+### Variables de Entorno en Render
+En el panel de configuración de Render (**Environment Variables**), configura las siguientes variables clave:
+
+| Variable | Valor / Formato | Propósito |
+| :--- | :--- | :--- |
+| `NODE_ENV` | `production` | Activa optimizaciones de Express y suprime trazas de depuración. |
+| `PORT` | `3000` | Puerto interno mapeado por el proxy reverso de Render. |
+| `DATABASE_URL` | `postgresql://user:pass@ep-xyz.us-east-2.aws.neon.tech/neondb?sslmode=require` | Cadena de conexión JDBC segura hacia Neon DB. |
+| `JWT_SECRET` | Cadena aleatoria de 64 caracteres hex | Firma criptográfica de sesiones de usuario. |
+| `JWT_EXPIRES_IN` | `1d` | Duración del token de autenticación. |
+| `CORS_ORIGIN` | `https://tu-app-render.onrender.com` | Origen autorizado para peticiones CORS. |
+| `RUN_MIGRATIONS` | `false` | Previene que el entrypoint ejecute `db push` descontrolado en reinicios. |
+
+### Dockerfile Multi-Stage Autónomo y Hardened
+El archivo [`Dockerfile`](file:///c:/Users/edier/Documents/YOGURES/Dockerfile) está diseñado con arquitectura de dos etapas para máxima seguridad y compatibilidad en la nube:
+1. **Etapa 1 (Builder):**
+   * Basado en `node:20-alpine` con `openssl`, `libc6-compat` y `npm@11`.
+   * **Desacoplado al 100% del host:** No requiere ni asume la existencia de la carpeta `node_modules` local (compatible con clones limpios de Git en Render y GitHub Actions).
+   * Instalación determinista y acelerada con `npm ci --no-audit --no-fund --legacy-peer-deps`.
+   * Generación autónoma del motor nativo de Prisma (`npx prisma generate`).
+   * Compilación de TypeScript (`npx tsc`) y del frontend Vue 3 con Vite.
+   * Poda limpia de dependencias de desarrollo (`npm prune --omit=dev`).
+2. **Etapa 2 (Runner):**
+   * Imagen de ejecución ligera en `node:20-alpine` (< 180 MB).
+   * Incorpora `dumb-init` para una adecuada gestión del PID 1 y manejo de señales Unix (`SIGTERM`/`SIGINT`).
+   * **Hardening:** Ejecución bajo el usuario sin privilegios `node` (no root).
+   * Directorios dedicados con permisos controlados para `/app/baileys_auth_info` (sesión WhatsApp) y `/app/logs`.
 
 ---
 
 ## 🔑 Credenciales Demo Preconfiguradas
 
-El semillero demo provee los siguientes perfiles de acceso para probar todos los roles del sistema:
+El semillero demo (`npx prisma db seed`) provee las siguientes cuentas para pruebas de los distintos perfiles del sistema:
 
 | Rol | Usuario (`username`) | Correo Electrónico | Contraseña | PIN Rápido | Alcance y Módulos Habilitados |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -261,67 +386,45 @@ El semillero demo provee los siguientes perfiles de acceso para probar todos los
 
 ---
 
-## 🔐 Variables de Entorno (.env)
+## 🧪 Comandos de Verificación y Testing
 
-| Variable | Tipo | Descripción | Ejemplo / Valor por Defecto |
-| :--- | :--- | :--- | :--- |
-| `PORT` | `number` | Puerto de escucha del servidor HTTP Express. | `3000` |
-| `NODE_ENV` | `string` | Modo de entorno (`development`, `production`, `test`). | `development` |
-| `DATABASE_URL` | `string` | Cadena de conexión JDBC/PostgreSQL para Prisma. | `postgresql://user:pass@localhost:5432/yogurarte_db?schema=public` |
-| `JWT_SECRET` | `string` | Secreto criptográfico para firma y validación de tokens JWT. | `clave_secreta_aleatoria_minimo_32_caracteres` |
-| `JWT_EXPIRES_IN` | `string` | Tiempo de vida de la sesión JWT. | `1d` (1 día) |
-| `CORS_ORIGIN` | `string` | Origen autorizado para peticiones CORS (separado por comas). | `http://localhost:5173,http://localhost:3000` |
-| `SMTP_HOST` | `string` | Servidor SMTP para envío de correos de recuperación de PIN/clave. | `smtp.gmail.com` |
-| `SMTP_PORT` | `number` | Puerto seguro del servidor SMTP. | `465` (SSL) o `587` (TLS) |
-| `SMTP_SECURE` | `boolean` | Define si la conexión al servidor de correo usa TLS/SSL directo. | `true` |
-| `SMTP_USER` | `string` | Cuenta de correo emisora de notificaciones. | `seguridad@yogurarte.com` |
-| `SMTP_PASS` | `string` | Contraseña de aplicación o token de autenticación SMTP. | `contraseña_de_aplicacion_gmail` |
-| `SMTP_FROM` | `string` | Cabecera "From" de los correos emitidos. | `"YogurArte Seguridad <seguridad@yogurarte.com>"` |
+```bash
+# Ejecutar la suite completa de pruebas de integración con Vitest (253 tests)
+npm test
+
+# Ejecutar pruebas en modo observador interactivo
+npm run test:watch
+
+# Ejecutar una suite específica (ej. Pedidos o Lotes)
+npx vitest run tests/orders.test.ts
+npx vitest run tests/dynamic_packaging_fase_b.test.ts
+
+# Ejecutar las pruebas Golden Master de costeo y lotes
+npx vitest run tests/golden_master.test.ts
+
+# Validación estricta de tipos de TypeScript en Backend (cero errores)
+npx tsc --noEmit
+
+# Validación de tipos en Frontend y empaquetado Vite
+npm --prefix frontend run build
+```
 
 ---
 
-## 🚢 Despliegue, CI/CD y Mantenimiento
+## 📦 Respaldos y Mantenimiento de Base de Datos
 
-### Despliegue con Docker Compose
-Para levantar la solución completa en un servidor de producción o contenedor local sin dependencias previas:
-```bash
-docker compose up --build -d
-```
-Esto inicializa:
-1. Contenedor de base de datos PostgreSQL con volumen persistente `postgres_data`.
-2. Contenedor de la aplicación YogurArte con build multi-stage optimizado y servidor Express activo en el puerto `3000`.
-
-### Compilación Unificada para Producción
-```bash
-# Compila la SPA Vue 3 con Vite y el backend con TypeScript en dist/
-npm run build
-
-# Iniciar servidor compilado en producción
-npm start
-```
-
-### Ejecución de Pruebas Automatizadas
-```bash
-# Ejecutar suite de pruebas con Vitest
-npm test
-
-# Modo interactivo / observador
-npm run test:watch
-```
-
-### Respaldos y Auditoría de Datos
-* **Respaldo en la Nube / Local:**
+* **Generar respaldo SQL comprimido:**
   ```bash
   npm run backup
   ```
-  Genera un archivo comprimido SQL con el volcado completo de la base de datos en la carpeta `backups/`.
-* **Auditoría de Deudas y Balances:**
+  Extrae un volcado completo de la base de datos y lo almacena con marca de tiempo en la carpeta `backups/`.
+* **Auditoría profunda de integridad relacional y saldos:**
   ```bash
   node scripts/audit_neon_db.cjs
   ```
-  Inspecciona la integridad relacional de los pedidos y verifica que ningún balance contable presente discrepancias de redondeo o datos huérfanos.
+  Inspecciona los pedidos entregados, valida la coincidencia matemática de saldos y detecta cualquier discrepancia de cartera.
 
 ---
 
 ## 📄 Licencia
-Este proyecto es software privado desarrollado para el uso y administración exclusiva de **YogurArte**. Distribuido bajo los términos de la licencia [ISC](https://opensource.org/licenses/ISC).
+Este proyecto es software privado desarrollado para el uso y administración exclusiva de **YogurArte** (Fonseca, La Guajira). Distribuido bajo los términos de la licencia [ISC](https://opensource.org/licenses/ISC).
