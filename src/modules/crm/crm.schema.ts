@@ -192,13 +192,21 @@ export const getRecurringQuerySchema = z.object({
 });
 
 
-export const updateSystemTemplateSchema = z.object({
-  content: z
-    .string()
-    .trim()
-    .min(1, 'El contenido de la plantilla no puede estar vacío'),
-  autoTrigger: z.boolean().optional(),
-});
+export const updateSystemTemplateSchema = z
+  .object({
+    content: z
+      .string()
+      .trim()
+      .min(1, 'El contenido de la plantilla no puede estar vacío')
+      .optional(),
+    autoTrigger: z.boolean().optional(),
+  })
+  .refine(
+    (data) => data.content !== undefined || data.autoTrigger !== undefined,
+    {
+      message: 'Debe proporcionar al menos el contenido o el estado de disparo automático',
+    }
+  );
 
 export type SendCrmMessageInput = z.infer<typeof sendCrmMessageSchema>;
 export type LinkCustomerInput = z.infer<typeof linkCustomerSchema>;
