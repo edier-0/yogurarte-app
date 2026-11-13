@@ -16,6 +16,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { CANONICAL_SYSTEM_TEMPLATES } from '../src/modules/crm/system-templates.constants.js';
 
 const prisma = new PrismaClient();
 
@@ -775,6 +776,31 @@ async function main() {
   // 9. CRM, WHATSAPP Y RESPUESTAS RÁPIDAS
   // --------------------------------------------------------------------------
   console.log('\n💬 [9/9] Inicializando módulo CRM y plantillas de chat...');
+
+  // Plantillas Canónicas del Sistema (Spec 014)
+  for (const tpl of CANONICAL_SYSTEM_TEMPLATES) {
+    await prisma.systemWhatsAppTemplate.upsert({
+      where: { code: tpl.code },
+      update: {
+        title: tpl.title,
+        category: tpl.category,
+        description: tpl.description,
+        defaultContent: tpl.defaultContent,
+        availableVariables: JSON.stringify(tpl.availableVariables),
+      },
+      create: {
+        code: tpl.code,
+        title: tpl.title,
+        category: tpl.category,
+        description: tpl.description,
+        content: tpl.defaultContent,
+        defaultContent: tpl.defaultContent,
+        availableVariables: JSON.stringify(tpl.availableVariables),
+        autoTrigger: tpl.autoTrigger,
+      },
+    });
+  }
+  console.log('   ✓ 9 Plantillas de sistema de WhatsApp registradas (Spec 014).');
 
   // Plantillas de Respuestas Rápidas
   const quickReplies = [
