@@ -78,6 +78,59 @@ export const useCrmStore = defineStore('crm', () => {
     return Boolean(found?.autoTrigger);
   }
 
+  async function renderTemplate(code: string, data: Record<string, any>): Promise<string> {
+    if (systemTemplates.value.length === 0) {
+      await fetchSystemTemplates();
+    }
+    const tpl = systemTemplates.value.find((t) => t.code === code);
+    let rawContent = tpl?.content || tpl?.defaultContent || '';
+    if (!rawContent) return '';
+
+    const formatBottles = (val: any) => {
+      if (val === undefined || val === null || val === '') return '0';
+      const num = Number(val);
+      if (isNaN(num)) return String(val);
+      if (Number.isInteger(num)) return String(num);
+      return num.toFixed(1);
+    };
+
+    const formatCop = (val: any) => {
+      if (val === undefined || val === null || val === '') return '$ 0 COP';
+      const num = Number(val);
+      if (!isNaN(num)) {
+        return `$ ${num.toLocaleString('es-CO')} COP`;
+      }
+      return String(val);
+    };
+
+    const values: Record<string, string> = {
+      cliente: data.cliente || 'Cliente',
+      pedido: data.pedido ? String(data.pedido) : '',
+      estado: data.estado || '',
+      productos: data.productos || '',
+      total: formatCop(data.total),
+      saldo_pendiente:
+        data.saldo_pendiente !== undefined && Number(data.saldo_pendiente) <= 0
+          ? '$0 COP (Paz y Salvo)'
+          : formatCop(data.saldo_pendiente),
+      abono: formatCop(data.abono),
+      direccion: data.direccion || 'Entrega en punto de venta / Sin dirección registrada',
+      nequi: data.nequi || '3024581882',
+      banco: data.banco || 'Nequi / Bancolombia',
+      instagram: data.instagram || 'https://www.instagram.com/yogurartesanalfonseca',
+      botellas_acumuladas: formatBottles(data.botellas_acumuladas),
+      botellas_restantes: formatBottles(data.botellas_restantes),
+      premios_disponibles: String(data.premios_disponibles ?? 0),
+    };
+
+    return rawContent.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match: string, key: string) => {
+      if (Object.prototype.hasOwnProperty.call(values, key)) {
+        return values[key];
+      }
+      return match;
+    });
+  }
+
   async function fetchStatus(): Promise<WhatsAppSessionStatus> {
     const rawToken =
       localStorage.getItem('yogurarte_token') ||
@@ -297,6 +350,7 @@ export const useCrmStore = defineStore('crm', () => {
     systemTemplates,
     fetchSystemTemplates,
     isTemplateAutoTriggerEnabled,
+    renderTemplate,
     messagePreview,
     fetchStatus,
     initSocketListeners,

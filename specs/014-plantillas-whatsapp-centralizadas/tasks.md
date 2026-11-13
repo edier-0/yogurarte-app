@@ -21,7 +21,7 @@
 - [x] **T7. Frontend: Orquestación de Disparo Asistido en Pedidos y Domicilios.** RF-15, RF-16, RF-17, RF-28, Casos Límite 1 y 5
   - Hecho cuando: Al confirmar entrega en `DeliveryConfirmModal.vue`, liquidar deuda en `PaymentModal.vue`, o pasar a en ruta en `DeliveryView.vue` y `OrdersView.vue`, el sistema abra automáticamente `WhatsAppMessagePreviewModal.vue` si `autoTrigger === true`, emita advertencia si Baileys está desconectado y mantenga deshabilitado el botón en pedidos cancelados (`CANCELLED`).
 
-- [ ] **T8. Frontend: Integración de fidelización y cobranza (`LoyaltyTab.vue` y `CustomersView.vue`).** RF-1 (7, 8, 9), RF-23, RF-24, RF-26
+- [x] **T8. Frontend: Integración de fidelización y cobranza (`LoyaltyTab.vue` y `CustomersView.vue`).** RF-1 (7, 8, 9), RF-23, RF-24, RF-26
   - Hecho cuando: `LoyaltyTab.vue` consuma `LOYALTY_PROGRESS` o `LOYALTY_REWARD_CLAIM` advirtiendo morosidad de cartera (Art. 7), y `CustomersView.vue` consuma `PAYMENT_REMINDER` con el cálculo dinámico de cartera (Art. 3).
 
 - [ ] **T9. Verificación integral, Typecheck y Build de producción.** RNF-1, RNF-2, RNF-3, RNF-4, RNF-5, RNF-6
