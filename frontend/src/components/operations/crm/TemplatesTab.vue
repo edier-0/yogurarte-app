@@ -128,7 +128,10 @@ async function handleToggleAutoTrigger(tpl: SystemTemplateItem) {
   tpl.autoTrigger = nextVal;
 
   try {
-    await http.put(`/crm/system-templates/${tpl.id}`, { autoTrigger: nextVal });
+    await http.put(`/crm/system-templates/${tpl.id}`, {
+      content: tpl.content,
+      autoTrigger: nextVal,
+    });
     toast.success(`Disparo asistido ${nextVal ? 'activado' : 'desactivado'} para "${tpl.title}"`);
   } catch (err: any) {
     tpl.autoTrigger = previous;
