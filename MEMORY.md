@@ -13,7 +13,8 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Integrada puerta obligatoria de verificación de CI en GitHub Actions antes de solicitar o abrir PR:
   - `.github/workflows/ci.yml` configurado para ejecutar CI en push sobre todas las ramas (`feature/**`, `fix/**`, `chore/**`, `refactor/**`, `docs/**`).
   - Documentado en `AGENTS.md` y `.agent/skills/git-pr-workflow/SKILL.md` el paso obligatorio de esperar 100% de checks en verde antes de solicitar apertura de PR, con bucle de notificación, plan de causa raíz, corrección TDD y re-monitoreo ante cualquier fallo.
-- Rama actual: `chore/ci-pre-pr-verification-gate`.
+- PR #41 fusionado exitosamente en `develop` y sincronizado a `main`.
+- Rama actual: `develop`.
 
 ## Decisiones (y por qué)
 - Puerta obligatoria de CI Pre-PR: garantiza que ningún PR se proponga o abra con tests o builds rotos en GitHub Actions; el agente corrige y reintenta sucesivamente en la rama temática hasta tener 100% verde.
@@ -22,4 +23,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Desenrollado seguro en `fetchMaterials`: maneja tanto arrays planos devueltos por `http.get` como payloads con paginación (`data` / `items`).
 
 ## Próximos pasos
-- Publicar `chore/ci-pre-pr-verification-gate`, esperar verificación de CI en verde y solicitar autorización para abrir PR a `develop`.
+- Continuar con el siguiente requerimiento, módulo o mejora del sistema según indique el usuario.
