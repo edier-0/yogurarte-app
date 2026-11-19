@@ -3,6 +3,8 @@ import { ref, computed, watch } from 'vue';
 import { http } from '@/api/client';
 import { recipesApi, type RecipeItem, type CreateRecipePayload } from '@/api/recipes';
 import { useProductionStore } from '@/stores/production.store';
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
+import type { SelectOption } from '@/utils/searchUtils';
 import {
   X,
   Plus,
@@ -22,6 +24,7 @@ interface RawMaterialSimple {
   isCompound?: boolean;
   isActive: boolean;
   avgCost?: number;
+  currentStock?: number;
 }
 
 const props = defineProps<{
@@ -89,11 +92,12 @@ async function fetchMaterials() {
   isLoadingMaterials.value = true;
   try {
     const res = await http.get<any>('/inventory/materials');
-    const rawData = res.data;
-    if (Array.isArray(rawData)) {
-      materials.value = rawData;
-    } else if (rawData && Array.isArray(rawData.data)) {
-      materials.value = rawData.data;
+    if (Array.isArray(res)) {
+      materials.value = res;
+    } else if (res && Array.isArray(res.data)) {
+      materials.value = res.data;
+    } else if (res && Array.isArray(res.items)) {
+      materials.value = res.items;
     }
   } catch (err) {
     console.error('Error cargando materias primas:', err);
@@ -102,15 +106,59 @@ async function fetchMaterials() {
   }
 }
 
-// Insumos compuestos (mermeladas) para outputMaterialId
-const compoundMaterials = computed(() => {
-  return materials.value.filter((m) => m.category === 'COMPUESTO' || m.isCompound);
+// Insumos compuestos (mermeladas y elaboraciones) para outputMaterialId
+const compoundSelectOptions = computed<SelectOption[]>(() => {
+  const filtered = materials.value.filter(
+    (m) => m.isCompound || m.category === 'COMPUESTO' || m.category === 'INSUMO'
+  );
+  const list = filtered.length > 0 ? filtered : materials.value;
+  return list.map((c) => ({
+    id: c.id,
+    name: c.name,
+    code: c.code,
+    category: c.isCompound ? 'INSUMO COMPUESTO' : c.category,
+    unit: c.unit,
+    stock: c.currentStock,
+  }));
 });
 
-// Materias primas disponibles para ingredientes (filtrar o mostrar activas)
-const availableRawMaterials = computed(() => {
-  return materials.value.filter((m) => m.isActive);
+// Materias primas e insumos disponibles para ingredientes (activos)
+const rawMaterialSelectOptions = computed<SelectOption[]>(() => {
+  return materials.value
+    .filter((m) => m.isActive)
+    .map((m) => ({
+      id: m.id,
+      name: m.name,
+      code: m.code,
+      category: m.category,
+      unit: m.unit,
+      stock: m.currentStock,
+    }));
 });
+
+function onCompoundChange(opt: SelectOption | null) {
+  if (opt) {
+    formData.value.outputMaterialId = Number(opt.id);
+    if (opt.unit && (!formData.value.yieldUnit || formData.value.yieldUnit === 'Litros')) {
+      formData.value.yieldUnit = opt.unit;
+    }
+  } else {
+    formData.value.outputMaterialId = null;
+  }
+}
+
+function onIngredientMaterialChange(index: number, opt: SelectOption | null) {
+  const ing = formData.value.ingredients[index];
+  if (!ing) return;
+  if (opt) {
+    ing.rawMaterialId = Number(opt.id);
+    if (opt.unit) {
+      ing.unit = opt.unit;
+    }
+  } else {
+    ing.rawMaterialId = '';
+  }
+}
 
 // Inicializar o resetear formulario
 function initForm() {
@@ -165,9 +213,7 @@ watch(
   (open) => {
     if (open) {
       initForm();
-      if (materials.value.length === 0) {
-        fetchMaterials();
-      }
+      fetchMaterials();
       if (productionStore.flavors.length === 0) {
         productionStore.fetchFlavors();
       }
@@ -213,14 +259,6 @@ function removeIngredient(index: number) {
   formData.value.ingredients.splice(index, 1);
 }
 
-function onMaterialSelect(index: number) {
-  const ing = formData.value.ingredients[index];
-  if (!ing.rawMaterialId) return;
-  const mat = materials.value.find((m) => m.id === ing.rawMaterialId);
-  if (mat) {
-    ing.unit = mat.unit;
-  }
-}
 
 // Gestión de Pasos SOP
 function addStep() {
@@ -529,18 +567,14 @@ async function handleSubmit() {
           <div v-if="formData.category === 'ELABORACION'" class="grid grid-cols-1 gap-4 sm:grid-cols-3 pt-2">
             <!-- Insumo Compuesto de Salida -->
             <div class="sm:col-span-2">
-              <label class="block text-xs font-bold text-amber-700 dark:text-amber-300 mb-1">
-                Insumo Compuesto de Salida (Almacén) *
-              </label>
-              <select
+              <SearchableSelect
                 v-model="formData.outputMaterialId"
-                class="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 focus:border-amber-500 focus:outline-none dark:border-amber-800 dark:bg-slate-800 dark:text-white"
-              >
-                <option :value="null">-- Seleccionar insumo compuesto del catálogo --</option>
-                <option v-for="c in compoundMaterials" :key="c.id" :value="c.id">
-                  {{ c.name }} ({{ c.code }}) — Unidad: {{ c.unit }}
-                </option>
-              </select>
+                :options="compoundSelectOptions"
+                label="Insumo Compuesto de Salida (Almacén)"
+                placeholder="Buscar o seleccionar insumo compuesto del catálogo..."
+                :required="formData.category === 'ELABORACION'"
+                @change="onCompoundChange"
+              />
             </div>
 
             <!-- Rendimiento Base -->
@@ -625,18 +659,15 @@ async function handleSubmit() {
               :key="idx"
               class="flex flex-col sm:flex-row items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
             >
-              <!-- Selector de Materia Prima -->
+              <!-- Selector de Materia Prima e Insumos con Búsqueda Predictiva -->
               <div class="w-full sm:flex-1">
-                <select
+                <SearchableSelect
                   v-model="ing.rawMaterialId"
-                  @change="onMaterialSelect(idx)"
-                  class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white"
-                >
-                  <option value="">-- Seleccionar Materia Prima --</option>
-                  <option v-for="mat in availableRawMaterials" :key="mat.id" :value="mat.id">
-                    {{ mat.name }} ({{ mat.code }}) [{{ mat.unit }}]
-                  </option>
-                </select>
+                  :options="rawMaterialSelectOptions"
+                  placeholder="Buscar materia prima o insumo..."
+                  :required="true"
+                  @change="(opt) => onIngredientMaterialChange(idx, opt)"
+                />
               </div>
 
               <!-- Cantidad y Unidad -->
@@ -647,13 +678,13 @@ async function handleSubmit() {
                   min="0.001"
                   step="any"
                   placeholder="Cant"
-                  class="w-24 rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 text-right focus:border-primary-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+                  class="w-24 rounded-xl border border-slate-300 bg-white px-2.5 py-2.5 text-xs font-mono font-bold text-slate-900 text-right focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
                 <input
                   v-model="ing.unit"
                   type="text"
                   placeholder="Unidad"
-                  class="w-20 rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+                  class="w-20 rounded-xl border border-slate-300 bg-white px-2.5 py-2.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
               </div>
 
@@ -663,7 +694,7 @@ async function handleSubmit() {
                   v-model="ing.notes"
                   type="text"
                   placeholder="Notas de adición..."
-                  class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+                  class="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-2.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
               </div>
 
