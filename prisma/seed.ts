@@ -210,6 +210,125 @@ async function main() {
   }
   console.log('   ✓ 4 Respuestas rápidas institucionales configuradas.');
 
+  // --------------------------------------------------------------------------
+  // 3.1. RECETAS MAESTRAS ESTÁNDAR (LIBRO DE RECETAS - SPEC 015)
+  // --------------------------------------------------------------------------
+  console.log('\n📖 [3.1/4] Asegurando recetas maestras oficiales (Libro de Recetas)...');
+  const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
+  const adminId = adminUser ? adminUser.id : 1;
+
+  // Insumo de salida para mermelada si existe en catálogo
+  const mermFresaOutput = await prisma.rawMaterial.findFirst({
+    where: { OR: [{ code: 'MERM_FRESA' }, { name: { contains: 'Mermelada de Fresa', mode: 'insensitive' } }] },
+  });
+
+  const masterRecipes = [
+    {
+      code: 'REC-MERM-FRESA',
+      name: 'Mermelada Artesanal de Fresa',
+      category: 'ELABORACION',
+      flavor: 'Fresa',
+      outputMaterialId: mermFresaOutput ? mermFresaOutput.id : null,
+      description: 'Mermelada reducida artesanalmente con trozos de fresa y azúcar refinada (merma de evaporación aprox. 20%).',
+      baseYield: 5.0,
+      yieldUnit: 'Kilogramos',
+      baseLiters: 0,
+      status: 'ACTIVA',
+      steps: [
+        { stepNumber: 1, title: 'Lavado y picado de fruta', description: 'Desinfectar la fresa en agua con solución clorada a 50 ppm, escurrir bien y cortar en trozos medianos (aprox. 1 cm) reservando parte para trozos visibles.', estimatedMinutes: 20, qualityCheck: 'Desinfección y retiro de cálices/fruta dañada.' },
+        { stepNumber: 2, title: 'Mezcla y macerado inicial', description: 'Incorporar la fruta fresca picada junto con el azúcar en la paila de cocción a fuego bajo durante 10 minutos para liberar jugos naturales.', estimatedMinutes: 10, qualityCheck: 'Disolución homogénea de cristales de azúcar.' },
+        { stepNumber: 3, title: 'Cocción y reducción controlada', description: 'Llevar a ebullición suave agitando continuamente con paleta de acero para evitar que se pegue o caramelice en el fondo.', estimatedMinutes: 45, temperatureTarget: 85, temperatureMin: 80, temperatureMax: 90, qualityCheck: 'Espumado constante y control de calor.' },
+        { stepNumber: 4, title: 'Prueba de consistencia y punto de corte', description: 'Realizar prueba de gota en agua fría (debe conservar forma esférica sin disolverse) o verificar con refractómetro a 65-68° Brix.', estimatedMinutes: 5, qualityCheck: 'Punto de textura: gota firme en agua fría o 65° Brix.' },
+        { stepNumber: 5, title: 'Enfriamiento controlado', description: 'Retirar del fuego y enfriar en baño maría inverso hasta temperatura ambiente antes de refrigerar o usar en Fase B.', estimatedMinutes: 30, temperatureTarget: 25, qualityCheck: 'Cubrir para evitar contaminación ambiental.' },
+      ],
+    },
+    {
+      code: 'REC-FASEA-BASE',
+      name: 'Base Láctea Fermentada (Fase A)',
+      category: 'FASE_A',
+      flavor: null,
+      outputMaterialId: null,
+      description: 'Fermentación madre de leche entera pasteurizada e inoculada con cultivo termófilo a granel.',
+      baseYield: 100.0,
+      yieldUnit: 'Litros',
+      baseLiters: 0,
+      status: 'ACTIVA',
+      steps: [
+        { stepNumber: 1, title: 'Pasteurización y desnaturalización', description: 'Calentar la leche cruda filtrada hasta 85 °C en marmita agitando suavemente. Sostener la temperatura durante 5 minutos para acondicionar las proteínas del suero.', estimatedMinutes: 30, temperatureTarget: 85, temperatureMin: 83, temperatureMax: 87, qualityCheck: 'Control estricto con termómetro de inmersión digital.' },
+        { stepNumber: 2, title: 'Enfriamiento a temperatura de siembra', description: 'Cortar el suministro de calor y circular agua fría por la camisa hasta alcanzar exactamente 43 °C.', estimatedMinutes: 25, temperatureTarget: 43, temperatureMin: 42, temperatureMax: 44, qualityCheck: 'Temperatura crítica: nunca inocular a más de 45 °C para no inactivar el cultivo.' },
+        { stepNumber: 3, title: 'Inoculación del cultivo láctico', description: 'Disolver el cultivo láctico liofilizado en 1 L de leche tibia atemperada, verter en espiral al tanque y homogenizar durante 3 minutos.', estimatedMinutes: 10, temperatureTarget: 43, qualityCheck: 'Distribución homogénea sin crear espuma excesiva.' },
+        { stepNumber: 4, title: 'Incubación y fermentación estática', description: 'Tapar la marmita o tanque y mantener en reposo térmico sin mover durante 8 horas continuas hasta alcanzar consistencia gelatinosa firme.', estimatedMinutes: 480, temperatureTarget: 42, temperatureMin: 40, temperatureMax: 43, qualityCheck: 'Punto de corte: coágulo firme, pH entre 4.5 y 4.6 sin sinéresis.' },
+        { stepNumber: 5, title: 'Rompimiento suave y choque frío', description: 'Romper el coágulo con agitador a bajas revoluciones y circular agua helada hasta bajar a 15 °C para frenar la acidez.', estimatedMinutes: 20, temperatureTarget: 15, qualityCheck: 'Textura suave y sedosa sin grumos.' },
+      ],
+    },
+    {
+      code: 'REC-FASEB-FRESA-TRAD',
+      name: 'Yogur de Fresa Tradicional (Fase B)',
+      category: 'FASE_B',
+      flavor: 'Fresa',
+      outputMaterialId: null,
+      description: 'Saborización tradicional con base láctea fría y mermelada artesanal con fruta visible.',
+      baseYield: 11.2, // Expansión volumétrica: 10L base + aporte de masa/volumen de mermelada
+      yieldUnit: 'Litros',
+      baseLiters: 10.0,
+      status: 'ACTIVA',
+      steps: [
+        { stepNumber: 1, title: 'Extracción de base láctea', description: 'Extraer 10 L de base láctea fría del tanque de fermentación con estado COMPLETADO.', estimatedMinutes: 10, temperatureTarget: 10, qualityCheck: 'Verificar aroma lácteo fresco y pH < 4.6.' },
+        { stepNumber: 2, title: 'Incorporación de mermelada artesanal', description: 'Añadir la mermelada de fresa fría y mezclar con paleta de acero de abajo hacia arriba para distribuir los trozos uniformemente.', estimatedMinutes: 15, qualityCheck: 'Color rosado uniforme y dispersión de fruta.' },
+        { stepNumber: 3, title: 'Envasado y sellado de botellas', description: 'Fraccionar en botellas comerciales con tapa integrada verificando llenado al aforo y ajuste de precinto.', estimatedMinutes: 30, qualityCheck: 'Sello hermético y peso neto correcto.' },
+      ],
+    },
+    {
+      code: 'REC-FASEB-NATURAL',
+      name: 'Yogur Natural Clásico (Fase B)',
+      category: 'FASE_B',
+      flavor: 'Natural',
+      outputMaterialId: null,
+      description: 'Yogur puro sin adición de fruta ni azúcar comercial, para clientes que buscan sabor lácteo clásico o preparaciones saludables.',
+      baseYield: 10.0,
+      yieldUnit: 'Litros',
+      baseLiters: 10.0,
+      status: 'ACTIVA',
+      steps: [
+        { stepNumber: 1, title: 'Homogenización de base láctea', description: 'Batir suavemente la base fermentada a 10 °C para asegurar fluidez uniforme.', estimatedMinutes: 10, temperatureTarget: 10, qualityCheck: 'Ausencia total de grumos.' },
+        { stepNumber: 2, title: 'Envasado aséptico', description: 'Envasar en botellas comerciales esterilizadas y precintar inmediatamente.', estimatedMinutes: 25, qualityCheck: 'Sello hermético y rotulación de fecha de vencimiento.' },
+      ],
+    },
+  ];
+
+  for (const r of masterRecipes) {
+    const { steps, ...recipeData } = r;
+    const existing = await prisma.recipe.findUnique({ where: { code: r.code } });
+
+    if (!existing) {
+      await prisma.recipe.create({
+        data: {
+          ...recipeData,
+          createdById: adminId,
+          steps: {
+            create: steps,
+          },
+        },
+      });
+    } else {
+      await prisma.recipe.update({
+        where: { code: r.code },
+        data: {
+          name: recipeData.name,
+          category: recipeData.category,
+          flavor: recipeData.flavor,
+          outputMaterialId: recipeData.outputMaterialId,
+          description: recipeData.description,
+          baseYield: recipeData.baseYield,
+          yieldUnit: recipeData.yieldUnit,
+          baseLiters: recipeData.baseLiters,
+          status: 'ACTIVA',
+        },
+      });
+    }
+  }
+  console.log('   ✓ 4 Recetas maestras oficiales configuradas (Elaboración, Fase A, Fase B Fresa y Natural).');
+
   // Si estamos en un entorno remoto o de producción, terminar aquí de forma segura
   if (isCloudOrProd) {
     console.log('\n========================================================');

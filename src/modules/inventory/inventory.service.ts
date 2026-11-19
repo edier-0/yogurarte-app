@@ -288,7 +288,7 @@ export const updateMaterial = async (id: number, data: UpdateMaterialInput) => {
  * REGLA CONTABLE: NO genera movimiento de egreso en Caja/Gastos.
  */
 export const prepareCompoundMaterial = async (id: number, data: any) => {
-  const { quantityToProduce, preparationDate, notes, registeredBy } = data;
+  const { quantityToProduce, preparationDate, notes, registeredBy, ingredients: customIngredients, recipeId } = data;
   const producedQty = Number(quantityToProduce);
   if (!producedQty || producedQty <= 0) {
     throw new BadRequestError('La cantidad a preparar debe ser mayor a 0');
@@ -309,18 +309,29 @@ export const prepareCompoundMaterial = async (id: number, data: any) => {
     throw new NotFoundError('Insumo no encontrado');
   }
 
-  if (!compoundMaterial.isCompound || compoundMaterial.recipeIngredients.length === 0) {
-    throw new BadRequestError('Este insumo no tiene una receta de fabricación configurada');
+  let ingredientsToUse: Array<{ rawMaterialId: number; quantityUsed: number; unitUsed: string }> = [];
+
+  // Si el operario ingresó ingredientes personalizados in situ en la orden de planta (Spec 015)
+  if (Array.isArray(customIngredients) && customIngredients.length > 0) {
+    ingredientsToUse = customIngredients.map((ci: any) => ({
+      rawMaterialId: Number(ci.rawMaterialId),
+      quantityUsed: Number(ci.quantityUsed),
+      unitUsed: ci.unitUsed || 'Kg',
+    }));
+  } else {
+    if (!compoundMaterial.isCompound || compoundMaterial.recipeIngredients.length === 0) {
+      throw new BadRequestError('Este insumo no tiene una receta de fabricación configurada');
+    }
+
+    const baseYield = compoundMaterial.recipeYield || 1;
+    const ratio = producedQty / baseYield;
+
+    ingredientsToUse = compoundMaterial.recipeIngredients.map((ri) => ({
+      rawMaterialId: ri.ingredientId,
+      quantityUsed: ri.quantity * ratio,
+      unitUsed: ri.unit,
+    }));
   }
-
-  const baseYield = compoundMaterial.recipeYield || 1;
-  const ratio = producedQty / baseYield;
-
-  const ingredients = compoundMaterial.recipeIngredients.map((ri) => ({
-    rawMaterialId: ri.ingredientId,
-    quantityUsed: ri.quantity * ratio,
-    unitUsed: ri.unit,
-  }));
 
   return createPreparation({
     outputMaterialId: compoundMaterial.id,
@@ -329,8 +340,9 @@ export const prepareCompoundMaterial = async (id: number, data: any) => {
     preparationDate,
     notes: notes || `Fabricación interna de ${compoundMaterial.name}`,
     registeredBy,
-    ingredients,
-  });
+    ingredients: ingredientsToUse,
+    recipeId: recipeId ? Number(recipeId) : undefined,
+  } as any);
 };
 
 /**
