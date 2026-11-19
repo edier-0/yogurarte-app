@@ -112,3 +112,15 @@ Si por error se commitea una credencial sensible antes de hacer push:
 4. Si la credencial llegó a ser publicada en el remoto:
    - Rotar y revocar inmediatamente la contraseña en Neon o el proveedor afectado.
    - Limpiar el historial de Git mediante rebase interactivo o `git-filter-repo`.
+
+---
+
+## 7. Aislamiento Estricto de Entornos: Prohibición de Pruebas en Producción (Neon / AWS)
+
+Queda **terminantemente prohibido** ejecutar la suite de pruebas (`vitest`, tests unitarios o suites de integración) apuntando a la base de datos de producción (`NEON_DATABASE_URL` o cualquier base de datos remota/nube).
+
+### Mecanismo de Triple Blindaje Obligatorio:
+1. **Configuración de Vitest (`vitest.config.ts`):** Evalúa al inicio las variables de base de datos. Si detecta `neon.tech`, `aws` o coincidencia con `NEON_DATABASE_URL`, aborta inmediatamente con error fatal antes de cargar tests.
+2. **Setup Global de Pruebas (`tests/setup.ts`):** Valida `DATABASE_URL` y `TEST_DATABASE_URL` tras cargar `.env`. Bloquea la suite si detecta hosts remotos.
+3. **Cliente Prisma (`src/prisma.ts`):** Guardián de defensa en profundidad. Si `NODE_ENV === 'test'` e intenta instanciar una conexión remota en la nube, lanza excepción inmediata.
+4. **Recuperación ante Incidentes:** Si ocurriese alguna alteración accidental, usar siempre las ramas Point-in-Time Recovery (PITR) de Neon (`scripts/clean_and_restore_production.cjs`) para restaurar el estado exacto pre-incidente sin tiempo de inactividad.

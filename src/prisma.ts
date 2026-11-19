@@ -1,5 +1,17 @@
 import { PrismaClient } from '@prisma/client';
 
+// ----------------------------------------------------------------------------
+// 🛡️ BLINDAJE DEFENSE-IN-DEPTH (DEVSECOPS):
+// Bloqueo total si PrismaClient intenta instanciarse en modo test contra Neon/AWS
+// ----------------------------------------------------------------------------
+if (process.env.NODE_ENV === 'test') {
+  const dbUrl = process.env.DATABASE_URL || '';
+  const neonUrl = process.env.NEON_DATABASE_URL || '';
+  if (dbUrl.includes('neon.tech') || dbUrl.includes('aws') || (neonUrl && dbUrl === neonUrl)) {
+    throw new Error('⛔ DEFENSE-IN-DEPTH: Intento de instanciar PrismaClient en NODE_ENV=test contra base de datos remota/producción (Neon). Abortando.');
+  }
+}
+
 const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
 });
