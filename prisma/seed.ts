@@ -359,15 +359,15 @@ async function main() {
     }
   }
 
-  // Insumos y receta compuesta
+  // Insumos y receta compuesta canónicos de YogurArte
   const rawMaterialsData = [
-    { code: 'LECHE', name: 'Leche Entera Cruda', category: 'MATERIA_PRIMA', unit: 'Litros', currentStock: 120, minStockAlert: 20, avgCost: 3200 },
-    { code: 'AZUCAR', name: 'Azúcar Blanca Refinada', category: 'INSUMO', unit: 'Kilogramos', currentStock: 25, minStockAlert: 5, avgCost: 3800 },
-    { code: 'CULTIVO', name: 'Cultivo Láctico Termófilo', category: 'INSUMO', unit: 'Gramos', currentStock: 500, minStockAlert: 50, avgCost: 120 },
-    { code: 'BOTELLA_1L', name: 'Botella Pet 1 Litro', category: 'EMPAQUE', unit: 'Unidades', currentStock: 80, minStockAlert: 20, avgCost: 1200 },
-    { code: 'TAPA_1L', name: 'Tapa de Seguridad 1L', category: 'EMPAQUE', unit: 'Unidades', currentStock: 100, minStockAlert: 20, avgCost: 250 },
-    { code: 'ETIQUETA_1L', name: 'Etiqueta Adhesiva YogurArte 1L', category: 'EMPAQUE', unit: 'Unidades', currentStock: 150, minStockAlert: 30, avgCost: 300 },
-    { code: 'FRESA_FRUTA', name: 'Fresa Fresca de Huerta', category: 'INSUMO', unit: 'Kilogramos', currentStock: 15, minStockAlert: 3, avgCost: 8000 },
+    { code: 'LECHE', name: 'Leche Entera Cruda', category: 'MATERIA_PRIMA', unit: 'Litros', currentStock: 120, minStockAlert: 20, avgCost: 3090 },
+    { code: 'BOTELLA_1L', name: 'Botella Plástica 1 Litro', category: 'EMPAQUE', unit: 'Unidades', currentStock: 80, minStockAlert: 20, avgCost: 1800 },
+    { code: 'BOTELLA_2L', name: 'Botella Plástica 2 Litros', category: 'EMPAQUE', unit: 'Unidades', currentStock: 40, minStockAlert: 10, avgCost: 3500 },
+    { code: 'ETIQUETA', name: 'Etiqueta Adhesiva YogurArte', category: 'EMPAQUE', unit: 'Unidades', currentStock: 150, minStockAlert: 30, avgCost: 238 },
+    { code: 'AZUCAR_DE_KILO_RIO_P', name: 'Azucar de kilo Rio paila', category: 'INSUMO', unit: 'Kilogramos', currentStock: 10, minStockAlert: 2, avgCost: 3207 },
+    { code: 'FRESA', name: 'Fresa', category: 'MATERIA_PRIMA', unit: 'Kilogramos', currentStock: 8, minStockAlert: 2, avgCost: 16320 },
+    { code: 'BOTELLA_DE_500_ML', name: 'Botella plástica de 500 ML', category: 'EMPAQUES', unit: 'Unidades', currentStock: 50, minStockAlert: 10, avgCost: 800 },
   ];
 
   const materialMap: Record<string, any> = {};
@@ -386,9 +386,9 @@ async function main() {
       category: 'INSUMO',
       unit: 'Kilogramos',
       isCompound: true,
-      recipeYield: 1.0,
+      recipeYield: 0.875,
       currentStock: 5.0,
-      avgCost: 12000,
+      avgCost: 13146,
       minStockAlert: 2,
     },
     create: {
@@ -397,9 +397,9 @@ async function main() {
       category: 'INSUMO',
       unit: 'Kilogramos',
       isCompound: true,
-      recipeYield: 1.0,
+      recipeYield: 0.875,
       currentStock: 5.0,
-      avgCost: 12000,
+      avgCost: 13146,
       minStockAlert: 2,
     },
   });
@@ -408,16 +408,16 @@ async function main() {
   await prisma.compoundRecipeItem.create({
     data: {
       compoundMaterialId: mermelada.id,
-      ingredientId: materialMap['AZUCAR'].id,
-      quantity: 0.4,
+      ingredientId: materialMap['AZUCAR_DE_KILO_RIO_P'].id,
+      quantity: 0.35,
       unit: 'Kilogramos',
     },
   });
   await prisma.compoundRecipeItem.create({
     data: {
       compoundMaterialId: mermelada.id,
-      ingredientId: materialMap['FRESA_FRUTA'].id,
-      quantity: 0.8,
+      ingredientId: materialMap['FRESA'].id,
+      quantity: 0.70,
       unit: 'Kilogramos',
     },
   });
