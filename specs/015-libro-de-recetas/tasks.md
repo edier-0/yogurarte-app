@@ -186,12 +186,12 @@ Estado: listo para ejecución
 
 ## Fase 10: Validación Integral, Calidad y Git PR Workflow
 
-- [ ] **T10.1. Verificación Integral de Pruebas y Compilación.**  
+- [x] **T10.1. Verificación Integral de Pruebas y Compilación.**  
   Ejecutar todas las suites de pruebas backend (`npm test` o `npx vitest run`), typecheck estricto (`npx tsc --noEmit`) y empaquetado del frontend (`npm --prefix frontend run build`).  
   *RF asociados:* Todos los RF y RNF.  
   *Hecho cuando:* Cero errores de TypeScript, 100% de pruebas unitarias/integración en verde y build de Vite exitoso.
 
-- [ ] **T10.2. Auditoría DevSecOps y Confidencialidad.**  
+- [x] **T10.2. Auditoría DevSecOps y Confidencialidad.**  
   Auditar que ningún token, costo o dato reservado se filtre en la API para usuarios de planta, y verificar cero fallbacks de credenciales hardcodeadas en scripts o tests.  
   *RF asociados:* RF-14, RNF-2.  
   *Hecho cuando:* La auditoría de seguridad y pruebas de rol confirmen blindaje total.
