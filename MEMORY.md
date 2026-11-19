@@ -5,10 +5,11 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Specs 001 a 015 completadas y sincronizadas en `main` y `develop`.
 - Calidad en verde: `tsc` y build de frontend exitosos sin errores.
 - Incidente de contaminación en BD de producción (Neon) resuelto al 100%:
-  - Diagnóstico forense exacto con snapshot PITR (14:45 UTC).
-  - Eliminados: 1 pedido test (`TEST-ORD-1795101756351`), 1 lote test (`LOTE-20261119-01`), 6 insumos test residuales (`TEST_*`, `LECHE_TEST`, `TAPA`).
-  - Restaurados valores pre-incidente en 5 insumos reales (`LECHE`, `BOTELLA_1L`, `BOTELLA_2L`, `ETIQUETA`, `ETIQUETA_1L`).
-  - 16 insumos reales y 4 recetas maestras canónicas de Spec 015 auditadas y 100% íntegras.
+  - Eliminados: 1 pedido test, 1 lote test y 11 insumos de prueba/demo residuales (`TEST_*`, `LECHE_TEST`, `TAPA`, `AZUCAR`, `CULTIVO`, `TAPA_1L`, `ETIQUETA_1L`, `FRESA_FRUTA`).
+  - Restaurados valores pre-incidente en insumos reales (`LECHE`, `BOTELLA_1L`, `BOTELLA_2L`, `ETIQUETA`).
+  - Receta de Mermelada vinculada con insumos reales (`AZUCAR_DE_KILO_RIO_P` y `FRESA`).
+  - Catálogo de producción auditado: exactamente los 11 insumos reales legítimos y 4 recetas maestras canónicas.
+  - `prisma/seed.ts` alineado con los insumos reales para nunca recrear entidades ficticias.
 - Triple Blindaje Permanente implementado contra ejecuciones en producción:
   - `vitest.config.ts`, `tests/setup.ts` y `src/prisma.ts` abortan de inmediato cualquier intento de test contra Neon/AWS.
   - Regla canónica registrada en `AGENTS.md` y `.agent/skills/devsecops/SKILL.md`.
