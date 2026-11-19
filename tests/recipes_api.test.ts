@@ -11,9 +11,10 @@ describe('Spec 015 — API REST de Recetas (/api/recipes)', () => {
   let testRawMaterial: any;
   let testPresentation: any;
   let createdRecipeId: number;
+  let seededRecipeId: number | null = null;
 
   beforeAll(async () => {
-    // Asegurar materia prima de prueba
+    // 1. Asegurar materia prima de prueba
     testRawMaterial = await prisma.rawMaterial.upsert({
       where: { code: 'TEST_MAT_RECIPE_01' },
       update: { avgCost: 5000, currentStock: 50 },
@@ -27,10 +28,86 @@ describe('Spec 015 — API REST de Recetas (/api/recipes)', () => {
       },
     });
 
-    // Asegurar presentación de prueba
+    // 2. Asegurar envases y etiquetas para simulador
+    await prisma.rawMaterial.upsert({
+      where: { code: 'BOTELLA_1L' },
+      update: { avgCost: 700, currentStock: 100, isActive: true },
+      create: {
+        code: 'BOTELLA_1L',
+        name: 'Botella 1L con tapa',
+        category: 'EMPAQUE',
+        unit: 'Unidades',
+        avgCost: 700,
+        currentStock: 100,
+        isActive: true,
+      },
+    });
+
+    await prisma.rawMaterial.upsert({
+      where: { code: 'ETIQUETA_1L' },
+      update: { avgCost: 300, currentStock: 100, isActive: true },
+      create: {
+        code: 'ETIQUETA_1L',
+        name: 'Etiqueta 1L',
+        category: 'EMPAQUE',
+        unit: 'Unidades',
+        avgCost: 300,
+        currentStock: 100,
+        isActive: true,
+      },
+    });
+
+    // 3. Asegurar presentación de prueba
     testPresentation = await prisma.productPresentation.findFirst({
       where: { isActive: true },
     });
+    if (!testPresentation) {
+      testPresentation = await prisma.productPresentation.create({
+        data: {
+          name: '1L',
+          label: '1 Litro',
+          capacityLiters: 1.0,
+          defaultPrice: 12000,
+          isActive: true,
+        },
+      });
+    }
+
+    // 4. Sembrar receta base para garantizar datos en CI sin depender de seed previo
+    const seeded = await prisma.recipe.upsert({
+      where: { code: 'REC-TEST-CI-SEEDED-01' },
+      update: { status: 'ACTIVA' },
+      create: {
+        code: 'REC-TEST-CI-SEEDED-01',
+        name: 'Receta Semilla CI Test',
+        category: 'FASE_B',
+        flavor: 'Fresa',
+        baseYield: 40,
+        yieldUnit: 'Litros',
+        baseLiters: 35,
+        status: 'ACTIVA',
+        createdById: 3,
+        ingredients: {
+          create: [
+            {
+              rawMaterialId: testRawMaterial.id,
+              quantity: 2,
+              unit: 'Kilogramos',
+            },
+          ],
+        },
+        steps: {
+          create: [
+            {
+              stepNumber: 1,
+              title: 'Paso Semilla Test',
+              description: 'Instrucción de prueba para CI',
+            },
+          ],
+        },
+      },
+    });
+    seededRecipeId = seeded.id;
   });
 
   afterAll(async () => {
@@ -38,6 +115,11 @@ describe('Spec 015 — API REST de Recetas (/api/recipes)', () => {
       await prisma.recipeStep.deleteMany({ where: { recipeId: createdRecipeId } });
       await prisma.recipeIngredient.deleteMany({ where: { recipeId: createdRecipeId } });
       await prisma.recipe.deleteMany({ where: { id: createdRecipeId } });
+    }
+    if (seededRecipeId) {
+      await prisma.recipeStep.deleteMany({ where: { recipeId: seededRecipeId } });
+      await prisma.recipeIngredient.deleteMany({ where: { recipeId: seededRecipeId } });
+      await prisma.recipe.deleteMany({ where: { id: seededRecipeId } });
     }
   });
 
