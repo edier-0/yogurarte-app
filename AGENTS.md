@@ -106,17 +106,28 @@ git push origin <tipo>/<nombre-tarea>
 ```
 *(Si se aplicó rebase y la rama ya existía en remoto: `git push --force-with-lease origin <tipo>/<nombre-tarea>`).*
 
-#### 5. Apertura y Fusión del Pull Request (PR)
+#### 5. Verificación Obligatoria de CI en GitHub Actions (Puerta Pre-PR)
+- Tras el push a la rama temática, esperar obligatoriamente a que todos los checks de integración en GitHub Actions (`Type Check & Integration Tests`, `Docker Image Build Test`) pasen exitosamente en verde.
+- **Bucle Obligatorio de Fallos en CI**: Si algún check de GitHub Actions falla:
+  1. **Notificar**: Informar de inmediato al usuario qué falló, citando el error específico y el enlace al run.
+  2. **Plan**: Formular un plan de diagnóstico y causa raíz para solucionarlo.
+  3. **Corregir**: Implementar la solución bajo la disciplina TDD en la rama.
+  4. **Re-publicar (Push)**: Subir los cambios a la rama temática.
+  5. **Re-verificar**: Esperar nuevamente a que GitHub Actions termine.
+  6. **Iterar sucesivamente** hasta que el 100% de los checks estén en verde.
+- **Prohibición**: Queda terminantemente prohibido solicitar autorización para abrir un PR o abrirlo mientras exista un check fallido o pendiente en GitHub Actions.
+
+#### 6. Apertura y Fusión del Pull Request (PR)
 - Base Branch: `develop` | Compare Branch: `<tipo>/<nombre-tarea>`.
 - **Protocolo de Consultas y Autorizaciones**:
-  - El agente **debe preguntar siempre al usuario** antes de abrir el PR y antes de aceptarlo/fusionarlo, **a menos que el usuario indique explícitamente en su instrucción ejecutar todos los pasos sin requerir aprobación**.
+  - El agente **debe preguntar siempre al usuario** antes de abrir el PR y antes de aceptarlo/fusionarlo (únicamente con CI en verde), **a menos que el usuario indique explícitamente en su instrucción ejecutar todos los pasos sin requerir aprobación**.
   - El agente mismo se encarga de crear el PR y fusionarlo (vía GitHub MCP/API o squash merge), tras la confirmación correspondiente.
 - **Sincronización a Producción (`main`)**:
   - Una vez integrado en `develop` vía PR, sincronizar `develop` localmente (`git checkout develop && git pull origin develop`).
   - Fusionar `develop` directamente en `main` y publicar (`git checkout main && git merge develop && git push origin main`), sin abrir PR intermedio entre `develop` y `main`.
   - Regresar a `develop` (`git checkout develop`).
 
-#### 6. Limpieza Post-Merge (Eliminación de Ramas)
+#### 7. Limpieza Post-Merge (Eliminación de Ramas)
 - Una vez fusionado en `develop` y `main`:
   - **REGLA ESTRICTA**: Antes de proceder con el borrado de cualquier rama (local o remota), **se debe solicitar siempre autorización explícita al usuario**.
   - Tras la aprobación del usuario, se elimina la rama en local y remoto:
@@ -138,6 +149,7 @@ git push origin --delete <tipo>/<nombre-tarea>
 - ⚠️ Pregunta antes: dependencias nuevas, archivos/módulos nuevos, migraciones Prisma, cambiar formato de datos, romper alias de API, **abrir PR, fusionar PR o eliminar cualquier rama local o remota**.
 - 🚫 Nunca: fusionar directamente ramas temáticas en `develop` o `main` localmente sin un Pull Request mediador en GitHub.
 - 🚫 Nunca: abrir o fusionar PRs sin previa confirmación del usuario, salvo que haya indicado explícitamente ejecutar todos los pasos sin requerir aprobación.
+- 🚫 Nunca: solicitar apertura de PR o abrir PR sin que todos los checks de CI en GitHub Actions hayan pasado previamente en verde en la rama temática.
 - 🚫 Nunca: eliminar ramas locales o remotas sin previa confirmación del usuario.
 - 🚫 Nunca: implementar código sin spec, plan y tareas aprobados por el usuario según la metodología de la skill `sdd`.
 - 🚫 Nunca: escribir código de negocio o correcciones de bugs sin su prueba previa en rojo ni saltarse el ciclo Red-Green-Refactor de TDD.
