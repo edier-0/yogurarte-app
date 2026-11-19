@@ -52,6 +52,7 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
 - Transacciones Prisma cuando stock, caja y pagos deban coincidir. No editar el cliente generado.
 - `User` ≠ `StaffMember`: `User` = cuentas de acceso/login al sistema (sin dependencias FK). `StaffMember` = nómina, colaboradores y liquidaciones de jornales/socios.
 - **Prohibición Total de Fallbacks de Credenciales**: Está terminantemente prohibido hardcodear cadenas de conexión o credenciales reales como valor por defecto/fallback (`||'postgresql://...'`) en scripts de utilidad, tests o migraciones. Todo script debe requerir estrictamente la variable de entorno correspondiente (`NEON_DATABASE_URL`, `DATABASE_URL`) desde `.env` y fallar de inmediato si no está definida (Skill canónica: `.agent/skills/devsecops/SKILL.md`).
+- **BLINDAJE TOTAL DE BASE DE DATOS DE PRODUCCIÓN (NEON / AWS)**: Queda **terminantemente prohibido** ejecutar la suite de pruebas (`vitest`, pruebas de integración o unitarias), semilleros demo o comandos alteradores sobre la base de datos de producción (`NEON_DATABASE_URL` o cualquier host remoto/nube en `neon.tech` / `aws`). Las pruebas operan **exclusivamente** contra PostgreSQL local (`localhost:5432/yogurarte_test`) o el runner de CI. Queda terminantemente prohibido desviar `DATABASE_URL` o `TEST_DATABASE_URL` a Neon para probar o "hacer pasar tests": el sistema cuenta con triple blindaje (`vitest.config.ts`, `tests/setup.ts`, `src/prisma.ts`) que aborta de inmediato la ejecución.
 
 ## Metodología y Forma de trabajar (Skills SDD + TDD y Enrutador using-agent-skills)
 - **Orquestación de flujos:** Para cualquier requerimiento amplio, nueva funcionalidad o flujo multifase, consultar obligatoriamente el enrutador maestro `using-agent-skills` (`.agent/skills/using-agent-skills/SKILL.md`) para determinar la secuencia de skills a encadenar. Para tareas puntuales y acotadas, consultar directamente la skill especializada correspondiente.
@@ -140,7 +141,7 @@ git push origin --delete <tipo>/<nombre-tarea>
 - 🚫 Nunca: implementar código sin spec, plan y tareas aprobados por el usuario según la metodología de la skill `sdd`.
 - 🚫 Nunca: escribir código de negocio o correcciones de bugs sin su prueba previa en rojo ni saltarse el ciclo Red-Green-Refactor de TDD.
 - 🚫 Nunca: pasar a la siguiente fase de SDD sin aprobación explícita del usuario.
-- 🚫 Nunca: credenciales/tokens en docs, scripts o código (incluyendo fallbacks `||'postgresql://...'`); features en carpetas legacy; mezclar canales de caja; persistir deuda en `Customer`; lint/format inventados; wipe de auth WhatsApp sin pedirlo; commitear directo a `main` o `develop`.
+- 🚫 Nunca: ejecutar tests o vitest contra Neon/AWS o bases de datos remotas de producción; credenciales/tokens en docs, scripts o código (incluyendo fallbacks `||'postgresql://...'`); features en carpetas legacy; mezclar canales de caja; persistir deuda en `Customer`; lint/format inventados; wipe de auth WhatsApp sin pedirlo; commitear directo a `main` o `develop`.
 
 ## Verificación
 - Backend: `npx tsc --noEmit` y `npx vitest run tests/<dominio>.test.ts` (o `npm test`). Golden-master de costeo/lotes: `tests/golden_master.test.ts`.

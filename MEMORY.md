@@ -3,19 +3,20 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 
 ## Estado actual
 - Specs 001 a 015 completadas y sincronizadas en `main` y `develop`.
-- Spec 015 (Libro de Recetas y Estandarización de Producción) 100% completada, verificada y desplegada:
-  - PR #37 (`feature/recipe-book-sop`) fusionado en `develop` y sincronizado en `main`.
-  - PR #38 (`fix/ci-recipes-test-isolation`) resolvió aislamiento de tests en CI limpio; fusionado en `develop` y `main`.
-  - CI / CD Pipeline en GitHub Actions: **100% en verde** tanto en `develop` como en `main`.
-  - 41/41 tests pasando (29 Spec 015 + 12 Golden Master). Build de frontend y backend 100% limpio.
-- Rama actual: `develop`.
+- Calidad en verde: `tsc` y build de frontend exitosos sin errores.
+- Incidente de contaminación en BD de producción (Neon) resuelto al 100%:
+  - Diagnóstico forense exacto con snapshot PITR (14:45 UTC).
+  - Eliminados: 1 pedido test (`TEST-ORD-1795101756351`), 1 lote test (`LOTE-20261119-01`), 6 insumos test residuales (`TEST_*`, `LECHE_TEST`, `TAPA`).
+  - Restaurados valores pre-incidente en 5 insumos reales (`LECHE`, `BOTELLA_1L`, `BOTELLA_2L`, `ETIQUETA`, `ETIQUETA_1L`).
+  - 16 insumos reales y 4 recetas maestras canónicas de Spec 015 auditadas y 100% íntegras.
+- Triple Blindaje Permanente implementado contra ejecuciones en producción:
+  - `vitest.config.ts`, `tests/setup.ts` y `src/prisma.ts` abortan de inmediato cualquier intento de test contra Neon/AWS.
+  - Regla canónica registrada en `AGENTS.md` y `.agent/skills/devsecops/SKILL.md`.
+- Rama actual: `fix/prevent-prod-db-pollution`.
 
 ## Decisiones (y por qué)
-- Desacoplamiento de sabor y presentación: evita triplicar recetas por tamaño.
-- Insumos editables en preparación de compuestos: elimina la fricción operativa de reconfigurar recetas fijas en almacén cada vez que se cocina una cantidad distinta o con fruta real ajustada.
-- Envase con tapa integrada: refleja la operación física real en Fonseca (sin gestión separada de tapas).
-- Confidencialidad RBAC en backend: operarios de producción no reciben costos unitarios ni márgenes brutos.
-- Aislamiento total en CI: los tests de integración siembran autónomamente sus fixtures base sin depender de `prisma db seed`.
+- Triple blindaje (Vitest config + setup global + PrismaClient): evita que un test apunte accidentalmente a `NEON_DATABASE_URL` al correr vitest en local.
+- Uso de PITR snapshots de Neon: garantiza recuperación quirúrgica pre-incidente sin tocar entidades creadas legítimamente (como las recetas maestras).
 
 ## Próximos pasos
-- Ciclo Spec 015 cerrado satisfactoriamente. Listo para la siguiente spec o requerimiento del producto.
+- Abrir Pull Request de `fix/prevent-prod-db-pollution` hacia `develop` tras confirmación del usuario.

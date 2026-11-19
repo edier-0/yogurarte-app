@@ -3,6 +3,28 @@ import { generateToken, AuthUserPayload } from '../src/utils/jwt.utils.js';
 
 dotenv.config();
 
+// ----------------------------------------------------------------------------
+// 🛡️ BLINDAJE DE SEGURIDAD CRÍTICO (DEVSECOPS):
+// Queda terminantemente prohibido ejecutar Vitest o pruebas contra Neon / AWS.
+// ----------------------------------------------------------------------------
+const dbUrl = process.env.DATABASE_URL || '';
+const testDbUrl = process.env.TEST_DATABASE_URL || '';
+const neonUrl = process.env.NEON_DATABASE_URL || '';
+
+const isCloudOrProdDb = (url: string) => 
+  Boolean(url && (url.includes('neon.tech') || url.includes('aws') || (neonUrl && url === neonUrl)));
+
+if (isCloudOrProdDb(dbUrl) || isCloudOrProdDb(testDbUrl)) {
+  console.error('\n🚨 ==============================================================================');
+  console.error('⛔ BLOQUEO CRÍTICO DE SEGURIDAD (DEVSECOPS): INTENTO DE TESTS EN PRODUCCIÓN');
+  console.error('==============================================================================');
+  console.error('Está TERMINANTEMENTE PROHIBIDO ejecutar Vitest o pruebas contra Neon / AWS.');
+  console.error('Las pruebas SOLO pueden correr contra PostgreSQL local (localhost:5432) o en CI.');
+  console.error(`DATABASE_URL detectada: ${dbUrl ? new URL(dbUrl).host : 'vacía'}`);
+  console.error('==============================================================================\n');
+  throw new Error('EJECUCIÓN DE PRUEBAS ABORTADA POR SEGURIDAD: Base de datos de producción protegida.');
+}
+
 process.env.NODE_ENV = 'test';
 if (!process.env.JWT_SECRET) {
   process.env.JWT_SECRET = 'test-jwt-secret-for-vitest-suite-32chars-min';
