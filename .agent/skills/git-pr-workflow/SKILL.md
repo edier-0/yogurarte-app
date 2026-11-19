@@ -112,9 +112,25 @@ git push origin <tipo>/<nombre-tarea>
 git push --force-with-lease origin <tipo>/<nombre-tarea>
 ```
 
+### Paso 5.1: Verificación Obligatoria de CI en GitHub Actions (Puerta Pre-PR)
+Tras el push a la rama temática, GitHub Actions dispara automáticamente la ejecución de integración continua en el repositorio remoto (`Type Check & Integration Tests`, `Docker Image Build Test`).
+
+**Regla Mandatoria Pre-PR:**
+1. **Espera Obligatoria:** El agente debe esperar y monitorear hasta que todos los checks de GitHub Actions del commit publicado concluyan exitosamente.
+2. **Si todos los checks pasan en verde (`success`):** Proceder al Paso 6 (solicitar autorización al usuario para abrir el PR).
+3. **Bucle de Recuperación ante Fallos en CI:** Si algún check de GitHub Actions falla (`failure`):
+   - **a. Notificar:** Informar de inmediato al usuario qué job, paso o suite de pruebas falló, citando el error específico y enlazando la ejecución en GitHub Actions.
+   - **b. Plan de Causa Raíz:** Formular un plan estructurado para resolver el fallo (sin omitir tests ni alterar aserciones arbitrariamente).
+   - **c. Corregir bajo TDD:** Implementar la corrección localmente, validando que el test en rojo pase a verde.
+   - **d. Verificar Quality Gates Locales:** Ejecutar `npx tsc --noEmit && npm --prefix frontend run build && npm test`.
+   - **e. Re-publicar (Push):** Subir el nuevo commit a la rama temática.
+   - **f. Re-monitorear CI:** Esperar nuevamente a que GitHub Actions procese el nuevo commit.
+   - **g. Iterar Sucesivamente:** Repetir este ciclo cuantas veces sea necesario **hasta que el 100% de los checks de GitHub Actions estén completamente en verde**.
+4. **Prohibición Total:** Queda terminantemente prohibido solicitar autorización para abrir un Pull Request o abrir un PR mientras exista algún check de GitHub Actions fallido o no completado en la rama.
+
 ### Paso 6: Apertura del Pull Request (PR)
-1. **Checkpoint:** Solicitar autorización al usuario:
-   > *"He completado el desarrollo y verificado los Quality Gates (tipos, tests, build) exitosamente. ¿Deseas que proceda a abrir el Pull Request hacia `develop`?"*
+1. **Checkpoint:** Solicitar autorización al usuario (únicamente con CI de GitHub Actions 100% en verde):
+   > *"He completado el desarrollo, verificado los Quality Gates locales y comprobado que todos los checks de CI en GitHub Actions pasaron exitosamente en verde. ¿Deseas que proceda a abrir el Pull Request hacia `develop`?"*
 2. Una vez confirmada la acción, abrir el PR hacia `develop` (vía GitHub MCP tool `create_pull_request`):
    - **Base Branch:** `develop`
    - **Head Branch:** `<tipo>/<nombre-tarea>`
