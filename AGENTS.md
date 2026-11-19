@@ -37,6 +37,7 @@ API `http://localhost:3000`. Vite `http://localhost:5173` (proxy `/api` y `/sock
 - Controlador delgado (`next(error)`); servicio con Prisma y `AppError`. Validar con Zod + `validateBody`/`validateQuery`/`validateParams`.
 - HTTP del cliente solo vía `frontend/src/api/client.ts`. Rutas/RBAC: `frontend/src/router/routes.ts`. Roles UI: `ADMIN` | `OPERADOR` | `DOMICILIARIO`; `normalizeRole` en `auth.store.ts` mapea `PRODUCCION`/`VENTAS`/`SOCIO`.
 - Conservar alias de rutas (`/api/auth` + `/api/users`, clientes, caja).
+- **Estándar de Selectores en Frontend**: Todos los selectores de insumos, materias primas, presentaciones, clientes y entidades de catálogo en formularios y modales del frontend deben utilizar obligatoriamente el componente con sugerencias predictivas mientras se escribe (`SearchableSelect.vue` de `@/components/common/SearchableSelect.vue`), quedando prohibido el uso de selectores nativos HTML (`<select>`) sin buscador para listados dinámicos o catálogos.
 
 ## Reglas de dominio / trampas conocidas
 - Deuda del cliente **no** es columna: pedidos entregados menos `OrderPayment`.
