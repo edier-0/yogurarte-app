@@ -9,7 +9,8 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
   - `http.get` ya desenrolla `res.data`; se corrigió la asignación de `materials.value` para soportar arreglo directo o estructuras envueltas.
   - Migrados todos los selectores de insumo compuesto y materias primas al componente predictivo `SearchableSelect.vue`.
   - Establecido en `AGENTS.md` el estándar obligatorio de usar `SearchableSelect.vue` para selectores de catálogo.
-- Rama actual: `fix/recipes-searchable-select`.
+- PR #40 fusionado exitosamente en `develop` y sincronizado a `main`.
+- Rama actual: `develop`.
 
 ## Decisiones (y por qué)
 - `SearchableSelect.vue` estándar obligatorio: optimiza la UX al escribir con sugerencias en tiempo real y badges de stock en lugar de selects nativos rígidos.
@@ -17,4 +18,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Desenrollado seguro en `fetchMaterials`: maneja tanto arrays planos devueltos por `http.get` como payloads con paginación (`data` / `items`).
 
 ## Próximos pasos
-- Solicitar autorización del usuario para abrir PR hacia `develop`, fusionar y sincronizar a `main`.
+- Continuar con el siguiente requerimiento o especificación según indique el usuario.
