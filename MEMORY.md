@@ -18,4 +18,4 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 - Aislamiento total en CI: los tests de integración siembran autónomamente sus fixtures base sin depender de `prisma db seed`.
 
 ## Próximos pasos
-- Limpieza post-merge: solicitar confirmación al usuario para eliminar las ramas locales y remotas `feature/recipe-book-sop` y `fix/ci-recipes-test-isolation`.
+- Ciclo Spec 015 cerrado satisfactoriamente. Listo para la siguiente spec o requerimiento del producto.
