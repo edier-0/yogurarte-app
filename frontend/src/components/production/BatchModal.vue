@@ -18,7 +18,9 @@ import {
   Coins,
   CheckSquare,
   Square,
+  BookOpen,
 } from 'lucide-vue-next';
+import { recipesApi, type RecipeItem } from '@/api/recipes';
 import { useProductionStore, type BatchItem } from '@/stores/production.store';
 import { getTodayDateBogota, toInputDateFormat, getDeviceTimestamp } from '@/stores/finance.store';
 import { http } from '@/api/client';
@@ -83,6 +85,18 @@ const fermentationHours = ref<number>(8);
 const preparationDate = ref(getTodayDateBogota());
 const status = ref<'EN_FERMENTACION' | 'DISPONIBLE'>('EN_FERMENTACION');
 const notes = ref('');
+
+// Recetas de Fase A maestras
+const faseARecipes = ref<RecipeItem[]>([]);
+const selectedRecipeId = ref<number | ''>('');
+
+async function loadFaseARecipes() {
+  try {
+    faseARecipes.value = await recipesApi.getRecipes({ category: 'FASE_A', status: 'ACTIVA' });
+  } catch (err) {
+    console.error('Error cargando recetas Fase A:', err);
+  }
+}
 
 // Insumos de Inventario para Checklist Dinámico
 interface InventoryMaterialItem {
@@ -161,6 +175,24 @@ const dynamicItems = ref<DynamicChecklistItem[]>([]);
 const milkMaterial = ref<InventoryMaterialItem | null>(null);
 const milkAvgCost = ref<number>(2800);
 const isLoadingMaterials = ref(false);
+
+function handleRecipeFaseAChange() {
+  if (!selectedRecipeId.value) return;
+  const rec = faseARecipes.value.find((r) => r.id === selectedRecipeId.value);
+  if (!rec) return;
+
+  expectedLiters.value = rec.baseYield;
+  // Preseleccionar insumos en checklist
+  if (Array.isArray(rec.ingredients) && rec.ingredients.length > 0) {
+    for (const ing of rec.ingredients) {
+      const match = dynamicItems.value.find((ci) => ci.rawMaterialId === ing.rawMaterialId);
+      if (match) {
+        match.selected = true;
+        match.dosage = ing.quantity;
+      }
+    }
+  }
+}
 
 const currentMilkStock = computed(() => milkMaterial.value?.currentStock ?? 0);
 const isMilkStockInsufficient = computed(() => {
@@ -292,6 +324,8 @@ watch(
     if (isOpen) {
       productionStore.fetchFlavors(true);
       errorMessage.value = '';
+      selectedRecipeId.value = '';
+      loadFaseARecipes();
 
       if (props.batchToEdit) {
         // Modo Edición
@@ -500,6 +534,35 @@ async function handleSubmit() {
                 </p>
               </div>
             </div>
+          </div>
+
+          <!-- Selector de Receta de Fase A (Opcional - Precarga Rápida) -->
+          <div
+            v-if="!isEditMode && faseARecipes.length > 0"
+            class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-2xl border border-sky-200 bg-sky-50/60 p-3.5 dark:border-sky-900/40 dark:bg-sky-950/20"
+          >
+            <div class="flex items-center gap-2">
+              <BookOpen class="h-4 w-4 text-sky-700 dark:text-sky-400 shrink-0" />
+              <div>
+                <span class="text-xs font-bold text-sky-900 dark:text-sky-200">
+                  Cargar Receta de Fase A (SOP):
+                </span>
+                <p class="text-[11px] text-sky-800/80 dark:text-sky-300">
+                  Precarga volumen base y dosificación de fermentos estándar
+                </p>
+              </div>
+            </div>
+
+            <select
+              v-model="selectedRecipeId"
+              @change="handleRecipeFaseAChange"
+              class="rounded-xl border border-sky-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 focus:border-sky-600 focus:outline-none dark:border-sky-800 dark:bg-slate-800 dark:text-white sm:w-64"
+            >
+              <option value="">-- Sin vincular a receta --</option>
+              <option v-for="rec in faseARecipes" :key="rec.id" :value="rec.id">
+                {{ rec.name }} ({{ rec.code }})
+              </option>
+            </select>
           </div>
 
           <!-- Código de Lote Inteligente y Sabor Base -->

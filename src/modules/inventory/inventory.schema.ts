@@ -37,11 +37,19 @@ export const updateMaterialSchema = z.object({
 });
 
 
+export const customPrepareIngredientSchema = z.object({
+  rawMaterialId: z.coerce.number().int().positive({ message: 'El insumo es requerido' }),
+  quantityUsed: z.coerce.number().positive({ message: 'La cantidad debe ser mayor a 0' }),
+  unitUsed: z.string().min(1, { message: 'La unidad de medida es requerida' }),
+});
+
 export const prepareCompoundSchema = z.object({
   quantityToProduce: z.coerce.number().positive('La cantidad a preparar debe ser mayor a 0'),
   preparationDate: z.string().optional(),
   notes: z.string().optional().nullable(),
   registeredBy: z.string().optional(),
+  recipeId: z.coerce.number().int().positive().optional().nullable(),
+  ingredients: z.array(customPrepareIngredientSchema).optional(),
 });
 
 export type RecipeIngredientItemInput = z.infer<typeof recipeIngredientItemSchema>;
