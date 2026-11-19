@@ -26,6 +26,7 @@ import preparationsRoutes from './modules/preparations/preparations.routes.js';
 import staffRoutes from './modules/staff/staff.routes.js';
 import settingsRoutes from './modules/settings/settings.routes.js';
 import crmRoutes from './modules/crm/crm.routes.js';
+import recipesRoutes from './modules/recipes/recipes.routes.js';
 import { whatsappService } from './services/whatsapp.service.js';
 
 import { requireAuth } from './shared/middlewares/auth.middleware.js';
@@ -162,6 +163,7 @@ app.use('/api/cash-movements', requireAuth, cashMovementsRoutes);
 app.use('/api/cash/movements', requireAuth, cashMovementsRoutes);
 app.use('/api/cash', requireAuth, cashMovementsRoutes);
 app.use('/api/credits', requireAuth, creditsRoutes);
+app.use('/api/recipes', requireAuth, recipesRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/crm', requireAuth, crmRoutes);
 

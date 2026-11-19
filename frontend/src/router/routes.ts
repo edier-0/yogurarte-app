@@ -148,6 +148,19 @@ export const routes: RouteRecordRaw[] = [
           roles: ['ADMIN', 'OPERADOR'],
         },
       },
+      {
+        path: 'recetario',
+        name: 'production-recipes',
+        component: () => import('@/views/production/RecipesView.vue'),
+        meta: {
+          title: 'Libro de Recetas (SOP)',
+          domain: 'Planta & Producción',
+          icon: 'BookOpen',
+          requiresAuth: true,
+          guestOnly: false,
+          roles: ['ADMIN', 'OPERADOR'],
+        },
+      },
     ],
   },
 

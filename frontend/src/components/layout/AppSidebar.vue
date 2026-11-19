@@ -9,6 +9,7 @@ import {
   MessageCircle,
   FlaskConical,
   Boxes,
+  BookOpen,
   Wallet,
   Receipt,
   Users,
@@ -77,6 +78,7 @@ const rawSections: NavSection[] = [
     items: [
       { id: 'batches', label: 'Lotes y Rendimiento', path: '/produccion/lotes', icon: FlaskConical },
       { id: 'inventory', label: 'Materia Prima e Insumos', path: '/produccion/inventario', icon: Boxes },
+      { id: 'recipes', label: 'Libro de Recetas (SOP)', path: '/produccion/recetario', icon: BookOpen },
     ],
   },
   {

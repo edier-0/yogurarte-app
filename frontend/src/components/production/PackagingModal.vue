@@ -24,7 +24,9 @@ import {
   TrendingUp,
   CheckCircle2,
   Lock,
+  BookOpen,
 } from 'lucide-vue-next';
+import { recipesApi, type RecipeItem } from '@/api/recipes';
 import {
   useProductionStore,
   type BatchItem,
@@ -63,6 +65,40 @@ interface MaterialItem {
 }
 const allMaterials = ref<MaterialItem[]>([]);
 const isLoadingMaterials = ref<boolean>(false);
+
+// Recetas de Fase B maestras para precarga rápida
+const faseBRecipes = ref<RecipeItem[]>([]);
+const selectedRecipeId = ref<number | ''>('');
+
+async function loadFaseBRecipes() {
+  try {
+    faseBRecipes.value = await recipesApi.getRecipes({ category: 'FASE_B', status: 'ACTIVA' });
+  } catch (err) {
+    console.error('Error cargando recetas Fase B:', err);
+  }
+}
+
+function handleRecipeFaseBChange() {
+  if (!selectedRecipeId.value) return;
+  const rec = faseBRecipes.value.find((r) => r.id === selectedRecipeId.value);
+  if (!rec) return;
+
+  if (rec.flavor) {
+    baseFlavor.value = flavors.value.includes(rec.flavor) ? rec.flavor : 'Personalizado';
+    if (baseFlavor.value === 'Personalizado') {
+      customFlavorName.value = rec.flavor;
+    }
+  }
+
+  // Precargar ingredientes como extras si existen en inventario
+  if (Array.isArray(rec.ingredients) && rec.ingredients.length > 0) {
+    extraItems.value = rec.ingredients.map((ing) => ({
+      rawMaterialId: ing.rawMaterialId,
+      gramsPerBottle: '',
+      quantityUsed: ing.quantity,
+    }));
+  }
+}
 
 // Estado de la presentación activa y selección mono-presentación
 const selectedPresentationId = ref<number | null>(null);
@@ -731,7 +767,11 @@ watch(
   async ([isOpen, currentBatch, currentPkg]) => {
     if (isOpen && currentBatch) {
       errorMessage.value = null;
-      await loadInventoryMaterials();
+      selectedRecipeId.value = '';
+      await Promise.all([
+        loadInventoryMaterials(),
+        loadFaseBRecipes(),
+      ]);
       if (productionStore.presentations.length === 0) {
         await productionStore.fetchPresentations();
       }
@@ -1069,6 +1109,35 @@ async function handleSubmit() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            <!-- Selector de Receta de Fase B (Opcional - Precarga Rápida) -->
+            <div
+              v-if="!isEditMode && faseBRecipes.length > 0"
+              class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-2xl border border-purple-200 bg-purple-50/60 p-3.5 dark:border-purple-900/40 dark:bg-purple-950/20"
+            >
+              <div class="flex items-center gap-2">
+                <BookOpen class="h-4 w-4 text-purple-700 dark:text-purple-400 shrink-0" />
+                <div>
+                  <span class="text-xs font-bold text-purple-900 dark:text-purple-200">
+                    Cargar Receta de Fase B (SOP):
+                  </span>
+                  <p class="text-[11px] text-purple-800/80 dark:text-purple-300">
+                    Precarga sabor, ingredientes de almacén y dosificación estándar
+                  </p>
+                </div>
+              </div>
+
+              <select
+                v-model="selectedRecipeId"
+                @change="handleRecipeFaseBChange"
+                class="rounded-xl border border-purple-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 focus:border-purple-600 focus:outline-none dark:border-purple-800 dark:bg-slate-800 dark:text-white sm:w-64"
+              >
+                <option value="">-- Sin vincular a receta --</option>
+                <option v-for="rec in faseBRecipes" :key="rec.id" :value="rec.id">
+                  {{ rec.name }} ({{ rec.code }})
+                </option>
+              </select>
             </div>
 
             <!-- Selector de Presentación Activa (Pestañas Dinámicas Mono-Presentación) -->

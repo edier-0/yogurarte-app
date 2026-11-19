@@ -21,6 +21,7 @@ model User {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+  recipes   Recipe[]
 }
 
 model Customer {
@@ -67,6 +68,8 @@ model RawMaterial {
   recipeIngredients          CompoundRecipeItem[]    @relation("CompoundMaterial")
   usedInRecipes              CompoundRecipeItem[]    @relation("IngredientMaterial")
   presentations              ProductPresentation[]
+  recipeOutputs              Recipe[]                @relation("RecipeOutputMaterial")
+  usedInMasterRecipes        RecipeIngredient[]
 
   @@index([category])
   @@index([isCompound])
@@ -104,10 +107,13 @@ model SupplyPreparation {
   isActive         Boolean                 @default(true)
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @default(now()) @updatedAt
+  recipeId         Int?
+  recipe           Recipe?                 @relation("PreparationRecipe", fields: [recipeId], references: [id], onDelete: SetNull)
   ingredients      SupplyPreparationItem[]
 
   @@index([preparationDate])
   @@index([outputMaterialId])
+  @@index([recipeId])
   @@index([isActive])
 }
 
@@ -195,6 +201,8 @@ model ProductionBatch {
   deactivationReason  String?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @default(now()) @updatedAt
+  recipeId            Int?
+  recipe              Recipe?           @relation("BatchRecipe", fields: [recipeId], references: [id], onDelete: SetNull)
   itemsUsed           BatchItemUsage[]
   orders              Order[]
   orderItems          OrderItem[]
@@ -204,6 +212,7 @@ model ProductionBatch {
   @@index([preparationDate])
   @@index([flavor])
   @@index([status])
+  @@index([recipeId])
   @@index([isActive])
   @@index([isActive, status])
   @@index([isActive, preparationDate])
@@ -235,6 +244,8 @@ model BatchPackaging {
   packagedAt         DateTime         @default(now())
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @default(now()) @updatedAt
+  recipeId           Int?
+  recipe             Recipe?          @relation("PackagingRecipe", fields: [recipeId], references: [id], onDelete: SetNull)
   containers         Json?
   itemsUsed          BatchPackagingItem[]
   orderItems         OrderItem[]
@@ -242,6 +253,7 @@ model BatchPackaging {
 
   @@index([batchId])
   @@index([flavor])
+  @@index([recipeId])
   @@index([packagedAt])
 }
 
@@ -671,4 +683,68 @@ model ProductPresentation {
 
   @@index([isActive])
   @@index([name])
+}
+
+model Recipe {
+  id               Int                 @id @default(autoincrement())
+  code             String              @unique // ej: REC-MERM-FRESA, REC-FASEA-BASE, REC-FASEB-FRESA-TRAD
+  name             String              // ej: Mermelada Artesanal de Fresa
+  category         String              // ELABORACION, FASE_A, FASE_B
+  flavor           String?             // Obligatorio para FASE_B (ej: Natural, Fresa), opcional para ELABORACION
+  outputMaterialId Int?                // Obligatorio para ELABORACION: apunta al RawMaterial compuesto que produce
+  outputMaterial   RawMaterial?        @relation("RecipeOutputMaterial", fields: [outputMaterialId], references: [id], onDelete: SetNull)
+  description      String?             @db.Text
+  baseYield        Float               @default(1) // Volumen (L), masa (kg) o unidades obtenidas
+  yieldUnit        String              @default("Litros") // Litros, Kilogramos, Unidades
+  baseLiters       Float?              @default(0) // Requerido para FASE_B: Litros de base láctea fermentada
+  status           String              @default("ACTIVA") // ACTIVA, ARCHIVADA
+  createdById      Int
+  createdBy        User                @relation(fields: [createdById], references: [id])
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  ingredients      RecipeIngredient[]
+  steps            RecipeStep[]
+  batchesUsing     ProductionBatch[]   @relation("BatchRecipe")
+  packagingsUsing  BatchPackaging[]    @relation("PackagingRecipe")
+  preparationsUsing SupplyPreparation[] @relation("PreparationRecipe")
+
+  @@index([category])
+  @@index([status])
+  @@index([flavor])
+  @@index([outputMaterialId])
+  @@index([createdById])
+  @@index([category, status])
+}
+
+model RecipeIngredient {
+  id            Int         @id @default(autoincrement())
+  recipeId      Int
+  recipe        Recipe      @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  rawMaterialId Int
+  rawMaterial   RawMaterial @relation(fields: [rawMaterialId], references: [id])
+  quantity      Float       // Cantidad base requerida para el baseYield de la receta
+  unit          String      // Kilogramos, Gramos, Litros, Unidades
+  notes         String?
+  createdAt     DateTime    @default(now())
+
+  @@index([recipeId])
+  @@index([rawMaterialId])
+}
+
+model RecipeStep {
+  id                Int      @id @default(autoincrement())
+  recipeId          Int
+  recipe            Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  stepNumber        Int      // 1, 2, 3...
+  title             String   // ej: Inoculación de cultivo láctico
+  description       String   @db.Text // Instrucción detallada
+  estimatedMinutes  Int?     // Tiempo estimado (fijo e inalterable por escalado)
+  temperatureMin    Float?   // Límite térmico inferior de tolerancia (°C)
+  temperatureMax    Float?   // Límite térmico superior de tolerancia (°C)
+  temperatureTarget Float?   // Temperatura nominal objetivo (°C)
+  qualityCheck      String?  // Control crítico: "Verificar pH 4.5"
+  createdAt         DateTime @default(now())
+
+  @@index([recipeId])
+  @@index([stepNumber])
 }

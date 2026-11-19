@@ -218,6 +218,7 @@ export async function createPreparation(data: CreatePreparationInput) {
         code: prepCode,
         name: destinationMaterial.name,
         outputMaterialId: destinationMaterial.id,
+        recipeId: (data as any).recipeId ? Number((data as any).recipeId) : null,
         quantityProduced: producedQty,
         unit: destinationMaterial.unit,
         totalCost: totalRecipeCost,

@@ -24,7 +24,7 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
   const isDev = process.env.NODE_ENV === 'development';
 
   // 1. Errores operacionales controlados de la aplicación (AppError)
-  if (err instanceof AppError) {
+  if (err instanceof AppError || err?.isOperational || err?.name === 'AppError') {
     return res.status(err.statusCode).json({
       error: err.message,
       message: err.message,
