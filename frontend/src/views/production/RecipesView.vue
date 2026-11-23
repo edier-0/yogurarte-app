@@ -187,12 +187,12 @@ const formatCurrency = (val?: number | null) => {
 
     <!-- Barra de Filtros y Búsqueda -->
     <div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs dark:border-slate-800 dark:bg-slate-900/60 sm:flex-row sm:items-center sm:justify-between">
-      <!-- Pestañas por Categoría -->
-      <div class="flex flex-wrap items-center gap-1.5">
+      <!-- Pestañas por Categoría (Scrollable en móvil) -->
+      <div class="flex items-center gap-1.5 overflow-x-auto max-w-full pb-1 [scrollbar-width:none]">
         <button
           type="button"
           @click="selectedCategory = 'ALL'"
-          class="rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
+          class="shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap"
           :class="
             selectedCategory === 'ALL'
               ? 'bg-slate-900 text-white shadow-2xs dark:bg-white dark:text-slate-900'
@@ -205,7 +205,7 @@ const formatCurrency = (val?: number | null) => {
         <button
           type="button"
           @click="selectedCategory = 'FASE_B'"
-          class="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
+          class="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap"
           :class="
             selectedCategory === 'FASE_B'
               ? 'bg-purple-600 text-white shadow-2xs'
@@ -213,13 +213,14 @@ const formatCurrency = (val?: number | null) => {
           "
         >
           <Sparkles class="h-3.5 w-3.5" />
-          <span>Fase B (Saborización)</span>
+          <span class="hidden sm:inline">Fase B (Saborización)</span>
+          <span class="sm:hidden">Fase B</span>
         </button>
 
         <button
           type="button"
           @click="selectedCategory = 'FASE_A'"
-          class="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
+          class="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap"
           :class="
             selectedCategory === 'FASE_A'
               ? 'bg-sky-600 text-white shadow-2xs'
@@ -227,13 +228,14 @@ const formatCurrency = (val?: number | null) => {
           "
         >
           <FlaskConical class="h-3.5 w-3.5" />
-          <span>Fase A (Base Láctea)</span>
+          <span class="hidden sm:inline">Fase A (Base Láctea)</span>
+          <span class="sm:hidden">Fase A</span>
         </button>
 
         <button
           type="button"
           @click="selectedCategory = 'ELABORACION'"
-          class="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
+          class="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap"
           :class="
             selectedCategory === 'ELABORACION'
               ? 'bg-amber-600 text-white shadow-2xs'
@@ -241,12 +243,13 @@ const formatCurrency = (val?: number | null) => {
           "
         >
           <ChefHat class="h-3.5 w-3.5" />
-          <span>Elaboraciones / Mermeladas</span>
+          <span class="hidden sm:inline">Elaboraciones / Mermeladas</span>
+          <span class="sm:hidden">Mermeladas</span>
         </button>
       </div>
 
       <!-- Buscador y Filtro de Estado -->
-      <div class="flex items-center gap-2">
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
         <div class="relative flex-1 sm:w-64">
           <Search class="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input

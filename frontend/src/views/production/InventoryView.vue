@@ -643,40 +643,48 @@ async function reactivateMaterial(mat: MaterialItem) {
 
     <!-- Navegación por Sub-pestañas con Reka UI -->
     <TabsRoot v-model="activeTab" class="w-full space-y-4">
-      <TabsList class="inline-flex rounded-2xl border border-surface-light-border bg-surface-light-canvas p-1 shadow-inner dark:border-surface-dark-border dark:bg-surface-dark-canvas">
-        <TabsTrigger
-          value="materials"
-          class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
-        >
-          <Boxes class="h-4 w-4 stroke-[2]" />
-          <span>Catálogo de Insumos y Envases</span>
-          <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {{ materials.length }}
-          </span>
-        </TabsTrigger>
+      <div class="overflow-x-auto max-w-full pb-1 [scrollbar-width:none]">
+        <TabsList class="grid grid-cols-3 sm:inline-flex min-w-full sm:min-w-0 rounded-2xl border border-surface-light-border bg-surface-light-canvas p-1 shadow-inner dark:border-surface-dark-border dark:bg-surface-dark-canvas">
+          <TabsTrigger
+            value="materials"
+            class="inline-flex shrink-0 sm:shrink items-center justify-center gap-1 sm:gap-2 rounded-xl px-1.5 sm:px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
+          >
+            <Boxes class="h-4 w-4 shrink-0 stroke-[2]" />
+            <span class="hidden md:inline">Catálogo de Insumos y Envases</span>
+            <span class="hidden sm:inline md:hidden">Insumos y Envases</span>
+            <span class="sm:hidden">Insumos</span>
+            <span class="ml-0.5 sm:ml-1 rounded-full bg-slate-100 px-1.5 sm:px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {{ materials.length }}
+            </span>
+          </TabsTrigger>
 
-        <TabsTrigger
-          value="kardex"
-          class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
-        >
-          <ClipboardList class="h-4 w-4 stroke-[2]" />
-          <span>Kardex y Movimientos de Entrada/Salida</span>
-          <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {{ adjustments.length }}
-          </span>
-        </TabsTrigger>
+          <TabsTrigger
+            value="kardex"
+            class="inline-flex shrink-0 sm:shrink items-center justify-center gap-1 sm:gap-2 rounded-xl px-1.5 sm:px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
+          >
+            <ClipboardList class="h-4 w-4 shrink-0 stroke-[2]" />
+            <span class="hidden md:inline">Kardex y Movimientos</span>
+            <span class="hidden sm:inline md:hidden">Kardex Movs.</span>
+            <span class="sm:hidden">Kardex</span>
+            <span class="ml-0.5 sm:ml-1 rounded-full bg-slate-100 px-1.5 sm:px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {{ adjustments.length }}
+            </span>
+          </TabsTrigger>
 
-        <TabsTrigger
-          value="preparations"
-          class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
-        >
-          <ChefHat class="h-4 w-4 stroke-[2]" />
-          <span>Historial de Elaboraciones</span>
-          <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {{ preparations.length }}
-          </span>
-        </TabsTrigger>
-      </TabsList>
+          <TabsTrigger
+            value="preparations"
+            class="inline-flex shrink-0 sm:shrink items-center justify-center gap-1 sm:gap-2 rounded-xl px-1.5 sm:px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
+          >
+            <ChefHat class="h-4 w-4 shrink-0 stroke-[2]" />
+            <span class="hidden md:inline">Historial de Elaboraciones</span>
+            <span class="hidden sm:inline md:hidden">Elaboraciones</span>
+            <span class="sm:hidden">Elaborar</span>
+            <span class="ml-0.5 sm:ml-1 rounded-full bg-slate-100 px-1.5 sm:px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {{ preparations.length }}
+            </span>
+          </TabsTrigger>
+        </TabsList>
+      </div>
 
       <!-- PESTAÑA 1: CATÁLOGO DE INSUMOS -->
       <TabsContent value="materials" class="space-y-4 focus:outline-none">
@@ -822,9 +830,9 @@ async function reactivateMaterial(mat: MaterialItem) {
             <!-- Cabecera de la Tarjeta -->
             <div>
               <div class="flex items-start justify-between gap-2">
-                <div>
-                  <div class="flex items-center gap-2">
-                    <span class="rounded-lg bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <span class="max-w-[140px] truncate rounded-lg bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                       {{ mat.code }}
                     </span>
                     <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -838,7 +846,7 @@ async function reactivateMaterial(mat: MaterialItem) {
                       <span>Receta</span>
                     </span>
                   </div>
-                  <h3 class="mt-1 text-base font-extrabold text-slate-900 dark:text-white">
+                  <h3 class="mt-1 truncate text-base font-extrabold text-slate-900 dark:text-white" :title="mat.name">
                     {{ mat.name }}
                   </h3>
                 </div>
@@ -964,7 +972,7 @@ async function reactivateMaterial(mat: MaterialItem) {
               </div>
 
               <!-- Caso 2: Insumo Compuesto Activo -->
-              <div v-else-if="mat.isCompound" class="flex items-center gap-1.5">
+              <div v-else-if="mat.isCompound" class="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   @click="openPrepareModal(mat.id)"
@@ -1006,7 +1014,7 @@ async function reactivateMaterial(mat: MaterialItem) {
               </div>
 
               <!-- Caso 3: Insumo Simple Activo -->
-              <div v-else class="flex items-center gap-1.5">
+              <div v-else class="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   @click="openPurchaseModal(mat.id)"
