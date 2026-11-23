@@ -3,13 +3,11 @@ Memoria entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aport
 
 ## Estado actual
 - Rama actual: `chore/integrate-agent-core`.
-- Estructura de arnés `agent-core` organizada limpiamente en `.agent/` (`agents/`, `workflows/`, `skills/`, `templates/`, `mcp/`, `docs/`) con cero basura en raíz.
-- Datos de producción en Neon sincronizados a Postgres local (`localhost:5432/yogurarte_db`, 34 modelos y secuencias íntegras).
-- Auditoría exhaustiva y corrección responsive con Chrome DevTools MCP en viewports de 320px a 375px:
-  - Eliminado desbordamiento horizontal en tabs de Inventario, Lotes, Personal, Gastos y Recetario con soporte responsive (`sm:hidden` / `sm:inline`) y ajuste perfecto (336px <= 338px).
-  - Optimizado el libro de recetas (`RecipesView.vue`), modal de ficha técnica (`RecipeDetailModal.vue`) y modal de formulación (`RecipeFormModal.vue`) para móviles.
-  - Mitigado desbordamiento en tarjetas de insumos con `min-w-0`, `flex-wrap` y truncamiento inteligente de código y nombres largos.
-  - Verificado con scanner DOM profundo: 0 desbordamientos en todo el aplicativo.
+- Estructura de arnés `agent-core` organizada limpiamente en `.agent/` con cero basura en raíz.
+- Blindado protocolo multiagente nativo en `AGENTS.md` y `coordinator.md`: uso obligatorio de `update_steps`, invocación de subagentes reales con `invoke_subagent` y pausas de confirmación por tarea atómica.
+- Corregido desbordamiento de botón "Registrar Lote" en `BatchesView.vue` con `flex-wrap` y etiqueta corta responsive en móvil (`sm:hidden`).
+- Integrado el enlace a `Libro de Recetas (SOP)` (`/produccion/recetario`) en el menú drawer móvil `MobileMenuDrawer.vue` bajo *Planta & Producción*.
+- Certificación completa por subagente `@reviewer` bajo Chrome DevTools MCP en viewports 375×812 y 320×640 (0 desbordamientos, navegación funcional).
 - Verificación técnica: `vue-tsc --noEmit && vite build` (0 errores) y Vitest (37/37 tests en verde contra `yogurarte_test` local).
 
 ## Decisiones (y por qué)
