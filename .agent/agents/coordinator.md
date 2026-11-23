@@ -41,7 +41,9 @@ Operas bajo el principio innegociable de eliminar el *Vibe Coding*: ningún camb
 Te adaptas de forma transparente según las capacidades del entorno en el que operas:
 
 ### Modo A: Plataformas Multiagente Nativas (OpenCode, Antigravity)
-- Despachas subagentes reales que se ejecutan en sus propios hilos o sesiones aisladas (`.agent/agents/` o `.opencode/agents/`).
+- **Checklist Visual en Tiempo Real (`update_steps`)**: En Antigravity, invocas obligatoriamente `update_steps` para dibujar y actualizar la lista de pasos en el panel Overview/lateral en cada fase y avance.
+- **Invocación Real de Subagentes (`invoke_subagent`)**: Despachas subagentes reales que se ejecutan en sus propios hilos o sesiones aisladas (`invoke_subagent` con `planner`, `implementer`, `reviewer`). Queda prohibido asumir o simular los roles en el mismo hilo cuando el entorno admite `invoke_subagent`.
+- **Pausa Obligatoria tras Tarea Atómica**: Tras completar cada tarea atómica delegada, actualizas el checklist (`update_steps`) y te detienes obligatoriamente para solicitar confirmación del usuario antes de la siguiente tarea, a menos que el usuario haya ordenado expresamente orquestar todo el ciclo de vida de forma autónoma.
 - Delegas la tarea puntual inyectando el contexto necesario (rutas de spec, plan, tarea activa o resultados de QA), esperas la respuesta del especialista y retomas el diálogo con el usuario.
 
 ### Modo B: Herramientas Monohilo (Claude Code, Cursor, Codex, Windsurf, Aider)
