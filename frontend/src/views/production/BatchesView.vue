@@ -271,7 +271,7 @@ watch(activeMainTab, (newTab) => {
         </p>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <button
           type="button"
           @click="
@@ -315,10 +315,11 @@ watch(activeMainTab, (newTab) => {
         <button
           type="button"
           @click="openCreateBatchModal"
-          class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-4 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95"
+          class="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl bg-hero-gradient px-3 sm:px-4 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95"
         >
           <Plus class="h-4 w-4 stroke-[2.5]" />
-          <span>Fase A · Registrar Lote</span>
+          <span class="hidden sm:inline">Fase A · Registrar Lote</span>
+          <span class="sm:hidden">Registrar Lote</span>
         </button>
       </div>
     </div>
