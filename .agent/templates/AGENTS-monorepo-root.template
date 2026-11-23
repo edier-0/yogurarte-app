@@ -1,0 +1,40 @@
+# AGENTS.md — {{PROJECT_NAME}} (Raíz Monorrepo)
+
+Monorrepositorio modular para {{PROJECT_DESCRIPTION}}.
+
+## Estructura de Workspaces
+- **Gestor**: {{WORKSPACE_MANAGER}} (ej. pnpm workspaces, npm workspaces, yarn, Cargo).
+- **Módulos / Paquetes**:
+  - `apps/*`: Aplicaciones consumidoras finales (frontend, web, API gateway).
+  - `packages/*`: Librerías y paquetes compartidos de dominio o infraestructura.
+- **Submódulos con reglas propias**: Cada submódulo puede contener su propio `AGENTS.md` si sus comandos de test o reglas divergen de la raíz.
+
+## Comandos Globales de Monorrepo
+```bash
+# Dependencias en workspaces (prohibido ejecutar instalaciones directas que rompan el lockfile raíz)
+PKG_ADD_COMMAND="{{PKG_ADD_COMMAND}}"      # ej. pnpm add <pkg> --filter <modulo> / npm install <pkg> -w <modulo>
+{{PKG_INSTALL_COMMAND}}                    # ej. pnpm install / npm install
+
+# Build y compilación cruzada
+BUILD_COMMAND="{{BUILD_COMMAND}}"          # ej. pnpm build / npm run build --workspaces
+
+# Suites de prueba
+TEST_COMMAND="{{TEST_COMMAND}}"            # Suite global de integración (ejecutada por @reviewer en /sdd-validate)
+{{LINT_COMMAND}}                           # Linter global
+{{TYPECHECK_COMMAND}}                      # Chequeo de tipos global
+```
+
+## Estrategia de Testing en Monorrepo (Enfoque Dual)
+- **Durante Tareas Atómicas (`/sdd-implement`)**: `@implementer` corre el test acotado al submódulo modificado (declarado en la tarea de `tasks.md` o en el `AGENTS.md` local del paquete, ej. `pnpm test --filter auth`), permitiendo ciclos rápidos Red-Green-Refactor.
+- **Durante Validación Integral (`/sdd-validate`)**: `@reviewer` corre obligatoriamente la suite global (`TEST_COMMAND`) y `BUILD_COMMAND` en la raíz para garantizar que ningún cambio rompa paquetes consumidores.
+
+## Configuración Git y Gobernanza
+- `GIT_WORKFLOW_MODE`: "{{GIT_WORKFLOW_MODE}}" # "branch_pr" o "trunk"
+- `PR_TARGET_BRANCH`: "{{PR_TARGET_BRANCH}}"
+- `AGENT_CAN_MERGE`: {{AGENT_CAN_MERGE}}
+- **Centralización de Specs**: Todas las especificaciones residen exclusivamente en la carpeta raíz `specs/NNN-nombre/`, prohibiendo carpetas de specs dispersas en submódulos.
+
+## Límites
+- **Siempre**: Respetar workspaces (`PKG_ADD_COMMAND`); ejecutar `BUILD_COMMAND` en paquetes compartidos antes de probar consumidores; TDD en cada tarea.
+- **Pregunta antes**: Crear nuevos paquetes en el monorrepo; modificar dependencias compartidas; abrir PR; borrar ramas.
+- **Nunca**: Comandos de instalación directos en subcarpetas que corrompan el lockfile raíz; `git add .` masivo; credenciales en código.

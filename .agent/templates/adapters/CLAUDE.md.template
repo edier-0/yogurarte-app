@@ -1,0 +1,58 @@
+# CLAUDE.md — Adaptador Nativo para Claude Code
+
+Este archivo configura las directivas operativas de **Claude Code** para interactuar con la fábrica agéntica `agent-core` en este repositorio.
+
+---
+
+## 1. Modo de Ejecución: Monohilo con Cambio de Rol
+
+Claude Code opera en un único hilo de conversación continuo. Por tanto, actúas como **Coordinador** en este hilo y adoptas secuencialmente la identidad de cada subagente según la fase activa del ciclo SDD, **anunciando explícitamente el cambio de rol en el chat**:
+
+- **`[CAMBIO DE ROL: @planner]`**:
+  - Directivas: Definidas en `.agent/agents/planner.md`.
+  - Responsabilidad: Redactar specs en sintaxis formal EARS, planes técnicos y desglose atómico en `tasks.md` (máximo 10 tareas).
+  - Límite de edición: Solo edita archivos dentro de `specs/` y `MEMORY.md`.
+- **`[CAMBIO DE ROL: @implementer]`**:
+  - Directivas: Definidas en `.agent/agents/implementer.md`.
+  - Responsabilidad: Implementar tareas individuales bajo TDD (test en rojo primero, código mínimo en verde y refactor).
+  - Límite de edición: Modifica código fuente y marca la tarea `- [x]` en `tasks.md`. Prohibido tocar `spec.md`, `plan.md`, `constitution.md`, `MEMORY.md` o `.agent/**`.
+  - Git: Staging quirúrgico (`git add <rutas>`), commits `<tipo>(<NNN>): <Tn> - <descripción>`, **cero `git push` intermedio**.
+- **`[CAMBIO DE ROL: @reviewer]`**:
+  - Directivas: Definidas en `.agent/agents/reviewer.md`.
+  - Responsabilidad: QA funcional de specs (`[MODO: CLARIFICACION_SPEC]`) y validación RF por RF (`[MODO: VALIDACION_IMPLEMENTACION]`).
+  - Límite de edición: Solo lectura estricta (`edit: deny`).
+
+---
+
+## 2. Comandos Personalizados (/sdd-*)
+
+Tus comandos slash personalizados residen en `.claude/commands/` y ejecutan los workflows ubicados en `.agent/workflows/`:
+
+- `/sdd-spec`: Inicia la entrevista y genera `specs/NNN-nombre/spec.md`.
+- `/sdd-clarify`: Ejecuta la auditoría QA de la spec con `@reviewer` (máximo 2 rondas).
+- `/sdd-plan`: Genera la arquitectura técnica en `specs/NNN-nombre/plan.md`.
+- `/sdd-tasks`: Desglosa el plan en `specs/NNN-nombre/tasks.md` (máx 10 tareas).
+- `/sdd-implement [Tn]`: Ejecuta la siguiente tarea pendiente con TDD estricto.
+- `/sdd-validate`: Valida la solución completa RF por RF contra tests y DevTools.
+- `/sdd-change`: Gestiona modificaciones de alcance con enfoque aditivo.
+- `/sdd-status`: Informa el estado actual y siguiente comando recomendado.
+- `/review-and-pr`: Ejecuta rebase, resuelve colisiones numéricas y abre el PR.
+
+---
+
+## 3. Desacoplamiento de Contexto en Disco
+
+Tu progreso no depende del historial acumulado en la ventana de chat. Toda la verdad del proyecto reside en los archivos en disco:
+- Estado del proyecto: `MEMORY.md` (máximo ~50 líneas).
+- Reglas innegociables: `docs/constitution.md` y `AGENTS.md`.
+- Requerimientos activos: `specs/NNN-nombre/`.
+
+Si la conversación se alarga, utiliza `/compact` o reanuda una sesión limpia: el flujo se retomará automáticamente inspeccionando el estado de `tasks.md`.
+
+---
+
+## 4. Convenciones Obligatorias
+
+- Todo diálogo, comentario, prueba y mensaje de commit opera exclusivamente en **español**.
+- Rutas siempre expresadas con barras diagonales directas (`/`).
+- Tolerancia cero a secretos o credenciales hardcodeadas en código.

@@ -1,0 +1,30 @@
+# AGENTS.md — Submódulo: {{MODULE_NAME}}
+
+Reglas locales y comandos específicos para el submódulo `{{MODULE_PATH}}` dentro del monorrepo.
+
+## Contexto y Alcance
+- **Propósito**: {{MODULE_DESCRIPTION}}
+- **Dependencias internas**: Consume `{{INTERNAL_DEPENDENCIES}}` (ej. `@repo/shared-types`, `@repo/database`).
+- **Gobernanza**: Las reglas globales de `AGENTS.md` y `docs/constitution.md` en la raíz rigen de forma prioritaria.
+
+## Comandos Específicos del Submódulo
+```bash
+# Comando acotado para desarrollo TDD rápido (ejecutado por @implementer durante /sdd-implement)
+TEST_COMMAND="{{MODULE_TEST_COMMAND}}"        # ej. pnpm test --filter {{MODULE_NAME}} / npm test -w {{MODULE_PATH}}
+{{MODULE_LINT_COMMAND}}                       # Linter específico del módulo
+{{MODULE_TYPECHECK_COMMAND}}                  # Chequeo de tipos específico del módulo
+
+# Servidor o entorno local del módulo (si aplica)
+{{MODULE_START_DEV_COMMAND}}
+DEV_SERVER_URL="{{MODULE_DEV_SERVER_URL}}"
+```
+
+## Reglas de Arquitectura y Dependencias
+- **Instalación de paquetes**: Obligatorio utilizar el comando de workspace raíz (`PKG_ADD_COMMAND` de la raíz) apuntando a este filtro (`--filter {{MODULE_NAME}}`). Prohibido instalar paquetes directamente desde este directorio.
+- **Contratos e Interfaces**: Toda función o tipo expuesto fuera de este módulo debe exportarse explícitamente en el punto de entrada público (`src/index.ts` o equivalente).
+- **Idioma**: Comentarios, tests e interfaces exclusivamente en **español**. Rutas siempre con `/`.
+
+## Límites
+- **Siempre**: Ejecutar `TEST_COMMAND` local antes de cada commit atómico; TDD estricto.
+- **Pregunta antes**: Modificar contratos públicos de API que rompan otros módulos del monorrepo.
+- **Nunca**: Importar dependencias circulares entre paquetes; credenciales o fallbacks en código.

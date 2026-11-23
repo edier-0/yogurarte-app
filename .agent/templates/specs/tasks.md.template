@@ -1,0 +1,51 @@
+# Tareas de Implementación: {{SPEC_ID}}-{{SPEC_TITLE}}
+
+- **Spec Vinculada**: `specs/{{SPEC_ID}}-{{SPEC_TITLE}}/spec.md`
+- **Plan Vinculado**: `specs/{{SPEC_ID}}-{{SPEC_TITLE}}/plan.md`
+- **Límite Estricto**: Máximo 10 tareas atómicas (~20-30 min cada una). Si se requieren más, dividir en specs secuenciales por fases.
+- **Disciplina**: Ejecución estrictamente secuencial bajo TDD (Rojo -> Verde -> Refactor). Prohibido iniciar `Tn+1` si `Tn` no está commiteada y en verde.
+
+---
+
+## Lista de Tareas Atómicas
+
+- [ ] T1: {{TASK_1_TITLE}} (ej. Configurar esquemas de validación Zod y pruebas unitarias de contrato)
+  - **Archivos a modificar/crear**: `{{FILE_PATH_1}}`, `{{TEST_PATH_1}}`
+  - **Estrategia TDD**:
+    1. *Rojo*: Redactar test en `{{TEST_PATH_1}}` esperando validación exitosa y fallo ante payloads incorrectos. Verificar que falle.
+    2. *Verde*: Implementar esquema mínimo en `{{FILE_PATH_1}}` hasta que la prueba pase.
+    3. *Refactor*: Limpiar tipos, ejecutar linters y chequeos de tipos.
+  - **Hecho cuando**: El comando de test pasa al 100% en verde y el commit atómico `test({{SPEC_ID}}): T1 - ...` queda registrado localmente.
+  - *Checkpoint*: {{OPTIONAL_CHECKPOINT_NOTE_DURING_EXECUTION}}
+
+- [ ] T2: {{TASK_2_TITLE}} (ej. Implementar lógica de servicio y pruebas unitarias con mocks)
+  - **Archivos a modificar/crear**: `{{FILE_PATH_2}}`, `{{TEST_PATH_2}}`
+  - **Estrategia TDD**:
+    1. *Rojo*: Redactar pruebas unitarias de los métodos del servicio en `{{TEST_PATH_2}}`. Verificar que fallen por método inexistente.
+    2. *Verde*: Implementar métodos en `{{FILE_PATH_2}}` satisfaciendo las aserciones.
+    3. *Refactor*: Eliminar duplicidades y verificar tipos.
+  - **Hecho cuando**: La suite pasa en verde y commit `feat({{SPEC_ID}}): T2 - ...` registrado.
+
+- [ ] T3: {{TASK_3_TITLE}} (ej. Integrar endpoint HTTP / capa de transporte y pruebas de integración)
+  - **Archivos a modificar/crear**: `{{FILE_PATH_3}}`, `{{TEST_PATH_3}}`
+  - **Estrategia TDD**:
+    1. *Rojo*: Redactar test de integración en `{{TEST_PATH_3}}` realizando petición HTTP y esperando código de estado esperado.
+    2. *Verde*: Conectar ruta y controlador al servicio hasta obtener respuesta esperada.
+    3. *Refactor*: Asegurar manejo robusto de excepciones.
+  - **Hecho cuando**: Pruebas de integración en verde y commit `feat({{SPEC_ID}}): T3 - ...` registrado.
+
+- [ ] T4: {{TASK_4_TITLE}} (ej. Pruebas de regresión, auditoría DevSecOps y validación de casos límite)
+  - **Archivos a modificar/crear**: `{{TEST_PATH_4}}`
+  - **Estrategia TDD**:
+    1. *Rojo*: Agregar pruebas para los casos límite documentados en la spec (entradas vacías, timeouts, concurrencia).
+    2. *Verde*: Ajustar código para responder con códigos de error y mensajes adecuados.
+    3. *Refactor*: Auditoría final de staged libre de secretos.
+  - **Hecho cuando**: 100% de la suite de pruebas del proyecto pasa en verde y commit `test({{SPEC_ID}}): T4 - ...` registrado.
+
+---
+
+## Instrucciones para el Implementador (`@implementer`)
+1. Trabaja una sola tarea a la vez. No toques archivos de tareas futuras.
+2. Realiza siempre staging quirúrgico (`git add <rutas_de_la_tarea>`). Nunca uses `git add .` ni `git add -A`.
+3. Nunca hagas `git push` a la rama remota tras terminar una tarea; acumula los commits localmente.
+4. Al terminar la tarea y confirmar los tests en verde, marca `- [x]` en este archivo y remueve o consolida la sub-viñeta de checkpoint.

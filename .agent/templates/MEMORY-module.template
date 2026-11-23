@@ -1,0 +1,18 @@
+# MEMORY.md — Submódulo: {{MODULE_NAME}}
+
+Memoria viva local para el dominio o paquete `{{MODULE_PATH}}`. Máximo **~50 líneas** con poda activa.
+
+## Estado del Submódulo
+- **Versión / Hito**: {{MODULE_CURRENT_MILESTONE}}
+- **Integración**: Consumido por {{CONSUMER_MODULES_LIST}}.
+- **Estado de Pruebas**: Suite local en verde (`{{MODULE_TEST_COMMAND}}`).
+
+## Decisiones Específicas de Dominio
+- **{{DATE}} — {{DECISION_TITLE}}**: {{DECISION_REASONING}} (ej. *Se separó la capa de repositorio de la lógica de servicio para aislar consultas complejas y facilitar el mocking*).
+
+## Errores y Casos Límite Descubiertos
+- **{{GOTCHA_TITLE}}**: {{GOTCHA_SOLUTION}} (ej. *Cuidado con serialización de fechas en el DTO de respuesta; usar siempre formato ISO-8601 UTC*).
+
+## Próximas Mejoras del Módulo
+- [ ] {{MODULE_NEXT_TASK_1}}
+- [ ] {{MODULE_NEXT_TASK_2}}

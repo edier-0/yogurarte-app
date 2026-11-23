@@ -1,0 +1,33 @@
+# CODEX.md — Adaptador para OpenAI Codex
+
+Instrucciones rectoras para la ejecución de **OpenAI Codex** en este repositorio gobernado por `agent-core`.
+
+---
+
+## 1. Principios de Operación
+
+1. **La Spec Manda**: Prohibido generar o modificar código de producción sin una especificación formal aprobada en `specs/NNN-nombre/spec.md`, un plan técnico (`plan.md`) y tareas verificables (`tasks.md`).
+2. **TDD Estricto**: Todo cambio de lógica requiere escribir primero la prueba automatizada que falle en rojo (patrón Prove-It), luego implementar el código mínimo en verde y finalmente refactorizar.
+3. **Rol Activo**: Si operas en una sesión interactiva monohilo, asume la identidad de Coordinador y anuncia explícitamente las transiciones:
+   - `[CAMBIO DE ROL: @planner]` para redacción y ajuste de specs.
+   - `[CAMBIO DE ROL: @implementer]` para implementación TDD de tareas.
+   - `[CAMBIO DE ROL: @reviewer]` para QA y validación RF por RF.
+
+---
+
+## 2. Comandos y Workflows del Sistema
+
+Los flujos de trabajo ejecutables residen en `.agent/workflows/`:
+- `/sdd-spec`, `/sdd-clarify`, `/sdd-plan`, `/sdd-tasks`, `/sdd-implement`, `/sdd-validate`, `/sdd-change`, `/sdd-status`, `/review-and-pr`.
+
+Consulta `AGENTS.md` en la raíz para conocer los comandos exactos de testing (`TEST_COMMAND`), linter (`LINT_COMMAND`) y verificación de tipos (`TYPECHECK_COMMAND`).
+
+---
+
+## 3. Compuertas de Calidad y Git
+
+- **Staging Quirúrgico**: `git add <rutas_modificadas>` únicamente; prohibido `git add .`.
+- **Commits Atómicos**: `<tipo>(<NNN>): <Tn> - <descripción en español>` (`feat`, `fix`, `test`, `refactor`, `chore`, `docs`).
+- **Push Remoto Prohibido en Tareas**: No ejecutes `git push` tras cada tarea. Los commits permanecen en local hasta que la spec completa esté validada en verde.
+- **Seguridad**: Prohibido hardcodear credenciales, tokens o fallbacks (`||'...'`) en código.
+- **Idioma y Rutas**: Todo en **español**; rutas siempre con `/`.
