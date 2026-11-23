@@ -17,7 +17,11 @@ if (!neonUrl) {
   console.error('   Está terminantemente prohibido hardcodear credenciales en el código fuente.\n');
   process.exit(1);
 }
-const localUrl = process.env.LOCAL_DATABASE_URL || 'postgresql://postgres:postgrespassword@localhost:5432/yogurarte_db?schema=public';
+const localUrl = process.env.LOCAL_DATABASE_URL || process.env.DATABASE_URL;
+if (!localUrl) {
+  console.error('\n❌ ERROR: Ni LOCAL_DATABASE_URL ni DATABASE_URL están configuradas en .env.\n');
+  process.exit(1);
+}
 
 const neonPrisma = new PrismaClient({ datasources: { db: { url: neonUrl } } });
 const localPrisma = new PrismaClient({ datasources: { db: { url: localUrl } } });
@@ -43,16 +47,25 @@ async function syncNeonToLocal() {
       "WhatsAppAuthSession",
       "RecurringSchedule",
       "CrmQuickReply",
+      "SystemWhatsAppTemplate",
       "OrderPayment",
       "OrderItem",
       "Order",
       "BatchDischarge",
+      "BatchPackagingItem",
+      "BatchPackaging",
       "BatchItemUsage",
       "ProductionBatch",
+      "RecipeStep",
+      "RecipeIngredient",
+      "Recipe",
+      "ProductPresentation",
+      "ProductFlavor",
       "InventoryAdjustment",
       "Purchase",
       "SupplyPreparationItem",
       "SupplyPreparation",
+      "CompoundRecipeItem",
       "RawMaterial",
       "CreditPayment",
       "CreditObligation",
@@ -73,141 +86,194 @@ async function syncNeonToLocal() {
   await batchInsert(localPrisma.user, users);
   console.log(`👤 Sincronizados ${users.length} Usuarios`);
 
-  // 2. Customers
-  const customers = await neonPrisma.customer.findMany();
-  await batchInsert(localPrisma.customer, customers);
-  console.log(`👥 Sincronizados ${customers.length} Clientes`);
-
-  // 3. RawMaterials
-  const rawMaterials = await neonPrisma.rawMaterial.findMany();
-  await batchInsert(localPrisma.rawMaterial, rawMaterials);
-  console.log(`📦 Sincronizados ${rawMaterials.length} Materias Primas / Insumos`);
-
-  // 4. SupplyPreparations
-  const preps = await neonPrisma.supplyPreparation.findMany();
-  await batchInsert(localPrisma.supplyPreparation, preps);
-  console.log(`🍯 Sincronizadas ${preps.length} Preparaciones de Insumos`);
-
-  // 5. SupplyPreparationItems
-  const prepItems = await neonPrisma.supplyPreparationItem.findMany();
-  await batchInsert(localPrisma.supplyPreparationItem, prepItems);
-  console.log(`🥄 Sincronizados ${prepItems.length} Ítems de Preparación`);
-
-  // 6. Purchases
-  const purchases = await neonPrisma.purchase.findMany();
-  await batchInsert(localPrisma.purchase, purchases);
-  console.log(`🛒 Sincronizadas ${purchases.length} Compras`);
-
-  // 7. InventoryAdjustments
-  const adjustments = await neonPrisma.inventoryAdjustment.findMany();
-  await batchInsert(localPrisma.inventoryAdjustment, adjustments);
-  console.log(`⚖️ Sincronizados ${adjustments.length} Ajustes de Inventario`);
-
-  // 8. ProductionBatches
-  const batches = await neonPrisma.productionBatch.findMany();
-  await batchInsert(localPrisma.productionBatch, batches);
-  console.log(`🍶 Sincronizados ${batches.length} Lotes de Producción`);
-
-  // 9. StaffMembers
+  // 2. StaffMembers
   const staff = await neonPrisma.staffMember.findMany();
   await batchInsert(localPrisma.staffMember, staff);
   console.log(`🤝 Sincronizados ${staff.length} Integrantes / Socios`);
 
-  // 10. StaffPayments
+  // 3. StaffPayments
   const staffPayments = await neonPrisma.staffPayment.findMany();
   await batchInsert(localPrisma.staffPayment, staffPayments);
   console.log(`💳 Sincronizados ${staffPayments.length} Pagos de Personal / Retiros`);
 
-  // 11. BatchDischarges
+  // 4. Customers
+  const customers = await neonPrisma.customer.findMany();
+  await batchInsert(localPrisma.customer, customers);
+  console.log(`👥 Sincronizados ${customers.length} Clientes`);
+
+  // 5. RawMaterials
+  const rawMaterials = await neonPrisma.rawMaterial.findMany();
+  await batchInsert(localPrisma.rawMaterial, rawMaterials);
+  console.log(`📦 Sincronizados ${rawMaterials.length} Materias Primas / Insumos`);
+
+  // 6. CompoundRecipeItem
+  const compoundItems = await neonPrisma.compoundRecipeItem.findMany();
+  await batchInsert(localPrisma.compoundRecipeItem, compoundItems);
+  console.log(`🧩 Sincronizados ${compoundItems.length} Ítems de Recetas Compuestas`);
+
+  // 7. SupplyPreparations
+  const preps = await neonPrisma.supplyPreparation.findMany();
+  await batchInsert(localPrisma.supplyPreparation, preps);
+  console.log(`🍯 Sincronizadas ${preps.length} Preparaciones de Insumos`);
+
+  // 8. SupplyPreparationItems
+  const prepItems = await neonPrisma.supplyPreparationItem.findMany();
+  await batchInsert(localPrisma.supplyPreparationItem, prepItems);
+  console.log(`🥄 Sincronizados ${prepItems.length} Ítems de Preparación`);
+
+  // 9. Purchases
+  const purchases = await neonPrisma.purchase.findMany();
+  await batchInsert(localPrisma.purchase, purchases);
+  console.log(`🛒 Sincronizadas ${purchases.length} Compras`);
+
+  // 10. InventoryAdjustments
+  const adjustments = await neonPrisma.inventoryAdjustment.findMany();
+  await batchInsert(localPrisma.inventoryAdjustment, adjustments);
+  console.log(`⚖️ Sincronizados ${adjustments.length} Ajustes de Inventario`);
+
+  // 11. ProductFlavors
+  const flavors = await neonPrisma.productFlavor.findMany();
+  await batchInsert(localPrisma.productFlavor, flavors);
+  console.log(`🍓 Sincronizados ${flavors.length} Sabores`);
+
+  // 12. ProductPresentations
+  const presentations = await neonPrisma.productPresentation.findMany();
+  await batchInsert(localPrisma.productPresentation, presentations);
+  console.log(`🍾 Sincronizadas ${presentations.length} Presentaciones`);
+
+  // 13. Recipes
+  const recipes = await neonPrisma.recipe.findMany();
+  await batchInsert(localPrisma.recipe, recipes);
+  console.log(`📖 Sincronizadas ${recipes.length} Recetas`);
+
+  // 14. RecipeIngredients
+  const ingredients = await neonPrisma.recipeIngredient.findMany();
+  await batchInsert(localPrisma.recipeIngredient, ingredients);
+  console.log(`🧂 Sincronizados ${ingredients.length} Ingredientes de Recetas`);
+
+  // 15. RecipeSteps
+  const steps = await neonPrisma.recipeStep.findMany();
+  await batchInsert(localPrisma.recipeStep, steps);
+  console.log(`📋 Sincronizados ${steps.length} Pasos de Recetas`);
+
+  // 16. ProductionBatches (Fase A)
+  const batches = await neonPrisma.productionBatch.findMany();
+  await batchInsert(localPrisma.productionBatch, batches);
+  console.log(`🍶 Sincronizados ${batches.length} Lotes de Producción (Fase A)`);
+
+  // 17. BatchPackagings (Fase B)
+  const packagings = await neonPrisma.batchPackaging.findMany();
+  await batchInsert(localPrisma.batchPackaging, packagings);
+  console.log(`📦 Sincronizadas ${packagings.length} Fracciones Envasadas (Fase B)`);
+
+  // 18. BatchPackagingItems
+  const packagingItems = await neonPrisma.batchPackagingItem.findMany();
+  await batchInsert(localPrisma.batchPackagingItem, packagingItems);
+  console.log(`🏷️ Sincronizados ${packagingItems.length} Insumos de Envasado`);
+
+  // 19. BatchDischarges
   const discharges = await neonPrisma.batchDischarge.findMany();
   await batchInsert(localPrisma.batchDischarge, discharges);
-  console.log(`📦 Sincronizadas ${discharges.length} Salidas / Bajas de Lotes`);
+  console.log(`📤 Sincronizadas ${discharges.length} Salidas / Bajas de Lotes`);
 
-  // 12. BatchItemUsages
+  // 20. BatchItemUsages
   const batchUsages = await neonPrisma.batchItemUsage.findMany();
   await batchInsert(localPrisma.batchItemUsage, batchUsages);
   console.log(`🥛 Sincronizados ${batchUsages.length} Insumos Usados en Lotes`);
 
-  // 13. Orders
+  // 21. Orders
   const orders = await neonPrisma.order.findMany();
   await batchInsert(localPrisma.order, orders);
   console.log(`📋 Sincronizados ${orders.length} Pedidos`);
 
-  // 14. OrderItems
+  // 22. OrderItems
   const orderItems = await neonPrisma.orderItem.findMany();
   await batchInsert(localPrisma.orderItem, orderItems);
   console.log(`🏷️ Sincronizados ${orderItems.length} Ítems de Pedidos`);
 
-  // 15. OrderPayments
+  // 23. OrderPayments
   const orderPayments = await neonPrisma.orderPayment.findMany();
   await batchInsert(localPrisma.orderPayment, orderPayments);
   console.log(`💵 Sincronizados ${orderPayments.length} Pagos de Pedidos`);
 
-  // 16. Expenses
+  // 24. Expenses
   const expenses = await neonPrisma.expense.findMany();
   await batchInsert(localPrisma.expense, expenses);
   console.log(`🏗️ Sincronizados ${expenses.length} Gastos Generales`);
 
-  // 17. CashMovements
+  // 25. CashMovements
   const cashMovements = await neonPrisma.cashMovement.findMany();
   await batchInsert(localPrisma.cashMovement, cashMovements);
   console.log(`💰 Sincronizados ${cashMovements.length} Movimientos de Caja`);
 
-  // 18. CreditObligations
+  // 26. CreditObligations
   const creditObligations = await neonPrisma.creditObligation.findMany();
   await batchInsert(localPrisma.creditObligation, creditObligations);
   console.log(`📑 Sincronizadas ${creditObligations.length} Obligaciones de Crédito`);
 
-  // 19. CreditPayments
+  // 27. CreditPayments
   const creditPayments = await neonPrisma.creditPayment.findMany();
   await batchInsert(localPrisma.creditPayment, creditPayments);
   console.log(`💳 Sincronizados ${creditPayments.length} Pagos de Créditos`);
 
-  // 20. SystemSettings
+  // 28. SystemSettings
   const settings = await neonPrisma.systemSetting.findMany();
   await batchInsert(localPrisma.systemSetting, settings);
   console.log(`⚙️ Sincronizadas ${settings.length} Configuraciones del Sistema`);
 
-  // 21. ChatConversations
+  // 29. ChatConversations
   const conversations = await neonPrisma.chatConversation.findMany();
   await batchInsert(localPrisma.chatConversation, conversations);
   console.log(`💬 Sincronizadas ${conversations.length} Conversaciones CRM`);
 
-  // 22. ChatMessages
+  // 30. ChatMessages
   const messages = await neonPrisma.chatMessage.findMany();
   await batchInsert(localPrisma.chatMessage, messages);
   console.log(`📨 Sincronizados ${messages.length} Mensajes de WhatsApp`);
 
-  // 23. WhatsAppAuthSession
+  // 31. WhatsAppAuthSession
   const authSessions = await neonPrisma.whatsAppAuthSession.findMany();
   await batchInsert(localPrisma.whatsAppAuthSession, authSessions);
   console.log(`🔑 Sincronizadas ${authSessions.length} Claves de Sesión WhatsApp`);
 
-  // 24. RecurringSchedules
+  // 32. RecurringSchedules
   const recurringSchedules = await neonPrisma.recurringSchedule.findMany();
   await batchInsert(localPrisma.recurringSchedule, recurringSchedules);
   console.log(`🔁 Sincronizados ${recurringSchedules.length} Pedidos Recurrentes`);
 
-  // 25. CrmQuickReplies
+  // 33. CrmQuickReplies
   const quickReplies = await neonPrisma.crmQuickReply.findMany();
   await batchInsert(localPrisma.crmQuickReply, quickReplies);
   console.log(`⚡ Sincronizadas ${quickReplies.length} Respuestas Rápidas`);
 
-  // 26. Actualizar secuencias locales
+  // 34. SystemWhatsAppTemplates
+  const templates = await neonPrisma.systemWhatsAppTemplate.findMany();
+  await batchInsert(localPrisma.systemWhatsAppTemplate, templates);
+  console.log(`📄 Sincronizadas ${templates.length} Plantillas de WhatsApp`);
+
+  // 35. Actualizar secuencias locales
   console.log('\n🔢 Sincronizando secuencias de IDs en la base de datos local...');
   const autoincrementTables = [
     'User',
     'Customer',
     'RawMaterial',
+    'CompoundRecipeItem',
     'SupplyPreparation',
     'SupplyPreparationItem',
     'Purchase',
     'InventoryAdjustment',
+    'ProductFlavor',
+    'ProductPresentation',
+    'Recipe',
+    'RecipeIngredient',
+    'RecipeStep',
     'ProductionBatch',
-    'StaffMember',
-    'StaffPayment',
+    'BatchPackaging',
+    'BatchPackagingItem',
     'BatchDischarge',
     'BatchItemUsage',
+    'StaffMember',
+    'StaffPayment',
     'Order',
     'OrderItem',
     'OrderPayment',
@@ -215,10 +281,11 @@ async function syncNeonToLocal() {
     'CashMovement',
     'CreditObligation',
     'CreditPayment',
-    'ChatConversation',
+    'SystemSetting',
     'ChatMessage',
-    'RecurringSchedule',
+    'WhatsAppAuthSession',
     'CrmQuickReply',
+    'SystemWhatsAppTemplate',
   ];
 
   for (const table of autoincrementTables) {

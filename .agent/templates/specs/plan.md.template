@@ -1,0 +1,52 @@
+# Plan Técnico de Arquitectura: {{SPEC_ID}}-{{SPEC_TITLE}}
+
+- **Spec Vinculada**: `specs/{{SPEC_ID}}-{{SPEC_TITLE}}/spec.md`
+- **Autor / Rol**: `@planner`
+- **Fecha**: {{DATE}}
+
+---
+
+## 1. Arquitectura y Límites de Módulos
+{{ARCHITECTURE_OVERVIEW}}
+- **Componentes Afectados**:
+  - `{{MODULE_OR_LAYER_1}}`: {{RESPONSIBILITY_1}}
+  - `{{MODULE_OR_LAYER_2}}`: {{RESPONSIBILITY_2}}
+- **Flujo de Datos**:
+  `[Entrada / Cliente] -> [Validación de Esquema / Controlador] -> [Servicio / Lógica de Dominio] -> [Persistencia / API]`
+
+---
+
+## 2. Contratos, Interfaces y Esquemas
+*(Definición formal de tipos de datos, contratos públicos y esquemas de validación).*
+- **Esquemas de Entrada / DTOs**:
+  - `{{DTO_NAME}}`: Definición de campos requeridos, tipos y reglas de validación estricta.
+- **Contratos de Servicio**:
+  - `{{INTERFACE_OR_FUNCTION_SIGNATURE}}`
+- **Modelos de Persistencia (si aplica)**:
+  - Cambios en esquemas de base de datos o migraciones requeridas (sin comandos destructivos).
+
+---
+
+## 3. Estrategia de Testing (TDD)
+- **Pruebas Unitarias (`tests/unit/`)**:
+  - Cobertura de lógica de negocio pura, cálculo y transformaciones de datos aisladas mediante mocks mínimos.
+- **Pruebas de Integración (`tests/integration/`)**:
+  - Verificación de contratos entre endpoints, servicios y base de datos local en `localhost`.
+- **Pruebas Visuales con Chrome DevTools MCP (si impacta UI)**:
+  - Verificación interactiva en `DEV_SERVER_URL` tras levantar el servidor local con `START_DEV_COMMAND`.
+  - Inspección de consola de JavaScript (cero errores/warnings no controlados) y verificación de accesibilidad.
+- **Comandos de Prueba Requeridos**:
+  - En desarrollo atómico: `{{SCOPED_OR_LOCAL_TEST_COMMAND}}`
+  - En validación integral final: `{{GLOBAL_TEST_COMMAND}}`
+
+---
+
+## 4. Dependencias y Workspaces (si aplica)
+- **Librerías Requeridas**: {{NEW_DEPENDENCIES_OR_NONE}}
+- **Comando de Instalación en Workspace**: Si es monorrepo, usar obligatoriamente `{{PKG_ADD_COMMAND}}`.
+
+---
+
+## 5. Riesgos Técnicos y Estrategia de Rollback
+- **Riesgos Identificados**: {{TECHNICAL_RISKS_AND_EDGE_CASES}}
+- **Estrategia de Rollback**: En caso de fallo insalvable tras 2 vueltas de corrección en Fase 5, limpieza total mediante `git reset --hard origin/<base_branch>` y ejecución de `{{PKG_RESTORE_COMMAND}}`.

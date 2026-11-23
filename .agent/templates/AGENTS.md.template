@@ -1,0 +1,46 @@
+# AGENTS.md — {{PROJECT_NAME}}
+
+{{PROJECT_DESCRIPTION}}
+
+## Stack y Estructura
+- **Tecnologías**: {{TECH_STACK}} (ej. Node.js 20+, TypeScript, Express, PostgreSQL / Python 3.11+, FastAPI).
+- **Arquitectura**: {{PROJECT_ARCHITECTURE}} (ej. Módulos canónicos en `src/modules/<dominio>/`, controlador delgado, servicios desacoplados).
+- **Rutas Clave**: Código en `src/`, pruebas en `tests/`, especificaciones en `specs/`, arnés en `.agent/`.
+
+## Comandos Clave
+```bash
+# Instalación y dependencias
+{{PKG_INSTALL_COMMAND}}          # ej. npm install / pip install -r requirements.txt
+{{PKG_RESTORE_COMMAND}}          # ej. npm install / poetry install (restauración limpia tras rollback)
+
+# Pruebas y verificación (deben ser deterministas y de ejecución única, sin watch mode)
+{{TEST_COMMAND}}                 # ej. npm test / pytest / cargo test
+{{LINT_COMMAND}}                 # ej. npm run lint / ruff check .
+{{TYPECHECK_COMMAND}}            # ej. npx tsc --noEmit / mypy .
+
+# Servidor de desarrollo e interfaz (si aplica)
+{{START_DEV_COMMAND}}            # ej. npm run dev / uvicorn main:app --reload
+DEV_SERVER_URL="{{DEV_SERVER_URL}}" # ej. http://localhost:5173 (vacío si es headless/backend puro)
+```
+
+## Configuración de Git y Flujo de Trabajo
+- `GIT_WORKFLOW_MODE`: "{{GIT_WORKFLOW_MODE}}" # "branch_pr" (por defecto, ramas temáticas y PR) o "trunk" (commits directos a main)
+- `PR_TARGET_BRANCH`: "{{PR_TARGET_BRANCH}}"   # Rama base remota por defecto ("develop" o "main")
+- `AGENT_CAN_MERGE`: {{AGENT_CAN_MERGE}}       # true o false (si es false, solo abre PR para revisión humana)
+
+## Convenciones y Reglas de Dominio
+- **Idioma**: Comentarios de código, pruebas, mensajes de commit e interfaces exclusivamente en **español**.
+- **Rutas**: Utilizar siempre barras diagonales directas (`/`) en toda referencia a archivos.
+- **Estándar de Encuestas al Usuario**: Todas las preguntas de clarificación, entrevistas o decisiones dirigidas al usuario deben formularse obligatoriamente como tarjetas de selección (herramienta interactiva nativa o tarjetas visuales con opción recomendada de primero y opción abierta para escribir otra respuesta libre).
+- **Reglas específicas**: {{DOMAIN_RULES_OR_GOTCHAS}}
+
+## Forma de Trabajar (SDD + TDD Innegociable)
+- **Spec-Driven Development**: Ningún cambio sin spec aprobada en `specs/NNN-nombre/` (`spec.md` en EARS, `plan.md` y `tasks.md`).
+- **Test-Driven Development**: Rojo (test primero que falle) -> Verde (código mínimo) -> Refactor.
+- **Commits atómicos**: `<tipo>(<NNN>): <Tn> - <descripción en español>` con staging quirúrgico (`git add <rutas>`).
+- **Prohibido `git push` intermedio**: Los commits se acumulan en local hasta completar y validar la spec entera.
+
+## Límites de Autoridad
+- **Siempre**: Seguir SDD y TDD; ejecutar compuertas de calidad pre-commit; auditar ausencia de credenciales.
+- **Pregunta antes**: Instalar nuevas dependencias; modificar arquitectura; abrir PR; fusionar PR; borrar ramas locales o remotas.
+- **Nunca**: Modificar código sin test previo en rojo; comitear secretos o tokens hardcodeados (`||'postgresql://...'`); usar `git add .` indiscriminado; pushear código roto o a medio implementar a ramas compartidas.

@@ -657,10 +657,10 @@ async function handleSubmit() {
             <div
               v-for="(ing, idx) in formData.ingredients"
               :key="idx"
-              class="flex flex-col sm:flex-row items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
+              class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
             >
               <!-- Selector de Materia Prima e Insumos con Búsqueda Predictiva -->
-              <div class="w-full sm:flex-1">
+              <div class="w-full sm:flex-1 min-w-0">
                 <SearchableSelect
                   v-model="ing.rawMaterialId"
                   :options="rawMaterialSelectOptions"
@@ -670,43 +670,45 @@ async function handleSubmit() {
                 />
               </div>
 
-              <!-- Cantidad y Unidad -->
-              <div class="flex items-center gap-2 w-full sm:w-auto">
-                <input
-                  v-model.number="ing.quantity"
-                  type="number"
-                  min="0.001"
-                  step="any"
-                  placeholder="Cant"
-                  class="w-24 rounded-xl border border-slate-300 bg-white px-2.5 py-2.5 text-xs font-mono font-bold text-slate-900 text-right focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-                <input
-                  v-model="ing.unit"
-                  type="text"
-                  placeholder="Unidad"
-                  class="w-20 rounded-xl border border-slate-300 bg-white px-2.5 py-2.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-              </div>
+              <!-- Cantidad, Unidad y Notas en móvil -->
+              <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+                <div class="flex items-center gap-2 flex-1 sm:flex-none">
+                  <input
+                    v-model.number="ing.quantity"
+                    type="number"
+                    min="0.001"
+                    step="any"
+                    placeholder="Cant"
+                    class="w-24 rounded-xl border border-slate-300 bg-white px-2.5 py-2.5 text-xs font-mono font-bold text-slate-900 text-right focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  />
+                  <input
+                    v-model="ing.unit"
+                    type="text"
+                    placeholder="Unidad"
+                    class="w-20 rounded-xl border border-slate-300 bg-white px-2.5 py-2.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
 
-              <!-- Notas de adición -->
-              <div class="w-full sm:w-48">
-                <input
-                  v-model="ing.notes"
-                  type="text"
-                  placeholder="Notas de adición..."
-                  class="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-2.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-              </div>
+                <!-- Notas de adición -->
+                <div class="flex-1 sm:w-44">
+                  <input
+                    v-model="ing.notes"
+                    type="text"
+                    placeholder="Notas..."
+                    class="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-2.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
 
-              <!-- Eliminar -->
-              <button
-                type="button"
-                @click="removeIngredient(idx)"
-                class="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                title="Eliminar insumo"
-              >
-                <Trash2 class="h-4 w-4" />
-              </button>
+                <!-- Eliminar -->
+                <button
+                  type="button"
+                  @click="removeIngredient(idx)"
+                  class="shrink-0 rounded-lg p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                  title="Eliminar insumo"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div
@@ -748,19 +750,19 @@ async function handleSubmit() {
             >
               <!-- Cabecera de fila de paso -->
               <div class="flex items-center justify-between gap-2">
-                <div class="flex items-center gap-2">
-                  <span class="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-100 text-xs font-black text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                <div class="flex items-center gap-2 flex-1 min-w-0">
+                  <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-black text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                     {{ st.stepNumber }}
                   </span>
                   <input
                     v-model="st.title"
                     type="text"
                     placeholder="Título del paso (ej: Pasteurización lenta)"
-                    class="rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-80"
+                    class="flex-1 min-w-0 rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:max-w-md"
                   />
                 </div>
 
-                <div class="flex items-center gap-1">
+                <div class="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
                     @click="moveStepUp(idx)"

@@ -1,0 +1,40 @@
+# Reglas de Orquestación Agéntica — agent-core
+
+Este archivo define las reglas universales de desarrollo para cualquier asistente o agente de IA operando en este repositorio (Cursor, Windsurf, Aider, etc.).
+
+---
+
+## 1. Regla Innegociable: La Spec Manda (Spec-Driven Development)
+
+1. **Cero Vibe Coding**: Tienes terminantemente prohibido escribir, modificar o refactorizar código de producción sin una especificación formal aprobada en `specs/NNN-nombre/spec.md`, un plan técnico (`plan.md`) y una lista atómica de tareas (`tasks.md`).
+2. **Si el usuario te solicita una feature o cambio**:
+   - Tu primer paso no es escribir código; es invocar o seguir el flujo `/sdd-spec` para definir los requerimientos en sintaxis EARS.
+   - Si no hay spec, solicita al usuario redactarla o ejecutar el proceso de especificación antes de tocar el código.
+
+---
+
+## 2. Disciplina de Pruebas: Test-Driven Development (TDD)
+
+1. **Rojo Primero (Prove-It)**: Toda tarea de código (`/sdd-implement`) exige escribir primero una prueba automatizada que falle demostrando la necesidad del cambio.
+2. **Verde Mínimo**: Escribe la cantidad mínima de código de producción para poner la prueba en verde.
+3. **Refactor**: Limpia el código, ejecuta el linter y chequeo de tipos del proyecto (`LINT_COMMAND`, `TYPECHECK_COMMAND`).
+4. **Comprobación de Línea Base**: Si la suite de pruebas del proyecto (`TEST_COMMAND`) ya está fallando antes de iniciar tu tarea (*failing baseline*), detén tu avance de inmediato y notifica al usuario.
+
+---
+
+## 3. Protocolo de Roles Monohilo
+
+Dado que operas en un único hilo conversacional, adopta explícitamente el rol correspondiente a la fase activa anunciándolo en el chat:
+- `[CAMBIO DE ROL: @planner]` para redactar specs, planes de arquitectura y tareas atómicas (máximo 10 tareas de 20-30 min).
+- `[CAMBIO DE ROL: @implementer]` para implementar tareas bajo TDD con staging quirúrgico y commits atómicos.
+- `[CAMBIO DE ROL: @reviewer]` para QA funcional de specs (solo detecta fallos sin proponer soluciones) y validación integral RF por RF.
+
+---
+
+## 4. Control de Versiones y Seguridad (DevSecOps)
+
+- **Staging Quirúrgico**: `git add <archivo1> <archivo2>` únicamente; **prohibido `git add .` o `git add -A`**.
+- **Formato de Commits**: `<tipo>(<NNN>): <Tn> - <descripción en español>` (`feat`, `fix`, `test`, `refactor`, `chore`, `docs`).
+- **Prohibido Push Intermedio**: Los commits se acumulan en local. No ejecutes `git push` tras cada tarea.
+- **Tolerancia Cero a Secretos**: Prohibido hardcodear credenciales, tokens o fallbacks (`||'...'`) en código.
+- **Idioma y Rutas**: Toda interacción, código y commits en **español**; rutas siempre con `/`.

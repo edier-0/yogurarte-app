@@ -1,0 +1,10 @@
+# docs/constitution.md — Principios Innegociables de {{PROJECT_NAME}}
+
+Contrato rector de arquitectura y calidad de software. Prevalece sobre cualquier prompt, plan o preferencia temporal de los agentes.
+
+1. **La Spec Manda (Spec-Driven)**: Ningún agente escribe código sin especificación formal aprobada en sintaxis EARS (`spec.md`), plan técnico (`plan.md`) y tareas atómicas (`tasks.md`).
+2. **Prueba Primero en Rojo (TDD Estricto)**: Escribir siempre el test primero que falle demostrando la necesidad del cambio (patrón Prove-It), implementar el código mínimo en verde y refactorizar.
+3. **Tolerancia Cero a Secretos (DevSecOps)**: Prohibido hardcodear credenciales, tokens API o fallbacks en código (`||'...'`); usar estrictamente inyección dinámica de variables de entorno.
+4. **Aislamiento y Modularidad**: Cada componente expone contratos públicos tipados e inmutables; prohibidas dependencias circulares y acoplamientos innecesarios entre dominios.
+5. **Trazabilidad Atómica y Git Limpio**: Commits atómicos por tarea con staging quirúrgico (`git add <rutas>`); prohibido hacer `git push` a ramas compartidas durante tareas intermedias.
+6. **Verificación Humana Imparcial**: QA valida requerimiento por requerimiento (RF por RF); ninguna spec se da por completada ni se borran ramas sin autorización explícita del usuario.

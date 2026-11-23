@@ -1,0 +1,66 @@
+# Especificación Funcional: {{SPEC_ID}}-{{SPEC_TITLE}}
+
+- **ID**: {{SPEC_ID}}
+- **Título**: {{SPEC_TITLE}}
+- **Estado**: borrador # borrador | clarificada | planificada | en_progreso | validada | completada | descartada
+- **Rama Base**: {{BASE_BRANCH}} # develop o main (sobrescribe valor por defecto de AGENTS.md si aplica)
+- **Fecha de Creación**: {{DATE}}
+- **Última Actualización**: {{DATE}}
+
+---
+
+## 1. Visión y Objetivo de Negocio
+{{BUSINESS_VISION_AND_VALUE}}
+*(Describe el problema real que resuelve esta especificación y el valor concreto que aporta al usuario o al sistema).*
+
+---
+
+## 2. Actores y Alcance
+- **Actores Involucrados**: {{ACTORS_OR_USER_PERSONAS}} (ej. Usuario autenticado, Administrador, Sistema externo).
+- **Límites de Alcance**:
+  - **Dentro de alcance**: {{IN_SCOPE}}
+  - **Fuera de alcance**: {{OUT_OF_SCOPE}}
+
+---
+
+## 3. Requerimientos Funcionales (Sintaxis Formal EARS)
+
+Cada requerimiento debe expresarse obligatoriamente bajo una de las 5 estructuras canónicas de EARS en español:
+
+### RF-{{SPEC_ID}}-01: {{RF_TITLE_1}}
+- **EARS**: CUANDO {{TRIGGER_OR_EVENT}}, EL SISTEMA {{SYSTEM_RESPONSE}}.
+- **Detalle**: {{RF_DETAILED_DESCRIPTION}}
+
+### RF-{{SPEC_ID}}-02: {{RF_TITLE_2}}
+- **EARS**: SI {{PRECONDITION_OR_OPTION}}, ENTONCES EL SISTEMA {{SYSTEM_RESPONSE}}.
+- **Detalle**: {{RF_DETAILED_DESCRIPTION}}
+
+### RF-{{SPEC_ID}}-03: {{RF_TITLE_3}}
+- **EARS**: MIENTRAS {{ACTIVE_STATE}}, EL SISTEMA {{SYSTEM_BEHAVIOR}}.
+- **Detalle**: {{RF_DETAILED_DESCRIPTION}}
+
+### RF-{{SPEC_ID}}-04: {{RF_TITLE_4}}
+- **EARS**: EL SISTEMA {{UBIQUITOUS_BEHAVIOR}}.
+- **Detalle**: {{RF_DETAILED_DESCRIPTION}}
+
+---
+
+## 4. Requerimientos No Funcionales (Cero Adjetivos Vagos)
+*(Prohibido usar términos como "rápido" o "escalable"; definir métricas cuantificables).*
+- **Rendimiento**: Latencia de respuesta en endpoints inferior a {{LATENCY_MS}} ms en el percentil 95.
+- **Seguridad**: Validación estricta de esquemas de entrada; cero exposición de datos sensibles o secretos.
+- **Compatibilidad**: {{COMPATIBILITY_REQUIREMENTS}} (ej. Navegadores modernos, Node.js 20+, responsive móvil).
+
+---
+
+## 5. Casos Límite y Escenarios de Error
+- **CL-01 (Datos Inválidos o Vacíos)**: SI {{INVALID_INPUT_CONDITION}}, ENTONCES EL SISTEMA {{ERROR_RESPONSE_AND_HTTP_CODE}}.
+- **CL-02 (Timeout o Desconexión)**: SI {{TIMEOUT_CONDITION}}, ENTONCES EL SISTEMA {{RETRY_OR_FALLBACK_BEHAVIOR}}.
+- **CL-03 (Concurrencia o Duplicidad)**: SI {{RACE_CONDITION}}, ENTONCES EL SISTEMA {{IDEMPOTENCY_OR_LOCK_HANDLING}}.
+
+---
+
+## 6. Criterios de Aceptación Verificables
+- [ ] **CA-01**: {{ACCEPTANCE_CRITERIA_1_WITH_VERIFIABLE_OUTCOME}}
+- [ ] **CA-02**: {{ACCEPTANCE_CRITERIA_2_WITH_VERIFIABLE_OUTCOME}}
+- [ ] **CA-03**: La suite automatizada de pruebas pasa al 100% en verde sin errores de linter ni tipos.
