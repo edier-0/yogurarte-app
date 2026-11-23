@@ -16,6 +16,7 @@ import {
   MessageCircle,
   FlaskConical,
   Boxes,
+  BookOpen,
   Wallet,
   Receipt,
   Users,
@@ -280,6 +281,23 @@ function handleOpenLogout() {
                 <div class="flex items-center gap-2.5">
                   <Boxes class="h-4 w-4 shrink-0" />
                   <span>Materia Prima e Insumos</span>
+                </div>
+                <ChevronRight class="h-3.5 w-3.5 text-slate-300 dark:text-slate-600" />
+              </button>
+
+              <button
+                type="button"
+                @click="handleNavigate('/produccion/recetario')"
+                class="group flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-all text-left"
+                :class="[
+                  isItemActive('/produccion/recetario')
+                    ? 'bg-brand-50 text-brand-800 shadow-xs dark:bg-brand-darkSurface dark:text-brand-darkText'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
+                ]"
+              >
+                <div class="flex items-center gap-2.5">
+                  <BookOpen class="h-4 w-4 shrink-0" />
+                  <span>Libro de Recetas (SOP)</span>
                 </div>
                 <ChevronRight class="h-3.5 w-3.5 text-slate-300 dark:text-slate-600" />
               </button>

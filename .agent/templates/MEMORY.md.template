@@ -1,0 +1,21 @@
+# MEMORY.md — Memoria Viva del Proyecto
+
+Memoria persistente entre sesiones. Límite máximo estricto: **~50 líneas**. Aplicar poda activa: resumir o eliminar lo que ya no aporte; si algo se convierte en regla permanente, promoverlo a `AGENTS.md`.
+
+## Estado Actual
+- **Fase de desarrollo**: {{CURRENT_PHASE}} (ej. Inicialización de arnés / Spec 001 completada).
+- **Última Spec completada**: {{LAST_COMPLETED_SPEC}} (ej. `specs/001-autenticacion/` integrada en `develop`).
+- **Rama activa**: {{CURRENT_BRANCH}} (ej. `develop` o `main`).
+- **Estado del entorno**: Suite en verde, sin regresiones ni bloqueos técnicos activos.
+
+## Decisiones Clave (y por qué)
+- **{{DATE_1}} — {{DECISION_TITLE_1}}**: {{DECISION_JUSTIFICATION_1}} (ej. *Se adoptó TDD estricto con runners deterministas para evitar bloqueos en CI y terminales agénticas*).
+- **{{DATE_2}} — {{DECISION_TITLE_2}}**: {{DECISION_JUSTIFICATION_2}} (ej. *Centralización obligatoria de specs en raíz para evitar desincronización en workspaces*).
+
+## Aprendizajes y Errores a Evitar
+- **{{LEARNING_OR_ERROR_1}}**: {{LEARNING_DESCRIPTION_1}} (ej. *Nunca ejecutar vitest o jest en modo observador interactivo sin flags `--run` o `--watchAll=false` para no congelar la consola del agente*).
+- **{{LEARNING_OR_ERROR_2}}**: {{LEARNING_DESCRIPTION_2}} (ej. *Siempre usar staging quirúrgico (`git add <rutas>`) para evitar comitear archivos temporales o de configuración no relacionados*).
+
+## Próximos Pasos
+- [ ] {{NEXT_STEP_1}} (ej. Iniciar especificación de la siguiente feature mediante `/sdd-spec`).
+- [ ] {{NEXT_STEP_2}}

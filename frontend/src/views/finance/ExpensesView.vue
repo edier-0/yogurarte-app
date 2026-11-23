@@ -383,33 +383,37 @@ async function deleteCredit(id: number) {
 
     <!-- Navegación por Sub-pestañas (Reka UI Tabs) -->
     <TabsRoot v-model="activeTab" class="space-y-6">
-      <TabsList
-        class="inline-flex h-12 items-center gap-1.5 rounded-2xl border border-surface-light-border bg-surface-light-card p-1 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card"
-      >
-        <!-- Tab 1: Gastos Operativos -->
-        <TabsTrigger
-          value="expenses"
-          class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition-all data-[state=active]:bg-brand-800 data-[state=active]:text-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-brand-500 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+      <div class="overflow-x-auto max-w-full pb-1 [scrollbar-width:none]">
+        <TabsList
+          class="inline-flex min-w-full sm:min-w-0 h-12 items-center gap-1.5 rounded-2xl border border-surface-light-border bg-surface-light-card p-1 shadow-card dark:border-surface-dark-border dark:bg-surface-dark-card"
         >
-          <ReceiptText class="h-4 w-4 stroke-[1.75]" />
-          <span>Gastos Operativos e Infraestructura</span>
-        </TabsTrigger>
-
-        <!-- Tab 2: Compras a Cuotas y Créditos -->
-        <TabsTrigger
-          value="credits"
-          class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition-all data-[state=active]:bg-brand-800 data-[state=active]:text-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-brand-500 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-        >
-          <CreditCard class="h-4 w-4 stroke-[1.75]" />
-          <span>Compras a Cuotas y Créditos</span>
-          <span
-            v-if="credits.filter((c) => c.status === 'ACTIVO').length > 0"
-            class="rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-black text-white"
+          <!-- Tab 1: Gastos Operativos -->
+          <TabsTrigger
+            value="expenses"
+            class="inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 sm:px-4 py-2 text-xs font-extrabold transition-all data-[state=active]:bg-brand-800 data-[state=active]:text-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-brand-500 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
           >
-            {{ credits.filter((c) => c.status === 'ACTIVO').length }}
-          </span>
-        </TabsTrigger>
-      </TabsList>
+            <ReceiptText class="h-4 w-4 stroke-[1.75]" />
+            <span class="hidden sm:inline">Gastos Operativos e Infraestructura</span>
+            <span class="sm:hidden">Gastos Operativos</span>
+          </TabsTrigger>
+
+          <!-- Tab 2: Compras a Cuotas y Créditos -->
+          <TabsTrigger
+            value="credits"
+            class="inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 sm:px-4 py-2 text-xs font-extrabold transition-all data-[state=active]:bg-brand-800 data-[state=active]:text-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-brand-500 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+          >
+            <CreditCard class="h-4 w-4 stroke-[1.75]" />
+            <span class="hidden sm:inline">Compras a Cuotas y Créditos</span>
+            <span class="sm:hidden">Créditos y Cuotas</span>
+            <span
+              v-if="credits.filter((c) => c.status === 'ACTIVO').length > 0"
+              class="rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-black text-white"
+            >
+              {{ credits.filter((c) => c.status === 'ACTIVO').length }}
+            </span>
+          </TabsTrigger>
+        </TabsList>
+      </div>
 
       <!-- CONTENIDO PESTAÑA 1: GASTOS OPERATIVOS -->
       <TabsContent value="expenses" class="space-y-6 focus:outline-none">

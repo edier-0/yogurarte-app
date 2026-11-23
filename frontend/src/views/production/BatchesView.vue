@@ -271,7 +271,7 @@ watch(activeMainTab, (newTab) => {
         </p>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <button
           type="button"
           @click="
@@ -315,10 +315,11 @@ watch(activeMainTab, (newTab) => {
         <button
           type="button"
           @click="openCreateBatchModal"
-          class="inline-flex items-center gap-2 rounded-xl bg-hero-gradient px-4 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95"
+          class="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl bg-hero-gradient px-3 sm:px-4 py-2.5 text-xs font-extrabold text-white shadow-card transition-transform active:scale-95"
         >
           <Plus class="h-4 w-4 stroke-[2.5]" />
-          <span>Fase A · Registrar Lote</span>
+          <span class="hidden sm:inline">Fase A · Registrar Lote</span>
+          <span class="sm:hidden">Registrar Lote</span>
         </button>
       </div>
     </div>
@@ -389,11 +390,11 @@ watch(activeMainTab, (newTab) => {
     </div>
 
     <!-- 2. Selector Principal de Pestañas Segregadas (Fase A vs Fase B) -->
-    <div class="flex items-center gap-2 border-b border-surface-light-border pb-3 dark:border-surface-dark-border">
+    <div class="flex items-center gap-2 border-b border-surface-light-border pb-3 overflow-x-auto max-w-full [scrollbar-width:none] dark:border-surface-dark-border">
       <button
         type="button"
         @click="activeMainTab = 'BASE'"
-        class="inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-xs font-black transition-all"
+        class="inline-flex shrink-0 items-center gap-2 rounded-2xl px-3.5 sm:px-5 py-2.5 text-xs font-black transition-all"
         :class="
           activeMainTab === 'BASE'
             ? 'bg-brand-900 text-white shadow-md dark:bg-white dark:text-slate-900'
@@ -401,7 +402,8 @@ watch(activeMainTab, (newTab) => {
         "
       >
         <FlaskConical class="h-4 w-4" />
-        <span>Fase A · Lotes Base (Fermentación)</span>
+        <span class="hidden sm:inline">Fase A · Lotes Base (Fermentación)</span>
+        <span class="sm:hidden">Fase A</span>
         <span
           class="rounded-full px-2 py-0.5 text-[10px] font-extrabold"
           :class="
@@ -417,7 +419,7 @@ watch(activeMainTab, (newTab) => {
       <button
         type="button"
         @click="activeMainTab = 'PACKAGING'"
-        class="inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-xs font-black transition-all"
+        class="inline-flex shrink-0 items-center gap-2 rounded-2xl px-3.5 sm:px-5 py-2.5 text-xs font-black transition-all"
         :class="
           activeMainTab === 'PACKAGING'
             ? 'bg-brand-900 text-white shadow-md dark:bg-white dark:text-slate-900'
@@ -425,7 +427,8 @@ watch(activeMainTab, (newTab) => {
         "
       >
         <PackageCheck class="h-4 w-4" />
-        <span>Fase B · Lotes Envasados (Fraccionados)</span>
+        <span class="hidden sm:inline">Fase B · Lotes Envasados (Fraccionados)</span>
+        <span class="sm:hidden">Fase B</span>
         <span
           class="rounded-full px-2 py-0.5 text-[10px] font-extrabold"
           :class="

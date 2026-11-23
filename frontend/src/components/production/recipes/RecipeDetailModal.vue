@@ -148,9 +148,9 @@ function handlePrint() {
       <!-- Resumen Económico para ADMIN / SOCIO (si canViewCosts) -->
       <div
         v-if="canViewCosts && recipe.theoreticalUnitCost !== undefined"
-        class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-6 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/30"
+        class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-4 sm:px-6 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/30"
       >
-        <div class="flex items-center gap-4">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
           <div>
             <span class="text-slate-500">Rendimiento Base:</span>
             <strong class="ml-1 text-slate-800 dark:text-slate-200">
@@ -179,12 +179,12 @@ function handlePrint() {
       <!-- Navegación de Pestañas (si es Fase B y canViewCosts) -->
       <div
         v-if="recipe.category === 'FASE_B' && canViewCosts"
-        class="flex border-b border-slate-200 px-6 dark:border-slate-800"
+        class="flex items-center gap-3 sm:gap-6 border-b border-slate-200 px-4 sm:px-6 overflow-x-auto max-w-full [scrollbar-width:none] whitespace-nowrap dark:border-slate-800"
       >
         <button
           type="button"
           @click="activeTab = 'SOP'"
-          class="flex items-center gap-2 border-b-2 py-3 text-xs font-bold transition-colors"
+          class="flex shrink-0 items-center gap-2 border-b-2 py-3 text-xs font-bold transition-colors"
           :class="
             activeTab === 'SOP'
               ? 'border-primary-600 text-primary-700 dark:border-primary-400 dark:text-primary-300'
@@ -192,13 +192,13 @@ function handlePrint() {
           "
         >
           <BookOpen class="h-4 w-4" />
-          Ficha Técnica & Escalador
+          <span>Ficha Técnica & Escalador</span>
         </button>
 
         <button
           type="button"
           @click="activeTab = 'SIMULATOR'"
-          class="flex items-center gap-2 border-b-2 py-3 ml-6 text-xs font-bold transition-colors"
+          class="flex shrink-0 items-center gap-2 border-b-2 py-3 text-xs font-bold transition-colors"
           :class="
             activeTab === 'SIMULATOR'
               ? 'border-purple-600 text-purple-700 dark:border-purple-400 dark:text-purple-300'
@@ -206,12 +206,13 @@ function handlePrint() {
           "
         >
           <TrendingUp class="h-4 w-4" />
-          Simulador de Rentabilidad por Presentación
+          <span class="hidden sm:inline">Simulador de Rentabilidad por Presentación</span>
+          <span class="sm:hidden">Simulador de Rentabilidad</span>
         </button>
       </div>
 
       <!-- Capa 2: Cuerpo con Scroll Independiente -->
-      <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
         <template v-if="activeTab === 'SOP' || recipe.category !== 'FASE_B' || !canViewCosts">
           <!-- Escalador reactivo -->
           <RecipeScaler :recipe="recipe" :canViewCosts="canViewCosts" />
@@ -227,8 +228,8 @@ function handlePrint() {
       </div>
 
       <!-- Capa 3: Footer Fijo con Acciones Principales -->
-      <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 p-4 dark:border-slate-800 sm:px-6">
-        <div class="flex items-center gap-2">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-200 p-4 dark:border-slate-800 sm:px-6">
+        <div class="flex flex-wrap items-center gap-2">
           <!-- Botón Imprimir Ficha Limpia -->
           <button
             type="button"
@@ -236,7 +237,8 @@ function handlePrint() {
             class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
           >
             <Printer class="h-4 w-4 text-slate-500" />
-            <span>Imprimir Ficha (SOP)</span>
+            <span class="hidden sm:inline">Imprimir Ficha (SOP)</span>
+            <span class="sm:hidden">Imprimir</span>
           </button>
 
           <!-- Botón Archivar / Reactivar (solo admin/socio) -->
@@ -252,11 +254,12 @@ function handlePrint() {
             "
           >
             <component :is="recipe.status === 'ACTIVA' ? Archive : RotateCcw" class="h-4 w-4" />
-            <span>{{ recipe.status === 'ACTIVA' ? 'Archivar Receta' : 'Reactivar Receta' }}</span>
+            <span class="hidden sm:inline">{{ recipe.status === 'ACTIVA' ? 'Archivar Receta' : 'Reactivar Receta' }}</span>
+            <span class="sm:hidden">{{ recipe.status === 'ACTIVA' ? 'Archivar' : 'Reactivar' }}</span>
           </button>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex items-center justify-end gap-2">
           <!-- Botón Editar (solo admin/socio) -->
           <button
             v-if="canViewCosts"
@@ -265,7 +268,8 @@ function handlePrint() {
             class="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-2xs hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             <Pencil class="h-4 w-4" />
-            <span>Editar Receta</span>
+            <span class="hidden sm:inline">Editar Receta</span>
+            <span class="sm:hidden">Editar</span>
           </button>
 
           <!-- Cerrar -->

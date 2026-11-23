@@ -467,40 +467,45 @@ async function handleDeleteUser(user: UserItem) {
 
     <!-- Navegación por Sub-pestañas con Reka UI Tabs -->
     <TabsRoot v-model="activeTab" class="w-full space-y-4">
-      <TabsList class="inline-flex rounded-2xl border border-surface-light-border bg-surface-light-canvas p-1 shadow-inner dark:border-surface-dark-border dark:bg-surface-dark-canvas">
-        <TabsTrigger
-          value="team"
-          class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
-        >
-          <Users class="h-4 w-4 stroke-[2]" />
-          <span>Equipo y Colaboradores</span>
-          <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {{ staffList.length }}
-          </span>
-        </TabsTrigger>
+      <div class="overflow-x-auto max-w-full pb-1 [scrollbar-width:none]">
+        <TabsList class="inline-flex min-w-full sm:min-w-0 rounded-2xl border border-surface-light-border bg-surface-light-canvas p-1 shadow-inner dark:border-surface-dark-border dark:bg-surface-dark-canvas">
+          <TabsTrigger
+            value="team"
+            class="inline-flex shrink-0 items-center gap-2 rounded-xl px-3 sm:px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
+          >
+            <Users class="h-4 w-4 stroke-[2]" />
+            <span class="hidden sm:inline">Equipo y Colaboradores</span>
+            <span class="sm:hidden">Equipo</span>
+            <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {{ staffList.length }}
+            </span>
+          </TabsTrigger>
 
-        <TabsTrigger
-          value="payments"
-          class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
-        >
-          <Receipt class="h-4 w-4 stroke-[2]" />
-          <span>Historial de Pagos</span>
-          <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {{ paymentsList.length }}
-          </span>
-        </TabsTrigger>
+          <TabsTrigger
+            value="payments"
+            class="inline-flex shrink-0 items-center gap-2 rounded-xl px-3 sm:px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
+          >
+            <Receipt class="h-4 w-4 stroke-[2]" />
+            <span class="hidden sm:inline">Historial de Pagos</span>
+            <span class="sm:hidden">Pagos</span>
+            <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {{ paymentsList.length }}
+            </span>
+          </TabsTrigger>
 
-        <TabsTrigger
-          value="roles"
-          class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
-        >
-          <Lock class="h-4 w-4 stroke-[2]" />
-          <span>Usuarios y Roles</span>
-          <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {{ usersList.length }}
-          </span>
-        </TabsTrigger>
-      </TabsList>
+          <TabsTrigger
+            value="roles"
+            class="inline-flex shrink-0 items-center gap-2 rounded-xl px-3 sm:px-4 py-2 text-xs font-extrabold text-slate-600 transition-all data-[state=active]:bg-white data-[state=active]:text-brand-800 data-[state=active]:shadow-card dark:text-slate-400 dark:data-[state=active]:bg-surface-dark-card dark:data-[state=active]:text-brand-darkText"
+          >
+            <Lock class="h-4 w-4 stroke-[2]" />
+            <span class="hidden sm:inline">Usuarios y Roles</span>
+            <span class="sm:hidden">Roles</span>
+            <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {{ usersList.length }}
+            </span>
+          </TabsTrigger>
+        </TabsList>
+      </div>
 
       <!-- PESTAÑA 1: EQUIPO Y COLABORADORES -->
       <TabsContent value="team" class="space-y-4 focus:outline-none">
